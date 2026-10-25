@@ -313,11 +313,17 @@ aliases/cycles before `repoTree` can filter them. Exclude an irrelevant outbound
 
 ```toml
 [capture]
-exclude = [".venv"]
+exclude = [".venv", "**/__pycache__", ".ruff_cache/**"]
 ```
 
-These literal repository-relative exclusions become approved capture policy;
-they are not `.gitignore` rules or grants to read the excluded tree. Keep an
+These repository-relative exclusions — literal subtrees or explicit bounded
+glob patterns (`*` within one path component, `?` one character,
+whole-component `**`) — become approved capture policy; they are not
+`.gitignore` rules, nothing is read from Git ignore files, and they are no
+grant to read the excluded tree. Patterns are recorded verbatim, shown by
+`grip trust inspect` (terminal and JSON) and change the bundle/policy
+identity exactly as literal entries do. Required entrypoints, lock authority
+and admitted SDK roots refuse glob matches instead of being omitted. Keep an
 alias's target in the approved bundle. The current SDK replaces `treeFiles`
 with `repoTree`; no compatibility walker or generated manifest is needed.
 
@@ -399,6 +405,21 @@ real files; point `TYPST_FONT_PATHS` at that destination instead of maintaining 
 second dereferenced font-copy cache. Both artifact and captured repository trees
 can use this policy. Tracked copies retain ownership and drift checks; they are
 not a reproducible mutable package-manager overlay.
+
+Self-updating tools compose the same primitives explicitly. Declare the pinned
+base with `source: repoTree("tool-base")` and `destination:
+trackedCopyTo("~/.tool")`; the tool then mutates its deployed copy freely — the
+destination is a mutable user-owned copy, `grip plan` reports the drift as
+`drifted — kept`, and launchers re-admit their packages on every invocation.
+Keeping an update is a manual snapshot round-trip with no workspace command
+involved: copy the deployed tree back into `tool-base/` yourself (for example
+`rsync -a --delete --exclude=cache/ ~/.tool/ tool-base/`), let the changed
+repository content go through ordinary whole-bundle approval again, and apply.
+The next apply converges without rewriting the destination, a later cold apply
+reproduces the updated tree from the reviewed source alone, and the previous
+base generation remains rollback-able. `grip update` refreshes pinned external
+resolutions; it never captures destination content, and the lock is not content
+authority for deployed trees.
 
 Profile hooks, task postconditions and attached profile-file checks execute.
 Schedules and host recipe execution remain explicitly gated.
@@ -584,11 +605,21 @@ shows at most 20 paths; use `grip trust inspect --json` for the complete
 `.approval.changes` list and policy. Review the actual changed content too:
 inventory changes are not a line-by-line content diff.
 
+`grip trust inspect --focus PREFIX` (and `grip trust add --focus PREFIX` in the
+interactive flow) narrows only the displayed change listing to one subtree. The
+focused view still prints every policy, runtime and native line plus an
+unhidden summary — the count and a digest of the out-of-focus changes — and
+`--json` output stays complete, merely adding a `focus` field. A focused
+approval records the exact whole bundle and policy digests: `--focus` never
+narrows what is approved, and a later out-of-focus edit still requires renewal.
+
 Approval still covers the exact whole source bundle and policy. Changes outside
 the selected profile remain visible and require review; a text file or
-non-executable mode is not a trust exemption. Subtree approval and recursive
-capture-glob exclusions are not 0.47 APIs. `[capture].exclude` remains literal,
-and capture does not automatically inherit `.gitignore`.
+non-executable mode is not a trust exemption. Subtree approval (narrowing
+what an approval binds) is not an API of this release; `--focus` is a display
+filter only. `[capture].exclude` accepts literal subtrees and explicit
+bounded glob patterns, and capture never automatically inherits
+`.gitignore`.
 
 ## Probes are requests, not effects
 

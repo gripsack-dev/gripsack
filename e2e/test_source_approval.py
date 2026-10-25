@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import time
@@ -501,3 +502,42 @@ def test_round_file_grant_does_not_grant_its_parent_directory(sandbox):
     receipt = new_receipt(before)
     assert receipt["outcome"] == "failed"
     assert receipt["rounds"][0]["process"]["exit_code"] != 0
+
+
+def test_focus_filters_display_but_approval_binds_whole_bundle(sandbox):
+    repo = value_repo(sandbox / "repo")
+    approved = approve_source(repo)
+    checked(repo, "before", approved)
+    # Two edited subtrees: modules/ (in focus) and the root value.ts (out of focus).
+    value_file(repo / "modules/selected.ts", '"selected"')
+    value_file(repo / "value.ts", '"changed"')
+    focused = grip("trust", "inspect", str(repo), "--focus", "modules", approve=False)
+    assert focused.returncode == 0, focused.stderr
+    text = focused.stdout
+    assert "focus: modules" in text
+    assert "modules/selected.ts" in text
+    assert "value.ts" not in text, "focused view must not list out-of-focus paths"
+    assert re.search(r"unhidden: 1 out-of-focus changes \(digest [0-9a-f]{64}\)", text)
+    # Policy, runtime and native disclosure survives the focused view.
+    assert "runtime: " in text and "native policy: " in text
+    assert "native configuration: " in text
+    # JSON stays complete; focus is an added field only, digests unchanged.
+    plain = inspect_source(repo)
+    narrowed = json.loads(grip("trust", "inspect", str(repo), "--focus", "modules",
+                               "--json", approve=False).stdout)
+    assert narrowed["focus"] == "modules" and plain["focus"] is None
+    assert narrowed["bundle_digest"] == plain["bundle_digest"]
+    assert narrowed["policy_digest"] == plain["policy_digest"]
+    assert narrowed["approval"]["changes"] == plain["approval"]["changes"]
+    # Stale digests are refused with --focus exactly as without it.
+    stale = grip("trust", "add", str(repo), "--focus", "modules",
+                 "--bundle", approved["bundle_digest"], "--policy", approved["policy_digest"],
+                 approve=False)
+    assert stale.returncode == 1
+    rejected(repo)
+    # A focused one-step approval records the whole bundle: a later
+    # out-of-focus edit still forces renewal.
+    current = approve_source(repo)
+    checked(repo, "changed", current)
+    value_file(repo / "value.ts", '"changed again"')
+    rejected(repo)

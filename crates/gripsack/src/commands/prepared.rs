@@ -222,7 +222,11 @@ impl PreparedEvaluation {
         &self.home
     }
 
-    pub(super) fn authorize(&self, interactive: bool) -> Result<ApprovedEvaluation<'_>, ExitCode> {
+    pub(super) fn authorize(
+        &self,
+        interactive: bool,
+        focus: Option<&str>,
+    ) -> Result<ApprovedEvaluation<'_>, ExitCode> {
         let status = trust::status(&self.home, &self.sources, &self.policy).map_err(operational)?;
         if status == ApprovalStatus::Approved {
             return Ok(ApprovedEvaluation { prepared: self });
@@ -246,13 +250,16 @@ impl PreparedEvaluation {
             );
             return Err(ExitCode::FAILURE);
         }
-        self.show_approval()?;
+        self.show_approval(focus)?;
         let mut output = io::stdout().lock();
-        write!(
-            output,
-            "approve these captured bytes and this policy? [y/N] "
-        )
-        .map_err(operational)?;
+        let prompt = match focus {
+            Some(focus) => format!(
+                "approve these captured bytes and this policy? focus `{}` is display only; the whole bundle is approved [y/N] ",
+                gripsack_process::terminal::tame(focus.to_string())
+            ),
+            None => "approve these captured bytes and this policy? [y/N] ".to_string(),
+        };
+        write!(output, "{prompt}").map_err(operational)?;
         output.flush().map_err(operational)?;
         let mut answer = String::new();
         io::stdin().read_line(&mut answer).map_err(operational)?;
@@ -272,7 +279,7 @@ impl PreparedEvaluation {
         Ok(ApprovedEvaluation { prepared: self })
     }
 
-    pub(super) fn show_approval(&self) -> Result<(), ExitCode> {
+    pub(super) fn show_approval(&self, focus: Option<&str>) -> Result<(), ExitCode> {
         let inspection =
             trust::inspect(&self.home, &self.sources, &self.policy).map_err(operational)?;
         println!(
@@ -328,15 +335,50 @@ impl PreparedEvaluation {
             self.sources.inventory().entries().len(),
             inspection.changes.len()
         );
-        for change in inspection.changes.iter().take(20) {
-            println!(
-                "  {:?} {}",
-                change.change,
-                gripsack_process::terminal::tame(change.path.clone())
-            );
-        }
-        if inspection.changes.len() > 20 {
-            println!("  use --json to inspect every inventory change");
+        match focus {
+            None => {
+                for change in inspection.changes.iter().take(20) {
+                    println!(
+                        "  {:?} {}",
+                        change.change,
+                        gripsack_process::terminal::tame(change.path.clone())
+                    );
+                }
+                if inspection.changes.len() > 20 {
+                    println!("  use --json to inspect every inventory change");
+                }
+            }
+            Some(focus) => {
+                // A focus prefix filters only this listing. Policy, runtime and
+                // native lines stay above, the unhidden summary below discloses
+                // every out-of-focus change, and the recorded approval still
+                // binds the exact whole bundle and policy digests printed here.
+                println!(
+                    "focus: {} (display only; approval binds the whole bundle and policy)",
+                    gripsack_process::terminal::tame(focus.to_string())
+                );
+                let (within, without) = self.partition_changes(&inspection.changes, focus);
+                if within.is_empty() {
+                    println!("  no inventory changes under focus");
+                }
+                for change in within.iter().take(20) {
+                    println!(
+                        "  {:?} {}",
+                        change.change,
+                        gripsack_process::terminal::tame(change.path.clone())
+                    );
+                }
+                if within.len() > 20 {
+                    println!("  use --json to inspect every inventory change");
+                }
+                if !without.is_empty() {
+                    println!(
+                        "unhidden: {} out-of-focus changes (digest {}); approval covers them too",
+                        without.len(),
+                        out_of_focus_digest(&without)
+                    );
+                }
+            }
         }
         for excluded in self.sources.inventory().exclusions() {
             println!(
@@ -347,9 +389,32 @@ impl PreparedEvaluation {
         Ok(())
     }
 
+    fn partition_changes<'a>(
+        &self,
+        changes: &'a [trust::InventoryChange],
+        focus: &str,
+    ) -> (
+        Vec<&'a trust::InventoryChange>,
+        Vec<&'a trust::InventoryChange>,
+    ) {
+        changes
+            .iter()
+            .partition(|change| change.path.starts_with(focus))
+    }
+
     pub(super) fn map_diagnostics(&self, diagnostics: &mut [gripsack_ir::Diagnostic]) {
         map_diagnostics(&self.sources, diagnostics);
     }
+}
+
+/// Deterministic digest of the elided listing so a focused review can still
+/// record what it did not read line by line.
+fn out_of_focus_digest(changes: &[&trust::InventoryChange]) -> gripsack_process::Sha256Digest {
+    let mut input = String::new();
+    for change in changes {
+        input.push_str(&format!("{:?} {}\n", change.change, change.path));
+    }
+    gripsack_process::Sha256Digest::of(input.as_bytes())
 }
 
 impl ApprovedEvaluation<'_> {

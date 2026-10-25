@@ -73,7 +73,7 @@ pub fn adopt(
         Ok(prepared) => prepared,
         Err(code) => return code,
     };
-    if let Err(code) = prepared.authorize(true) {
+    if let Err(code) = prepared.authorize(true, None) {
         return code;
     }
     let dest = expand_home(target);

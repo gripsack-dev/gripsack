@@ -78,8 +78,10 @@ pub struct EvalSection {
 }
 
 /// Explicit source selection; never inferred from Git ignore rules. The store
-/// admits these plain-wire paths before capture and binds the exact env.toml
-/// bytes to the resulting source/policy approval.
+/// admits these plain-wire paths — literal subtrees or bounded glob patterns
+/// (`*` within one component, `?` one character, whole-component `**`) —
+/// before capture and binds the exact env.toml bytes to the resulting
+/// source/policy approval.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct CaptureSection {
@@ -403,12 +405,18 @@ keep_generations = 20
 
     #[test]
     fn capture_exclusions_are_explicit_repository_configuration_only() {
-        let env =
-            parse_env("[capture]\nexclude = ['.venv', 'node_modules/@gripsack/core']\n").unwrap();
+        let env = parse_env(
+            "[capture]\nexclude = ['.venv', 'node_modules/@gripsack/core']\n",
+        )
+        .unwrap();
         assert_eq!(
             env.capture.exclude,
             [".venv", "node_modules/@gripsack/core"]
         );
+        // Glob patterns stay verbatim wire spellings; only the store
+        // interprets them.
+        let env = parse_env("[capture]\nexclude = ['**/__pycache__', '.ruff_cache/**']\n").unwrap();
+        assert_eq!(env.capture.exclude, ["**/__pycache__", ".ruff_cache/**"]);
         assert!(parse_env("").unwrap().capture.exclude.is_empty());
         for source in [
             "[capture]\nroots = ['/usr']\n",

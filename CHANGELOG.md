@@ -7,6 +7,15 @@ User-visible changes per release. Design archaeology lives in
 
 ### Added
 
+- `[capture] exclude` accepts explicit bounded glob patterns
+  (`**/__pycache__`, `.ruff_cache/**`; `*` within one path component, `?` one
+  character, whole-component `**`) alongside literal subtrees. Matching is
+  deterministic and component-aligned; patterns are recorded verbatim, shown
+  by `grip trust inspect` and bound to bundle/policy identity exactly like
+  literals. Git ignore rules stay unread; required configuration, lock
+  authority, entrypoints and admitted SDK roots refuse glob matches instead
+  of being omitted, and an excluded path disappears from the inventory just
+  as a literal exclusion.
 - `repoTree(path, { include, exclude })` discovers approved captured files and
   safe internal aliases in the core. Logical destination paths and executability
   survive traversal; added, removed and retargeted inputs need no generated
@@ -63,8 +72,13 @@ User-visible changes per release. Design archaeology lives in
   unsupported. Foreign/drifted objects never become implicit deletion authority.
 - Existing profile selection (`grip apply claude`) and terminal `grip trust add`
   reduce content-edit ceremony without scoped trust or automatic text approval.
-  The guide distinguishes changed-path inspection from a content diff. Recursive
-  capture-glob exclusions and mutable overlays are not part of this release.
+  The guide distinguishes changed-path inspection from a content diff.
+  Mutable overlays are guidance, not a capability: self-updating tool trees
+  use the explicit
+  update-and-snapshot workflow — pinned repository base, `trackedCopyTo`
+  deployment, manual re-capture into reviewed source, re-apply — and no
+  workspace command snapshots a live destination; the lock pins resolutions,
+  never destination content.
 - GNU runtime guidance distinguishes library supply from ABI selection. LuaLS
   releases that derive resource paths from their executable pathname require
   an explicit complete tracked-copy tree and deployed-host wrapper; successful

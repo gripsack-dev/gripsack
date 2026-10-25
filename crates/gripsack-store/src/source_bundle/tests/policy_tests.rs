@@ -15,7 +15,7 @@ fn capture(fixture: &Fixture, policy: &SourceCapturePolicy) -> io::Result<Source
 }
 
 #[test]
-fn exclusions_are_literal_bounded_subtrees_not_roots_globs_or_required_sources() {
+fn exclusions_are_bounded_literals_or_globs_and_protect_required_sources() {
     for path in [
         "",
         ".",
@@ -28,12 +28,12 @@ fn exclusions_are_literal_bounded_subtrees_not_roots_globs_or_required_sources()
         "a//b",
         "a/",
         "a\\b",
-        "*.ts",
-        "a?",
         "[a]",
+        "a?b]",
         "a\0b",
         "a\nb",
         "C:/x",
+        "C:/*",
         "env.toml",
         "gripsack.ts",
         "hosts",
@@ -43,16 +43,34 @@ fn exclusions_are_literal_bounded_subtrees_not_roots_globs_or_required_sources()
         "locks/testhost.lock",
         "Gripsack.Lock",
         "LOCKS/testhost.lock",
+        // Globs stay bounded: no whole-repository match, no `**` inside a
+        // component, no character classes.
+        "**",
+        "**/**",
+        "a**",
+        "**b",
+        "a**/b",
+        "[ab]/*",
+        // Required roots are unreachable by any root-aligned spelling.
+        "hosts/**",
+        "**/env.toml",
+        "**/locks/**",
+        "**/Gripsack.Lock",
     ] {
         assert!(
             SourceCapturePolicy::new(vec![path.to_owned()]).is_err(),
             "{path:?}"
         );
     }
-    for paths in [vec!["a", "a"], vec!["a", "a-b", "a/child"]] {
+    for paths in [
+        vec!["a", "a"],
+        vec!["a", "a-b", "a/child"],
+        vec!["*.ts", "*.ts"],
+    ] {
         assert!(SourceCapturePolicy::new(paths.into_iter().map(str::to_owned).collect()).is_err());
     }
     assert!(SourceCapturePolicy::new(vec!["a/".repeat(inventory::MAX_DEPTH) + "b"]).is_err());
+    assert!(SourceCapturePolicy::new(vec!["*/".repeat(inventory::MAX_DEPTH) + "b"]).is_err());
     assert!(
         SourceCapturePolicy::new(vec!["a".repeat(inventory::MAX_INVENTORY_BYTES + 1)]).is_err()
     );
@@ -61,6 +79,182 @@ fn exclusions_are_literal_bounded_subtrees_not_roots_globs_or_required_sources()
     assert!(!admitted.excludes(Path::new(".venv-local/bin/python3")));
     assert!(admitted.requires_directory(Path::new("a")));
     assert!(!admitted.requires_directory(Path::new("a-b")));
+    // Glob spellings are recorded verbatim, sorted like literals.
+    let globs = policy(&[".ruff_cache/**", "**/__pycache__", "build/*/target"]);
+    assert_eq!(
+        globs.exclusions(),
+        ["**/__pycache__", ".ruff_cache/**", "build/*/target"]
+    );
+    assert!(globs.excludes(Path::new("pkg/sub/__pycache__")));
+    assert!(globs.excludes(Path::new("__pycache__")));
+    assert!(globs.excludes(Path::new(".ruff_cache")));
+    assert!(globs.excludes(Path::new("build/anything/target")));
+    assert!(!globs.excludes(Path::new("build/target")));
+    assert!(!globs.excludes(Path::new("build/a/b/target")));
+    assert!(!globs.excludes(Path::new("pkg/__pycache__x")));
+    assert!(!globs.excludes(Path::new("__pycache__s/sub")));
+    assert!(globs != policy(&["**/__pycache__"]));
+}
+
+#[test]
+fn glob_exclusions_omit_nested_caches_exactly_like_literal_subtrees() {
+    let fixture = Fixture::new();
+    fs::remove_file(fixture.repo.join("node_modules")).unwrap();
+    fs::remove_file(fixture.repo.join("vendor_modules/@gripsack/core")).unwrap();
+    fs::create_dir_all(fixture.repo.join("pkg/sub/__pycache__")).unwrap();
+    fs::write(fixture.repo.join("pkg/sub/__pycache__/entry"), b"cache").unwrap();
+    fs::create_dir(fixture.repo.join("tools/__pycache__")).unwrap();
+    fs::create_dir(fixture.repo.join(".ruff_cache")).unwrap();
+    fs::write(fixture.repo.join(".ruff_cache/entry.json"), b"cache").unwrap();
+    // A suffix-anchored glob must not pin unrelated ancestor directories.
+    fs::create_dir(fixture.repo.join("real-docs")).unwrap();
+    symlink("real-docs", fixture.repo.join("docs")).unwrap();
+    let excluded = policy(&["**/__pycache__", ".ruff_cache/**"]);
+    assert_eq!(excluded.exclusions(), ["**/__pycache__", ".ruff_cache/**"]);
+    let captured = SourceBundle::capture(
+        &fixture.repo,
+        &fixture.frontend,
+        None,
+        &fixture.home,
+        excluded,
+    )
+    .unwrap();
+    let exclusions = captured.inventory().exclusions();
+    for path in [
+        "repo/pkg/sub/__pycache__",
+        "repo/tools/__pycache__",
+        "repo/.ruff_cache",
+    ] {
+        assert!(exclusions.iter().any(|excluded| excluded == path), "{path}");
+    }
+    assert!(!captured.repository().join(".ruff_cache").exists());
+    assert!(
+        !captured
+            .inventory()
+            .entries()
+            .iter()
+            .any(|entry| entry.path.starts_with("repo/.ruff_cache")
+                || entry.path.starts_with("repo/pkg/sub/__pycache__")
+                || entry.path.starts_with("repo/tools/__pycache__"))
+    );
+    assert!(captured.inventory().entry("repo/docs").is_some());
+    assert_eq!(
+        captured
+            .materialization_path(Path::new("pkg/sub/__pycache__/entry"))
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::PermissionDenied
+    );
+    assert_eq!(
+        captured
+            .materialization_path(Path::new("./.ruff_cache/entry.json"))
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::PermissionDenied
+    );
+}
+
+#[test]
+fn glob_aliases_into_exclusions_and_replaced_ancestors_are_refused() {
+    let fixture = Fixture::new();
+    fs::remove_file(fixture.repo.join("node_modules")).unwrap();
+    fs::remove_file(fixture.repo.join("vendor_modules/@gripsack/core")).unwrap();
+    fs::create_dir_all(fixture.repo.join("pkg/__pycache__")).unwrap();
+    fs::write(fixture.repo.join("pkg/__pycache__/secret"), b"excluded").unwrap();
+    symlink("pkg/__pycache__", fixture.repo.join("alternate")).unwrap();
+    let error = SourceBundle::capture(
+        &fixture.repo,
+        &fixture.frontend,
+        None,
+        &fixture.home,
+        policy(&["**/__pycache__"]),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("excluded subtree repo/pkg/__pycache__"), "{error}");
+
+    // A non-suffix-anchored glob must pin its ancestors as real directories:
+    // an alias there could re-expose excluded bytes under the target's
+    // spelling, exactly as a replaced literal ancestor can.
+    fs::remove_file(fixture.repo.join("alternate")).unwrap();
+    fs::create_dir(fixture.repo.join("elsewhere/target")).unwrap();
+    fs::write(fixture.repo.join("elsewhere/target/secret"), b"excluded").unwrap();
+    symlink("elsewhere", fixture.repo.join("build")).unwrap();
+    let error = SourceBundle::capture(
+        &fixture.repo,
+        &fixture.frontend,
+        None,
+        &fixture.home,
+        policy(&["build/*/target"]),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("exclusion ancestor repo/build"), "{error}");
+}
+
+#[test]
+fn glob_exclusions_cannot_bypass_sdk_root_rules_or_pins() {
+    let fixture = Fixture::new();
+    for spelling in ["**/core", "node_modules/**", "node_modules/@gripsack/cor?"] {
+        let error = capture(&fixture, &policy(&[spelling])).unwrap_err().to_string();
+        assert!(
+            error.contains("excluded SDK location"),
+            "{spelling}: {error}"
+        );
+    }
+    // The linked node_modules parent cannot become an exclusion anchor.
+    let error = capture(&fixture, &policy(&["node_modules/@gripsack/x*"]))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("real directory ancestors"),
+        "{error}"
+    );
+    // A glob that could carve the repo spelling of an admitted package root
+    // is refused exactly like a literal exclusion there. The root must be a
+    // real in-repo directory, as the auxiliary-root literal test sets up.
+    let package = fixture.repo.join("embedded-sdk");
+    fs::create_dir(&package).unwrap();
+    fs::write(package.join("package.json"), br#"{"name":"@gripsack/core"}"#).unwrap();
+    let error = SourceBundle::capture(
+        &fixture.repo,
+        &fixture.frontend,
+        Some(&package),
+        &fixture.home,
+        policy(&["**/__pycache__"]),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("overlaps an admitted pin root"),
+        "{error}"
+    );
+}
+
+#[test]
+fn glob_matches_on_required_roots_refuse_instead_of_omitting_authority() {
+    let fixture = Fixture::new();
+    fs::remove_file(fixture.repo.join("node_modules")).unwrap();
+    fs::remove_file(fixture.repo.join("vendor_modules/@gripsack/core")).unwrap();
+    fs::create_dir(fixture.repo.join("locks")).unwrap();
+    fs::write(fixture.repo.join("locks/testhost.lock"), b"{}").unwrap();
+    fs::create_dir(fixture.repo.join("hosts")).unwrap();
+    fs::write(fixture.repo.join("hosts/selected.ts"), b"export {};\n").unwrap();
+    for spelling in ["**/*.lock", "ho*"] {
+        let error = SourceBundle::capture(
+            &fixture.repo,
+            &fixture.frontend,
+            None,
+            &fixture.home,
+            policy(&[spelling]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("required configuration, lock authority or entrypoints"),
+            "{spelling}: {error}"
+        );
+    }
 }
 
 #[test]

@@ -177,6 +177,21 @@ sealed tool commands. Self-locating releases such as LuaLS still need an explici
 deployed-host wrapper. The [SDK migration guide](typescript/README.md#reviewer-migration-delete-plumbing-keep-verification)
 covers templates, captured trees, launchers, scoped profile apply and recovery.
 
+Tools that rewrite their own tree at runtime — TinyTeX's `tlmgr`, servers that
+download grammars into their install directory — follow an explicit workflow,
+not an automated overlay: pin the base as an ordinary reviewed repository tree,
+deploy it with `trackedCopyTo`, and let the tool mutate its own deployed copy.
+Applies preserve that drift and never rewrite the store or the repository base;
+declared launchers keep re-admitting their packages on every invocation. Keeping
+an update is a manual round-trip: copy the deployed tree back into the
+repository (excluding cache directories), review the changed repository content
+through ordinary source-approval renewal, and apply again. The destination then
+converges without being rewritten, the new generation records the content, a
+later cold apply reproduces the updated tree from reviewed source alone, and
+rollback to the earlier base generation stays available. No workspace command
+snapshots a live destination into reviewed source, and the workspace lock pins
+resolutions, never destination content.
+
 Linux x86_64 Conda/Pixi native and OCI journeys have runtime qualification.
 The standing product scope is **Linux and WSL2 on x86_64 only**, under
 `PLATFORM-LINUX-X64-2026-10-09`. ARM, macOS and native Windows are outside
@@ -201,11 +216,18 @@ selected gripsack runtime-state subtree are excluded and unavailable to eval.
 Lockfiles inside the repository are source too: an apply/update that changes
 them can require renewed approval on the next command.
 Ignored and untracked files are captured by design; Git ignore rules never
-decide source selection. Declare literal repository-relative exclusions in
-`env.toml` — `[capture] exclude = [".venv"]` — for ordinary build trees or
-editor-only SDK links. The captured configuration binds those rules to the
-approved bundle, and evaluator runtime grants never overlap the repository or
-its exclusions.
+decide source selection and are never read. Declare repository-relative
+exclusions in `env.toml` — literal subtrees (`[capture] exclude = [".venv"]`)
+or explicit bounded glob patterns such as `**/__pycache__` and
+`.ruff_cache/**` — for ordinary build trees or editor-only SDK links. In a
+pattern, `*` stays within one path component, `?` matches one character and a
+whole `**` component spans components; matching is deterministic and
+bounded. Patterns are recorded verbatim, shown by `grip trust inspect`
+(terminal and JSON) and change the bundle/policy identity exactly as literal
+entries do. Required configuration, lock authority, entrypoints and admitted
+SDK roots refuse glob matches instead of being omitted by any spelling. The
+captured configuration binds those rules to the approved bundle, and
+evaluator runtime grants never overlap the repository or its exclusions.
 
 Old path-only trust entries do not authorize execution. Unset
 `GRIPSACK_TRUST_ALL`; `=1` now fails with migration guidance. Interactive

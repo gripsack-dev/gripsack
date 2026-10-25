@@ -98,7 +98,7 @@ pub(super) fn eval_prepared(
     )
     .map_err(operational)?;
     let receipt_id = receipt.id();
-    let approved = match prepared.authorize(!sink.is_json()) {
+    let approved = match prepared.authorize(!sink.is_json(), None) {
         Ok(approved) => approved,
         Err(code) => {
             receipt

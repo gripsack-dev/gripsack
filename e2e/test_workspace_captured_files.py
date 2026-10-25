@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 
 import pytest
@@ -266,3 +267,80 @@ def test_repo_tree_symlink_policy_is_per_file_not_directory_ownership(sandbox):
     assert not (destination / "nested").is_symlink()
     assert (destination / "nested/value").read_text() == "captured\n"
     assert (destination / "unrelated").read_text() == "foreign\n"
+
+
+def test_repo_tree_self_updating_tool_update_and_snapshot_workflow(sandbox):
+    """R45-18 explicit workflow, pinned as behavior: a tool that rewrites its
+    own tracked-copy tree keeps its updates across applies, and keeping them
+    in reviewed source is a manual repository round-trip. No command captures
+    a live destination, the pinned repository base survives untouched, and
+    rollback to the base generation stays available."""
+    repo = sandbox / "self-updating-tool"
+    declare(repo, tree_file())
+    base = repo / "configs"
+    (base / "bin").mkdir(parents=True)
+    tool = base / "bin" / "tool"
+    tool.write_text("#!/bin/sh\nprintf 'base\\n'\n")
+    tool.chmod(0o755)
+    (base / "share").mkdir()
+    (base / "share" / "data").write_text("base data\n")
+    destination = sandbox / ".captured-tree"
+    run(repo, "apply")
+    first = manifest(sandbox)
+    deployed = destination / "bin" / "tool"
+    assert subprocess.check_output([str(deployed)], text=True) == "base\n"
+    pinned = {
+        path.relative_to(base).as_posix(): path.read_bytes()
+        for path in base.rglob("*") if path.is_file()
+    }
+
+    # the tool updates its own deployed tree at runtime: installs a program
+    # and rewrites its data. Plan reports the drift; applies preserve it and
+    # never touch the repository base or the store's pinned base generation.
+    added = destination / "bin" / "new-tool"
+    added.write_text("#!/bin/sh\nprintf 'new\\n'\n")
+    added.chmod(0o755)
+    (destination / "share" / "data").write_text("updated data\n")
+    planned = run(repo, "plan")
+    assert "drifted — kept (apply preserves)" in planned.stdout
+    run(repo, "apply")
+    assert subprocess.check_output([str(added)], text=True) == "new\n"
+    assert (destination / "share" / "data").read_text() == "updated data\n"
+    run(repo, "apply")  # repeated applies never clobber or promote the drift
+    assert subprocess.check_output([str(added)], text=True) == "new\n"
+    assert {
+        path.relative_to(base).as_posix(): path.read_bytes()
+        for path in base.rglob("*") if path.is_file()
+    } == pinned
+
+    # manual re-capture: the user copies the mutated tree back into the
+    # reviewed source (rsync in real use); no gripsack command does this
+    (base / "bin" / "new-tool").write_text("#!/bin/sh\nprintf 'new\\n'\n")
+    (base / "bin" / "new-tool").chmod(0o755)
+    (base / "share" / "data").write_text("updated data\n")
+    converged = run(repo, "plan")
+    assert "~/.captured-tree/bin/new-tool (satisfied)" in converged.stdout
+    assert "~/.captured-tree/share/data (satisfied)" in converged.stdout
+    touched = {
+        path: path.stat().st_mtime_ns
+        for path in destination.rglob("*") if path.is_file()
+    }
+    run(repo, "apply")  # convergence rewrites nothing at the destination
+    assert {
+        path: path.stat().st_mtime_ns
+        for path in destination.rglob("*") if path.is_file()
+    } == touched
+
+    # a cold apply reproduces the updated tree from reviewed source alone
+    shutil.rmtree(destination)
+    run(repo, "apply")
+    assert subprocess.check_output([str(deployed)], text=True) == "base\n"
+    assert subprocess.check_output([str(destination / "bin" / "new-tool")], text=True) == "new\n"
+    assert (destination / "share" / "data").read_text() == "updated data\n"
+
+    # the pinned base generation remains rollback-able
+    run(repo, "rollback", str(first["number"]))
+    assert not (destination / "bin" / "new-tool").exists()
+    assert subprocess.check_output([str(deployed)], text=True) == "base\n"
+    assert (destination / "share" / "data").read_text() == "base data\n"
+    run(repo, "store-verify")

@@ -153,7 +153,7 @@ def test_policy_changes_and_selected_source_invalidate_exact_approval(sandbox):
     checked(repo, "after", approve_source(repo))
 
 
-@pytest.mark.parametrize("path", ["", ".", "..", "/", "/tmp", "../outside", "a/../b", "a//b", "a/", "*.ts", "env.toml", "gripsack.ts", "hosts", "hosts/testhost.ts", "gripsack.lock", "locks", "locks/testhost.lock", "Gripsack.Lock", "LOCKS/testhost.lock"])
+@pytest.mark.parametrize("path", ["", ".", "..", "/", "/tmp", "../outside", "a/../b", "a//b", "a/", "a\\b", "*.ts/", "a**", "**", "**/**", "**b", "[a-z]/*", "env.toml", "gripsack.ts", "hosts", "hosts/testhost.ts", "gripsack.lock", "locks", "locks/testhost.lock", "Gripsack.Lock", "LOCKS/testhost.lock", "hosts/**", "**/env.toml", "**/locks/**"])
 def test_malformed_outside_root_and_entrypoint_exclusions_fail(sandbox, path):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "unused")
@@ -163,6 +163,71 @@ def test_malformed_outside_root_and_entrypoint_exclusions_fail(sandbox, path):
     assert result.returncode != 0
     assert "capture exclusion" in result.stderr, result.stderr
     assert receipt_paths() == before
+
+
+def test_glob_exclusions_cover_nested_caches_and_stay_reviewable(sandbox):
+    repo = value_repo(sandbox / "repo")
+    value_file(repo / "value.ts", "legitimate")
+    for nested in ["pkg/sub/__pycache__", "tools/__pycache__"]:
+        (repo / nested).mkdir(parents=True)
+        value_file(repo / nested / "cache.pyc", "cache bytes")
+    (repo / ".ruff_cache").mkdir()
+    value_file(repo / ".ruff_cache/entry.json", "cache bytes")
+    exclude(repo, "**/__pycache__", ".ruff_cache/**")
+    reviewed = approve_source(repo)
+    assert reviewed["capture_exclusions"] == ["**/__pycache__", ".ruff_cache/**"]
+    exclusions = reviewed["inventory"]["exclusions"]
+    assert "repo/pkg/sub/__pycache__" in exclusions
+    assert "repo/tools/__pycache__" in exclusions
+    assert "repo/.ruff_cache" in exclusions
+    assert not any(
+        entry["path"].startswith(
+            ("repo/pkg/sub/__pycache__", "repo/tools/__pycache__", "repo/.ruff_cache")
+        )
+        for entry in reviewed["inventory"]["entries"]
+    )
+    text = grip("trust", "inspect", str(repo), approve=False)
+    assert text.returncode == 0, text.stderr
+    assert "capture exclude: **/__pycache__" in text.stdout
+    assert "capture exclude: .ruff_cache/**" in text.stdout
+    checked(repo, "legitimate", reviewed)
+    # The exclusion set is identity: changing it renews approval, exactly as
+    # for literal entries, because env.toml itself is captured source.
+    exclude(repo, "**/__pycache__")
+    current = inspect_source(repo)
+    assert current["capture_exclusions"] == ["**/__pycache__"]
+    assert current["bundle_digest"] != reviewed["bundle_digest"]
+    assert current["policy_digest"] != reviewed["policy_digest"]
+    stale = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
+    assert stale.returncode != 0
+    rejected(repo)
+    checked(repo, "legitimate", approve_source(repo))
+
+
+def test_glob_exclusions_still_refuse_required_roots_and_pins(sandbox):
+    repo = value_repo(sandbox / "repo")
+    value_file(repo / "value.ts", "unused")
+    (repo / "locks").mkdir()
+    (repo / "locks/testhost.lock").write_text("{}\n")
+    before = receipt_paths()
+    # Wildcard heads parse; the walk itself refuses the authority match.
+    for pattern in ["ho*", "**/*.lock"]:
+        exclude(repo, pattern)
+        failed = grip("trust", "inspect", str(repo), "--json", approve=False)
+        assert failed.returncode != 0, pattern
+        assert "capture exclusion" in failed.stderr, failed.stderr
+        assert "required configuration" in failed.stderr, failed.stderr
+    assert receipt_paths() == before
+    # A glob matching the pinned SDK location never admits the package root.
+    exclude(repo, "node_modules/**")
+    editor = sandbox / "editor-sdk"
+    frontend = Path(os.environ["GRIPSACK_HOME"]) / "frontend/current"
+    shutil.copytree(frontend.resolve(), editor)
+    (repo / "node_modules/@gripsack").mkdir(parents=True)
+    (repo / "node_modules/@gripsack/core").symlink_to(editor, target_is_directory=True)
+    reviewed = approve_source(repo)
+    assert reviewed["policy"]["frontend"]["implementation"] == "frontend"
+    assert not any(entry["path"].startswith("pin/") for entry in reviewed["inventory"]["entries"])
 
 
 @pytest.mark.parametrize("kind", ["symlink", "oversized"])

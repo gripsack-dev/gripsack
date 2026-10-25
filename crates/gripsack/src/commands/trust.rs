@@ -26,6 +26,7 @@ pub enum TrustCommand {
         json: bool,
     },
     /// Capture source and show its exact digest, policy and inventory changes.
+    /// `--focus` narrows only the displayed change list, never what is approved.
     Inspect {
         path: Option<String>,
         #[arg(long)]
@@ -33,6 +34,10 @@ pub enum TrustCommand {
         /// Inspect one existing private evaluation receipt without recapturing.
         #[arg(long, conflicts_with = "path")]
         receipt: Option<String>,
+        /// Show only changed-inventory paths under this prefix; approval still
+        /// binds the exact whole bundle and policy digests.
+        #[arg(long, conflicts_with = "receipt")]
+        focus: Option<String>,
     },
     /// Approve captured source and policy. Both expected digests are required
     /// without a terminal; edits or grant/runtime changes require new approval.
@@ -42,10 +47,13 @@ pub enum TrustCommand {
         bundle: Option<String>,
         #[arg(long, requires = "bundle")]
         policy: Option<String>,
+        /// Echo this prefix during interactive review and narrow only the
+        /// displayed change list; the approval still records the whole bundle.
+        #[arg(long)]
+        focus: Option<String>,
     },
     /// Revoke recorded approvals, including old path-only entries.
     Remove { path: String },
-}
 
 pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
     let home = gripsack_store::gripsack_home();
@@ -55,9 +63,13 @@ pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
             path,
             json,
             receipt,
+            focus,
         } => {
             if let Some(receipt) = receipt {
                 return inspect_receipt(&home, &receipt, json);
+            }
+            if let Some(code) = check_focus(focus.as_deref()) {
+                return code;
             }
             let path = match repo_path(path) {
                 Ok(path) => path,
@@ -69,9 +81,9 @@ pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
                 Err(code) => return code,
             };
             if json {
-                inspect_json(&prepared)
+                inspect_json(&prepared, focus.as_deref())
             } else {
-                match prepared.show_approval() {
+                match prepared.show_approval(focus.as_deref()) {
                     Ok(()) => ExitCode::SUCCESS,
                     Err(code) => code,
                 }
@@ -81,7 +93,11 @@ pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
             path,
             bundle,
             policy,
+            focus,
         } => {
+            if let Some(code) = check_focus(focus.as_deref()) {
+                return code;
+            }
             if bundle.is_none() && !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
                 eprintln!(
                     "grip: non-interactive approval requires --bundle and --policy from `grip trust inspect --json`; path-only approval is no longer supported"
@@ -119,7 +135,7 @@ pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
                 ) {
                     return operational(error);
                 }
-            } else if let Err(code) = prepared.authorize(true) {
+            } else if let Err(code) = prepared.authorize(true, focus.as_deref()) {
                 return code;
             }
             println!(
@@ -212,12 +228,15 @@ struct Inspection<'a> {
     policy: &'a EvaluationPolicy,
     provenance: &'a GitProvenance,
     inventory: &'a SourceInventory,
-    capture_exclusions: &'a [String],
-    runtime_access: &'a gripsack_process::RuntimeAccess,
     approval: ApprovalInspection,
+    focus: Option<&'a str>,
 }
 
-fn inspect_json(prepared: &PreparedEvaluation) -> ExitCode {
+fn check_focus(focus: Option<&str>) -> Option<ExitCode> {
+    (focus == Some("")).then(|| operational("focus prefix must not be empty"))
+}
+
+fn inspect_json(prepared: &PreparedEvaluation, focus: Option<&str>) -> ExitCode {
     let approval = match trust::inspect(prepared.home(), prepared.sources(), prepared.policy()) {
         Ok(approval) => approval,
         Err(error) => return operational(error),
@@ -237,6 +256,7 @@ fn inspect_json(prepared: &PreparedEvaluation) -> ExitCode {
         capture_exclusions: prepared.sources().capture_policy().exclusions(),
         runtime_access: prepared.runtime_access(),
         approval,
+        focus,
     })
 }
 

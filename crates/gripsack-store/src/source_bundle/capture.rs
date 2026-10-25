@@ -142,6 +142,11 @@ impl Capture<'_> {
             self.budget.entry(name_in_inventory)?;
             let physical = root.canonical.join(&source_relative);
             if self.admission.excludes(root, &source_relative) {
+                if let Some(spelling) = self.admission.policy.protected_match(&source_relative) {
+                    return Err(invalid(&format!(
+                        "capture exclusion {spelling:?} would omit required configuration, lock authority or entrypoints at {name_in_inventory}"
+                    )));
+                }
                 self.exclusions.push(name_in_inventory.to_owned());
                 continue;
             }
@@ -159,8 +164,13 @@ impl Capture<'_> {
             }
             let metadata = source.symlink_metadata(Path::new(&name))?;
             if root.kind == SourceRootKind::Repository
-                && self.admission.policy.requires_directory(&source_relative)
                 && !metadata.is_dir()
+                && (self.admission.policy.requires_directory(&source_relative)
+                    || (metadata.file_type().is_symlink()
+                        && self
+                            .admission
+                            .policy
+                            .pattern_requires_directory(&source_relative)))
             {
                 return Err(invalid(&format!(
                     "capture exclusion ancestor {} must remain a real directory",
