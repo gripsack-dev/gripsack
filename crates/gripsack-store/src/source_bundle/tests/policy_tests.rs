@@ -103,7 +103,7 @@ fn glob_exclusions_omit_nested_caches_exactly_like_literal_subtrees() {
     fs::remove_file(fixture.repo.join("vendor_modules/@gripsack/core")).unwrap();
     fs::create_dir_all(fixture.repo.join("pkg/sub/__pycache__")).unwrap();
     fs::write(fixture.repo.join("pkg/sub/__pycache__/entry"), b"cache").unwrap();
-    fs::create_dir(fixture.repo.join("tools/__pycache__")).unwrap();
+    fs::create_dir_all(fixture.repo.join("tools/__pycache__")).unwrap();
     fs::create_dir(fixture.repo.join(".ruff_cache")).unwrap();
     fs::write(fixture.repo.join(".ruff_cache/entry.json"), b"cache").unwrap();
     // A suffix-anchored glob must not pin unrelated ancestor directories.
@@ -176,7 +176,7 @@ fn glob_aliases_into_exclusions_and_replaced_ancestors_are_refused() {
     // an alias there could re-expose excluded bytes under the target's
     // spelling, exactly as a replaced literal ancestor can.
     fs::remove_file(fixture.repo.join("alternate")).unwrap();
-    fs::create_dir(fixture.repo.join("elsewhere/target")).unwrap();
+    fs::create_dir_all(fixture.repo.join("elsewhere/target")).unwrap();
     fs::write(fixture.repo.join("elsewhere/target/secret"), b"excluded").unwrap();
     symlink("elsewhere", fixture.repo.join("build")).unwrap();
     let error = SourceBundle::capture(
