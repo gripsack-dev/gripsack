@@ -397,9 +397,17 @@ impl PreparedEvaluation {
         Vec<&'a trust::InventoryChange>,
         Vec<&'a trust::InventoryChange>,
     ) {
-        changes
-            .iter()
-            .partition(|change| change.path.starts_with(focus))
+        // Inventory paths carry their capture root (`repo/…`, `frontend/…`).
+        // Authors think in repository-relative paths, so the focus prefix is
+        // matched against the root-stripped spelling; the listing itself still
+        // prints the full inventory path verbatim.
+        changes.iter().partition(|change| {
+            change
+                .path
+                .strip_prefix("repo/")
+                .unwrap_or(&change.path)
+                .starts_with(focus)
+        })
     }
 
     pub(super) fn map_diagnostics(&self, diagnostics: &mut [gripsack_ir::Diagnostic]) {
