@@ -374,7 +374,7 @@ impl SourceCapturePolicy {
                 .canonical
                 .strip_prefix(&repo.canonical)
                 .ok()
-                .and_then(|path| component_spellings(&path))
+                .and_then(|path| component_spellings(path))
             {
                 for pattern in &self.patterns {
                     if (0..=components.len()).any(|end| pattern.matches(&components[..end]))
