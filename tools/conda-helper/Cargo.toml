@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
-exclude = ["vendor/pixi_git", "vendor/rattler_package_streaming"]
+exclude = [
+    "vendor/pixi_git",
+    "vendor/rattler_package_streaming",
+    "vendor/rattler_repodata_gateway",
+]
 
 [package]
 name = "gripsack-conda-helper"
@@ -16,8 +20,6 @@ path = "src/main.rs"
 [dependencies]
 gripsack-conda = { version = "0.48.0", path = "../../crates/gripsack-conda" }
 gripsack-ir = { version = "0.48.0", path = "../../crates/gripsack-ir" }
-# async-compression's 0.5 backend must not inherit pkg-config's dynamic bzip2.
-bzip2 = { version = "0.5.2", features = ["static"] }
 serde_json = "1"
 sha2 = "0.11"
 pixi_manifest = { git = "https://github.com/prefix-dev/pixi", rev = "6f71156de33ac6420522a77f21437ff0a331cb09" }
@@ -36,7 +38,8 @@ tokio = { version = "1", features = ["rt", "macros"] }
 [patch."https://github.com/prefix-dev/pixi"]
 pixi_git = { path = "vendor/pixi_git" }
 
-# Backport upstream ZIP 9 support without changing the coherent Rattler/Pixi
-# type family. Source identity and exact upstream delta live in its manifest.
+# Backport ZIP 9 and patched Zstd requirements without changing the coherent
+# Rattler/Pixi type family. Each vendor manifest records its source and delta.
 [patch.crates-io]
 rattler_package_streaming = { path = "vendor/rattler_package_streaming" }
+rattler_repodata_gateway = { path = "vendor/rattler_repodata_gateway" }

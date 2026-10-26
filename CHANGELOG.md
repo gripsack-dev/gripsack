@@ -4,7 +4,7 @@ User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
 
-## [0.48.0] — release candidate
+## [0.48.0]
 
 Publication and qualification are recorded with the
 [release artifacts](https://github.com/gripsack-dev/gripsack/releases).
@@ -32,6 +32,14 @@ This source version alone is not a passing gate or signature.
   recorded approval still binds the exact whole bundle and policy digests;
   JSON output adds `focus` and changes nothing else.
 
+### Fixed
+
+- Core and Conda-helper archive/repodata decoding use `zstd 0.14.3` and
+  `zstd-safe 8.2.0`, addressing the newly issued RUSTSEC-2026-0391,
+  RUSTSEC-2026-0403 and RUSTSEC-2026-0398 advisories and associated Zstd
+  unsoundness warnings. The helper uses the current compatible async codec
+  backend; bounded dependency overrides preserve its Rattler/Pixi type family.
+
 ### Compatibility and migration
 
 - Mutable overlays are guidance, not a capability: self-updating tool trees
@@ -41,7 +49,7 @@ This source version alone is not a passing gate or signature.
   pins resolutions, never destination content.
 - Core/helper/SDK versions are coordinated at0.48.0. The helper was measured
   in two independent native builds at SHA256
-  `2040d10d1c6f6842252f55b50f79319716e3d584a50962e755a1bc7cccd00c51`.
+  `5dbc60fc4c45906326db88104a8a0c736e32e6d23fbdaa5c19274415c84165d9`.
   Full exact-source local qualification remains required before0.48 publication.
 - The e2e runner uses modest optimization while explicitly retaining debug
   assertions, overflow checks and fault controls. Its executable copy omits

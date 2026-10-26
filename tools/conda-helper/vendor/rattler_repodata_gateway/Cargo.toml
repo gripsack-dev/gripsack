@@ -1,0 +1,418 @@
+# Published rattler_repodata_gateway 0.34.0; library sources retained verbatim.
+# Raise only the Zstd requirement for the 2026-10-26 RustSec decoder fixes,
+# preserving the coherent Rattler/Pixi type family. Registry-generated manifest
+# retained; upstream docs, unused lock and Cargo cache metadata are not vendored.
+#
+[package.metadata.gripsack-vendor]
+crate-url = "https://static.crates.io/crates/rattler_repodata_gateway/rattler_repodata_gateway-0.34.0.crate"
+crate-sha256 = "f75726238d7aac9208fb3375e83d99c6ad44a56bd3854efe6b9ee08792f429f7"
+source-revision = "35e6566d2371cf6d7a841536505f4514ee91ef24"
+security-delta = "Require zstd >=0.14.3; keep the upstream library implementation."
+license-source = "https://github.com/conda/rattler/blob/35e6566d2371cf6d7a841536505f4514ee91ef24/LICENSE"
+
+[package]
+edition = "2024"
+name = "rattler_repodata_gateway"
+version = "0.34.0"
+authors = ["Bas Zalmstra <zalmstra.bas@gmail.com>"]
+build = false
+exclude = [
+    "benches/**",
+    "**/snapshots/**",
+]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "A crate to interact with Conda repodata"
+homepage = "https://github.com/conda/rattler"
+readme = false
+categories = ["development-tools"]
+license = "BSD-3-Clause"
+repository = "https://github.com/conda/rattler"
+resolver = "2"
+
+[package.metadata.docs.rs]
+features = [
+    "sparse",
+    "gateway",
+]
+
+[features]
+default = ["rustls"]
+gateway = [
+    "sparse",
+    "http",
+    "http-cache-semantics",
+    "parking_lot",
+    "async-trait",
+    "rattler_package_streaming",
+]
+native-tls = [
+    "reqwest/native-tls",
+    "rattler_networking/native-tls",
+    "rattler_cache/native-tls",
+    "rattler_redaction/native-tls",
+]
+rustls = [
+    "reqwest/rustls",
+    "rattler_networking/rustls",
+    "rattler_cache/rustls",
+    "rattler_redaction/rustls",
+]
+sparse = [
+    "rattler_conda_types",
+    "memmap2",
+    "self_cell",
+    "superslice",
+    "itertools",
+    "serde_json/raw_value",
+]
+
+[lib]
+name = "rattler_repodata_gateway"
+path = "src/lib.rs"
+
+[dependencies.ahash]
+version = "0.8"
+
+[dependencies.anyhow]
+version = "1"
+
+[dependencies.async-compression]
+version = "0.4"
+features = [
+    "gzip",
+    "tokio",
+    "bzip2",
+    "zstd",
+    "gzip",
+    "tokio",
+    "bzip2",
+    "zstd",
+]
+
+[dependencies.async-trait]
+version = "0.1"
+optional = true
+
+[dependencies.blake2]
+version = "0.11.0-rc.6"
+
+[dependencies.bytes]
+version = "1"
+
+[dependencies.cache_control]
+version = "0.2"
+
+[dependencies.cfg-if]
+version = "1"
+
+[dependencies.coalesced_map]
+version = "=0.1.4"
+default-features = false
+
+[dependencies.dashmap]
+version = "6"
+
+[dependencies.dirs]
+version = "6"
+
+[dependencies.file_url]
+version = "=0.3.2"
+default-features = false
+
+[dependencies.fs-err]
+version = "3"
+
+[dependencies.futures]
+version = "0.3"
+
+[dependencies.hashbrown]
+version = "0.17"
+
+[dependencies.hex]
+version = "0.4"
+features = ["serde"]
+
+[dependencies.http]
+version = "1"
+optional = true
+
+[dependencies.http-cache-semantics]
+version = "3"
+features = [
+    "reqwest",
+    "serde",
+]
+optional = true
+
+[dependencies.humansize]
+version = "2"
+
+[dependencies.humantime]
+version = "2"
+
+[dependencies.indicatif]
+version = "0.18"
+optional = true
+
+[dependencies.itertools]
+version = "0.15"
+optional = true
+
+[dependencies.jiff]
+version = "0.2"
+features = [
+    "std",
+    "serde",
+]
+default-features = false
+
+[dependencies.json-patch]
+version = "4"
+
+[dependencies.parking_lot]
+version = "0.12"
+optional = true
+
+[dependencies.pin-project-lite]
+version = "0.2"
+
+[dependencies.rattler_cache]
+version = "=0.10.13"
+default-features = false
+
+[dependencies.rattler_conda_types]
+version = "=0.55.0"
+optional = true
+default-features = false
+
+[dependencies.rattler_config]
+version = "=0.8.0"
+optional = true
+default-features = false
+
+[dependencies.rattler_digest]
+version = "=2.0.0"
+features = [
+    "tokio",
+    "serde",
+]
+default-features = false
+
+[dependencies.rattler_networking]
+version = "=0.31.0"
+default-features = false
+
+[dependencies.rattler_redaction]
+version = "=0.2.6"
+features = [
+    "reqwest",
+    "reqwest-middleware",
+]
+default-features = false
+
+[dependencies.reqwest]
+version = "0.13"
+features = [
+    "stream",
+    "http2",
+]
+default-features = false
+
+[dependencies.reqwest-middleware]
+version = "0.5"
+package = "astral-reqwest-middleware"
+
+[dependencies.retry-policies]
+version = "0.5"
+default-features = false
+
+[dependencies.rmp-serde]
+version = "1"
+
+[dependencies.self_cell]
+version = "1"
+optional = true
+
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+
+[dependencies.serde_json]
+version = "1"
+
+[dependencies.serde_with]
+version = "3"
+
+[dependencies.strum]
+version = "0.28"
+features = ["derive"]
+
+[dependencies.superslice]
+version = "1"
+optional = true
+
+[dependencies.tempfile]
+version = "3"
+
+[dependencies.thiserror]
+version = "2"
+
+[dependencies.tokio]
+version = "1"
+default-features = false
+
+[dependencies.tokio-util]
+version = "0.7"
+features = [
+    "codec",
+    "io",
+]
+
+[dependencies.tracing]
+version = "0.1"
+
+[dependencies.url]
+version = "2"
+features = ["serde"]
+
+[dependencies.zstd]
+version = "0.14.3"
+default-features = false
+
+[dev-dependencies.ahash]
+version = "0.8"
+
+[dev-dependencies.assert_matches]
+version = "1"
+
+[dev-dependencies.axum]
+version = "0.8"
+features = [
+    "tokio",
+    "http1",
+    "tokio",
+]
+default-features = false
+
+[dev-dependencies.criterion]
+version = "0.8"
+features = ["html_reports"]
+
+[dev-dependencies.fslock]
+version = "0.2"
+
+[dev-dependencies.hex-literal]
+version = "1"
+
+[dev-dependencies.http]
+version = "1"
+
+[dev-dependencies.http-cache-semantics]
+version = "3"
+features = ["serde"]
+
+[dev-dependencies.insta]
+version = "1"
+features = ["yaml"]
+
+[dev-dependencies.proptest]
+version = "1"
+
+[dev-dependencies.regex]
+version = "1"
+
+[dev-dependencies.rmp-serde]
+version = "1"
+
+[dev-dependencies.rstest]
+version = "0.26"
+
+[dev-dependencies.tempfile]
+version = "3"
+
+[dev-dependencies.tokio]
+version = "1"
+features = ["rt-multi-thread"]
+default-features = false
+
+[dev-dependencies.tower-http]
+version = "0.7"
+features = [
+    "fs",
+    "compression-gzip",
+    "trace",
+]
+default-features = false
+
+[dev-dependencies.tracing-test]
+version = "0.2"
+
+[dev-dependencies.url]
+version = "2"
+
+[target."cfg(any(unix, windows))".dependencies.memmap2]
+version = "0.9"
+optional = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.async-fd-lock]
+version = "0.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.fslock]
+version = "0.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.rattler_package_streaming]
+version = "=0.27.8"
+optional = true
+default-features = false
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.simple_spawn_blocking]
+version = "1.1"
+features = ["tokio"]
+default-features = false
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.tokio]
+version = "1"
+features = [
+    "rt",
+    "io-util",
+]
+default-features = false
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.js-sys]
+version = "0.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.send_wrapper]
+version = "0.6"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.wasm-bindgen]
+version = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.wasm-bindgen-futures]
+version = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.wasmtimer]
+version = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3"
+features = [
+    "Request",
+    "RequestInit",
+    "Response",
+]
+
+[target."cfg(unix)".dependencies.libc]
+version = "0.2"
+
+[target."cfg(windows)".dependencies.windows-sys]
+version = "0.61"
+features = [
+    "Win32_Storage_FileSystem",
+    "Win32_Foundation",
+    "Win32_System_IO",
+]
+default-features = false

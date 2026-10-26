@@ -1,0 +1,129 @@
+use std::{path::Path, sync::Arc};
+
+use rattler_conda_types::{Channel, ChannelRelations, PackageName, RepodataRevisions};
+
+use crate::{
+    Reporter,
+    gateway::{
+        GatewayError,
+        error::SubdirNotFoundError,
+        subdir::{PackageRecords, SubdirClient, extract_unique_deps_split},
+    },
+    sparse::{PackageFormatSelection, SparseRepoData},
+};
+
+/// A client that can be used to fetch repodata for a specific subdirectory from
+/// a local directory.
+///
+/// Use the [`LocalSubdirClient::from_directory`] function to create a new
+/// instance of this client.
+pub struct LocalSubdirClient {
+    sparse: Arc<SparseRepoData>,
+}
+
+impl LocalSubdirClient {
+    /// Create a client directly from an already-loaded [`SparseRepoData`],
+    /// without parsing anything from disk.
+    pub fn new(sparse: Arc<SparseRepoData>) -> Self {
+        Self { sparse }
+    }
+
+    pub fn from_file(
+        repodata_path: &Path,
+        channel: Channel,
+        subdir: &str,
+    ) -> Result<Self, GatewayError> {
+        let repodata_path = repodata_path.to_path_buf();
+        let subdir = subdir.to_string();
+        let sparse =
+            SparseRepoData::from_file(channel.clone(), subdir.clone(), &repodata_path, None)
+                .map_err(|err| {
+                    if err.kind() == std::io::ErrorKind::NotFound {
+                        GatewayError::SubdirNotFoundError(Box::new(SubdirNotFoundError {
+                            channel: channel.clone(),
+                            subdir: subdir.clone(),
+                            source: err.into(),
+                        }))
+                    } else {
+                        GatewayError::IoError("failed to parse repodata.json".to_string(), err)
+                    }
+                })?;
+
+        Ok(Self {
+            sparse: Arc::new(sparse),
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn from_bytes(
+        bytes: bytes::Bytes,
+        channel: Channel,
+        subdir: &str,
+    ) -> Result<Self, GatewayError> {
+        let subdir = subdir.to_string();
+        let sparse = SparseRepoData::from_bytes(channel.clone(), subdir.clone(), bytes, None)
+            .map_err(|err| {
+                GatewayError::IoError("failed to parse repodata.json".to_string(), err.into())
+            })?;
+
+        Ok(Self {
+            sparse: Arc::new(sparse),
+        })
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+impl SubdirClient for LocalSubdirClient {
+    async fn fetch_package_records(
+        &self,
+        name: &PackageName,
+        _reporter: Option<&dyn Reporter>,
+    ) -> Result<PackageRecords, GatewayError> {
+        let sparse_repodata = self.sparse.clone();
+        let name = name.clone();
+
+        let load_records = move || {
+            let io_error = |err: std::io::Error| {
+                GatewayError::IoError(
+                    "failed to extract repodata records from sparse repodata".to_string(),
+                    err,
+                )
+            };
+            let records = sparse_repodata
+                .load_records(&name, PackageFormatSelection::PreferConda)
+                .map_err(io_error)?;
+            let removed = sparse_repodata
+                .load_removed(Some(&name))
+                .map_err(io_error)?;
+            let (unique_base_deps, unique_extra_deps) = extract_unique_deps_split(&records);
+            Ok(PackageRecords {
+                records: records.into_iter().map(Arc::new).collect(),
+                removed,
+                unique_base_deps,
+                unique_extra_deps,
+            })
+        };
+
+        #[cfg(target_arch = "wasm32")]
+        return load_records();
+        #[cfg(not(target_arch = "wasm32"))]
+        simple_spawn_blocking::tokio::run_blocking_task(load_records).await
+    }
+
+    fn package_names(&self) -> Vec<String> {
+        let sparse_repodata: Arc<SparseRepoData> = self.sparse.clone();
+        sparse_repodata
+            .package_names(PackageFormatSelection::PreferConda)
+            .map(std::convert::Into::into)
+            .collect()
+    }
+
+    fn repodata_revisions(&self) -> &RepodataRevisions {
+        self.sparse.repodata_revisions()
+    }
+
+    fn channel_relations(&self) -> Option<&ChannelRelations> {
+        self.sparse.channel_relations()
+    }
+}

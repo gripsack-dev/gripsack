@@ -12,6 +12,7 @@ crate-sha256 = "9bbaeb8cdf160f7a2dfdc55a55bdde754c1fa65f14cc16d30c93eb4e4c4b1d61
 source-revision = "35e6566d2371cf6d7a841536505f4514ee91ef24"
 upstream-patch = "https://github.com/conda/rattler/commit/5e544a615715598004ba883bf63fb40d06c19b3f"
 license-source = "https://github.com/conda/rattler/blob/35e6566d2371cf6d7a841536505f4514ee91ef24/LICENSE"
+security-delta = "Require zstd >=0.14.3 and zstd-safe >=8.2.0 for the 2026-10-26 RustSec decoder fixes; retain the Rattler/Pixi type family."
 
 [package]
 edition = "2024"
@@ -75,7 +76,7 @@ features = [
 default-features = false
 
 [dependencies.async-compression]
-version = "0.4"
+version = "0.4.51"
 features = [
     "gzip",
     "tokio",
@@ -199,7 +200,7 @@ features = [
 default-features = false
 
 [dependencies.zstd]
-version = "0.13"
+version = "0.14.3"
 default-features = false
 
 [dev-dependencies.assert_matches]
@@ -267,7 +268,7 @@ features = ["fs"]
 default-features = false
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.zstd]
-version = "0.13"
+version = "0.14.3"
 features = ["zstdmt"]
 default-features = false
 
