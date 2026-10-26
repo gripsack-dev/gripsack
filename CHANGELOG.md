@@ -42,11 +42,19 @@ This source version alone is not a passing gate or signature.
 - Core/helper/SDK versions are coordinated at0.48.0. The helper was measured
   in two independent native builds at SHA256
   `2040d10d1c6f6842252f55b50f79319716e3d584a50962e755a1bc7cccd00c51`.
-  Full exact-source qualification remains required before verified promotion.
-- The test runner keeps debug assertions and fault controls, but excludes
-  DWARF from its executable copy. Complete-image sealing/hashing no longer
-  needs to process debugger-only sections; deadlines and gate inventory stay
-  unchanged.
+  Full exact-source local qualification remains required before0.48 publication.
+- The e2e runner uses modest optimization while explicitly retaining debug
+  assertions, overflow checks and fault controls. Its executable copy omits
+  DWARF. Deadlines and all20 qualification gates remain unchanged.
+- Installed-release checks run before the full debug flow suite, so package
+  consumer failures surface earlier. Three `workspace-file` interruption cases
+  are explicitly debug-only; their complete crash/recovery assertions remain
+  mandatory in the debug gate, not misapplied to the shipped binary.
+- SDK documentation no longer invalidates Rust compiler layers; the generated
+  frontend's source and metadata still undergo freshness checking.
+-0.48 publication uses locally qualified, unsigned assets at the owner's
+  request. No Actions signing or registry publication is implied; use the
+  manual release instructions rather than weakening verified updater checks.
 
 ## [0.47.0] — 2026-10-25 — UNVERIFIED reviewer prerelease
 

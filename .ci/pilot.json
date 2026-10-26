@@ -163,20 +163,6 @@
       ]
     },
     {
-      "id": "flows",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "flows"
-      ],
-      "timeout_seconds": 0,
-      "inputs": [
-        "local-ci/images/e2e.tar",
-        "local-ci/images/e2e.json"
-      ],
-      "outputs": []
-    },
-    {
       "id": "candidate-sdk",
       "argv": [
         "python3",
@@ -237,6 +223,20 @@
         "local-ci/consumers.json",
         "local-ci/consumer-evidence.tar.gz"
       ]
+    },
+    {
+      "id": "flows",
+      "argv": [
+        "python3",
+        "scripts/local_ci.py",
+        "flows"
+      ],
+      "timeout_seconds": 0,
+      "inputs": [
+        "local-ci/images/e2e.tar",
+        "local-ci/images/e2e.json"
+      ],
+      "outputs": []
     },
     {
       "id": "model",

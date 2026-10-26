@@ -73,7 +73,8 @@ def test_growth_retirement_and_rollback_preserve_borrowed_ancestors(sandbox):
 
 @pytest.mark.parametrize("cut", [
     "directory-evolve-before-publish", "directory-evolve-after-publish",
-    "workspace-file:1", "after-prune",
+    pytest.param("workspace-file:1", marks=pytest.mark.requires_fault_controls),
+    "after-prune",
 ])
 def test_growth_crash_restores_previous_shape_and_keeps_foreign_data(sandbox, monkeypatch, cut):
     repo, destination, old_target = migrated(sandbox)

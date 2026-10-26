@@ -47,10 +47,6 @@ COPY fuzz ./fuzz
 # schema: the IR v3 JSON schema is include_str!'d by the ir crate's
 # schema-acceptance tests (0042 E) — the test gate needs it in-image.
 COPY schema ./schema
-# the exec crate's build.rs embeds typescript/src as the frontend —
-# without this COPY the embed is empty and every eval fails with
-# "no embedded frontend"
-COPY typescript ./typescript
 
 # Real upstream LLB conformance is a test prerequisite, not a core/runtime
 # dependency. Ordinary bin/release stages deliberately do not copy this helper.
@@ -79,6 +75,11 @@ RUN cargo fmt --manifest-path tools/conda-helper/Cargo.toml --all --check \
     && CARGO_TARGET_DIR=/app/target cargo test --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets
 # CI-only script changes must not invalidate Rust compilation layers.
 COPY scripts ./scripts
+# The frontend is checked-in generated Rust, not a build.rs filesystem input.
+# Copy only its authoritative inputs for freshness checks. Editing SDK docs
+# must not invalidate the Rust compilation layers.
+COPY typescript/src ./typescript/src
+COPY typescript/deno.json typescript/package.json ./typescript/
 RUN python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
 # Published artifacts and coordinator/journal/GC admission boundaries
 # are checked and mutation-calibrated. Tool/build failures never qualify as
@@ -97,12 +98,14 @@ RUN apk add --no-cache python3 \
     && python3 scripts/check_process_bounds.py \
     && python3 scripts/check_update_survey.py
 
-# Keep the full debug image for tooling, but omit DWARF from the e2e runner
-# copy: fixture subprocess admission copies/hashes the entire executable under
-# its existing deadline. Debug assertions and crash/fault seams remain enabled;
-# --strip-debug preserves executable code and symbols, unlike a release build.
+# Exercise debug assertions, overflow checks and fault controls without paying
+# unoptimized hashing costs on every sealed executable launch. Keep the full
+# debug image for tooling; the e2e copy omits only debugger metadata.
 FROM builder AS bin
-RUN cargo build --locked -p gripsack \
+RUN CARGO_PROFILE_DEV_OPT_LEVEL=1 \
+    CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true \
+    CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true \
+    cargo build --locked -p gripsack \
     && apk add --no-cache binutils \
     && mkdir -p /app/e2e-bin \
     && objcopy --strip-debug /app/target/debug/grip /app/e2e-bin/grip

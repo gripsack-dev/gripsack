@@ -118,7 +118,10 @@ def test_migration_preflight_keeps_old_command_when_replacement_unavailable(sand
     assert command.stdout == "old\n"
 
 
-@pytest.mark.parametrize("cut", ["workspace-file:1", "after-prune"])
+@pytest.mark.parametrize("cut", [
+    pytest.param("workspace-file:1", marks=pytest.mark.requires_fault_controls),
+    "after-prune",
+])
 def test_interrupted_migration_restores_predecessor_before_retry(sandbox, monkeypatch, cut):
     destination, previous = predecessor(sandbox)
     old_target = destination.readlink()
@@ -262,7 +265,9 @@ def test_directory_failed_preparation_never_replaces_old_layout(sandbox):
 
 
 @pytest.mark.parametrize("cut", [
-    "directory-before-publish", "directory-after-publish", "workspace-file:1", "after-prune",
+    "directory-before-publish", "directory-after-publish",
+    pytest.param("workspace-file:1", marks=pytest.mark.requires_fault_controls),
+    "after-prune",
 ])
 def test_directory_crash_recovery_is_child_before_parent(sandbox, monkeypatch, cut):
     destination, old_target, previous = directory_predecessor(sandbox)

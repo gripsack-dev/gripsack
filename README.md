@@ -9,8 +9,10 @@ outside the supported scope.
 
 ## Install
 
-The [website](https://gripsack.dev/#install) selects a signed release for the
-authenticated installer. `grip self-update` also selects signed releases.
+Use the [release downloads](https://github.com/gripsack-dev/gripsack/releases)
+and their manual installation instructions for unsigned builds.
+The existing verified installer and `grip self-update` still require signatures;
+they are not the installation path for these unsigned releases.
 
 **[0.47.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.47.0)
 is an unsigned, unverified reviewer prerelease.** Follow that release's manual

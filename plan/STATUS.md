@@ -51,6 +51,10 @@ one hook-fixture deadline failed in flows, and the remaining gates are incomplet
 The owner reserved full verification for0.48. Its cache-lifecycle/focused-review
 fixes, renewed frozen consumer and website/README refresh now await exact-source
 qualification and promotion. Original-handover closure is not claimed.
+The owner explicitly chose unsigned, Actions-free0.48 publication after local
+qualification on2026-10-26. A new signer is not a prerequisite. Website signature
+admission is retired; only static-file Pages deployment may use Actions.
+Main/release-sidebar visibility and the remaining cleanup wait until after0.48.
 
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux

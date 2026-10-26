@@ -321,9 +321,41 @@ consumer trust distribution and authority cutover remain separate prerequisites.
   desktop/mobile, script-free visibility and reduced motion. Legacy fragments
   and queries survive normal redirects; script-free aliases retain usable
   content/anchors. The preview deliberately skipped release admission, disabled
-  installation and was not published. Actual signed-source admission/deployment
-  remains a distinct requirement.
+  installation and was not published. At that point signed-source admission
+  was still required; the owner's later direction below removes that site gate.
 
+### Owner direction and qualification correction —2026-10-26
+
+The owner explicitly chose **Actions-free0.48 publication after local
+qualification**, with unsigned manual-install assets and no new signer on the
+critical path. This supersedes signed-promotion requirements above for0.48.
+The verified installer/updater are not weakened. The mini PC signer is an
+optional future direction, not a current release prerequisite.
+
+The owner also removed the website's signature requirement and approved a
+**publish-only Pages job** for locally built static files. Do not replace the
+removed gate with another elaborate reviewer/signing mode. Main/release-sidebar
+visibility and the remaining website cleanup are explicitly **after0.48**.
+Main currently remains `fa3ada8…`; the public0.47 tag is20 commits ahead, while
+the repository's stable-release sidebar still selects0.46. No0.47 bytes move.
+
+Candidate `1d450620…`, source `1d23c38…`, passed13 gates, including all700
+debug flows. Installed-release flows reported216 passed/3 failures: the three
+`workspace-file:1` parameters expected a crash from a `debug_assertions`-gated
+injection point absent in the release. Those parameters now use the existing
+debug-only marker; they are not removed from the mandatory debug gate.
+The corrected release migration suite passed28 cases, with precisely those3
+debug cases deselected. The optimized debug runner passed all3 interruption
+cases plus both synthetic hook-isolation cases. Full new-source qualification
+is still required; these are not replacement receipts for the failed candidate.
+
+On the same approved small-workspace scenario, three `grip check` runs took
+2.67–2.75 seconds with the prior stripped unoptimized debug core, versus
+0.35–0.45 seconds with the optimized debug core. The new runner is31213264
+bytes and retains debug assertions, overflow checks and fault controls.
+This measures that scenario, not total-suite runtime. The profile still contains
+the identical20 gates, commands, inputs, outputs, artifacts and exclusions;
+only installed consumers move before the full debug flows.
 
 
 ## Queued milestone website and documentation refresh
