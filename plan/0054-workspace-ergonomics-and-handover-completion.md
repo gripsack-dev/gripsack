@@ -21,7 +21,7 @@ attempts, failures and owner decisions remain intact.
 - Main fast-forwarded to the qualified source under the truthful
   `local-practical-qualification` status, with strict status enforcement retained.
   GitHub reported the owner's PR-requirement exemption; no hosted test was forged.
-- The refreshed site is live from source
+- The first refreshed site deployment used source
   `a9ec21af3f80bf085357bb3cca1b1a89489d2fef`, static commit
   `cd4075464ba3fc34b333f140d84208d8d4294682`. The
   [publish-only Pages job](https://github.com/gripsack-dev/gripsack-dev.github.io/actions/runs/40525000333)
@@ -30,10 +30,21 @@ attempts, failures and owner decisions remain intact.
   explicitly classified. Desktop/mobile, light/dark, reduced-motion, no-script
   content, 241 local anchor references and legacy URL preservation were checked;
   public desktop/mobile navigation was then exercised.
+  The current site source is `c4c0eb5940678449a01c23347ce5c3a150cec4ec`,
+  static commit `bfe85ccbe70616f9f694cb48c597cc8df67098bd`, documenting the
+  postrelease maintenance source d8d233c. Public navigation checked242 anchor
+  references. The skill-install commands fetched that exact reviewed revision
+  into an isolated HOME and installed all four documented guides; no released
+  asset was changed to update those instructions.
 - A separate actual-release smoke confirmed an editor-only SDK excluded with
   the literal `node_modules/@gripsack/core` rule can coexist with suffix cache
   globs and internal aliases. Cache creation/removal retained approval; template
   execution, physical copied aliases, unchanged apply and store integrity passed.
+- The Seagate restore and current-release artifact backup passed:
+  [operational evidence and limits](0053-release-ci-research-handoff.md#current-operations-2026-10-27).
+  Production retained its selected runtime; only test services and verified
+  duplicate/generated scratch were retired. Mounted storage is not claimed
+  offline protection.
 
 Postrelease documentation/maintainer edits do not rewrite the qualified source,
 tags, public bytes or receipts. The original schedule/job, semantic comparison/

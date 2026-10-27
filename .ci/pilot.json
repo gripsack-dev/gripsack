@@ -400,7 +400,7 @@
     "repositories": {
       "site": {
         "url": "https://github.com/gripsack-dev/gripsack-dev.github.io.git",
-        "commit": "a9ec21af3f80bf085357bb3cca1b1a89489d2fef"
+        "commit": "c4c0eb5940678449a01c23347ce5c3a150cec4ec"
       },
       "example": {
         "url": "https://github.com/gripsack-dev/example-env-typescript.git",

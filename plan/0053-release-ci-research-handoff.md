@@ -1,8 +1,49 @@
 # 0053 — CI and release-flow research handoff
 
-Status: **local migration approved; Rootle and Gripsack trusted-code,
-non-publishing pilots qualified.** The original research snapshot below is
-dated2026-10-04 and remains historical evidence, not current deployment authority.
+Status: **Gripsack 0.47/0.48 published; local release authority and website
+cutover exercised.** Rootle's earlier trusted-code pilot remains a separate
+scope. The original research and dated observations below are historical.
+
+## Current operations — 2026-10-27
+
+Gripsack 0.48 is public/latest and unsigned from immutable source3a845bc,
+qualified by17 practical local gates and all96 persistence partitions. 0.47
+remains an explicitly unverified prerelease. Main and the refreshed website are
+landed; Pages only deploys locally generated files. [0054](0054-workspace-ergonomics-and-handover-completion.md#current-delivery-2026-10-27)
+records release scope and the original handover obligations that remain open.
+
+The Seagate's existing NTFS filesystem was retained; no formatting was needed.
+Snapshot `20261023T215126Z-addd4602` contains1080 files /47,902,839,996 bytes,
+with manifest SHA256
+`4eaeabaa715627f5e15f2863534951d2021ee0c1535e0190d224a252e54d2ac8`.
+Two restore attempts failed during copy. Kernel evidence identified a64 KiB
+DrvFS/9p read failing an order4 contiguous allocation under `GFP_NOFS`, not a
+checksum failure. Host tooling commit251eb25 uses8 KiB copy requests; all73
+infrastructure tests passed, including the bounded-read regression.
+
+The corrected full restore completed. All1078 copied files
+(47,718,142,707 bytes) matched the snapshot; the two other inputs were the
+validated Docker image archive and deliberately relocated configuration.
+Both SQLite integrity checks passed. A separate controller/worker on8811 used
+the original image59b5… / adapter19e93… without upgrading production.
+Operator login succeeded, the authenticated worker connected to new master9,
+and all16 historical build-request rows and15 durable intent rows stayed
+identical. `resume af783bc…` returned `already-qualified` with all19 historical
+gates and the original qualification hashf411c611…; no product gate was rebuilt.
+
+Only the owned test services were removed afterward. Byte-duplicate incomplete
+restores and the exercised restore sandbox were retired after retaining compact
+state/log observations; production and the complete source backup were kept.
+Successful0.48 work scratch was reclaimed only after re-admitting all17 archived
+gate records. State headroom finished at138.83 GiB with the64 GiB floor unchanged.
+
+The15 published0.48 assets (59,491,694 bytes) and its170 frozen-input/evidence
+files (7,028,530,080 bytes) were copied to the Seagate and byte-matched.
+This is a same-workstation, new-state-directory restore and operator artifact
+backup, not a new portable-artifact product API, fresh physical-host recovery,
+hardware power-loss qualification or offline protection while the drive remains
+mounted. Evidence is under
+`release-evidence/gripsack/0.48.0/site-docs-smoke-g1jzrc9z/`.
 
 ## Current execution — 2026-10-22
 
