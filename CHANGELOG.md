@@ -50,10 +50,10 @@ This source version alone is not a passing gate or signature.
 - Core/helper/SDK versions are coordinated at0.48.0. The helper was measured
   in two independent native builds at SHA256
   `5dbc60fc4c45906326db88104a8a0c736e32e6d23fbdaa5c19274415c84165d9`.
-  Full exact-source local qualification remains required before0.48 publication.
+  Exact-source practical local qualification remains required before0.48 publication.
 - The e2e runner uses modest optimization while explicitly retaining debug
   assertions, overflow checks and fault controls. Its executable copy omits
-  DWARF. Deadlines and all20 qualification gates remain unchanged.
+  DWARF. Runtime deadlines and crash/recovery coverage remain unchanged.
 - Installed-release checks run before the full debug flow suite, so package
   consumer failures surface earlier. Three `workspace-file` interruption cases
   are explicitly debug-only; their complete crash/recovery assertions remain
@@ -63,6 +63,10 @@ This source version alone is not a passing gate or signature.
 -0.48 publication uses locally qualified, unsigned assets at the owner's
   request. No Actions signing or registry publication is implied; use the
   manual release instructions rather than weakening verified updater checks.
+- The owner-approved0.48 practical profile requires17 runtime, security,
+  installed-consumer, reproducibility and packaging gates, including all96
+  persistence partitions. TLC/TLAPS/Verus remain separate research and are
+  explicitly not qualified by this release (`REL-FORMAL-048-2026-10-27`).
 
 ## [0.47.0] — 2026-10-25 — UNVERIFIED reviewer prerelease
 

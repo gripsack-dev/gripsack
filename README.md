@@ -100,10 +100,10 @@ docker compose run --build --rm tlaps    # transaction induction pilot (amd64)
 docker compose run --build --rm verify   # production Verus kernels and mutants (amd64)
 ```
 
-The [frozen local profile](.ci/pilot.json) owns exact-source release qualification,
-including the separate 96-partition persistence gate. Hosted CI is manual
-diagnostics, not duplicate acceptance. The TLAPS pilot has one destination and
-one recovery; it is not the required generalized transaction theorem.
+The [frozen local profile](.ci/pilot.json) requires17 practical release gates,
+including all96 persistence partitions. The formal commands above remain
+separate research; this release does not claim TLC/TLAPS/Verus qualification.
+Hosted CI is manual diagnostics, not duplicate acceptance.
 See [AGENTS.md](AGENTS.md) for working agreements.
 
 MIT licensed.

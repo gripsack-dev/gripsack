@@ -114,26 +114,25 @@ the baseline, not permission to bypass plan 0048's stronger gates.
 
 ## Workflow
 
-- Exact-source local qualification is integration/release acceptance authority
-  (`LOCAL-QUALIFICATION-AUTHORITY-2026-10-23`, plan0054). The project-owned
-  `.ci/pilot.json` and local gate commands retain the full Linux/native/formal
-  requirements and all 96 persistence partitions; retiring hosted triggers
-  does not waive them. Fuzz/corpus replay remains excluded for this release.
+- Exact-source practical local qualification is the0.48 release acceptance
+  authority (`LOCAL-PRACTICAL-QUALIFICATION-2026-10-27`, plan0054). The owner
+  explicitly selected all17 runtime/security/consumer/reproducibility/packaging
+  gates and all96 persistence partitions. TLC, TLAPS and Verus remain separate
+  research and are not claimed qualified (`REL-FORMAL-048-2026-10-27`).
+  This does not close original formal handover obligations. Fuzz/corpus replay
+  remains excluded.
 - `ci`, `examples`, `repro` and `demo` are explicit manual diagnostics or
   maintenance only, not automatic acceptance. Do not dispatch them for release
   qualification. Pin-update proposals never dispatch hosted builds.
 - Before landing this cutover, the owner must reconcile authenticated branch
   protection's legacy required `test` context with real local admission, not
   fabricate a successful hosted status or remove qualification enforcement.
-- Releases use immutable `core-vX.Y.Z` and the coordinated locally prepared
-  core/SDK/helper bundle. GitHub approves, signs and publishes those bytes via
-  `release-core.yml`; there is no independent `ts-v*` publication for this flow.
-- Configure the protected `release` environment before dispatch: trusted reviewer,
-  selected `core-v*` tag policy and deliberate administrator-bypass policy.
-  A sole owner who dispatches and approves must not enable `prevent_self_review`;
-  enabling it requires a genuinely separate authorized reviewer.
-- Site promotion carries the actual signing `GITHUB_RUN_ID` as integer `run_id`,
-  alongside release tag and manifest digest. These are selectors; the site must
-  authenticate the published signature/workflow/source, not trust the payload.
+- Releases use immutable `core-vX.Y.Z` and coordinated locally prepared
+  core/SDK/helper assets. The owner chose unsigned, Actions-free0.48 publication
+  after practical local qualification; no signer or registry publication is
+  required. Existing verified installer/updater checks are not bypassed.
+- The owner removed the website signature requirement. Build static pages
+  locally; only their upload/deployment may use a publish-only Pages job.
+  Main/release-sidebar visibility and remaining website cleanup follow0.48.
 - The website lives in `gripsack-dev/gripsack-dev.github.io` — edit
   there, not here.

@@ -55,6 +55,11 @@ The owner explicitly chose unsigned, Actions-free0.48 publication after local
 qualification on2026-10-26. A new signer is not a prerequisite. Website signature
 admission is retired; only static-file Pages deployment may use Actions.
 Main/release-sidebar visibility and the remaining cleanup wait until after0.48.
+On2026-10-27 the owner selected `LOCAL-PRACTICAL-QUALIFICATION-2026-10-27`:
+all17 runtime/security/consumer/reproducibility/packaging gates and all96
+persistence partitions remain required. `REL-FORMAL-048-2026-10-27` moves
+TLC/TLAPS/Verus off this release's critical path without claiming formal
+completion or closing the original handover's proof obligations.
 
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux

@@ -22,7 +22,7 @@ import tomllib
 
 FORMAT = "gripsack.release.v1"
 REPOSITORY = "gripsack-dev/gripsack"
-POLICY = "LOCAL-QUALIFICATION-AUTHORITY-2026-10-23"
+POLICY = "LOCAL-PRACTICAL-QUALIFICATION-2026-10-27"
 WORKFLOW = ".github/workflows/release-core.yml"
 TARGET = "x86_64-unknown-linux-musl"
 MAX_JSON_BYTES = 4 * 1024 * 1024
@@ -33,12 +33,13 @@ MAX_BUNDLE_BYTES = 2 * 1024 * 1024 * 1024
 # Private controller image outputs are references, not shipped bundle members.
 MAX_OBSERVED_OUTPUT_BYTES = (1 << 63) - 1
 EXCLUSIONS = ["REL-FUZZ-2026-09-27", "linux-aarch64", "macos", "native-windows",
-              "hardware-power-loss", "github-hosted-build"]
+              "hardware-power-loss", "github-hosted-build", "REL-FORMAL-048-2026-10-27",
+              "formal-tlc", "formal-tlaps", "formal-verus"]
 REQUIRED_GATES = frozenset((
     "inventory", "test", "gnu-test", "ts-test", "runtime-images",
     "dependency-audits", "bridge-repro-pins", "b0-linux", "helper-repro-pins",
     "core-package-static-sbom", "flows", "candidate-sdk", "external-source-pins",
-    "installed-consumers-docs", "model", "tlaps", "verify", "core-repro",
+    "installed-consumers-docs", "core-repro",
     "persistence-96", "publication-packages",
 ))
 HEX64 = re.compile(r"[0-9a-f]{64}")

@@ -380,6 +380,32 @@ The0.47 public release notes now disclose the newly issued dependency
 advisories. Its tag and artifacts remain unchanged; reachability of each
 affected function in Gripsack has not been claimed.
 
+### Owner-approved practical release policy —2026-10-27
+
+The owner explicitly selected **the practical release gate** after reviewing
+the exhaustive incarnation model's state-space cost. This changes0.48 release
+acceptance to `LOCAL-PRACTICAL-QUALIFICATION-2026-10-27`, with exclusion
+`REL-FORMAL-048-2026-10-27`. All17 runtime, installed-consumer, security,
+reproducibility and packaging gates remain, including all96 persistence
+partitions with unchanged commands, inputs, outputs and scope.
+TLC/TLAPS/Verus remain separate research, not completed or waived handover
+proofs. No successful formal receipts will be invented or imported.
+
+The resource probe preserved the exact incarnation-exchange configuration and
+invariant, changing only heap/workers to4GiB/8. It completed that single finite
+case after3h04m with no error:381939328 distinct states and5877299953 generated.
+TLC reported fingerprint-collision estimates of0.11 (calculated optimistic)
+and0.0051 (actual fingerprints). This is not a generalized proof, completion of
+the full model gate, or TLAPS/Verus qualification. The source model was not
+weakened or rewritten. The old serial preflight and20-gate candidate were
+cancelled with their existing evidence retained; a new source/profile must
+qualify independently under the approved17-gate policy.
+
+The superseded security-patched candidate `d69af540…` passed14 gates, including
+installed consumers and all debug flows, before cancellation at the formal
+boundary. Reproducibility, persistence and publication preparation were still
+pending; the new practical candidate must actually complete them.
+
 
 ## Queued milestone website and documentation refresh
 
