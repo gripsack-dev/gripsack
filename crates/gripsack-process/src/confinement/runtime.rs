@@ -25,13 +25,6 @@ impl RuntimeAccess {
         mut admit: impl FnMut(&Path) -> io::Result<()>,
     ) -> io::Result<Self> {
         let mut access = Self::default();
-        #[cfg(target_os = "macos")]
-        {
-            super::seatbelt::system_runtime_roots(&mut access.directories);
-            for root in &access.directories {
-                admit(root)?;
-            }
-        }
         access.script = access.program(environment, program, &mut admit)?;
         #[cfg(target_os = "linux")]
         match std::fs::symlink_metadata(SYSTEM_LOADER_CACHE) {

@@ -1,10 +1,7 @@
 //! Native acquisition before any production solve. Repository file sources
 //! resolve through the approved captured bundle; external acquisition consumes
 //! a concrete lock unless the caller owns an explicit update operation.
-use crate::{
-    Ctx, ExecError, LifecycleSession,
-    lockfile::{LockEntry, Resolved},
-};
+use crate::{Ctx, ExecError, LifecycleSession};
 use gripsack_fetch::FetchIdentity;
 use gripsack_ir::{
     Diagnostic, FetchSpec, codes,
@@ -49,7 +46,7 @@ impl PreparedSource {
     ) -> Result<AcquiredSource, ExecError> {
         if session.home() != ctx.home {
             return Err(ExecError::Step {
-                module: name.into(),
+                output: name.into(),
                 step: "source".into(),
                 detail: "source publication belongs to another home".into(),
             });
@@ -68,7 +65,7 @@ impl PreparedSource {
                         )?;
                         if retained.tree_hash() != &self.tree {
                             return Err(ExecError::Step {
-                                module: name.into(),
+                                output: name.into(),
                                 step: "source".into(),
                                 detail:
                                     "retained source differs; immutable bytes will not be replaced"
@@ -104,20 +101,14 @@ pub(super) fn acquire(
     source: &WorkspaceFetch,
     mode: ResolutionMode<'_>,
 ) -> Result<PreparedSource, ExecError> {
+    let span = tracing::info_span!("output", output = name);
+    let _entered = span.enter();
     let failure = |detail: String| {
         ExecError::Gate(
             Diagnostic::error(codes::EXEC_STEP, detail)
                 .with_label(Some(source.span.clone()), "source declared here"),
         )
     };
-    if matches!(
-        source.fetch,
-        FetchSpec::Brew { .. } | FetchSpec::Pixi { .. }
-    ) {
-        return Err(ExecError::Gate(Diagnostic::error(codes::WORKSPACE_EXEC_UNAVAILABLE,
-            "coherent workspace bottle/Conda production belongs to A4/A3; a legacy single-package transport cannot substitute for it")
-            .with_label(Some(source.span.clone()), "provider declared here")));
-    }
     let captured = repository_source(ctx, &source.fetch)?;
     let (spec, local) = match captured {
         Some(path) => {
@@ -181,19 +172,12 @@ pub(super) fn acquire(
             Err(error) => return Err(error.into()),
         }
     }
-    let resolver_pin = locked.map(|pin| LockEntry {
-        fetch: spec.as_ref().clone(),
-        resolved: Some(Resolved {
-            url: pin.resolved.url.clone(),
-            version: pin.resolved.version.clone(),
-            sha256: pin.resolved.sha256.clone(),
-            tree256: pin.resolved.tree256.clone(),
-            repo256: pin.resolved.repo256.clone(),
-            api_url: pin.resolved.api_url.clone(),
-        }),
-    });
-    let (concrete, metadata) =
-        crate::resolve::resolve_spec(name, spec.as_ref(), resolver_pin.as_ref(), &ctx.fetch)?;
+    let (concrete, metadata) = crate::source::resolve_spec(
+        name,
+        spec.as_ref(),
+        locked.map(|pin| &pin.resolved),
+        &ctx.fetch,
+    )?;
     let locked_json = locked
         .map(|pin| serde_json::to_value(&pin.resolved))
         .transpose()?;
@@ -212,6 +196,7 @@ pub(super) fn acquire(
                 _ => error,
             })
         })?;
+    tracing::info!(output = name, "fetched");
     // FetchContext already applied the shared payload validator. Preserve its
     // distinct raw-download/tree domains rather than the legacy lock's union.
     let (sha256, tree) = match outcome.identity {
@@ -299,7 +284,7 @@ fn frozen_source(fetch: &FetchSpec, pin: &ResolvedPinFields) -> Result<(), Strin
         FetchSpec::GithubRelease { .. } | FetchSpec::Tarball { .. } if pin.sha256.is_none() => {
             Err("frozen archive acquisition requires its raw download SHA-256".into())
         }
-        FetchSpec::GithubRelease { .. } | FetchSpec::Brew { .. } if pin.url.is_none() => {
+        FetchSpec::GithubRelease { .. } if pin.url.is_none() => {
             Err("frozen discovery requires its selected URL".into())
         }
         FetchSpec::Git { .. }

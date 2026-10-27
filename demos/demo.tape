@@ -6,16 +6,16 @@ Set Width 1800
 Set Height 1120
 Set Theme "Catppuccin Mocha"
 
-Type@40ms "# a fixture env repo: one tarball tool, one dotfiles module"
+Type@40ms "# a workspace: an executable script and editor configuration"
 Enter
 Sleep 3s
 Type@40ms "sh /vhs/demos/demo_setup.sh && cd /tmp/myenv"
 Enter
 Sleep 4s
-Type@40ms "# apply - fetch, deploy, one new generation"
+Type@40ms "# apply the personal profile in one generation"
 Enter
 Sleep 2s
-Type@40ms "grip apply --host demo"
+Type@40ms "grip apply personal"
 Enter
 Sleep 4s
 Type@40ms "y"
@@ -30,7 +30,7 @@ Sleep 4s
 Type@40ms "# a second apply is a satisfied no-op"
 Enter
 Sleep 2s
-Type@40ms "grip apply --host demo"
+Type@40ms "grip apply personal"
 Enter
 Sleep 4s
 Type@40ms "y"
@@ -42,9 +42,9 @@ Sleep 2s
 Type@40ms "grip generations"
 Enter
 Sleep 4s
-Type@40ms "# plan validates and shows execution waves - errors point at your code"
+Type@40ms "# inspect the selected profile without deploying it"
 Enter
 Sleep 2s
-Type@40ms "grip plan --ir /vhs/demos/fixtures/ir.json"
+Type@40ms "grip plan personal"
 Enter
 Sleep 4s

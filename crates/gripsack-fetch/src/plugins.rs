@@ -12,7 +12,7 @@
 //! ```
 //!
 //! Release contract: the repo ships `<exe>-<tag>-<triple>.tar.gz` plus
-//! a `<same>.sha256` sidecar asset (the 4-target matrix naming). A
+//! a `<same>.sha256` sidecar asset for Linux/WSL x86_64. A
 //! missing checksum is a failed install, not a warning.
 
 use super::FetchError;

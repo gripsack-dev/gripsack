@@ -7,7 +7,7 @@
       "os": "linux",
       "tags": []
     },
-    "ir_version": 7,
+    "ir_version": 9,
     "workspace": {
       "outputs": [
         {
@@ -20,11 +20,21 @@
               "destination": {
                 "kind": "tracked_copy",
                 "path": "~/.config/demo/settings.conf"
+              },
+              "span": {
+                "col": 15,
+                "file": "gripsack.ts",
+                "line": 9
               }
             }
           ],
           "kind": "profile",
-          "name": "dotfiles"
+          "name": "dotfiles",
+          "span": {
+            "col": 5,
+            "file": "gripsack.ts",
+            "line": 8
+          }
         },
         {
           "commands": {
@@ -42,15 +52,30 @@
                 "kind": "file",
                 "path": "tool.bin"
               },
-              "kind": "fetch"
+              "kind": "fetch",
+              "span": {
+                "col": 17,
+                "file": "gripsack.ts",
+                "line": 15
+              }
             }
+          },
+          "span": {
+            "col": 5,
+            "file": "gripsack.ts",
+            "line": 14
           },
           "target": {
             "arch": "x86_64",
             "os": "linux"
           }
         }
-      ]
+      ],
+      "span": {
+        "col": 38,
+        "file": "gripsack.ts",
+        "line": 6
+      }
     }
   },
   "probe_requests": []

@@ -11,15 +11,14 @@ use std::sync::LazyLock;
 /// undetectable — never guessed.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct HostFacts {
-    /// `std::env::consts::OS` (linux, macos, …).
+    /// Observed operating system; execution supports Linux only.
     pub os: &'static str,
-    /// `std::env::consts::ARCH` (x86_64, aarch64, …).
+    /// Observed architecture; execution supports x86_64 only.
     pub arch: &'static str,
     /// `"glibc-<ver>"` (ldd --version), `"musl"` (loader path tell),
-    /// `"darwin"` on macOS, `None` if undetectable.
+    /// or `None` if undetectable.
     pub libc: Option<String>,
-    /// gethostname — informational for frontend code; host *selection*
-    /// (which hosts/<name>.ts loads) stays the CLI's job.
+    /// Informational hostname; the sole evaluated entrypoint is gripsack.ts.
     pub hostname: String,
 }
 
@@ -36,7 +35,6 @@ pub fn detect() -> &'static HostFacts {
 
 fn detect_libc() -> Option<String> {
     match std::env::consts::OS {
-        "macos" => Some("darwin".into()),
         "linux" => {
             // the musl loader's presence is the musl tell (alpine,
             // void-musl, …); checked first because musl's own ldd
@@ -105,11 +103,10 @@ mod tests {
         assert_eq!(facts.os, std::env::consts::OS);
         assert_eq!(facts.arch, std::env::consts::ARCH);
         assert!(!facts.hostname.is_empty());
-        // this test runs on linux or macOS hosts; both must detect
-        if facts.os == "linux" || facts.os == "macos" {
+        if facts.os == "linux" {
             let libc = facts.libc.as_deref().expect("libc detected");
             assert!(
-                libc.starts_with("glibc-") || libc == "musl" || libc == "darwin",
+                libc.starts_with("glibc-") || libc == "musl",
                 "libc {libc:?} has a known shape"
             );
         }

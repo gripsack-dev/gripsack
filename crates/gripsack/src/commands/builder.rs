@@ -72,7 +72,6 @@ fn print_inspection(details: WorkerInspection) {
     println!("configuration: {}", details.configuration_source);
     print_fact("worker image/binding", details.image);
     print_observation("immutable image ID", details.image_id);
-    print_fact("VM image", details.vm_image);
     print_fact("helper version", details.helper_version);
     print_fact("daemon version", details.daemon_version);
     print_fact("Linux target", details.target);

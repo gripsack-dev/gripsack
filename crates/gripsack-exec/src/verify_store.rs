@@ -36,7 +36,7 @@ pub fn verify_store(
                 continue;
             }
         };
-        for (name, state) in &manifest.modules {
+        for (name, state) in &manifest.deployments {
             let path = &state.store_path;
             if !path.exists() {
                 out.push((
@@ -62,7 +62,7 @@ pub fn verify_store(
                     && let Some(expected) = entry.file_mode
                     && matches!(
                         entry.ownership.policy(),
-                        gripsack_ir::Ownership::Template | gripsack_ir::Ownership::Merge
+                        gripsack_store::Ownership::Template | gripsack_store::Ownership::Merge
                     )
                     && let Ok(Some(crate::deploy::Observation::File { mode, .. })) =
                         crate::deploy::observe_readonly(&entry.key())
@@ -100,7 +100,7 @@ pub fn verify_store(
                 };
                 let source_exec_changed = matches!(
                     entry.ownership.policy(),
-                    gripsack_ir::Ownership::TrackedCopy | gripsack_ir::Ownership::Template
+                    gripsack_store::Ownership::TrackedCopy | gripsack_store::Ownership::Template
                 ) && entry
                     .source_executable
                     .is_some_and(|expected| expected != source_exec);
@@ -109,7 +109,7 @@ pub fn verify_store(
                 // include permissions. Historical receipts retain their domain.
                 // owned links record the payload's store identity
                 let actual = match entry.ownership.policy() {
-                    gripsack_ir::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
+                    gripsack_store::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
                         let text = String::from_utf8_lossy(&b);
                         let legacy = gripsack_store::canonical_bytes_hash(
                             text.trim_end_matches('\n').as_bytes(),
@@ -120,7 +120,7 @@ pub fn verify_store(
                             crate::managed_blocks::content_hash(&text).to_string()
                         }
                     }),
-                    gripsack_ir::Ownership::Template => std::fs::read(&src)
+                    gripsack_store::Ownership::Template => std::fs::read(&src)
                         .ok()
                         .and_then(|b| {
                             crate::template::render_template(
@@ -144,19 +144,21 @@ pub fn verify_store(
                                     .to_string()
                             }
                         }),
-                    gripsack_ir::Ownership::Owned => gripsack_store::canonical_file_hash(&src)
+                    gripsack_store::Ownership::Owned => gripsack_store::canonical_file_hash(&src)
                         .ok()
                         .map(|h| h.to_string()),
-                    gripsack_ir::Ownership::TrackedCopy => std::fs::read(&src).ok().map(|bytes| {
-                        // Pre-0041 copy receipts hashed the nominal source mode,
-                        // even for private takeovers. The new source field marks
-                        // receipts whose hash includes the actual landed mode.
-                        let mode = entry
-                            .source_executable
-                            .and(entry.file_mode)
-                            .unwrap_or(if source_exec { 0o755 } else { 0o644 });
-                        gripsack_store::canonical_bytes_identity(&bytes, mode).to_string()
-                    }),
+                    gripsack_store::Ownership::TrackedCopy => {
+                        std::fs::read(&src).ok().map(|bytes| {
+                            // Pre-0041 copy receipts hashed the nominal source mode,
+                            // even for private takeovers. The new source field marks
+                            // receipts whose hash includes the actual landed mode.
+                            let mode = entry
+                                .source_executable
+                                .and(entry.file_mode)
+                                .unwrap_or(if source_exec { 0o755 } else { 0o644 });
+                            gripsack_store::canonical_bytes_identity(&bytes, mode).to_string()
+                        })
+                    }
                 };
                 if let Some(h) = &actual
                     && (source_exec_changed || h.as_str() != entry.hash.as_str())

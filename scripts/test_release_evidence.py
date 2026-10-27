@@ -85,7 +85,7 @@ class EvidenceTests(unittest.TestCase):
         package.update(schema.file_record(self.root / package["path"], package["path"]))
         self.recipes = {p: ("synthetic qualified recipe " + p).encode() for p in evidence.CORE_RECIPES}
         self.source_proof, self.manifest["source"] = proof(self.root, "source-proof", self.recipes)
-        self.external_files = {"hosts/laptop.ts": b"synthetic representative source", "modules/a.ts": b"module source",
+        self.external_files = {"gripsack.ts": b"synthetic representative workspace source",
                                "workspaces/conda/gripsack.ts": b"synthetic conda source", "workspaces/conda/gripsack.lock": b"frozen lock"}
         self.external_proof, external_source = proof(self.root, "example-proof", self.external_files)
         external_patch = patch.dict(evidence.EXTERNAL, {"example": ("https://example.invalid/fixture", external_source["commit"])})
@@ -231,11 +231,11 @@ class EvidenceTests(unittest.TestCase):
                            for relative, data in self.sdk_files.items()}
         self.surfaces["sdk"]["data"] = {"tarball": evidence.reference(self.root, self.root / package["path"]),
             "installed_files": installed_files, "package_root": "sdk-consumer/node_modules/@gripsack/core",
-            "recipe": evidence.reference(self.root, project / "hosts/laptop.ts"), "source_proof": self.external_proof}
+            "recipe": evidence.reference(self.root, project / "gripsack.ts"), "source_proof": self.external_proof}
         self.log("sdk", "npm_install", ["npm", "install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--save-exact", self.root / package["path"]], cwd=project)
         self.approve("sdk", "sdk", project)
-        self.log("sdk", "sdk_check", [self.installed, "check", "--host", "laptop", "--json"],
-                 json.dumps({"ok": True, "host": {"os": "linux", "arch": "x86_64"}, "modules": ["real-source"]}), cwd=project)
+        self.log("sdk", "sdk_check", [self.installed, "check", "--json"],
+                 json.dumps({"ok": True, "host": {"os": "linux", "arch": "x86_64"}, "outputs": ["real-source"]}), cwd=project)
 
     def setup_site(self):
         value = {"format": "gripsack.site-release.v1", "repository": self.manifest["repository"],

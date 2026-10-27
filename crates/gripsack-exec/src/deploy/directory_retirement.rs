@@ -10,7 +10,7 @@ pub(crate) fn retire(
     let predecessor =
         store::generations::admit_manifest(journal.home_path(), receipt.predecessor_generation)?;
     let (owner, state, entry) = predecessor
-        .modules
+        .deployments
         .iter()
         .find_map(|(owner, state)| {
             state
@@ -23,7 +23,7 @@ pub(crate) fn retire(
             std::io::Error::other("directory retirement lost original ownership lineage")
         })?;
     if entry.preserved_drift
-        || entry.ownership.policy() != gripsack_ir::Ownership::Owned
+        || entry.ownership.policy() != gripsack_store::Ownership::Owned
         || state.store_path.join(&entry.from) != receipt.predecessor_target
     {
         return Err(

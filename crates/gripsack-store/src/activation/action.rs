@@ -1,4 +1,4 @@
-//! Retained actions are distinct from historical declaration IR. Workspace
+//! Durable activation actions, including retained native hooks. Workspace
 //! commands are admitted only by version-two manifests and activation plans.
 use gripsack_process::Sha256Digest;
 use serde::{Deserialize, Serialize};
@@ -22,17 +22,6 @@ pub enum ActivationAction {
     },
 }
 
-impl From<gripsack_ir::Action> for ActivationAction {
-    fn from(action: gripsack_ir::Action) -> Self {
-        match action {
-            gripsack_ir::Action::Service { name, user } => Self::Service { name, user },
-            gripsack_ir::Action::Fonts => Self::Fonts,
-            gripsack_ir::Action::DesktopEntry => Self::DesktopEntry,
-            gripsack_ir::Action::CustomShell { script } => Self::CustomShell { script },
-        }
-    }
-}
-
 impl ActivationAction {
     pub(crate) fn requires_v2(&self) -> bool {
         matches!(self, Self::WorkspaceHook { .. })
@@ -44,29 +33,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn legacy_action_bytes_preserve_durable_identity() {
-        for legacy in [
-            gripsack_ir::Action::Fonts,
-            gripsack_ir::Action::DesktopEntry,
-            gripsack_ir::Action::Service {
-                name: "demo.service".into(),
-                user: false,
-            },
-            gripsack_ir::Action::Service {
-                name: "demo.service".into(),
-                user: true,
-            },
-            gripsack_ir::Action::CustomShell {
-                script: "printf exact".into(),
-            },
+    fn retained_action_bytes_preserve_durable_identity() {
+        for bytes in [
+            r#"{"kind":"fonts"}"#,
+            r#"{"kind":"desktop_entry"}"#,
+            r#"{"kind":"service","name":"demo.service","user":false}"#,
+            r#"{"kind":"service","name":"demo.service","user":true}"#,
+            r#"{"kind":"custom_shell","script":"printf exact"}"#,
         ] {
-            let before = serde_json::to_vec(&legacy).unwrap();
-            let stored = ActivationAction::from(legacy);
-            assert_eq!(serde_json::to_vec(&stored).unwrap(), before);
-            assert_eq!(
-                serde_json::from_slice::<ActivationAction>(&before).unwrap(),
-                stored
-            );
+            let stored: ActivationAction = serde_json::from_str(bytes).unwrap();
+            assert_eq!(serde_json::to_string(&stored).unwrap(), bytes);
         }
     }
 

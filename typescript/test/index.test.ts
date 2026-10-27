@@ -1,130 +1,23 @@
-/** Frontend contract tests (plan/0003 §5, 0013): emit shape, spans,
- * inputs envelope, probes, defineEnv. Runs under `deno test` (the
- * sandbox spawn itself is exercised in driver.test.ts). */
-
+/** Pure facts, injected inputs, probe and workspace provenance contracts. */
 import assert from "node:assert/strict";
-import {
-  configStep,
-  dep,
-  fetchStep,
-  githubRelease,
-  hasTag,
-  installStep,
-  module,
-  resource,
-  runStep,
-  service,
-  shellStep,
-  symlink,
-  tarball,
-  trackedCopy,
-  when,
-} from "../src/index.ts";
-import type { Env, EnvContext, HostFacts } from "../src/index.ts";
-import * as index from "../src/index.ts";
-import { emitIr, mergeTags, parseInputs, createProbeBuilder } from "../src/advanced.ts";
+import { hasTag, when, profile, workspace } from "../src/index.ts";
+import type { WorkspaceContext, HostFacts } from "../src/index.ts";
+import { emitWorkspaceIr, parseInputs, createProbeBuilder } from "../src/advanced.ts";
 import type { ProbeRequest } from "../src/advanced.ts";
-import { clearResources } from "../src/resources.ts";
 
 const facts: HostFacts = { os: "linux", arch: "x86_64", libc: "glibc-2.36", hostname: "box" };
 
-function view(over: Partial<EnvContext> = {}): EnvContext {
+function view(over: Partial<WorkspaceContext> = {}): WorkspaceContext {
   const { probe } = createProbeBuilder({});
   return { facts, tags: [], probe, settings: {}, ...over };
 }
 
-// JSON.parse's inferred `any` is deliberate here: these tests assert
-// the wire shape of the emitted IR, field by field
-const emit = (env: Env, tags: string[] = []) => JSON.parse(emitIr(env, facts, tags));
-
-Deno.test("module() captures spans pointing at this file", () => {
-  clearResources();
-  const x = module("x", { fetch: tarball("https://example.invalid/x.tar.xz") });
-  const span = emit({ modules: [x] }).modules.x.span;
-  assert.ok(span, "span present");
-  assert.match(span.file, /index\.test\.ts$/);
-  assert.ok(span.line > 0);
-});
-
-Deno.test("falsy module entries drop out of the environment", () => {
-  clearResources();
-  const steam = module("steam", { fetch: tarball("https://example.invalid/s.tar.xz") });
-  const git = module("git", { fetch: tarball("https://example.invalid/g.tar.xz") });
-  const ir = emit({ modules: [facts.os === "plan9" && steam, git] });
-  assert.equal(ir.ir_version, 8, "legacy module entrypoints also use the current writer");
-  assert.equal(ir.modules.steam, undefined);
-  assert.ok(ir.modules.git);
-});
-
-Deno.test("dotfiles-only modules emit no source", () => {
-  clearResources();
-  const helix = module("helix", {
-    config: { "config.toml": trackedCopy("~/.config/helix/config.toml") },
-  });
-  const ir = emit({ modules: [helix] });
-  assert.equal(ir.modules.helix.fetch, undefined);
-  assert.equal(ir.modules.helix.config[0].mode, "tracked_copy");
-});
-
-
-
-Deno.test("dep rejects legacy and misspelled option shapes", () => {
-  assert.throws(() => dep("rust", "build" as never), /options object/);
-  assert.throws(() => dep("rust", { edge: "build" } as never), /unknown option/);
-  assert.throws(() => dep("rust", null as never), /options object/);
-});
-
-Deno.test("duplicate module names throw at emit with both sites", () => {
-  clearResources();
-  const a = module("dup", { fetch: tarball("https://example.invalid/a.tar.xz") });
-  const b = module("dup", { fetch: tarball("https://example.invalid/b.tar.xz") });
-  assert.throws(() => emit({ modules: [a, b] }), /duplicate module 'dup'/);
-});
-
-Deno.test("stray objects in modules throw with what they are", () => {
-  clearResources();
-  assert.throws(
-    () => emit({ modules: [{ name: "fake" } as never] }),
-    /must be module\(\) values/,
-  );
-  assert.throws(
-    () => emit({ modules: [["nope"] as never] }),
-    /got "an array"/,
-  );
-});
-
-Deno.test("declared resources emit and validate", () => {
-  clearResources();
-  resource("company.lock");
-  const tool = module("tool", {
-    steps: [shellStep("./sync.sh", "sync", { resources: ["company.lock"] })],
-  });
-  const ir = emit({ modules: [tool] });
-  assert.deepEqual(ir.resources, [{ name: "company.lock" }]);
-  assert.deepEqual(ir.modules.tool.steps[0].resources, ["company.lock"]);
-  clearResources();
-});
-
-Deno.test("undeclared resources throw at eval", () => {
-  clearResources();
-  assert.throws(
-    () => shellStep("true", "x", { resources: ["cargo.lokc"] }),
-    /unknown resource 'cargo\.lokc'/,
-  );
-  clearResources();
-});
-
-Deno.test("builtin resources pass eval", () => {
-  clearResources();
-  const s = shellStep("cargo install hx", "build", { resources: ["cargo-lock"] });
-  assert.deepEqual(s.resources, ["cargo-lock"]);
-  clearResources();
-});
-
-Deno.test("mergeTags unions entrypoint and CLI tags in order", () => {
-  assert.deepEqual(mergeTags(["gui", "work"], ["work", "cli"]), ["gui", "work", "cli"]);
-  assert.deepEqual(mergeTags(undefined, ["cli"]), ["cli"]);
-  assert.deepEqual(mergeTags(["a"], []), ["a"]);
+Deno.test("workspace declarations capture source spans", () => {
+  const ir = JSON.parse(emitWorkspaceIr(workspace({ outputs: [profile("dotfiles", {})] }), facts, []));
+  assert.equal(ir.ir_version, 9);
+  assert.deepEqual(Object.keys(ir), ["ir_version", "host", "workspace"]);
+  assert.match(ir.workspace.outputs[0].span.file, /index\.test\.ts$/);
+  assert.ok(ir.workspace.outputs[0].span.line > 0);
 });
 
 Deno.test("when/hasTag evaluate the injected view", () => {
@@ -228,15 +121,3 @@ Deno.test("probes answer bound values and record unbound requests", () => {
   assert.throws(() => probe.executable(""), /must not be empty/);
 });
 
-Deno.test("module() rejects unknown fields — a typo never lowers to an empty desired state", () => {
-  assert.throws(
-    () => index.module("demo", { confg: {} } as never),
-    /unknown field "confg".*did you mean "config"\?/,
-  );
-  assert.throws(
-    () => index.module("demo", { fetchh: undefined } as never),
-    /unknown field "fetchh".*did you mean "fetch"\?/,
-  );
-  // a valid spec still works
-  index.module("demo", { config: {} });
-});

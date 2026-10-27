@@ -4,16 +4,20 @@ User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
 
-## Unreleased
+## [0.50.0] — One workspace
 
-### Maintenance
-
-- Publish the website from a local static build, independently of product
-  signatures. Retire the old release/demo site-dispatch hooks; Pages only
-  uploads and deploys prebuilt files.
-- Refresh repository release/adoption guidance for the published 0.48 assets,
-  workspace APIs and current local qualification policy. Released tags and
-  artifacts remain unchanged.
+- **One authoring surface:** `gripsack.ts` describes packages, environments,
+  profiles, tasks and images. The core and SDK use the single strict IR9 contract.
+- Removed the legacy module DSL, universal step pipeline, old IR readers,
+  module-linter integration and Brew/Pixi package fetchers. Coherent Conda
+  environments and explicit `pixi.fromLock()` imports remain.
+- `grip init` and `grip adopt` create workspace profiles. Existing generations,
+  ownership history and rollback data remain usable through ordinary operations.
+- Removed retired macOS/Lima execution backends. Linux/WSL x86_64 is the target.
+- Optional editor setup downloads the SDK archive matching the installed core;
+  it no longer assumes a matching npm publication.
+- Product-first website and guides for native tools, environments, dotfiles,
+  BuildKit source builds, OCI image exports and explicit tasks.
 
 ## [0.48.0]
 

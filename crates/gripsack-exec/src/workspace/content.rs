@@ -8,8 +8,8 @@ mod tree;
 use super::declarations::{Content, File, Source};
 use crate::ctx::ExecError;
 use gripsack_ir::workspace::WorkspaceDestination;
-use gripsack_ir::{Entry, Ownership};
 use gripsack_store as store;
+use gripsack_store::{DeploymentEntry, Ownership};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::io::{self, Write};
@@ -159,7 +159,7 @@ impl Capture {
 }
 
 pub(super) struct PreparedFile {
-    pub entry: Entry,
+    pub entry: DeploymentEntry,
     pub block_id: Option<store::ManagedBlockId>,
 }
 
@@ -285,7 +285,7 @@ fn prepare_file(
         }
     };
     Ok(PreparedFile {
-        entry: Entry {
+        entry: DeploymentEntry {
             from: format!("{identity}/output"),
             to: destination.clone(),
             mode,

@@ -2,7 +2,7 @@
 //!
 //! Interactive: an arrow-key select with the semantics laid out.
 //! Non-interactive: the SAFE default with a loud note, `--mode` as the
-//! preseed. The generated module file is the persisted answer.
+//! preseed. The generated profile file is the persisted answer.
 
 use crate::render::Palette;
 use dialoguer::Select;

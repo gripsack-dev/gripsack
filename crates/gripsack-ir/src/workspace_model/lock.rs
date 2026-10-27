@@ -1,10 +1,7 @@
-//! The portable v6 workspace lock (v6-design §2.4) — representation
-//! only; the native worker owns all I/O. Fail-closed reader semantics
-//! mirror the legacy lockfile: a wrong `lock_version`, malformed JSON
-//! or a non-hex pin is rejected, never defaulted. No VM/socket/lease/
-//! instance-path fields exist by construction. `deny_unknown_fields`
-//! everywhere: this type family is persisted state, versioned by
-//! `lock_version`.
+//! Portable workspace lock representation; the native executor owns all I/O.
+//! A wrong `lock_version`, malformed JSON or invalid pin is rejected, never
+//! defaulted. Runtime worker/socket/lease paths do not belong in portable state.
+//! This persisted contract is versioned independently of authoring IR.
 
 pub mod conda;
 mod decode;

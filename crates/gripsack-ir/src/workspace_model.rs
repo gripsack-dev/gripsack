@@ -1,6 +1,4 @@
-//! Catalog execution model introduced in v6 and shared by strict v6/v7 readers.
-//! v7 adds reviewed Conda floors and package-scoped host runtime authority;
-//! version dispatch keeps those fields forbidden in retained v6 envelopes.
+//! Typed workspace outputs, commands, source acquisition and semantic identities.
 mod catalog;
 mod command;
 mod file;
@@ -12,7 +10,7 @@ pub mod lock;
 mod source;
 
 pub use crate::workspace::{
-    HostAccess, InstallPrefix, LinuxWorker, PackageLayout, RecipeOutputKind, WorkspaceCalendar,
+    HostAccess, InstallPrefix, LinuxWorker, RecipeOutputKind, WorkspaceCalendar,
     WorkspaceDestination, WorkspacePlatform,
 };
 pub use catalog::*;

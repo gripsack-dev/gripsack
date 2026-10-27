@@ -148,8 +148,11 @@ impl FixtureRoot {
     fn home(&self, case: FixtureCase) -> PathBuf {
         self.path.join(case.name()).join("state")
     }
-    fn action(&self, case: FixtureCase) -> io::Result<gripsack_ir::Action> {
-        Ok(gripsack_ir::Action::CustomShell {
+    fn action(
+        &self,
+        case: FixtureCase,
+    ) -> io::Result<gripsack_store::activation::ActivationAction> {
+        Ok(gripsack_store::activation::ActivationAction::CustomShell {
             script: format!(
                 "{} hooks fixture-effect --root {} --case {}",
                 quote(&self.helper())?,

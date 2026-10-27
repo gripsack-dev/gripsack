@@ -1,9 +1,16 @@
 # STATUS — the ledger: what landed, what's deferred, what's rejected
 
-One row per plan. "Deferred" items live on the
-[roadmap](https://gripsack.dev/docs/roadmap.html); "rejected" is
-settled (don't relitigate without new evidence). Update this file in
-the same PR as the plan it tracks (convention since 0036).
+One row per plan. Current work and priorities live in the numbered plans;
+historical decisions remain here rather than on the product website.
+Update this ledger in the same change as the plan it tracks.
+
+## Workspace-only 0.50 — in progress
+
+[0055](0055-workspace-only-product.md) records the owner's clean alpha cutover:
+one workspace API and IR9, removal of the module executor and obsolete providers,
+current examples and a product-first website. Retained deployment and recovery
+data keep their meaning. Qualification and publication results will be recorded
+with the actual release, not inferred from this source version.
 
 ## Current release and website — 2026-10-27
 

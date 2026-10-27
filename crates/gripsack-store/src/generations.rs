@@ -12,7 +12,7 @@
 mod admission;
 mod current;
 mod environment;
-pub use environment::{EnvironmentContribution, StructuredEnvironment};
+pub use environment::{EnvironmentContribution, RetainedEnvironment, StructuredEnvironment};
 mod inventory;
 mod publication;
 mod selection;
@@ -26,8 +26,8 @@ pub(crate) use selection::{
 };
 
 use crate::GenerationId;
+use crate::Ownership;
 use crate::prior::Prior;
-use gripsack_ir::Ownership;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -96,16 +96,16 @@ impl DeployedEntry {
         }
     }
 
-    pub fn merge_owner<'a>(&'a self, module: &'a str) -> &'a str {
+    pub fn merge_owner<'a>(&'a self, output: &'a str) -> &'a str {
         self.ownership
             .block_id()
-            .map_or(module, crate::ownership::ManagedBlockId::as_str)
+            .map_or(output, crate::ownership::ManagedBlockId::as_str)
     }
 
-    pub fn ownership_key(&self, module: &str) -> crate::ownership::OwnershipKey {
+    pub fn ownership_key(&self, output: &str) -> crate::ownership::OwnershipKey {
         crate::ownership::OwnershipKey::new(
             self.key(),
-            (self.ownership.policy() == Ownership::Merge).then(|| self.merge_owner(module)),
+            (self.ownership.policy() == Ownership::Merge).then(|| self.merge_owner(output)),
         )
     }
 
@@ -121,29 +121,29 @@ impl DeployedEntry {
     }
 }
 
-/// A module's recorded activation intent (0035 F9).
+/// A deployment's recorded activation intent (0035 F9).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IntentRecord {
     pub action: crate::activation::ActivationAction,
-    pub trigger: gripsack_ir::Trigger,
+    pub trigger: crate::ActivationTrigger,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ModuleState {
+pub struct DeploymentState {
     pub store_path: PathBuf,
-    /// A store-only module: retain payload receipts, never destinations,
+    /// A store-only deployment: retain payload receipts, never destinations,
     /// activation intents, or shell-profile exports (0039).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub build_only: bool,
     #[serde(default)]
     pub entries: Vec<DeployedEntry>,
-    /// The module's declared activation intents (0035 F9): the record
-    /// lets the next generation fire on_remove hooks for modules that
+    /// The deployment's declared activation intents (0035 F9): the record
+    /// lets the next generation fire on_remove hooks for deployments that
     /// disappeared — without it the removal trigger is unknowable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub intents: Vec<IntentRecord>,
     /// The verification receipt (0035 F2): fingerprints of the verify
-    /// specs that PASSED over exactly this module state. Store
+    /// specs that PASSED over exactly this deployment state. Store
     /// presence is not a receipt; a failed run never writes one;
     /// changing a verifier invalidates it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -153,11 +153,11 @@ pub struct ModuleState {
     #[serde(default)]
     pub env: Vec<EnvironmentContribution>,
     /// Content identity of the published tree (0014): present for
-    /// content-addressed modules — store verify compares the live tree
+    /// content-addressed deployments — store verify compares the live tree
     /// against this, no lockfile lookup.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree256: Option<String>,
-    /// Transitive build dependencies used by this module, in graph order.
+    /// Transitive build dependencies used by this deployment, in graph order.
     /// Retained generations keep these artifacts alive for history/rollback.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub build_closure: Vec<PathBuf>,
@@ -176,7 +176,7 @@ pub struct MigrationReceipt {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Generation {
     pub number: GenerationId,
-    pub modules: BTreeMap<String, ModuleState>,
+    pub deployments: BTreeMap<String, DeploymentState>,
     pub directory_transitions: Vec<crate::journal::directory::DirectoryTransition>,
     pub migration: Option<MigrationReceipt>,
 }
@@ -187,10 +187,10 @@ mod tests {
     use std::{io, path::Path};
 
     fn mk_gen(home: &Path, n: u64) -> Generation {
-        let mut modules = BTreeMap::new();
-        modules.insert(
+        let mut deployments = BTreeMap::new();
+        deployments.insert(
             "helix".to_string(),
-            ModuleState {
+            DeploymentState {
                 store_path: home.join("store/abc-helix"),
                 build_only: false,
                 intents: vec![],
@@ -214,7 +214,7 @@ mod tests {
         );
         Generation {
             number: GenerationId::new(n),
-            modules,
+            deployments,
             directory_transitions: Vec::new(),
             migration: None,
         }
@@ -233,7 +233,7 @@ mod tests {
         );
         let read = read_manifest(home, GenerationId::new(1)).unwrap();
         assert_eq!(
-            read.modules["helix"].entries[0].hash.as_str(),
+            read.deployments["helix"].entries[0].hash.as_str(),
             "d".repeat(64)
         );
     }
@@ -296,8 +296,8 @@ mod tests {
 
         // duplicate destinations (case-folded)
         let mut dup = mk_gen(home, 3);
-        let entry = dup.modules["helix"].entries[0].clone();
-        dup.modules
+        let entry = dup.deployments["helix"].entries[0].clone();
+        dup.deployments
             .get_mut("helix")
             .unwrap()
             .entries
@@ -317,7 +317,7 @@ mod tests {
 
         // store path outside the store
         let mut outside = mk_gen(home, 4);
-        outside.modules.get_mut("helix").unwrap().store_path = PathBuf::from("/etc/passwd");
+        outside.deployments.get_mut("helix").unwrap().store_path = PathBuf::from("/etc/passwd");
         let d = home.join("generations/4");
         std::fs::create_dir_all(&d).unwrap();
         std::fs::write(
@@ -353,12 +353,54 @@ mod tests {
     }
 
     #[test]
+    fn retained_environment_and_receipts_keep_legacy_manifest_wire() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut generation = mk_gen(directory.path(), 1);
+        let state = generation.deployments.get_mut("helix").unwrap();
+        state.env.push(
+            RetainedEnvironment {
+                name: "PATH".into(),
+                op: crate::EnvironmentOperation::Prepend,
+                value: "{store}/bin".into(),
+            }
+            .into(),
+        );
+        state.verified = Some(vec!["a".repeat(64)]);
+        state
+            .build_closure
+            .push(directory.path().join("store/retained-dependency"));
+        state.intents.push(IntentRecord {
+            action: crate::activation::ActivationAction::Fonts,
+            trigger: crate::ActivationTrigger::PostLink,
+        });
+        let wire = serde_json::to_value(&generation).unwrap();
+        assert!(wire.get("version").is_none());
+        assert!(wire.get("deployments").is_none());
+        assert_eq!(
+            wire["modules"]["helix"]["intents"],
+            serde_json::json!([{"action": {"kind": "fonts"}, "trigger": "post_link"}])
+        );
+        assert_eq!(
+            wire["modules"]["helix"]["env"],
+            serde_json::json!([{"name": "PATH", "op": "prepend", "value": "{store}/bin"}])
+        );
+        assert_eq!(
+            wire["modules"]["helix"]["verified"],
+            serde_json::json!(["a".repeat(64)])
+        );
+        assert_eq!(
+            serde_json::from_value::<Generation>(wire).unwrap(),
+            generation
+        );
+    }
+
+    #[test]
     fn workspace_actions_require_explicit_generation_envelope() {
         let directory = tempfile::tempdir().unwrap();
         let mut generation = mk_gen(directory.path(), 1);
-        let state = generation.modules.get_mut("helix").unwrap();
+        let state = generation.deployments.get_mut("helix").unwrap();
         state.intents.push(IntentRecord {
-            trigger: gripsack_ir::Trigger::PostLink,
+            trigger: crate::ActivationTrigger::PostLink,
             action: crate::activation::ActivationAction::WorkspaceHook {
                 context: state.store_path.join("hook-0.json"),
                 sha256: gripsack_process::Sha256Digest::of(b"context"),

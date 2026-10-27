@@ -93,19 +93,32 @@ separate identity/outcome records. Replace the explicit example paths with
 operator-approved absolute paths:
 
 ```ts
-import { customHook, module } from "@gripsack/core";
+import { defineWorkspace, workspace, hook, profile, exec, lit } from "@gripsack/core";
 
-export default module("notifications", {
-  activate: [
-    customHook("python3 /absolute/examples/hooks/keyed_increment.py --state-dir /absolute/private/local"),
-    customHook("python3 /absolute/examples/hooks/notify.py --endpoint https://receiver.example/increment"),
-  ],
+const local = hook("local-counter", {
+  trigger: "post_activate",
+  run: exec({ argv: [
+    lit("/usr/bin/python3"), lit("/absolute/examples/hooks/keyed_increment.py"),
+    lit("--state-dir"), lit("/absolute/private/local"),
+  ] }),
 });
+const notification = hook("remote-notification", {
+  trigger: "post_activate",
+  run: exec({ argv: [
+    lit("/usr/bin/python3"), lit("/absolute/examples/hooks/notify.py"),
+    lit("--endpoint"), lit("https://receiver.example/increment"),
+  ] }),
+});
+export default defineWorkspace(() => workspace({
+  outputs: [local, notification, profile("notifications", {
+    hooks: ["local-counter", "remote-notification"],
+  })],
+}));
 ```
 
-A shell receipt binds its selected interpreter and shell-body digest, not all
-subcommands, Python modules, dynamic libraries or remote behavior. These
-examples need Python 3. Use a private, owned state directory; their SQLite
+An execution receipt does not bind every Python import, dynamic library or
+remote behavior. These examples use an explicitly approved host Python 3.
+Use a private, owned state directory; their SQLite
 pathname opens assume host integrity rather than claiming native confinement.
 
 For an ambiguous remote outcome, inspect the saved intent and query the

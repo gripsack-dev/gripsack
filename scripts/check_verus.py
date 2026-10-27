@@ -12,7 +12,11 @@ from verus_evidence import Evidence, EvidenceError, self_check
 
 ROOT = Path(__file__).resolve().parent.parent
 CRATE = ROOT / "crates/gripsack-policy"
-MIN_OBLIGATIONS = 440
+# Retired module execution contributed eleven named scheduler obligations
+# and one build-minus-runtime membership obligation to the previous floor.
+# The superseded batch role adapter contributed one more; current admission
+# uses project_graph_role directly. Retained named obligations remain required.
+MIN_OBLIGATIONS = 427
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
@@ -46,8 +50,8 @@ FAMILIES = {
     "merge-scanner": tuple("merge::scanner::" + name for name in (
         "span_text", "lemma_ascii_successor", "next_line_end", "scan_admits_splice", "scan",
     )),
-    "graph": ("graph::build_closure", "graph::build_only_members", "graph::lemma_reachable_visited"),
-    "graph-roles": ("graph::roles::project_graph_roles", "graph::roles::project_graph_role", "graph::roles::GraphRole::is_dependency"),
+    "graph": ("graph::build_closure", "graph::lemma_reachable_visited"),
+    "graph-roles": ("graph::roles::project_graph_role", "graph::roles::GraphRole::is_dependency"),
     "graph-name-index": tuple("graph::name_index::" + name for name in (
         "bind_output_index", "BoundOutputIndex::position", "distinct_names_have_distinct_indices",
     )),
@@ -71,12 +75,6 @@ FAMILIES = {
         "bytes_equal", "identity_decision", "admit_acquire", "admit_stop",
         "admit_removal", "release_disposition", "admit_cache_cleanup", "retired_epoch",
         "admit_replacement",
-    )),
-    "scheduler": tuple("schedule::" + name for name in (
-        "PureScheduler::new", "PureScheduler::start_next", "PureScheduler::finish_ok",
-        "PureScheduler::finish_fail", "PureScheduler::failed", "lemma_unfinished_count_zero",
-        "lemma_unfinished_count_zero_reverse", "lemma_unfinished_count_decrement",
-        "lemma_unfinished_count_none_finished", "lemma_fresh_entry", "lemma_cast_collapse",
     )),
     "rate-admission": (
         "rate_limit::binary_rate::admit_binary_rate",
@@ -283,7 +281,6 @@ MUTANTS = (
     Mutant("workspace-staging-authority", "workspace_command.rs", "workspace_command::admit_production_binding",
            "    matches!(owner, CommandOwner::Production)",
            "    true"),
-    Mutant("scheduler-latch", "schedule.rs", "schedule::PureScheduler::start_next", "        if self.failed || self.head >= self.ready.len() {", "        if self.head >= self.ready.len() {"),
     Mutant("rate-spend", "rate_limit.rs", "rate_limit::TokenBucket::take",
            "self.available.subtract_assign(&token);", ""),
     Mutant("rate-refill-unit", "rate_limit.rs", "rate_limit::TokenBucket::refill",

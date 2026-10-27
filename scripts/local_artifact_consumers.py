@@ -264,8 +264,8 @@ class Consumer:
                 == {name: value["sha256"] for name, value in snapshot(self.sdk).items()},
                 "npm installed SDK differs from packaged bytes")
         self.run(["node", "--input-type=module", "-e",
-                  "import {defineWorkspace,workspace,pkg,pixiFromLock} from '@gripsack/core';"
-                  "if (![defineWorkspace,workspace,pkg,pixiFromLock].every(x=>typeof x==='function')) process.exit(1);"],
+                  "import {defineWorkspace,workspace,pkg,pixi} from '@gripsack/core';"
+                  "if (![defineWorkspace,workspace,pkg,pixi.fromLock].every(x=>typeof x==='function')) process.exit(1);"],
                  cwd=npm_project)
         self.sdk = installed
         self.receipt["components"] = {"core": version, "helper": helper_version, "sdk": sdk_version,
@@ -305,7 +305,7 @@ class Consumer:
         install_sdk(repo, self.sdk)
         # Frozen root caller: no automatic lock migration or mutable GitHub release install.
         self.approve(repo)
-        self.run([self.grip, "check", "--host", "laptop"], cwd=repo)
+        self.run([self.grip, "check"], cwd=repo)
         # This published lock was captured against the embedded frontend.
         # Installing a repository SDK would deliberately change its import pins.
         conda = self.work / "example-conda"
@@ -337,7 +337,7 @@ class Consumer:
                 "frozen external Conda source/lock changed")
         after = snapshot(repo)
         require(all(after.get(path) == content for path, content in before.items()), "original external source/locks changed")
-        self.receipt["external_consumer"] = {"root": "check with candidate installed SDK; mutable plugin apply not run",
+        self.receipt["external_consumer"] = {"root": "root workspace check with candidate installed SDK",
             "conda": "embedded-frontend frozen build/run/task/apply/apply; unavailable-helper retained build/gc/shell",
             "frozen_lock_sha256": sha(lock), "retained_prefixes": retained,
             "network": "initial exact lock-pinned public archives fetched by core; retained reuse is not a network-namespace isolation claim"}

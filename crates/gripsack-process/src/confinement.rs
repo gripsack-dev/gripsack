@@ -20,17 +20,10 @@
 //! interpreter at an arbitrary path, and keeps the retained memfd executable
 //! binding (`execve` of `/proc/self/fd/N`) working without broad read grants.
 //!
-//! macOS assembles an SBPL profile parent-side and applies it through the
-//! fixed platform launcher after exec. Profile parsing and allocation never
-//! run in the fork/exec interval. The boundary persists across exec and is
-//! inherited by descendants.
-//!
 //! Platforms without a kernel boundary fail closed: assembling a boundary
 //! returns an error and the evaluator refuses to run rather than evaluating
 //! unconfined.
 mod runtime;
-#[cfg(target_os = "macos")]
-pub(super) mod seatbelt;
 pub use runtime::RuntimeAccess;
 #[cfg(target_os = "linux")]
 use std::fs::File;
@@ -38,7 +31,7 @@ use std::fs::File;
 use std::os::fd::FromRawFd;
 #[cfg(target_os = "linux")]
 use std::os::unix::io::AsRawFd;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "linux")]
 use std::path::PathBuf;
 use std::{io, path::Path};
 /// `prctl(PR_SET_NO_NEW_PRIVS)` — fixed as 38 on every Linux ABI.
@@ -124,18 +117,12 @@ fn push_unique(roots: &mut Vec<PathBuf>, directory: &Path) -> io::Result<()> {
 
 /// An assembled kernel boundary plus the launch-time additions the child
 /// must make after fork. Linux holds the populated Landlock ruleset
-/// descriptor (per-pid `/proc/self/fd` cannot be anchored parent-side);
-/// macOS holds a Seatbelt launch profile, fully assembled while allocation
-/// is still allowed and applied by the platform launcher after exec.
+/// descriptor (per-pid `/proc/self/fd` cannot be anchored parent-side).
 pub struct Ruleset {
     #[cfg(target_os = "linux")]
     ruleset: Option<File>,
     #[cfg(target_os = "linux")]
     proc_self_fd: bool,
-    #[cfg(target_os = "macos")]
-    profile: seatbelt::Profile,
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    _unimplemented: (),
 }
 
 // No acknowledgment escape hatch exists: the owner-selected contract (plan/0048,
@@ -167,9 +154,7 @@ const ACCESS_READ_WRITE: u64 = ACCESS_READ
     | LANDLOCK_ACCESS_FS_REMOVE_DIR;
 
 impl Ruleset {
-    /// Duplicate the assembled boundary for one launch. Linux duplicates the
-    /// ruleset descriptor (its rules were already added); the Seatbelt
-    /// profile is a plain string copy.
+    /// Duplicate the populated Landlock ruleset descriptor for one launch.
     pub(crate) fn try_clone(&self) -> io::Result<Self> {
         #[cfg(target_os = "linux")]
         {
@@ -178,34 +163,6 @@ impl Ruleset {
                 proc_self_fd: self.proc_self_fd,
             })
         }
-        #[cfg(target_os = "macos")]
-        {
-            Ok(Self {
-                profile: self.profile.clone(),
-            })
-        }
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        {
-            Ok(Self { _unimplemented: () })
-        }
-    }
-
-    /// A private macOS image's directory joins the boundary for this launch.
-    /// The payload and optional script are both private copied images.
-    #[cfg(target_os = "macos")]
-    pub(crate) fn granting_image_read(self, image: &Path) -> io::Result<Self> {
-        Ok(Self {
-            profile: self.profile.granting_image(image)?,
-        })
-    }
-
-    #[cfg(target_os = "macos")]
-    pub(crate) fn macos_launch_arguments<'a>(
-        &'a self,
-        argument_zero: &'a std::ffi::OsStr,
-        image: &'a std::ffi::OsStr,
-    ) -> [&'a std::ffi::OsStr; 11] {
-        self.profile.arguments(argument_zero, image)
     }
 }
 
@@ -245,8 +202,7 @@ impl Ruleset {
     /// Assemble every rule while allocation is still allowed. On Linux
     /// `boundary` itself and the (optional) per-pid `/proc/self/fd`
     /// script-grant are the only launch-time inputs; both are resolved from
-    /// fields, never paths. macOS assembles its complete launch profile here;
-    /// private image directories are added per launch before payload encoding.
+    /// fields, never paths.
     pub fn assemble(boundary: &Boundary, proc_self_fd: bool) -> io::Result<Self> {
         #[cfg(target_os = "linux")]
         {
@@ -302,22 +258,6 @@ impl Ruleset {
             // anywhere on disk, so EXECUTE alone is granted at the root.
             ruleset.add_path_beneath(Path::new("/"), LANDLOCK_ACCESS_FS_EXECUTE)?;
             Ok(ruleset)
-        }
-        #[cfg(target_os = "macos")]
-        {
-            let _ = proc_self_fd;
-            Ok(Self {
-                profile: seatbelt::Profile::assemble(boundary)?,
-            })
-        }
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        {
-            let _ = (boundary, proc_self_fd);
-            Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "evaluator filesystem confinement is not implemented on this platform; \
-                 evaluation is refused rather than run unconfined",
-            ))
         }
     }
 

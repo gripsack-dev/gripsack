@@ -3,7 +3,8 @@
 //! the same owner as captured profile files.
 use super::{consumer::admit::EnvironmentPlan, content::PreparedFile, file_failure};
 use crate::ExecError;
-use gripsack_ir::{Entry, Ownership, workspace_model::ProfileOutput};
+use gripsack_ir::workspace_model::ProfileOutput;
+use gripsack_store::{DeploymentEntry, Ownership};
 use std::{collections::BTreeSet, path::Path};
 
 /// Logical targets participate in the same global collision/preview pass as
@@ -88,7 +89,7 @@ pub(super) fn prepare(
             .iter()
             .zip(targets)
             .map(|(command, target)| PreparedFile {
-                entry: Entry {
+                entry: DeploymentEntry {
                     from: format!("managed-launchers/{command}"),
                     to: target,
                     mode: Ownership::TrackedCopy,

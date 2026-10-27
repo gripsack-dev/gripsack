@@ -13,7 +13,7 @@ impl NativeProfiles {
         &self,
         _ctx: &Ctx,
         journal: &store::journal::JournalRun<'_>,
-        previous: &BTreeMap<String, store::ModuleState>,
+        previous: &BTreeMap<String, store::DeploymentState>,
     ) -> Result<(), ExecError> {
         let mut destinations = self
             .profiles
@@ -108,7 +108,7 @@ pub(super) fn preview_observation(
                 store::journal::directory::ParentInspection::Missing => return Ok(None),
                 store::journal::directory::ParentInspection::Blocked(blocker) => {
                     let cap = gripsack_fs::open(home)?;
-                    for (owner, state) in &previous.modules {
+                    for (owner, state) in &previous.deployments {
                         if let Some(entry) =
                             state.entries.iter().find(|entry| entry.key() == blocker)
                         {
@@ -144,7 +144,7 @@ fn admit_directory_replacement(
     home: &Path,
 ) -> Result<(), ExecError> {
     let mut entries = BTreeMap::new();
-    for (owner, state) in &previous.modules {
+    for (owner, state) in &previous.deployments {
         for entry in &state.entries {
             let key = entry.key();
             if !key.starts_with(destination) {
@@ -199,7 +199,7 @@ fn admit_directory_replacement(
 
 fn failure(message: &str) -> ExecError {
     ExecError::Step {
-        module: "*".into(),
+        output: "*".into(),
         step: "directory".into(),
         detail: message.into(),
     }

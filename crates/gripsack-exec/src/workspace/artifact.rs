@@ -577,7 +577,7 @@ pub(super) fn write_receipt(
 }
 fn failure(detail: impl Into<String>) -> ExecError {
     ExecError::Step {
-        module: "workspace".into(),
+        output: "workspace".into(),
         step: "artifact".into(),
         detail: detail.into(),
     }

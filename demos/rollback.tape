@@ -12,7 +12,7 @@ Sleep 3s
 Type@40ms "sh /vhs/demos/demo_setup.sh && cd /tmp/myenv"
 Enter
 Sleep 4s
-Type@40ms "grip apply --host demo"
+Type@40ms "grip apply personal"
 Enter
 Sleep 4s
 Type@40ms "y"
@@ -21,7 +21,7 @@ Sleep 4s
 Type@40ms "# edit a config and apply - generation 2"
 Enter
 Sleep 2s
-Type@40ms "sed -i 's/catppuccin-mocha/nord/' editor.toml && grip apply --host demo"
+Type@40ms "sed -i 's/catppuccin-mocha/nord/' editor.toml && grip apply personal"
 Enter
 Sleep 4s
 Type@40ms "y"

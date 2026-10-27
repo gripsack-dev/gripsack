@@ -1,7 +1,9 @@
 """Destination admission, permission identity and ownership lineage."""
 
+import hashlib
+
 from test_adopt import approved_adoption
-from conftest import grip, make_env_repo, refresh_host, remove_module
+from conftest import grip, make_workspace_repo, refresh_workspace, remove_output
 
 
 def test_duplicate_destination_is_a_check_time_error(sandbox):
@@ -10,28 +12,28 @@ def test_duplicate_destination_is_a_check_time_error(sandbox):
     confdir = sandbox / "myenv" / "configs" / "x"
     confdir.mkdir(parents=True)
     (confdir / "same.conf").write_text("x\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "one": """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("one", {
-  config: { "configs/x/same.conf": trackedCopy("~/.out/same.conf") },
-});
+export default profile("one", { files: [
+    file({ source: repoFile("configs/x/same.conf"), content: identity(), destination: trackedCopyTo("~/.out/same.conf") })
+  ] });
 """,
             "two": """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("two", {
-  config: { "configs/x/same.conf": trackedCopy("~/.out/same.conf") },
-});
+export default profile("two", { files: [
+    file({ source: repoFile("configs/x/same.conf"), content: identity(), destination: trackedCopyTo("~/.out/same.conf") })
+  ] });
 """,
         },
     )
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
-    assert "E111" in out.stderr
+    assert "same.conf" in out.stderr
     assert "same.conf" in out.stderr
 
 
@@ -46,22 +48,22 @@ def test_destination_aliases_are_rejected_before_mutation(sandbox):
     alias = home / ".config/aliased/x.conf"
     alias.parent.mkdir(parents=True)
 
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "one": """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("one", {
-  config: { "configs/x/a.conf": trackedCopy("~/.config/aliased/x.conf") },
-});
+export default profile("one", { files: [
+    file({ source: repoFile("configs/x/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/aliased/x.conf") })
+  ] });
 """,
             "two": f"""
-import {{ module, trackedCopy }} from "@gripsack/core";
+import {{ file, identity, profile, repoFile, trackedCopyTo }} from "@gripsack/core";
 
-export default module("two", {{
-  config: {{ "configs/x/a.conf": trackedCopy("{alias}") }},
-}});
+export default profile("two", {{ files: [
+    file({{ source: repoFile("configs/x/a.conf"), content: identity(), destination: trackedCopyTo("{alias}") }})
+  ] }});
 """,
         },
     )
@@ -79,22 +81,22 @@ export default module("two", {{
     (sandbox / "myenv2").mkdir(exist_ok=True)
     (sandbox / "myenv2" / "configs" / "x").mkdir(parents=True, exist_ok=True)
     (sandbox / "myenv2" / "configs" / "x" / "a.conf").write_text("a\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv2",
         {
             "one": """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("one", {
-  config: { "configs/x/a.conf": trackedCopy("~/.config/aliased/x.conf") },
-});
+export default profile("one", { files: [
+    file({ source: repoFile("configs/x/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/aliased/x.conf") })
+  ] });
 """,
             "two": """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("two", {
-  config: { "configs/x/a.conf": trackedCopy("~/config-link/aliased/x.conf") },
-});
+export default profile("two", { files: [
+    file({ source: repoFile("configs/x/a.conf"), content: identity(), destination: trackedCopyTo("~/config-link/aliased/x.conf") })
+  ] });
 """,
         },
     )
@@ -104,29 +106,26 @@ export default module("two", {
     assert not alias.exists()
 
 
-def test_same_module_duplicate_destination_is_e111(sandbox):
-    """Legacy modules retain one ownership unit per physical destination;
-    sharing requires explicit workspace block identities."""
+def test_same_profile_duplicate_destination_is_rejected(sandbox):
+    """Two whole-file declarations cannot own one physical destination."""
     confdir = sandbox / "myenv" / "configs" / "x"
     confdir.mkdir(parents=True)
     (confdir / "a.conf").write_text("a\n")
     (confdir / "b.conf").write_text("b\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("one", {
-  config: {
-    "configs/x/a.conf": trackedCopy("~/.out/same.conf"),
-    "configs/x/b.conf": trackedCopy("~/.out/same.conf"),
-  },
-});
+export default profile("one", { files: [
+    file({ source: repoFile("configs/x/a.conf"), content: identity(), destination: trackedCopyTo("~/.out/same.conf") }),
+    file({ source: repoFile("configs/x/b.conf"), content: identity(), destination: trackedCopyTo("~/.out/same.conf") })
+  ] });
 """,
     )
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
-    assert "E111" in out.stderr
+    assert "same.conf" in out.stderr
 
 
 def test_executable_tracked_copy_stays_coherent(sandbox):
@@ -138,14 +137,14 @@ def test_executable_tracked_copy_stays_coherent(sandbox):
     script = confdir / "tool.sh"
     script.write_text("#!/bin/sh\necho v1\n")
     script.chmod(0o755)
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/tool.sh": trackedCopy("~/.config/demo/tool.sh") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/tool.sh"), content: identity(), destination: trackedCopyTo("~/.config/demo/tool.sh") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -173,14 +172,14 @@ def test_chmod_only_drift_is_preserved_and_warned(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.conf").write_text("a\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.conf") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -211,14 +210,14 @@ def test_rollback_restores_the_exact_mode(sandbox):
     script = confdir / "tool.sh"
     script.write_text("#!/bin/sh\necho v1\n")
     script.chmod(0o755)
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/tool.sh": trackedCopy("~/.local/bin/tool.sh") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/tool.sh"), content: identity(), destination: trackedCopyTo("~/.local/bin/tool.sh") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -248,7 +247,7 @@ def test_rename_keeps_full_lineage_authority(sandbox):
     original = sandbox / ".config/demo/a.toml"
     original.parent.mkdir(parents=True)
     original.write_text("ORIGINAL\n")
-    repo = make_env_repo(sandbox / "myenv", {})
+    repo = make_workspace_repo(sandbox / "myenv", {})
     out = approved_adoption(
         "adopt", "~/.config/demo/a.toml", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
@@ -258,23 +257,23 @@ def test_rename_keeps_full_lineage_authority(sandbox):
     # rename the module AND change the content
     adopted = repo / "configs" / "a-toml" / "a.toml"
     adopted.write_text("v2\n")
-    (repo / "modules" / "a-toml.ts").unlink()
-    (repo / "modules" / "renamed.ts").write_text(
+    (repo / "profiles" / "a-toml.ts").unlink()
+    (repo / "outputs" / "renamed.ts").write_text(
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("renamed", {
-  config: { "configs/a-toml/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("renamed", { files: [
+    file({ source: repoFile("configs/a-toml/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert "updated" in out.stdout, out.stdout
     assert original.read_text() == "v2\n"
 
-    remove_module(repo, "renamed")
+    remove_output(repo, "renamed")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert original.read_text() == "ORIGINAL\n"
@@ -290,7 +289,7 @@ def test_double_takeover_keeps_the_first_origin(sandbox):
     original = sandbox / ".config/demo/a.toml"
     original.parent.mkdir(parents=True)
     original.write_text("ORIGINAL\n")
-    repo = make_env_repo(sandbox / "myenv", {})
+    repo = make_workspace_repo(sandbox / "myenv", {})
     out = approved_adoption(
         "adopt", "~/.config/demo/a.toml", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
@@ -305,7 +304,7 @@ def test_double_takeover_keeps_the_first_origin(sandbox):
     assert out.returncode == 0, out.stderr
     assert original.read_text() == "B\n"
 
-    remove_module(repo, "a-toml")
+    remove_output(repo, "a-toml")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert original.read_text() == "ORIGINAL\n", (
@@ -324,14 +323,14 @@ def test_exec_copy_rollback_restores_v1(sandbox):
     script = confdir / "tool.sh"
     script.write_text("#!/bin/sh\necho v1\n")
     script.chmod(0o755)
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/tool.sh": trackedCopy("~/.local/bin/tool.sh") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/tool.sh"), content: identity(), destination: trackedCopyTo("~/.local/bin/tool.sh") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -356,7 +355,7 @@ def test_takeover_preserves_a_private_files_mode(sandbox):
     secret.parent.mkdir(parents=True)
     secret.write_text("token=hunter2\n")
     secret.chmod(0o600)
-    repo = make_env_repo(sandbox / "myenv", {})
+    repo = make_workspace_repo(sandbox / "myenv", {})
     out = approved_adoption(
         "adopt", "~/.config/demo/secret.conf", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
@@ -386,7 +385,7 @@ def test_preserved_copy_blocks_a_mode_switch_to_owned(sandbox):
     dest = sandbox / ".config/demo/a.conf"
     dest.parent.mkdir(parents=True)
     dest.write_text("original\n")
-    repo = make_env_repo(sandbox / "myenv", {})
+    repo = make_workspace_repo(sandbox / "myenv", {})
     out = approved_adoption(
         "adopt", "~/.config/demo/a.conf", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
@@ -400,16 +399,16 @@ def test_preserved_copy_blocks_a_mode_switch_to_owned(sandbox):
     assert "drifted" in out.stdout, out.stdout
 
     # redeclare as an owned symlink — must refuse, not clobber
-    (repo / "modules" / "a-conf.ts").write_text(
+    (repo / "profiles" / "a-conf.ts").write_text(
         """
-import { module, symlink } from "@gripsack/core";
+import { file, identity, profile, repoFile, symlinkTo } from "@gripsack/core";
 
-export default module("a-conf", {
-  install: { "configs/demo/a.conf": symlink("~/.config/demo/a.conf") },
-});
+export default profile("a-conf", { files: [
+    file({ source: repoFile("configs/demo/a.conf"), content: identity(), destination: symlinkTo("~/.config/demo/a.conf") })
+  ] });
 """
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, "the mode switch must refuse over preserved drift"
     assert "not deployed by gripsack" in out.stderr, out.stderr
@@ -426,15 +425,15 @@ def test_spelling_change_preserves_the_file_and_its_lineage(sandbox):
     home = sandbox
     absolute = home / ".config/example/value.conf"
 
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "demo": """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/value.conf": trackedCopy("~/.config/example/value.conf") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/value.conf"), content: identity(), destination: trackedCopyTo("~/.config/example/value.conf") })
+  ] });
 """
         },
     )
@@ -443,16 +442,16 @@ export default module("demo", {
     assert absolute.read_text() == "v1\n"
 
     # the reviewer's repro: same file, absolute spelling
-    (repo / "modules" / "demo.ts").write_text(
+    (repo / "outputs" / "demo.ts").write_text(
         f"""
-import {{ module, trackedCopy }} from "@gripsack/core";
+import {{ file, identity, profile, repoFile, trackedCopyTo }} from "@gripsack/core";
 
-export default module("demo", {{
-  config: {{ "configs/demo/value.conf": trackedCopy("{absolute}") }},
-}});
+export default profile("demo", {{ files: [
+    file({{ source: repoFile("configs/demo/value.conf"), content: identity(), destination: trackedCopyTo("{absolute}") }})
+  ] }});
 """
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert absolute.exists(), "a spelling change must never delete the file"
@@ -464,42 +463,41 @@ export default module("demo", {{
     assert "demo" in out.stdout
 
 
-def test_merge_block_owner_rename_leaves_no_ghost(sandbox):
-    """0026 §2b: renaming the module that owns a merge block must move
-    the block — the old module's block is pruned (block ownership is
-    per (module, dest)), not left as an unowned ghost beside the new
-    one."""
+def test_merge_block_marker_rename_leaves_no_ghost(sandbox):
+    """Changing an explicit managed-block identity prunes the old block,
+    instead of leaving an unowned ghost beside the new one."""
     confdir = sandbox / "myenv" / "configs" / "shell"
     confdir.mkdir(parents=True)
     (confdir / "block.sh").write_text("export RENAMED=1\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { merge, module } from "@gripsack/core";
+import { file, identity, managedBlock, profile, repoFile } from "@gripsack/core";
 
-export default module("shell", {
-  config: { "configs/shell/block.sh": merge("~/.bashrc") },
-});
+export default profile("shell", { files: [
+    file({ source: repoFile("configs/shell/block.sh"), content: identity(), destination: managedBlock("~/.bashrc", "shell") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     bashrc = sandbox / ".bashrc"
-    assert "module=shell" in bashrc.read_text()
+    shell_marker = "module=w1-" + hashlib.sha256(b"shell").hexdigest()
+    assert shell_marker in bashrc.read_text()
 
-    (repo / "modules" / "hello.ts").write_text(
+    (repo / "outputs" / "hello.ts").write_text(
         """
-import { merge, module } from "@gripsack/core";
+import { file, identity, managedBlock, profile, repoFile } from "@gripsack/core";
 
-export default module("terminal", {
-  config: { "configs/shell/block.sh": merge("~/.bashrc") },
-});
+export default profile("terminal", { files: [
+    file({ source: repoFile("configs/shell/block.sh"), content: identity(), destination: managedBlock("~/.bashrc", "terminal") })
+  ] });
 """
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     content = bashrc.read_text()
-    assert "module=terminal" in content
-    assert "module=shell" not in content, f"ghost block left behind: {content}"
+    assert "module=w1-" + hashlib.sha256(b"terminal").hexdigest() in content
+    assert shell_marker not in content, f"ghost block left behind: {content}"
     assert content.count("export RENAMED=1") == 1

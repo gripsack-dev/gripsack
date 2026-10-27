@@ -6,7 +6,7 @@ import shutil
 import subprocess
 
 import pytest
-from conftest import GRIP, grip, make_env_repo
+from conftest import GRIP, grip, make_workspace_repo
 from test_source_approval import (
     approve_source, checked, inspect_source, new_receipt, pause_runtime, pinned_value_repo,
     receipt_paths, rejected, value_file, value_repo, wait_ready,
@@ -72,7 +72,7 @@ def test_editor_only_sdk_is_never_admitted_as_a_pin(sandbox):
 
 @pytest.mark.parametrize("route", ["relative_read", "absolute_read", "relative_import", "absolute_import"])
 def test_excluded_bytes_are_unavailable_through_live_and_captured_paths(sandbox, route):
-    repo = make_env_repo(sandbox / "repo", {})
+    repo = make_workspace_repo(sandbox / "repo", {})
     value_file(repo / ".venv/private.ts", "EXCLUDED_SECRET")
     exclude(repo, ".venv")
     path = repo / ".venv/private.ts"
@@ -81,15 +81,15 @@ def test_excluded_bytes_are_unavailable_through_live_and_captured_paths(sandbox,
     elif route == "absolute_read":
         expression = f"Deno.readTextFileSync({json.dumps(str(path))})"
     elif route == "relative_import":
-        expression = 'await import("../.venv/private.ts")'
+        expression = 'await import("./.venv/private.ts")'
     else:
         expression = f"await import({json.dumps(path.as_uri())})"
-    (repo / "hosts/testhost.ts").write_text(
-        'import {defineEnv, module} from "@gripsack/core";\n'
+    (repo / "gripsack.ts").write_text(
+        'import {defineWorkspace, workspace, profile} from "@gripsack/core";\n'
         'let denied = false;\n'
         f'try {{ {expression}; }} catch {{ denied = true; }}\n'
         'if (!denied) throw new Error("excluded bytes became readable");\n'
-        'export default defineEnv(() => ({modules:[module("denied", {install:[]})]}));\n'
+        'export default defineWorkspace(() => workspace({outputs:[profile("denied", {files:[]})]}));\n'
     )
     reviewed = approve_source(repo)
     checked(repo, "denied", reviewed)
@@ -153,7 +153,7 @@ def test_policy_changes_and_selected_source_invalidate_exact_approval(sandbox):
     checked(repo, "after", approve_source(repo))
 
 
-@pytest.mark.parametrize("path", ["", ".", "..", "/", "/tmp", "../outside", "a/../b", "a//b", "a/", "a\\b", "*.ts/", "a**", "**", "**/**", "**b", "[a-z]/*", "env.toml", "gripsack.ts", "hosts", "hosts/testhost.ts", "gripsack.lock", "locks", "locks/testhost.lock", "Gripsack.Lock", "LOCKS/testhost.lock", "hosts/**", "**/env.toml", "**/locks/**"])
+@pytest.mark.parametrize("path", ["", ".", "..", "/", "/tmp", "../outside", "a/../b", "a//b", "a/", "a\\b", "*.ts/", "a**", "**", "**/**", "**b", "[a-z]/*", "env.toml", "gripsack.ts", "gripsack.lock", "locks", "locks/testhost.lock", "Gripsack.Lock", "LOCKS/testhost.lock", "**/env.toml", "**/locks/**"])
 def test_malformed_outside_root_and_entrypoint_exclusions_fail(sandbox, path):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "unused")
@@ -393,7 +393,7 @@ def test_policy_edit_after_capture_cannot_change_approved_evaluation(sandbox, mo
         (control / "release-1").touch()
         stdout, stderr = process.communicate(timeout=30)
         assert process.returncode == 0, stdout + stderr
-        assert json.loads(stdout)["modules"] == ["captured"]
+        assert [output["name"] for output in json.loads(stdout)["outputs"]] == ["captured"]
     finally:
         if process.poll() is None:
             process.kill()

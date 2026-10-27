@@ -2,23 +2,22 @@
 use super::{dest_capability, dest_resolves_into, observe};
 use crate::ctx::{Ctx, ExecError};
 use crate::report::ReportKind;
-use gripsack_ir::{Entry, Ownership};
 use gripsack_store as store;
+use gripsack_store::{DeploymentEntry, Ownership};
 use std::path::Path;
 
 pub(crate) struct DeploymentInput<'a> {
     pub journal: &'a store::journal::JournalRun<'a>,
     pub owner: &'a str,
     pub store_path: &'a Path,
-    pub entry: &'a Entry,
+    pub entry: &'a DeploymentEntry,
     pub previous: &'a std::collections::BTreeMap<store::OwnershipKey, &'a store::DeployedEntry>,
-    pub version: Option<&'a str>,
     pub block_id: Option<&'a store::ManagedBlockId>,
     pub migration: Option<&'a super::Migration>,
 }
 
-/// One content-backed file; workspace and legacy callers share every
-/// observation, authority decision, mutation and receipt constructor.
+/// One content-backed workspace file through observation, authority,
+/// mutation, and receipt construction.
 pub(crate) fn deploy_entry(
     out: &mut Vec<store::DeployedEntry>,
     ctx: &Ctx,
@@ -26,37 +25,23 @@ pub(crate) fn deploy_entry(
 ) -> Result<(String, ReportKind), ExecError> {
     let DeploymentInput {
         journal,
-        owner: module,
+        owner: output,
         store_path,
         entry,
         previous,
-        version,
         block_id,
         migration,
     } = input;
     let ownership = store::StoredOwnership::for_entry(&entry.mode, block_id)?;
-    let prepared =
-        crate::source::payload_source(store_path, &entry.from, version).map_err(|error| {
-            ExecError::Step {
-                module: module.into(),
-                step: "deploy".into(),
-                detail: error.to_string(),
-            }
-        })?;
-    let from = prepared.relative;
-    // Entry content is the store payload — always. The publish step
-    // stages every repo-referenced `from` into the store, so a store
-    // miss means a stale store (e.g. a config tree that gained a file
-    // under an unmoved pin): that is an integrity failure, never a
-    // reason to reach into the repo checkout and deploy a path the
-    // store never published.
-    let source = prepared.path;
+    let from = &entry.from;
+    // Prepared profile paths always name immutable, already published content.
+    let source = store_path.join(from);
     // the canonical physical key (0030 §P0-1): one observation, one
     // transition, one journal key per physical object
     let dest =
         store::journal::directory::canonical_destination(journal, &entry.to).map_err(|e| {
             ExecError::Step {
-                module: module.to_string(),
+                output: output.to_string(),
                 step: "deploy".into(),
                 detail: format!("destination {:?}: {e}", entry.to),
             }
@@ -64,28 +49,16 @@ pub(crate) fn deploy_entry(
     let key = store::OwnershipKey::new(
         dest.clone(),
         (entry.mode == Ownership::Merge)
-            .then(|| block_id.map_or(module, store::ManagedBlockId::as_str)),
+            .then(|| block_id.map_or(output, store::ManagedBlockId::as_str)),
     );
     let prev = previous.get(&key).copied();
     let fail = |detail: String| ExecError::Step {
-        module: module.to_string(),
+        output: output.to_string(),
         step: "deploy".into(),
         detail,
     };
-    // A destination resolving INTO the env repo turns a deploy into a
-    // delete: a symlinked ancestor dir (a leftover from another
-    // provisioner) lands the write inside the checkout and the module
-    // eats its own source. The repo is never a legitimate target.
-    //
-    // One exception: an `owned` destination that is ITSELF a symlink
-    // into the repo — almost certainly an artifact an older gripsack
-    // wrote when config deployed straight from the checkout. Owned
-    // semantics replace the link (nothing is ever written THROUGH
-    // it), so swapping it for a store link is safe and is the only
-    // migration path forward; refusing here stranded every config
-    // module that predates the store (first apply after upgrade,
-    // forever, with an error that pointed at the module instead of
-    // the stale link).
+    // Replacing a destination symlink never writes through it, but no
+    // destination entry or ancestor may reside inside captured source.
     let dest_is_symlink = dest
         .symlink_metadata()
         .is_ok_and(|m| m.file_type().is_symlink());
@@ -102,9 +75,7 @@ pub(crate) fn deploy_entry(
             .is_some_and(|root| dest_resolves_into(&dest, root));
     if inside_source_entry || (resolves_to_source && !owned_replace_ok) {
         let hint = if dest_is_symlink && !inside_source_entry {
-            "\n  hint: the destination is a symlink into the repo — likely left by an \
-             older gripsack that deployed config from the checkout; remove it and \
-             re-apply, or declare the entry `owned` so gripsack replaces it"
+            "\n  hint: remove the symlink into source or use symlink ownership to replace it"
         } else {
             ""
         };
@@ -112,15 +83,6 @@ pub(crate) fn deploy_entry(
             "{} resolves inside the env repo or captured source ({}) — refusing to deploy into source{hint}",
             entry.to,
             ctx.repository.identity().display()
-        )));
-    }
-    // Expansion is total: a placeholder surviving to deploy means a
-    // {version} with no locked tag or a substitution bug — never a
-    // path worth linking
-    if from.contains('{') {
-        return Err(fail(format!(
-            "{} still contains a placeholder after expansion (from {})",
-            from, entry.from
         )));
     }
     if !source.exists() {
@@ -164,7 +126,7 @@ pub(crate) fn deploy_entry(
     // the ONE planner (0034): the op IS the decision — plan renders
     // it, apply executes it, rollback constructs it
     let view = crate::ops::DestView {
-        module,
+        output,
         entry,
         dest: dest.clone(),
         home: &ctx.home,
@@ -244,7 +206,7 @@ pub(crate) fn deploy_entry(
     // op as "needs --take-over")
     if op.authority() == Some(crate::ops::Authority::Foreign) {
         return Err(ExecError::Step {
-            module: module.to_string(),
+            output: output.to_string(),
             step: "deploy".into(),
             detail: format!(
                 "{} exists and was not deployed by gripsack — move it away or use --take-over",
@@ -260,7 +222,7 @@ pub(crate) fn deploy_entry(
             out.push(store::DeployedEntry {
                 // the EXPANDED key — rollback and store verify re-join
                 // it against the store path verbatim
-                from: std::path::PathBuf::from(&from),
+                from: std::path::PathBuf::from(from),
                 to: entry.to.clone(),
                 key: Some(dest.clone()),
                 ownership,

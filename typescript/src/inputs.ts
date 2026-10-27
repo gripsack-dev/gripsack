@@ -7,11 +7,10 @@ import type { HostFacts } from "./facts.ts";
 
 /** The eval inputs, version 1. */
 export interface Inputs {
-  /** Host entrypoint name — selects `hosts/<host>.ts`. */
+  /** Admitted host identity for workspace settings and lock selection. */
   host: string;
   facts: HostFacts;
-  /** CLI `--tags` merged with whatever the core already knows; the
-   *  entrypoint's own tags are unioned in at emit (`mergeTags`). */
+  /** Tags injected by the core, available to ordinary workspace composition. */
   tags: string[];
   /** Bound probe results, keyed `"<kind>:<arg>"`; empty in stage 1. */
   probes: Record<string, boolean>;

@@ -44,24 +44,11 @@ fn lock(value: &WorkspaceMutationLock, out: &mut Vec<Diagnostic>) {
         );
     }
 }
-/// The v6 acquisition grammar (A3): per-variant provenance spans, the
-/// legacy Brew/Pixi fetch spellings rejected (superseded by the Conda
-/// lanes), and bounded lexical checks on Conda/Pixi declarations.
+/// Acquisition declarations carry provenance and bounded ecosystem policies.
 fn source(value: &AcquisitionSource, target: &WorkspacePlatform, out: &mut Vec<Diagnostic>) {
     span(value.span(), out);
     match value {
-        AcquisitionSource::Fetch(fetch) => {
-            if matches!(
-                fetch.fetch,
-                crate::FetchSpec::Brew { .. } | crate::FetchSpec::Pixi { .. }
-            ) {
-                invalid(
-                    out,
-                    value.span(),
-                    "brew/pixi fetch spellings are superseded by conda_environment/pixi_lock sources",
-                );
-            }
-        }
+        AcquisitionSource::Fetch(_) => {}
         AcquisitionSource::CondaEnvironment(source) => {
             if source.channels.is_empty()
                 || source

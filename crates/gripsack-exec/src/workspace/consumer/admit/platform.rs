@@ -11,11 +11,9 @@ pub(super) fn admit(
     span: &Span,
 ) -> Result<(), ExecError> {
     for loader in &system.loaders {
-        let expected = match (host.os, host.abi) {
-            (TargetOs::Macos, Some(BinaryAbi::Darwin)) => Some("/usr/lib/dyld"),
-            (_, Some(abi)) => platform_loader(host.os, host.arch, abi),
-            _ => None,
-        };
+        let expected = host
+            .abi
+            .and_then(|abi| platform_loader(host.os, host.arch, abi));
         if expected != Some(loader.as_str()) {
             return Err(gate(
                 span,
@@ -24,14 +22,6 @@ pub(super) fn admit(
         }
     }
     for name in &system.libraries {
-        if host.os == TargetOs::Macos
-            && host.abi == Some(BinaryAbi::Darwin)
-            && super::macho::system_library(name)
-        {
-            // Modern macOS system libraries live in the dyld shared cache;
-            // a nonexistent on-disk dylib is not evidence that they are absent.
-            continue;
-        }
         let path=library(name,host,span)?.ok_or_else(|| gate(span,format!(
             "Conda prefix requires {name:?} outside the explicit OS runtime; include that library in the frozen package closure"
         )))?;
@@ -54,7 +44,10 @@ pub(super) fn library(
     host: &HostTarget,
     span: &Span,
 ) -> Result<Option<elf::SelectedLibrary>, ExecError> {
-    if host.os != TargetOs::Linux || host.abi != Some(BinaryAbi::Gnu) {
+    if host.os != TargetOs::Linux
+        || host.arch != TargetArch::X86_64
+        || host.abi != Some(BinaryAbi::Gnu)
+    {
         return Ok(None);
     }
     let loader = platform_loader(host.os, host.arch, BinaryAbi::Gnu).expect("supported GNU target");
@@ -81,24 +74,14 @@ pub(super) fn library(
     ) {
         return Ok(None);
     }
-    let directories = match host.arch {
-        TargetArch::X86_64 => [
-            "/lib/x86_64-linux-gnu",
-            "/usr/lib/x86_64-linux-gnu",
-            "/lib64",
-            "/usr/lib64",
-            "/lib",
-            "/usr/lib",
-        ],
-        TargetArch::Aarch64 => [
-            "/lib/aarch64-linux-gnu",
-            "/usr/lib/aarch64-linux-gnu",
-            "/lib64",
-            "/usr/lib64",
-            "/lib",
-            "/usr/lib",
-        ],
-    };
+    let directories = [
+        "/lib/x86_64-linux-gnu",
+        "/usr/lib/x86_64-linux-gnu",
+        "/lib64",
+        "/usr/lib64",
+        "/lib",
+        "/usr/lib",
+    ];
     for directory in directories {
         match elf::SelectedLibrary::new(Path::new(directory).join(name)) {
             Ok(path) => return Ok(Some(path)),

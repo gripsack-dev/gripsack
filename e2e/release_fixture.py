@@ -30,7 +30,7 @@ def fixture_manifest(version, artifacts):
         "candidate_id": "c" * 64, "qualification_sha256": "d" * 64, "recipe_sha256": "e" * 64,
         "platform": "linux-x86_64", "signer": {"workflow": schema.WORKFLOW, "ref": f"refs/tags/core-v{version}"},
         "compatible": {"core": version, "sdk": version, "bridge": version, "conda": version,
-                       "ir": {"writer": 8, "readers": [3, 4, 5, 6, 7, 8]},
+                       "ir": {"writer": 9, "readers": [9]},
                        "helper_pins": {role: hashlib.sha256(data).hexdigest() for _, data, role in artifacts
                                        if role in {"bridge", "conda"}}},
         "gates": [{"id": name, "receipt_sha256": "f" * 64} for name in sorted(schema.REQUIRED_GATES)],

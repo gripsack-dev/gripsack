@@ -20,30 +20,27 @@ impl NativeProfiles {
         home: &std::path::Path,
         selected: &[String],
         limits: gripsack_fetch::FetchLimits,
-        migrate_from: Option<gripsack_store::GenerationId>,
-    ) -> Result<Option<Self>, ExecError> {
-        let predecessor = Self::migration_predecessor(home, migrate_from)?;
+    ) -> Result<Self, ExecError> {
+        let predecessor = Self::migration_predecessor(home)?;
         let mut origins = std::collections::BTreeSet::new();
-        if let Some(workspace) = &ir.workspace_catalog {
-            for output in &workspace.outputs {
-                if !selected.is_empty() && !selected.iter().any(|name| name == output.name()) {
-                    continue;
-                }
-                let WorkspaceOutput::Profile(profile) = output else {
-                    continue;
-                };
-                admit(profile)?;
-                if let Some(environment) = &profile.environment {
-                    origins.insert(environment.as_str());
-                }
-                for file in &profile.files {
-                    if let Some(
-                        WorkspaceSource::ArtifactFile { output, .. }
-                        | WorkspaceSource::Tree { output, .. },
-                    ) = &file.source
-                    {
-                        origins.insert(output.as_str());
-                    }
+        for output in &ir.workspace.outputs {
+            if !selected.is_empty() && !selected.iter().any(|name| name == output.name()) {
+                continue;
+            }
+            let WorkspaceOutput::Profile(profile) = output else {
+                continue;
+            };
+            admit(profile)?;
+            if let Some(environment) = &profile.environment {
+                origins.insert(environment.as_str());
+            }
+            for file in &profile.files {
+                if let Some(
+                    WorkspaceSource::ArtifactFile { output, .. }
+                    | WorkspaceSource::Tree { output, .. },
+                ) = &file.source
+                {
+                    origins.insert(output.as_str());
                 }
             }
         }
@@ -66,11 +63,8 @@ impl NativeProfiles {
 pub(crate) fn prepare_apply(
     ir: &Ir,
     ctx: &Ctx,
-) -> Result<Option<(LifecycleSession, NativeProfiles)>, ExecError> {
-    let Some(workspace) = &ir.workspace_catalog else {
-        return Ok(None);
-    };
-    let predecessor = NativeProfiles::migration_predecessor(&ctx.home, ctx.migrate_from)?;
+) -> Result<(LifecycleSession, NativeProfiles), ExecError> {
+    let workspace = &ir.workspace;
     let mut selected = Vec::new();
     let mut needs_production = false;
     for output in &workspace.outputs {
@@ -113,7 +107,16 @@ pub(crate) fn prepare_apply(
         ));
     }
     if !needs_production {
-        return Ok(None);
+        let session = LifecycleSession::acquire(&ctx.home)?;
+        let native = NativeProfiles::prepare(
+            ir,
+            &ctx.repository,
+            &ctx.home,
+            &ctx.only,
+            ctx.fetch.limits(),
+            None,
+        )?;
+        return Ok((session, native));
     }
     let environment = gripsack_process::OperatorEnvironment::capture()?;
     let options = BuildOptions {
@@ -123,6 +126,7 @@ pub(crate) fn prepare_apply(
         deadline: Instant::now() + gripsack_process::Limits::default().timeout,
     };
     let mut held = realize::realize_held(ir, ctx, &options, &selected)?;
+    let predecessor = NativeProfiles::migration_predecessor(&ctx.home)?;
     let check_retention = if workspace.outputs.iter().any(|output| {
         matches!(output, WorkspaceOutput::Profile(profile)
             if selected.contains(&profile.name) && profile.files.iter().any(|file| !file.checks.is_empty()))
@@ -151,13 +155,7 @@ pub(crate) fn prepare_apply(
         options.deadline,
         predecessor.as_ref(),
         protection.as_ref(),
-    )?
-    .ok_or_else(|| {
-        unavailable(
-            &workspace.span,
-            "current profile catalog lost its native adapter",
-        )
-    })?;
+    )?;
     for (name, paths) in &held.closures {
         let profile = native.profiles.get_mut(name).ok_or_else(|| {
             unavailable(
@@ -170,7 +168,7 @@ pub(crate) fn prepare_apply(
     // The still-held lifecycle session now protects all immutable objects until
     // the caller's generation is durable. No permanent Output root is leaked.
     held.finish_build()?;
-    Ok(Some((held.session, native)))
+    Ok((held.session, native))
 }
 
 pub(super) fn admit(profile: &ProfileOutput) -> Result<(), ExecError> {

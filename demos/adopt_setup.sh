@@ -14,3 +14,16 @@ EOF
 cat > ~/.config/helix/languages.toml <<'EOF'
 # hand-tuned over the years
 EOF
+
+mkdir -p /tmp/myenv/config
+cp ~/.config/helix/config.toml /tmp/myenv/config/helix.toml
+cat > /tmp/myenv/gripsack.ts <<'EOF'
+import { defineWorkspace, file, identity, profile, repoFile, trackedCopyTo, workspace } from "@gripsack/core";
+const editor = profile("editor", {
+  files: [file({
+    source: repoFile("config/helix.toml"), content: identity(),
+    destination: trackedCopyTo("~/.config/helix/config.toml"),
+  })],
+});
+export default defineWorkspace(() => workspace({ outputs: [editor] }));
+EOF

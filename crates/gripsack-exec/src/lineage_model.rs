@@ -22,7 +22,7 @@ type Content = u8;
 /// Which spellings of the ONE physical cell the repo currently
 /// declares (0030 §P0-1): `~/x` and `$HOME/x` are two logical keys
 /// for one directory entry. The lineage is keyed by the CELL, never
-/// the spelling — a module that switches spellings mid-epoch keeps
+/// the spelling — a deployment that switches spellings mid-epoch keeps
 /// its origin (destination-keyed `inherit_priors`).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum Declaration {
@@ -96,8 +96,8 @@ enum Action {
     /// The user chmods the live file without touching its bytes
     /// (0031) — drift, not an invisible no-op.
     ExternalChmod,
-    /// The repo gains spelling A of the cell (a module appears, or a
-    /// second module aliases the same cell).
+    /// The repo gains spelling A of the cell (a deployment appears, or a
+    /// second deployment aliases the same cell).
     DeclareA,
     /// The repo gains spelling B.
     DeclareB,

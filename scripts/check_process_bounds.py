@@ -50,16 +50,10 @@ EXPECTED = (
     'tests::pressure::early_stdin_close_is_not_an_io_error',
     'tests::pressure::blocked_input_does_not_block_response_or_deadline',
 )
-PLATFORM_CASES = {
-    'linux': (
-        'tests::native::legacy_descriptor_sweep_hides_inherited_canary',
-        'tests::native::legacy_memfd_flag_support_keeps_sealed_execution',
-    ),
-    'darwin': (
-        'sys::macos::tests::unreaped_zombie_group_is_distinct_from_permission_denial',
-        'sys::macos::tests::live_group_and_expired_inventory_are_not_dead_group_evidence',
-    ),
-}
+LINUX_CASES = (
+    'tests::native::legacy_descriptor_sweep_hides_inherited_canary',
+    'tests::native::legacy_memfd_flag_support_keeps_sealed_execution',
+)
 
 
 @dataclass(frozen=True)
@@ -114,35 +108,10 @@ MUTANTS = (
            'if error.raw_os_error() == Some(libc::ESRCH) {',
            'if matches!(error.raw_os_error(), Some(libc::ESRCH) | Some(libc::EPERM)) {',
            'permission', 'denied_group_signal_was_reported_successfully'),
-)
-# Linux records the FIRST denied signal in terminate() before finish(); the
-# retained receipt is the clone made from the raw errno. Darwin's first
-# permission denial instead surfaces inside Guard::finish, which records the
-# original error directly, so the clone mutant is inert there: each platform
-# gets the mutant that targets its actual errno-retention branch, observed by
-# the same raw-errno fixture assertion (cleanup_errno_was_lost).
-LINUX_MUTANTS = (
     Mutant('signal-errno-receipt', LIFECYCLE,
            'Some(code) => io::Error::from_raw_os_error(code),',
            'Some(_) => io::Error::new(error.kind(), error.to_string()),',
            'permission', 'cleanup_errno_was_lost'),
-)
-DARWIN_MUTANTS = (
-    Mutant('darwin-cleanup-errno-receipt', LIFECYCLE,
-           '                && e.kind() != io::ErrorKind::Interrupted\n'
-           '            {\n'
-           '                record(&mut error, e);\n'
-           '            }',
-           '                && e.kind() != io::ErrorKind::Interrupted\n'
-           '            {\n'
-           '                record(&mut error, io::Error::new(e.kind(), e.to_string()));\n'
-           '            }',
-           'permission', 'cleanup_errno_was_lost'),
-    Mutant('darwin-live-group-observer', PROCESS / 'sys/macos.rs',
-           'if info.pbi_status != libc::SZOMB {',
-           'if info.pbi_status == libc::SZOMB {',
-           'sys::macos::tests::live_group_and_expired_inventory_are_not_dead_group_evidence',
-           'darwin_live_group_reported_dead'),
 )
 
 
@@ -190,16 +159,14 @@ def permission(root: Path, target: Path, *, live: bool):
     preexec = None
     if live:
         command.append('--live-credential-change')
-    if sys.platform == 'darwin':
-        command = ['/usr/bin/sudo', '-n', '--', *command]
-    elif not live:
+    if not live:
         preexec = drop_kill_capability
     return run(root, target, command, timeout=60, preexec=preexec)
 
 
 def main():
-    if sys.platform not in PLATFORM_CASES:
-        raise SystemExit('FAIL: process qualification requires Linux or native macOS')
+    if sys.platform != 'linux':
+        raise SystemExit('FAIL: process qualification requires Linux/WSL x86_64')
     if sys.platform == 'linux' and os.geteuid() != 0:
         raise SystemExit('FAIL: Linux permission qualification requires isolated container root')
     with tempfile.TemporaryDirectory(prefix='gripsack-process-bounds-') as temporary:
@@ -221,7 +188,7 @@ def main():
             (tree / path).read_bytes()).hexdigest() for path in sorted(inputs)}, sort_keys=True), flush=True)
         target = temporary / 'target'
         positive = test(tree, target)
-        expected = EXPECTED + PLATFORM_CASES[sys.platform]
+        expected = EXPECTED + LINUX_CASES
         summary = re.search(r'test result: ok\. (\d+) passed; 0 failed; 0 ignored', positive.stdout)
         if positive.returncode or summary is None or int(summary[1]) < len(expected):
             raise SystemExit('FAIL: complete process oracle set did not pass')
@@ -231,14 +198,13 @@ def main():
         example = tree / 'crates/gripsack-process/examples/signal_denial.rs'
         example.parent.mkdir(exist_ok=True)
         shutil.copy2(tree / FIXTURE, example)
-        modes = (False, True) if sys.platform == 'linux' else (True,)
+        modes = (False, True)
         for live in modes:
             result = permission(tree, target, live=live)
             if result.returncode or f'SIGNAL_DENIAL_PROPERTY=passed live={str(live).lower()}' not in result.stdout:
                 raise SystemExit('FAIL: real signal permission boundary did not pass')
         print(f'PROCESS_BOUNDS_PROPERTIES={len(expected) + len(modes)}', flush=True)
-        mutants = MUTANTS + (DARWIN_MUTANTS if sys.platform == 'darwin' else LINUX_MUTANTS)
-        for mutant in mutants:
+        for mutant in MUTANTS:
             source = tree / mutant.source
             original = source.read_text()
             if original.count(mutant.before) != 1:
@@ -246,7 +212,7 @@ def main():
             source.write_text(original.replace(mutant.before, mutant.after))
             try:
                 if mutant.case == 'permission':
-                    negative = permission(tree, target, live=sys.platform == 'darwin')
+                    negative = permission(tree, target, live=False)
                     failed = negative.returncode != 0 and mutant.diagnostic in negative.stdout
                 else:
                     negative = test(tree, target, mutant.case)
@@ -259,7 +225,7 @@ def main():
             if not failed or 'could not compile' in negative.stdout:
                 raise SystemExit(f'FAIL: {mutant.name} missed its named process effect oracle')
             print(f'calibration: {mutant.name} rejected by {mutant.case}', flush=True)
-        print(f'PROCESS_BOUNDS_MUTANTS={len(mutants)}', flush=True)
+        print(f'PROCESS_BOUNDS_MUTANTS={len(MUTANTS)}', flush=True)
         print('Process bounds gate: OK', flush=True)
 
 

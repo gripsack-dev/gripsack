@@ -6,6 +6,24 @@ fn classify_bytes(bytes: &[u8]) -> Result<ExecutableMetadata, LayoutError> {
     classify(&mut Cursor::new(bytes.to_vec()))
 }
 
+#[test]
+fn foreign_macho_magic_is_retained_only_for_rejection() {
+    for magic in [
+        [0xfe, 0xed, 0xfa, 0xce],
+        [0xfe, 0xed, 0xfa, 0xcf],
+        [0xce, 0xfa, 0xed, 0xfe],
+        [0xcf, 0xfa, 0xed, 0xfe],
+    ] {
+        assert_eq!(
+            classify_bytes(&magic).unwrap(),
+            ExecutableMetadata {
+                format: Some(ExecutableFormat::MachO),
+                ..ExecutableMetadata::default()
+            }
+        );
+    }
+}
+
 fn elf64(phdrs: &[(u32, u64, u64, u64)], dynamic: Option<&[u8]>) -> Vec<u8> {
     // (type, offset, vaddr, filesz) program headers at 0x40; optional
     // dynamic bytes appended after the table.

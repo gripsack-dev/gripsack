@@ -1,6 +1,6 @@
 """Apply and rollback recovery across interrupted transactions."""
 
-from conftest import grip, make_env_repo, make_tarball, refresh_host
+from conftest import native_target, grip, make_workspace_repo, make_tarball, refresh_workspace
 
 
 def test_torn_run_marker_fails_closed(sandbox):
@@ -11,14 +11,14 @@ def test_torn_run_marker_fails_closed(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """,
     )
     home = sandbox / ".local/share/gripsack"
@@ -52,21 +52,19 @@ export default module("demo", {
 
 
 def test_failed_apply_rolls_back_this_runs_deployments(sandbox):
-    """0001 §9 / review finding E1: a mid-graph failure must leave no
-    half-applied deployment — the flip never happens, and every
-    destination the failed run touched returns to the previous
-    generation's state."""
+    """A deployed pre-flip check observes both writes, then fails: every
+    destination is compensated and the previous generation stays selected."""
     confdir = sandbox / "myenv" / "configs" / "aaa"
     confdir.mkdir(parents=True)
     (confdir / "a.conf").write_text("v1\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("aaa", {
-  config: { "configs/aaa/a.conf": trackedCopy("~/.out/a.conf") },
-});
+export default profile("aaa", { files: [
+    file({ source: repoFile("configs/aaa/a.conf"), content: identity(), destination: trackedCopyTo("~/.out/a.conf") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -75,23 +73,29 @@ export default module("aaa", {
     current = sandbox / ".local/share/gripsack/current"
     previous_selection = current.readlink()
 
-    # v2 of aaa + a module that fails at deploy (payload lacks the
-    # entry — a deploy-time failure E110 can't catch)
+    # Fail after both destinations have actually changed, not during preparation.
     (confdir / "a.conf").write_text("v2\n")
-    payload = make_tarball(sandbox / "b.tar.gz", {"bin/b": b"#!/bin/sh\n"})
-    (repo / "modules" / "bbb.ts").write_text(
+    marker = sandbox / "check-observed-both-writes"
+    (repo / "outputs" / "bbb.ts").write_text(
         f"""
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
+import {{ check, file, literalText, profile, runBash, trackedCopyTo }} from "@gripsack/core";
 
-export default module("bbb", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/MISSING": symlink("~/.out/b") }},
-}});
+export default [
+  check("reject-candidate", {{ subject: "bbb", run: runBash({{
+    body: 'test "$(cat "{sandbox}/.out/a.conf")" = v2 && test "$(cat "{sandbox}/.out/b")" = candidate && touch "{marker}"; exit 1'
+  }}) }}),
+  profile("bbb", {{ files: [file({{
+    content: literalText("candidate"),
+    destination: trackedCopyTo("~/.out/b"),
+    checks: [{{ check: "reject-candidate", subject: "deployed", stage: "pre_flip" }}],
+  }})] }}),
+];
 """
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
+    assert marker.exists(), "the failing check observed both new destination contents"
     assert current.readlink() == previous_selection, "failed apply must not select another transaction"
     # This run's deployments are rolled back exactly.
     assert (sandbox / ".out/a.conf").read_text() == "v1\n"
@@ -107,17 +111,15 @@ def test_kill_between_prune_and_flip_recovers(sandbox, monkeypatch):
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
     (confdir / "b.toml").write_text("b\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: {
-    "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml"),
-    "configs/demo/b.toml": trackedCopy("~/.config/demo/b.toml"),
-  },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") }),
+    file({ source: repoFile("configs/demo/b.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/b.toml") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -126,13 +128,13 @@ export default module("demo", {
     assert dest_b.read_text() == "b\n"
 
     # undeclare b, then die right after the prune, before the flip
-    (repo / "modules" / "hello.ts").write_text(
+    (repo / "outputs" / "hello.ts").write_text(
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """
     )
     monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "after-prune")
@@ -162,14 +164,14 @@ def test_kill_mid_rollback_recovers(sandbox, monkeypatch):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("gen1\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -209,32 +211,32 @@ def test_module_rename_rollback_journals_once(sandbox, monkeypatch):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("one\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     # gen 2: new content AND a new module name for the same dest
     (confdir / "a.toml").write_text("two\n")
-    (repo / "modules" / "hello.ts").write_text(
+    (repo / "outputs" / "hello.ts").write_text(
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("renamed", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("renamed", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """
     )
     # the rename makes the dest foreign to the new module — take it
     # over so gen 2 really deploys "two" (with "one" as its prior)
-    refresh_host(repo)
+    refresh_workspace(repo)
     out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
     assert out.returncode == 0, out.stderr
     dest = sandbox / ".config/demo/a.toml"
@@ -270,14 +272,14 @@ def test_roll_forward_kill_recovers_as_uncommitted(sandbox, monkeypatch):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("one\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """,
     )
     grip("apply", "--host", "testhost", cwd=repo)
@@ -308,48 +310,54 @@ export default module("demo", {
     )
 
 
-def test_failed_apply_rollback_leaves_no_placeholder_links(sandbox):
-    """A mid-graph failure rolls this run's deploys back to the
-    previous generation — restored links must be the EXPANDED paths
-    the generation actually deployed, never placeholder-literal."""
-    import sys
-    os_dir = "darwin" if sys.platform == "darwin" else "linux"
-    payload = make_tarball(sandbox / "a.tar.gz", {f"{os_dir}/a.txt": b"a\n"})
-    repo = make_env_repo(
+def test_failed_apply_restores_previous_owned_link(sandbox):
+    """A failed deployed check restores the exact prior immutable store link."""
+    payload = make_tarball(sandbox / "a.tar.gz", {"a.txt": b"original\n"})
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default module("aa", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "{{os}}/a.txt": symlink("~/.local/bin/aa") }},
-}});
+export default [pkg("aa-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("aa", {{ files: [
+    file({{ source: artifactFile("aa-payload", "a.txt"), content: identity(), destination: symlinkTo("~/.local/bin/aa") }})
+  ] }})];
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     link = sandbox / ".local/bin/aa"
-    assert "{" not in str(link.readlink())
+    previous_target = link.readlink()
+    current = sandbox / ".local/share/gripsack/current"
+    previous_selection = current.readlink()
+    updated = make_tarball(sandbox / "a-v2.tar.gz", {"a.txt": b"candidate\n"})
+    declaration = repo / "outputs/hello.ts"
+    declaration.write_text(declaration.read_text().replace(str(payload), str(updated)))
+    marker = sandbox / "check-observed-new-link"
+    (repo / "outputs" / "zz.ts").write_text(
+        f"""
+import {{ check, file, literalText, profile, runBash, trackedCopyTo }} from "@gripsack/core";
 
-    # add a module whose fetch fails -> the apply aborts mid-graph and
-    # rolls back aa's redeploy to the previous generation
-    (repo / "modules" / "zz.ts").write_text(
-        """
-import { fileFetch, module, symlink } from "@gripsack/core";
-
-export default module("zz", {
-  fetch: fileFetch("%s/does-not-exist.tar.gz"),
-  install: { "x": symlink("~/.local/bin/zz") },
-});
+export default [
+  check("reject-link", {{ subject: "zz", run: runBash({{
+    body: 'test "$(cat "{link}")" = candidate && touch "{marker}"; exit 1'
+  }}) }}),
+  profile("zz", {{ files: [file({{
+    content: literalText("candidate"),
+    destination: trackedCopyTo("~/.local/bin/zz"),
+    checks: [{{ check: "reject-link", subject: "deployed", stage: "pre_flip" }}],
+  }})] }}),
+];
 """
-        % sandbox
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, out.stdout
-    target = str(link.readlink())
-    assert "{" not in target, f"rollback wrote a placeholder-literal link: {target}"
-    assert link.exists(), f"rollback left a dangling link: {target}"
+    assert marker.exists(), "the candidate link was deployed before the failure"
+    assert link.readlink() == previous_target
+    assert link.read_text() == "original\n"
+    assert current.readlink() == previous_selection
+    assert not (sandbox / ".local/bin/zz").exists()
 
 
 def canonical_sha(data: bytes, mode: int = 0o644) -> str:
@@ -376,15 +384,15 @@ def test_apply_recovers_from_an_interrupted_run(sandbox):
     payload = make_tarball(
         sandbox / "a.tar.gz", {"conf.txt": b"v=new\n"}
     )
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ fileFetch, module, trackedCopy }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, trackedCopyTo }} from "@gripsack/core";
 
-export default module("a", {{
-  fetch: fileFetch("{payload}"),
-  config: {{ "conf.txt": trackedCopy("~/.config/a/conf.txt") }},
-}});
+export default [pkg("a-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("a", {{ files: [
+    file({{ source: artifactFile("a-payload", "conf.txt"), content: identity(), destination: trackedCopyTo("~/.config/a/conf.txt") }})
+  ] }})];
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -432,15 +440,15 @@ def test_recovery_leaves_user_edits_alone(sandbox):
     import json
 
     payload = make_tarball(sandbox / "a.tar.gz", {"conf.txt": b"v=new\n"})
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ fileFetch, module, trackedCopy }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, trackedCopyTo }} from "@gripsack/core";
 
-export default module("a", {{
-  fetch: fileFetch("{payload}"),
-  config: {{ "conf.txt": trackedCopy("~/.config/a/conf.txt") }},
-}});
+export default [pkg("a-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("a", {{ files: [
+    file({{ source: artifactFile("a-payload", "conf.txt"), content: identity(), destination: trackedCopyTo("~/.config/a/conf.txt") }})
+  ] }})];
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -481,15 +489,15 @@ def test_legacy_untagged_entry_fails_closed(sandbox):
     import json
 
     payload = make_tarball(sandbox / "a.tar.gz", {"conf.txt": b"v=new\n"})
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ fileFetch, module, trackedCopy }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, trackedCopyTo }} from "@gripsack/core";
 
-export default module("a", {{
-  fetch: fileFetch("{payload}"),
-  config: {{ "conf.txt": trackedCopy("~/.config/a/conf.txt") }},
-}});
+export default [pkg("a-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("a", {{ files: [
+    file({{ source: artifactFile("a-payload", "conf.txt"), content: identity(), destination: trackedCopyTo("~/.config/a/conf.txt") }})
+  ] }})];
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)

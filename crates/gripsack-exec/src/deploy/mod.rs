@@ -1,5 +1,22 @@
 //! Deploy: ownership modes, drift, destinations (0001 §3.7).
 
+mod destinations;
+pub(crate) use destinations::{DestinationDeclaration, check_destinations_with};
+
+/// Ownership lineage follows destinations across profile renames.
+pub(crate) fn previous_ownership(
+    previous: &std::collections::BTreeMap<String, gripsack_store::DeploymentState>,
+) -> std::collections::BTreeMap<gripsack_store::OwnershipKey, &gripsack_store::DeployedEntry> {
+    previous
+        .iter()
+        .flat_map(|(name, state)| {
+            state
+                .entries
+                .iter()
+                .map(move |entry| (entry.ownership_key(name), entry))
+        })
+        .collect()
+}
 pub(crate) mod directory_retirement;
 mod entry;
 pub(crate) use entry::{DeploymentInput, deploy_entry};
@@ -12,9 +29,9 @@ pub use remove::{remove_entry_deployed, remove_or_restore_prior};
 pub(crate) use restore::intact_deployed;
 
 #[cfg(test)]
-use gripsack_ir::Ownership;
-#[cfg(test)]
 use gripsack_store as store;
+#[cfg(test)]
+use gripsack_store::Ownership;
 use std::path::Path;
 
 /// no second observation can silently rebase the precondition.

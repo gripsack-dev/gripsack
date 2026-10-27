@@ -1,8 +1,14 @@
-"""0041: authoring-style parity, real ordering, output gates and honest preview."""
+"""Workspace preview fidelity, source admission and retained permissions.
+
+Authoring-style parity, universal step references/resources/retries and old
+receipt upgrades no longer exist in IR9. Workspace graph/check admission is
+covered in test_workspace_contract and test_workspace_file_checks.
+"""
 import json
 from pathlib import Path
+
 import pytest
-from conftest import grip, make_env_repo, make_toolchain_tarball, refresh_host
+from conftest import grip, make_workspace_repo
 
 
 def run(repo, *args):
@@ -12,275 +18,98 @@ def run(repo, *args):
 
 
 def current(sandbox):
-    return json.loads((sandbox / '.local/share/gripsack/current/manifest.json').read_text())
+    wire = json.loads((sandbox / ".local/share/gripsack/current/manifest.json").read_text())
+    return wire.get("generation", wire)
 
 
-@pytest.mark.parametrize("kind", ["verify", "intent"])
-def test_resources_on_non_acquiring_steps_fail_before_effects(sandbox, kind):
-    marker = sandbox / "unlocked-effect"
-    action = (
-        {"kind": "verify", "verify": {"kind": "shell", "script": f"touch {marker}"}}
-        if kind == "verify"
-        else {"kind": "intent", "action": {"kind": "custom_shell", "script": f"touch {marker}"}}
-    )
-    repo = make_env_repo(
-        sandbox / "resource-env",
-        {
-            name: 'import { module } from "@gripsack/core";\n'
-            f'export default module("{name}", {{ steps: [{{ id: "effect", '
-            f'action: {json.dumps(action)}, resources: ["network"] }}] }});\n'
-            for name in ("alpha", "beta")
-        },
-    )
-    terminal = grip("check", "--host", "testhost", cwd=repo)
-    structured = grip("check", "--json", "--host", "testhost", cwd=repo)
-    assert terminal.returncode != 0
-    assert structured.returncode != 0
-    diagnostics = json.loads(structured.stdout)["diagnostics"]
-    rejected = [item for item in diagnostics if item["code"] == "E134"]
-    assert len(rejected) == 2, diagnostics
-    assert all(item["labels"] for item in rejected)
-    assert "E134" in terminal.stderr
-    applied = grip("apply", "--host", "testhost", cwd=repo)
-    assert applied.returncode != 0
-    assert not marker.exists()
+def declaration(*, rendered=False, revision=1):
+    content = 'templateFile({})' if rendered else 'identity()'
+    return f'''import {{profile,file,repoFile,identity,templateFile,literalText,trackedCopyTo}} from "@gripsack/core";
+export default profile("demo", {{files:[
+ file({{source:repoFile("payload"),content:{content},destination:trackedCopyTo("~/.private")}}),
+ file({{content:literalText("{revision}"),destination:trackedCopyTo("~/.revision")}})
+]}});'''
+
+
+@pytest.mark.parametrize("command", ["check", "plan", "apply"])
+def test_missing_repository_source_fails_before_deployment(sandbox, command):
+    repo = make_workspace_repo(sandbox / "env", declaration())
+    result = grip(command, cwd=repo)
+    assert result.returncode != 0
+    assert not (sandbox / ".private").exists()
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
-@pytest.mark.parametrize("shape,code", [("absolute", "E109"), ("parent", "E115")])
-def test_verify_actions_admit_payload_paths_before_any_producer_runs(sandbox, shape, code):
-    outside = sandbox / "outside"
-    outside.write_text("not part of the payload")
-    path = str(outside) if shape == "absolute" else "../outside"
-    marker = sandbox / "producer-ran"
-    steps = [
-        {"id": "produce", "action": {"kind": "custom_shell", "script": f"touch {marker}"}},
-        {"id": "verify", "needs": ["produce"], "action": {
-            "kind": "verify", "verify": {"kind": "file_exists", "path": path},
-        }},
-    ]
-    repo = make_env_repo(
-        sandbox / "verify-env",
-        'import { module } from "@gripsack/core";\n'
-        f'export default module("demo", {{ steps: {json.dumps(steps)} }});\n',
-    )
-    checked = grip("check", "--json", "--host", "testhost", cwd=repo)
-    assert checked.returncode != 0
-    diagnostics = json.loads(checked.stdout)["diagnostics"]
-    rejected = [item for item in diagnostics if item["code"] == code]
-    assert rejected and rejected[0]["labels"][0]["span"]["line"] == 2
-    applied = grip("apply", "--host", "testhost", cwd=repo)
-    assert applied.returncode != 0 and code in applied.stderr
-    assert not marker.exists()
-    assert not (sandbox / ".local/share/gripsack/current").exists()
-
-
-@pytest.mark.parametrize("step", ["configStep", "installStep"])
-def test_stepped_repository_sources_fail_check_before_deployment(sandbox, step):
-    repo = make_env_repo(
-        sandbox / "missing-source-env",
-        f'import {{ module, {step}, trackedCopy }} from "@gripsack/core";\n'
-        f'export default module("demo", {{ steps: [{step}({{ "typo.conf": trackedCopy("~/.must-not-land") }})] }});\n',
-    )
-    checked = grip("check", "--json", "--host", "testhost", cwd=repo)
-    assert checked.returncode != 0
-    diagnostics = json.loads(checked.stdout)["diagnostics"]
-    missing = [item for item in diagnostics if item["code"] == "E110"]
-    assert missing and missing[0]["labels"][0]["span"]["line"] == 2
-    applied = grip("apply", "--host", "testhost", cwd=repo)
-    assert applied.returncode != 0 and "E110" in applied.stderr
-    assert not (sandbox / ".must-not-land").exists()
-    assert not (sandbox / ".local/share/gripsack/current").exists()
-
-
-@pytest.mark.parametrize('explicit', [False, True])
-def test_module_verification_is_always_preflip(sandbox, explicit):
-    shape = 'steps: [shellStep("echo artifact > payload", "produce")],' if explicit else 'build: { kind: "custom_shell", script: "echo artifact > payload" },'
-    repo = make_env_repo(sandbox / 'env', f'''import {{ module, shellStep, verifyShell }} from '@gripsack/core';
-export default module('demo', {{ {shape} verify: verifyShell('exit 17') }});''')
-    run(repo, 'check', '--host', 'testhost')
-    result = grip('apply', '--host', 'testhost', cwd=repo)
-    assert result.returncode != 0 and 'E302' in result.stderr
-    assert not (sandbox / '.local/share/gripsack/current').exists()
-
-
-@pytest.mark.parametrize('explicit', [False, True])
-def test_config_sources_stage_and_lint_in_both_styles(sandbox, explicit):
-    shape = 'steps: [configStep({ "config.toml": trackedCopy("~/.config/helix/config.toml") })]' if explicit else 'config: { "config.toml": trackedCopy("~/.config/helix/config.toml") }'
-    repo = make_env_repo(sandbox / 'env', f'''import {{ module, configStep, trackedCopy }} from '@gripsack/core';
-export default module('helix', {{ lint: 'helix', {shape} }});''')
-    source = repo / 'config.toml'
-    source.write_text('[editor\n')
-    result = grip('check', '--host', 'testhost', cwd=repo)
-    assert result.returncode != 0 and 'A00' in result.stderr
-    source.write_text('theme = "base16_default"\n')
-    run(repo, 'apply', '--host', 'testhost')
-    assert (sandbox / '.config/helix/config.toml').read_text() == source.read_text()
-    first = current(sandbox)['modules']['helix']['store_path']
-    source.write_text('theme = "onedark"\n')
-    run(repo, 'apply', '--host', 'testhost')
-    assert (sandbox / '.config/helix/config.toml').read_text() == source.read_text()
-    assert current(sandbox)['modules']['helix']['store_path'] != first
-
-
-@pytest.mark.parametrize('kind', ['shell', 'run'])
-def test_outputs_are_postconditions_and_recipes_cache(sandbox, kind):
-    missing = 'shellStep("true", "produce", { outputs: ["payload"] })' if kind == 'shell' else 'runStep(["true"], "produce", { outputs: ["payload"] })'
-    repo = make_env_repo(sandbox / 'env', f'''import {{ module, shellStep, runStep }} from '@gripsack/core';
-export default module('demo', {{ steps: [{missing}] }});''')
-    result = grip('apply', '--host', 'testhost', cwd=repo)
-    assert result.returncode != 0 and 'E301' in result.stderr
-    assert not (sandbox / '.local/share/gripsack/current').exists()
-    # No outputs is not an implicit always-run switch: this is an artifact recipe.
-    (repo / 'modules/hello.ts').write_text('''import { module, shellStep } from '@gripsack/core';
-export default module('demo', { steps: [shellStep('echo ran >> "$HOME/count"; echo artifact > payload', 'produce')] });''')
-    run(repo, 'apply', '--host', 'testhost')
-    number = current(sandbox)['number']
-    run(repo, 'apply', '--host', 'testhost')
-    assert (sandbox / 'count').read_text().splitlines() == ['ran']
-    assert current(sandbox)['number'] == number
-
-
-@pytest.mark.parametrize('scope', [[], ['a-consumer']])
-def test_cross_module_needs_orders_and_scopes_without_installing_tools(sandbox, scope):
-    repo = make_env_repo(sandbox / 'env', {
-        'a-consumer': '''import { module, shellStep } from '@gripsack/core';
-export default module('a-consumer', { steps: [shellStep('test -f "$HOME/ready"', 'consume', { needs: ['z-producer:produce'] })] });''',
-        'z-producer': '''import { module, shellStep } from '@gripsack/core';
-export default module('z-producer', { steps: [shellStep('touch "$HOME/ready"', 'produce')] });''',
-    })
-    run(repo, 'apply', *scope, '--host', 'testhost', '--jobs', '1')
-    assert (sandbox / 'ready').exists()
-    assert set(current(sandbox)['modules']) == {'a-consumer', 'z-producer'}
-
-
-@pytest.mark.parametrize('need', ['a:produce', 'b:activate', 'b:missing'])
-def test_unfulfillable_cross_references_fail_check(sandbox, need):
-    repo = make_env_repo(sandbox / 'env', {
-        'a': f'''import {{ module, shellStep }} from '@gripsack/core';
-export default module('a', {{ steps: [shellStep('true', 'produce', {{ needs: [{json.dumps(need)}] }})] }});''',
-        'b': '''import { module, customHook } from '@gripsack/core';
-export default module('b', { activate: [customHook('true')] });''',
-    })
-    result = grip('check', '--host', 'testhost', cwd=repo)
-    assert result.returncode != 0 and ('E104' in result.stderr or 'E121' in result.stderr)
-
-
-def test_mixed_dependency_cycle_fails_before_mutation(sandbox):
-    repo = make_env_repo(sandbox / 'env', {
-        'a': '''import { module, dep } from '@gripsack/core'; export default module('a', { depends: [dep('b')] });''',
-        'b': '''import { module, shellStep } from '@gripsack/core'; export default module('b', { steps: [shellStep('true','produce',{needs:['a:done']})] });''',
-    })
-    result = grip('check', '--host', 'testhost', cwd=repo)
-    assert result.returncode != 0 and 'E120' in result.stderr
-    assert not (sandbox / '.local/share/gripsack/current').exists()
-
-
-def test_warm_multi_entry_preview_uses_actual_store_sources(sandbox):
-    payload = make_toolchain_tarball(sandbox / 'tool.tar.gz', {'bin/tool': b'#!/bin/sh\necho ok\n', 'share/doc': b'docs\n'})
-    repo = make_env_repo(sandbox / 'env', {
-        'fetched': f'''import {{ module, fileFetch, symlink }} from '@gripsack/core'; export default module('fetched', {{ fetch: fileFetch({json.dumps(str(payload))}), install: {{ 'bin/tool': symlink('~/.local/bin/tool'), 'share/doc': symlink('~/.doc') }} }});''',
-        'config': '''import { module, symlink } from '@gripsack/core'; export default module('config', {config:{payload:symlink('~/.owned')}});''',
-    })
-    (repo / 'payload').write_text('local\n')
-    run(repo, 'apply', '--host', 'testhost')
-    plan = run(repo, 'plan', '--host', 'testhost')
-    assert plan.stdout.count('(satisfied)') == 3, plan.stdout
-    assert '(new)' not in plan.stdout and '(update)' not in plan.stdout
-    number = current(sandbox)['number']
-    run(repo, 'apply', '--host', 'testhost')
-    assert current(sandbox)['number'] == number
-
-
-@pytest.mark.parametrize('where', ['module', 'step'])
-def test_removed_retries_are_rejected(sandbox, where):
-    fields = 'retries: 2' if where == 'module' else 'steps: [shellStep("true", "produce", { retries: 2 } as never)]'
-    repo = make_env_repo(sandbox / 'env', f'''import {{ module, shellStep }} from '@gripsack/core'; export default module('demo', {{ {fields} }} as never);''')
-    result = grip('check', '--host', 'testhost', cwd=repo)
-    assert result.returncode != 0 and 'retries' in result.stderr
+def test_check_and_plan_validate_without_deploying(sandbox):
+    repo = make_workspace_repo(sandbox / "env", declaration())
+    (repo / "payload").write_text("one")
+    for command in ("check", "plan"):
+        run(repo, command)
+        assert not (sandbox / ".private").exists()
+        assert not (sandbox / ".local/share/gripsack/current").exists()
+        assert not (repo / "gripsack.lock").exists()
+    run(repo, "apply")
+    first = current(sandbox)
+    preview = run(repo, "plan")
+    assert "~/.private (satisfied)" in preview.stdout
+    assert "~/.revision (satisfied)" in preview.stdout
+    run(repo, "apply")
+    assert current(sandbox) == first
 
 
 def test_private_copy_updates_and_exec_changes_keep_acquired_permissions(sandbox):
-    repo = make_env_repo(sandbox / 'env', '''import { module, trackedCopy } from '@gripsack/core';
-export default module('demo', { config: { payload: trackedCopy('~/.private') } });''')
-    destination = sandbox / '.private'
-    destination.write_text('original')
+    repo = make_workspace_repo(sandbox / "env", declaration())
+    destination = sandbox / ".private"
+    destination.write_text("original")
     destination.chmod(0o600)
-    source = repo / 'payload'
-    source.write_text('one')
+    source = repo / "payload"
+    source.write_text("one")
     source.chmod(0o644)
-    run(repo, 'apply', '--host', 'testhost', '--take-over')
-    generation = current(sandbox)['number']
-    run(repo, 'apply', '--host', 'testhost')
-    assert current(sandbox)['number'] == generation
-    source.write_text('two')
-    run(repo, 'apply', '--host', 'testhost')
-    assert destination.read_text() == 'two'
+    run(repo, "apply", "--take-over")
+    first = current(sandbox)["number"]
+    run(repo, "apply")
+    assert current(sandbox)["number"] == first
+    source.write_text("two")
+    run(repo, "apply")
+    assert destination.read_text() == "two"
     assert destination.stat().st_mode & 0o777 == 0o600
     source.chmod(0o755)
-    run(repo, 'apply', '--host', 'testhost')
+    run(repo, "apply")
     assert destination.stat().st_mode & 0o777 == 0o700
     source.chmod(0o644)
-    run(repo, 'apply', '--host', 'testhost')
+    run(repo, "apply")
     assert destination.stat().st_mode & 0o777 == 0o600
-    result = run(repo, 'store-verify')
-    assert 'corrupt' not in result.stdout + result.stderr
+    run(repo, "store-verify")
 
 
-@pytest.mark.parametrize('next_content', ['one', 'two'])
+@pytest.mark.parametrize("next_content", ["one", "two"])
 def test_template_rollback_restores_full_permissions(sandbox, next_content):
-    def declaration(revision):
-        return f'''import {{ module, template }} from '@gripsack/core';
-export default module('demo', {{ config: {{ payload: template('~/.private') }}, env: {{ REVISION: '{revision}' }} }});'''
-
-    repo = make_env_repo(sandbox / 'env', declaration(1))
-    destination = sandbox / '.private'
-    destination.write_text('original')
+    repo = make_workspace_repo(sandbox / "env", declaration(rendered=True))
+    destination = sandbox / ".private"
+    destination.write_text("original")
     destination.chmod(0o600)
-    source = repo / 'payload'
-    source.write_text('one')
-    run(repo, 'apply', '--host', 'testhost', '--take-over')
+    (repo / "payload").write_text("one")
+    run(repo, "apply", "--take-over")
+    first = current(sandbox)["number"]
     destination.chmod(0o640)
-    source.write_text(next_content)
-    (repo / 'modules/hello.ts').write_text(declaration(2))
-    # Explicitly acquire the changed mode; ordinary apply must preserve chmod
-    # drift without giving a later rollback permission to overwrite it.
-    run(repo, 'apply', '--host', 'testhost', '--take-over')
-    assert current(sandbox)['number'] == 2
+    (repo / "payload").write_text(next_content)
+    (repo / "outputs/hello.ts").write_text(declaration(rendered=True, revision=2))
+    run(repo, "apply", "--take-over")
+    assert current(sandbox)["number"] != first
     assert destination.stat().st_mode & 0o777 == 0o640
-    run(repo, 'rollback', '1')
-    assert destination.read_text() == 'one'
+    run(repo, "rollback", str(first))
+    assert destination.read_text() == "one"
     assert destination.stat().st_mode & 0o777 == 0o600
 
 
-def test_store_repair_preserves_pre_036_private_copy_payloads(sandbox):
-    repo = make_env_repo(sandbox / 'env', '''import { module, trackedCopy } from '@gripsack/core';
-export default module('demo', { config: { payload: trackedCopy('~/.private') } });''')
-    (repo / 'payload').write_text('retained payload')
-    run(repo, 'apply', '--host', 'testhost')
-    manifest = current(sandbox)
-    entry = manifest['modules']['demo']['entries'][0]
-    # Pre-0.36 takeover recorded the nominal 0644 hash even when the
-    # destination's landed mode was 0600. Reproduce that persisted shape.
-    entry['file_mode'] = 0o600
-    entry.pop('source_executable', None)
-    (sandbox / '.private').chmod(0o600)
-    manifest_path = sandbox / '.local/share/gripsack/current/manifest.json'
-    manifest_path.write_text(json.dumps(manifest))
-    payload = Path(manifest['modules']['demo']['store_path']) / 'payload'
-    run(repo, 'store-verify', '--repair')
-    assert payload.read_text() == 'retained payload'
-
-
-def test_store_verify_detects_built_copy_source_exec_tampering(sandbox):
-    repo = make_env_repo(sandbox / 'env', '''import { module, shellStep, installStep, trackedCopy } from '@gripsack/core';
-export default module('demo', { steps: [
-  shellStep('printf payload > payload', 'produce'),
-  installStep({ payload: trackedCopy('~/.copy') }, 'install', { needs: ['produce'] }),
-] });''')
-    run(repo, 'apply', '--host', 'testhost')
-    payload = Path(current(sandbox)['modules']['demo']['store_path']) / 'payload'
+def test_store_verify_detects_copy_source_exec_tampering(sandbox):
+    repo = make_workspace_repo(sandbox / "env", declaration())
+    (repo / "payload").write_text("payload")
+    run(repo, "apply")
+    state = current(sandbox)["modules"]["demo"]
+    entry = next(entry for entry in state["entries"] if entry["to"].endswith("/.private"))
+    payload = Path(state["store_path"]) / entry["from"]
     payload.chmod(0o555)
-    result = grip('store-verify', cwd=repo)
+    result = grip("store-verify", cwd=repo)
     assert result.returncode != 0, result.stdout + result.stderr
-    assert payload.read_text() == 'payload'
+    assert payload.read_text() == "payload"

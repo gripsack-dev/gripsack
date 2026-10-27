@@ -22,11 +22,7 @@ struct DeadlineExpired;
 /// Built-in budgets for the registries the internal fetchers call.
 /// Downloads (release CDNs, tarball mirrors) are deliberately not
 /// throttled — rate limits live on API endpoints.
-const DEFAULTS: &[(&str, &str)] = &[
-    ("api.github.com", "30/min"),
-    ("ghcr.io", "30/min"),
-    ("formulae.brew.sh", "60/min"),
-];
+const DEFAULTS: &[(&str, &str)] = &[("api.github.com", "30/min")];
 
 /// Admit "N/unit" once; units are seconds, minutes or hours.
 fn parse_budget(s: &str) -> Option<rate_limit::BinaryTokenRate> {

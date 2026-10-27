@@ -114,7 +114,7 @@ impl RetentionSet {
 }
 fn error(detail: impl Into<String>) -> ExecError {
     ExecError::Step {
-        module: "workspace".into(),
+        output: "workspace".into(),
         step: "retention".into(),
         detail: detail.into(),
     }

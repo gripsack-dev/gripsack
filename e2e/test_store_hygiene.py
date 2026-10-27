@@ -4,15 +4,17 @@ fixture repos come from conftest."""
 
 
 
+import json
 import os
 import stat
+from pathlib import Path
 
 from conftest import (
+    native_target,
     grip,
-    make_env_repo,
+    make_workspace_repo,
     make_tarball,
-    only_store_path,
-    remove_module,
+    remove_output,
 )
 
 
@@ -21,15 +23,15 @@ def test_gc_collects_unreferenced_store_paths_and_why_owns(sandbox):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho v1\n"}
     )
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default module("hello", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
-}});
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("hello", {{ files: [
+    file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
+  ] }})];
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -39,10 +41,15 @@ export default module("hello", {{
     assert "hello" in out.stdout
     store = sandbox / ".local/share/gripsack/store"
     before = {p.name for p in store.iterdir()}
-    assert len(before) == 1
+    manifest = json.loads((sandbox / ".local/share/gripsack/current/manifest.json").read_text())
+    retained = manifest["modules"]["hello"]
+    roots = {Path(retained["store_path"]).name}
+    roots.update(Path(path).name for path in retained["build_closure"])
+    assert before == roots
+    assert len(roots) >= 2, "the profile and its native package are both retained"
 
     # drop the module entirely; deployment pruned on the next apply
-    remove_module(repo, "hello")
+    remove_output(repo, "hello")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert not (sandbox / ".local/bin/hello").exists()
@@ -74,14 +81,14 @@ def test_gc_survives_tip_removal_without_id_reuse(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("one\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -119,14 +126,14 @@ def test_gc_aborts_when_generations_are_unreadable(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -156,19 +163,19 @@ def test_gc_dry_run_previews_without_deleting(sandbox):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho v1\n"}
     )
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default module("hello", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
-}});
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("hello", {{ files: [
+    file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
+  ] }})];
 """,
     )
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
-    remove_module(repo, "hello")
+    remove_output(repo, "hello")
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
     user_conf = sandbox / ".config/gripsack"
     user_conf.mkdir(parents=True)
@@ -190,14 +197,14 @@ def test_store_verify_detects_and_repairs_corruption(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.txt").write_text("a\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, tree } from "@gripsack/core";
+import { file, identity, profile, repoTree, symlinkTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { ...tree("configs/demo", "~/.config/demo", "owned") },
-});
+export default profile("demo", { files: [
+    file({ source: repoTree("configs/demo"), content: identity(), destination: symlinkTo("~/.config/demo") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -224,21 +231,21 @@ export default module("demo", {
     assert target.exists()
 
 
-def test_store_verify_covers_fetched_modules(sandbox):
+def test_store_verify_covers_native_package_payloads(sandbox):
     """0014 §1a: verify used to compare the store TREE hash against the
     lock's TRANSPORT hash (never matches) under a hostname-keyed lock
     lookup (usually skipped). The manifest's tree256 is the expectation
     now — a tampered fetched payload fails verify, hostname-free."""
     payload = make_tarball(sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default module("hello", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
-}});
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("hello", {{ files: [
+    file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
+  ] }})];
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -247,7 +254,7 @@ export default module("hello", {{
     assert out.returncode == 0, out.stdout + out.stderr
 
     store = sandbox / ".local/share/gripsack/store"
-    target = next(store.iterdir())
+    target = next(path for path in store.iterdir() if (path / "bin/hello").is_file())
     for f in target.rglob("*"):
         if f.is_file() and not f.is_symlink():
             f.chmod(0o644)  # store payloads are read-only (0016 §D3)
@@ -261,7 +268,8 @@ export default module("hello", {{
     # the lock's tree256 names the content, and the bytes haven't moved
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert only_store_path(sandbox) == target.name
+    assert target.is_dir()
+    assert (target / "bin/hello").read_bytes() == b"#!/bin/sh\necho hello\n"
 
 
 def test_store_payloads_are_read_only(sandbox):
@@ -271,21 +279,21 @@ def test_store_payloads_are_read_only(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.txt").write_text("a\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, tree } from "@gripsack/core";
+import { file, identity, profile, repoTree, symlinkTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { ...tree("configs/demo", "~/.config/demo", "owned") },
-});
+export default profile("demo", { files: [
+    file({ source: repoTree("configs/demo"), content: identity(), destination: symlinkTo("~/.config/demo") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
 
     store = sandbox / ".local/share/gripsack/store"
-    payload = next(store.iterdir()) / "configs/demo/a.txt"
+    payload = (sandbox / ".config/demo/a.txt").resolve()
     assert payload.exists()
     # mode bits are the assertion that works everywhere (e2e's docker
     # stage runs as root, and root's CAP_DAC_OVERRIDE bypasses them)
@@ -321,17 +329,15 @@ def test_store_verify_merge_and_template_hashes(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "block.sh").write_text("export FROB=1\n")
     (confdir / "id.toml").write_text('name = "{{ name }}"\n')
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { merge, module, template } from "@gripsack/core";
+import { file, identity, managedBlock, profile, repoFile, templateFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: {
-    "configs/demo/block.sh": merge("~/.bashrc", "#"),
-    "configs/demo/id.toml": template("~/.config/demo/id.toml", { name: "t" }),
-  },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/block.sh"), content: identity(), destination: managedBlock("~/.bashrc", "demo") }),
+    file({ source: repoFile("configs/demo/id.toml"), content: templateFile({ name: "t" }), destination: trackedCopyTo("~/.config/demo/id.toml") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)

@@ -1,7 +1,7 @@
 /** Driver end-to-end under the exact 0013 spawn contract:
  * `deno run --no-remote --cached-only --no-lock --allow-read=<repo>,
  * <inputs dir>,<frontend> src/cli.ts <repo> --inputs <path>`.
- * Exercises host selection and the two-stage probe protocol. */
+ * Exercises the workspace entrypoint and two-stage probe protocol. */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -54,28 +54,6 @@ function withRepo(files: Record<string, string>, fn: (repo: string) => void): vo
   }
 }
 
-const HOST = `import { defineEnv, module, trackedCopy, githubRelease, symlink } from "@gripsack/core";
-
-const helix = module("helix", {
-  fetch: githubRelease({ repo: "helix-editor/helix", asset: "helix.tar.xz" }),
-  install: { "bin/hx": symlink("~/.local/bin/hx") },
-});
-const demo = module("demo", {
-  config: { "configs/demo/demo.toml": trackedCopy("~/.config/demo/demo.toml") },
-});
-const cuda = module("cuda", {
-  fetch: githubRelease({ repo: "nvidia/cuda", asset: "cuda.tar.xz" }),
-});
-
-export default defineEnv((ctx) => ({
-  tags: ["gui"],
-  modules: [
-    helix,
-    ctx.facts.os === "linux" && demo,
-    ctx.probe.executable("nvidia-smi") && cuda,
-  ],
-}));
-`;
 
 const baseInputs = {
   version: 1,
@@ -86,110 +64,6 @@ const baseInputs = {
   settings: {},
 };
 
-Deno.test("driver evaluates a host into an envelope under the sandbox flags", () => {
-  withRepo({ "hosts/lap.ts": HOST }, (repo) => {
-    const r = runDriver(repo, baseInputs);
-    assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
-    const envelope = JSON.parse(r.stdout);
-    assert.deepEqual(Object.keys(envelope), ["ir", "diagnostics", "probe_requests"]);
-    assert.deepEqual(envelope.diagnostics, []);
-
-    // entrypoint tags ∪ CLI tags
-    assert.deepEqual(envelope.ir.host, {
-      os: "linux",
-      arch: "x86_64",
-      tags: ["gui", "work"],
-      libc: "glibc-2.36",
-    });
-    assert.ok(envelope.ir.modules.helix);
-    assert.ok(envelope.ir.modules.demo, "facts-conditional module present");
-    assert.equal(envelope.ir.modules.cuda, undefined, "unbound probe gates cuda out");
-    assert.equal(envelope.ir.modules.helix.span.file.endsWith("lap.ts"), true);
-
-    // stage 1: the unbound probe is a request, not an answer
-    assert.deepEqual(
-      envelope.probe_requests.map((p: { kind: string; name: string }) => [p.kind, p.name]),
-      [["executable", "nvidia-smi"]],
-    );
-    assert.equal(envelope.probe_requests[0].span.file.endsWith("lap.ts"), true);
-  });
-});
-
-Deno.test("bound probes answer without new requests (stage 2 fixpoint)", () => {
-  withRepo({ "hosts/lap.ts": HOST }, (repo) => {
-    const yes = runDriver(repo, { ...baseInputs, probes: { "executable:nvidia-smi": true } });
-    assert.equal(yes.status, 0, yes.stderr);
-    const env = JSON.parse(yes.stdout);
-    assert.ok(env.ir.modules.cuda, "bound-true admits cuda");
-    assert.deepEqual(env.probe_requests, []);
-
-    const no = runDriver(repo, { ...baseInputs, probes: { "executable:nvidia-smi": false } });
-    assert.equal(no.status, 0, no.stderr);
-    const env2 = JSON.parse(no.stdout);
-    assert.equal(env2.ir.modules.cuda, undefined, "bound-false keeps cuda out");
-    assert.deepEqual(env2.probe_requests, []);
-  });
-});
-
-Deno.test("a missing host file lists the available hosts", () => {
-  withRepo({ "hosts/lap.ts": HOST }, (repo) => {
-    const r = runDriver(repo, { ...baseInputs, host: "other" });
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /no hosts\/other\.ts \(have: lap\) /);
-  });
-});
-
-Deno.test("a host without a defineEnv default export errors clearly", () => {
-  withRepo(
-    { "hosts/bad.ts": 'export const tags = ["gui"];\n' },
-    (repo) => {
-      const r = runDriver(repo, { ...baseInputs, host: "bad" });
-      assert.equal(r.status, 1);
-      assert.match(r.stderr, /must default-export defineEnv/);
-    },
-  );
-});
-
-Deno.test("duplicate module names surface the frontend error", () => {
-  withRepo(
-    {
-      "hosts/dup.ts":
-        'import { defineEnv, module } from "@gripsack/core";\n' +
-        'const a = module("x", { lint: "toml" });\n' +
-        'const b = module("x", { lint: "toml" });\n' +
-        "export default defineEnv(() => ({ modules: [a, b] }));\n",
-    },
-    (repo) => {
-      const r = runDriver(repo, { ...baseInputs, host: "dup" });
-      assert.equal(r.status, 1);
-      assert.match(r.stderr, /duplicate module 'x'/);
-    },
-  );
-});
-
-
-Deno.test("a stale pin predating defineEnv errors with the fix", () => {
-  const STALE = `export const defineEnv = (fn) => fn;
-  export const module = (name, spec) => ({ __gripsack: "module", name, ir: spec });
-  `;
-  withRepo(
-    {
-      "hosts/old.ts":
-        'import { defineEnv, module } from "@gripsack/core";\n' +
-        'const a = module("x", { lint: "toml" });\n' +
-        "export default defineEnv(() => ({ modules: [a] }));\n",
-      "node_modules/@gripsack/core/package.json":
-        '{"name":"@gripsack/core","version":"0.16.4","type":"module","main":"index.js"}',
-      "node_modules/@gripsack/core/index.js": STALE,
-    },
-    (repo) => {
-      const r = runDriver(repo, { ...baseInputs, host: "old" });
-      assert.equal(r.status, 1);
-      assert.match(r.stderr, /predates the defineEnv frontend/);
-      assert.match(r.stderr, /node_modules\/@gripsack\/core/);
-    },
-  );
-});
 
 const WORKSPACE = `import { defineWorkspace, workspace, recipe, pkg, targetPlatform, githubRelease } from "@gripsack/core";
 
@@ -219,7 +93,7 @@ Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () 
     assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
     const envelope = JSON.parse(r.stdout);
     assert.deepEqual(Object.keys(envelope.ir), ["ir_version", "host", "workspace"]);
-    assert.equal(envelope.ir.ir_version, 8);
+    assert.equal(envelope.ir.ir_version, 9);
     assert.equal(envelope.ir.modules, undefined, "workspace envelope never carries modules");
     assert.equal(envelope.ir.host.os, "linux");
     assert.equal("hostname" in envelope.ir.host, false);
@@ -248,8 +122,8 @@ Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () 
   });
 });
 
-Deno.test("a root gripsack.ts wins over hosts/<host>.ts", () => {
-  withRepo({ "gripsack.ts": WORKSPACE, "hosts/lap.ts": HOST }, (repo) => {
+Deno.test("host identity never selects an alternate entrypoint", () => {
+  withRepo({ "gripsack.ts": WORKSPACE, "hosts/lap.ts": 'throw new Error("must not execute");' }, (repo) => {
     const r = runDriver(repo, { ...baseInputs, probes: { "executable:ninja": true } });
     assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
     const envelope = JSON.parse(r.stdout);
@@ -287,20 +161,41 @@ Deno.test("a syntax error in gripsack.ts stays a traceback", () => {
   );
 });
 
-Deno.test("retired Pixi calls report a source diagnostic through an imported alias", () => {
-  withRepo(
-    {
-      "hosts/lap.ts":
-        'import { defineEnv, module, pixi as acquire } from "@gripsack/core";\n' +
-        'export default defineEnv(() => ({ modules: [module("old", { fetch: acquire("nodejs") })] }));\n',
-    },
-    (repo) => {
-      const result = runDriver(repo, baseInputs);
-      assert.equal(result.status, 1);
-      assert.equal(result.stdout, "");
-      assert.match(result.stderr, /E130/);
-      assert.match(result.stderr, /workspace-migration\.html/);
-      assert.match(result.stderr, /lap\.ts:2/);
-    },
-  );
+Deno.test("a host file never substitutes for a missing workspace", () => {
+  withRepo({ "hosts/lap.ts": 'throw new Error("must not execute");' }, (repo) => {
+    const result = runDriver(repo, baseInputs);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /no gripsack\.ts/);
+    assert.doesNotMatch(result.stderr, /must not execute/);
+  });
+});
+
+Deno.test("pins must expose the explicit compiler entrypoint", () => {
+  withRepo({
+    "gripsack.ts": WORKSPACE,
+    "node_modules/@gripsack/core/package.json": '{"name":"@gripsack/core","type":"module","main":"index.js"}',
+    "node_modules/@gripsack/core/index.js": "export const emitWorkspaceIr = () => '{}';",
+  }, (repo) => {
+    const result = runDriver(repo, baseInputs);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /must export \.\/advanced/);
+  });
+});
+
+Deno.test("workspace authoring failures retain source-located diagnostics", () => {
+  withRepo({
+    "gripsack.ts": 'import { defineWorkspace, workspace, profile } from "@gripsack/core";\n' +
+      'const broken = profile("broken", { filez: [] });\n' +
+      'export default defineWorkspace(() => workspace({ outputs: [broken] }));\n',
+  }, (repo) => {
+    const result = runDriver(repo, baseInputs);
+    assert.equal(result.status, 1);
+    const envelope = JSON.parse(result.stdout);
+    assert.equal(envelope.ir, null);
+    assert.match(envelope.diagnostics[0].message, /filez/);
+    assert.ok(envelope.diagnostics[0].labels.some(
+      (label: { span?: { file: string; line: number } }) =>
+        label.span?.file.endsWith("gripsack.ts") && label.span.line === 2,
+    ));
+  });
 });

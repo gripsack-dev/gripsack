@@ -1,7 +1,6 @@
 //! Layout evidence only: never execute recipes or verification programs.
 use crate::ctx::ExecError;
-use gripsack_ir::{HostName, Ownership, Verify, prepared::PreparedModule};
-use std::path::Path;
+use gripsack_ir::HostName;
 
 #[derive(Debug, Default)]
 pub struct LayoutEvidence {
@@ -14,11 +13,6 @@ pub enum DeferredLayoutCheck {
     RecipeOutput(String),
     RuntimeVerification(&'static str),
     UnavailableArtifact,
-}
-
-pub(crate) enum PayloadStage<'a> {
-    AcquiredSource(&'a Path),
-    PublishedArtifact(&'a Path),
 }
 
 impl LayoutEvidence {
@@ -44,190 +38,24 @@ impl LayoutEvidence {
     }
 }
 
-pub(crate) fn inspect(
-    name: &str,
-    plan: &PreparedModule,
-    payload: PayloadStage<'_>,
-    version: Option<&str>,
-) -> Result<LayoutEvidence, ExecError> {
-    let recipe_pending = plan.has_recipe() && matches!(payload, PayloadStage::AcquiredSource(_));
-    let stage = match payload {
-        PayloadStage::AcquiredSource(path) | PayloadStage::PublishedArtifact(path) => path,
-    };
-    let mut evidence = LayoutEvidence::default();
-    let fail = |pattern: &str, detail: String| ExecError::Step {
-        module: name.into(),
-        step: "preflight".into(),
-        detail: format!(
-            "{pattern:?} (locked version {}): {detail}",
-            version.unwrap_or("unavailable")
-        ),
-    };
-    let mut check_path = |pattern: &str, regular: bool| -> Result<(), ExecError> {
-        let source = super::payload_source(stage, pattern, version)
-            .map_err(|e| fail(pattern, e.to_string()))?;
-        if recipe_pending {
-            evidence
-                .deferred
-                .push(DeferredLayoutCheck::RecipeOutput(source.relative));
-            return Ok(());
-        }
-        let metadata = std::fs::metadata(&source.path).map_err(|error| {
-            let top_level = match std::fs::read_dir(stage) {
-                Ok(entries) => {
-                    let names: std::io::Result<Vec<_>> = entries
-                        .map(|entry| {
-                            entry.map(|entry| entry.file_name().to_string_lossy().into_owned())
-                        })
-                        .collect();
-                    match names {
-                        Ok(mut names) => {
-                            names.sort();
-                            names.join(", ")
-                        }
-                        Err(error) => format!("<unavailable: {error}>"),
-                    }
-                }
-                Err(error) => format!("<unavailable: {error}>"),
-            };
-            let hint =
-                if pattern.contains("{version}") && version.is_some_and(|v| v.starts_with('v')) {
-                    " — if the payload omits the tag's v prefix, use {version.bare}"
-                } else {
-                    ""
-                };
-            fail(
-                pattern,
-                format!(
-                    "cannot inspect {}: {error}; payload top-level: {top_level}{hint}",
-                    source.relative
-                ),
-            )
-        })?;
-        if regular && !metadata.is_file() {
-            return Err(fail(
-                pattern,
-                format!("{} must be a regular file", source.relative),
-            ));
-        }
-        if !metadata.is_file() && !metadata.is_dir() {
-            return Err(fail(
-                pattern,
-                format!("{} is not a regular payload entry", source.relative),
-            ));
-        }
-        evidence.checked_paths += 1;
-        Ok(())
-    };
-    for entry in plan.entries() {
-        check_path(&entry.from, entry.mode != Ownership::Owned).map_err(|error| {
-            if let Some(span) = &entry.span {
-                ExecError::Step {
-                    module: name.into(),
-                    step: "preflight".into(),
-                    detail: format!("{}:{}: {error}", span.file, span.line),
-                }
-            } else {
-                error
-            }
-        })?;
-    }
-    // Keep the mutable path-check borrow local before recording opaque checks.
-    let mut runtime = Vec::new();
-    for verify in plan.checks() {
-        match verify {
-            Verify::FileExists { path } => check_path(path, false)?,
-            Verify::BinaryRuns { path, .. } => {
-                check_path(path, true)?;
-                runtime.push(DeferredLayoutCheck::RuntimeVerification("binary execution"));
-            }
-            Verify::Shell { .. } => {
-                runtime.push(DeferredLayoutCheck::RuntimeVerification("shell check"))
-            }
-            Verify::FileDeployed { .. } => runtime.push(DeferredLayoutCheck::RuntimeVerification(
-                "deployed destination",
-            )),
-        }
-    }
-    evidence.deferred.extend(runtime);
-    Ok(evidence)
-}
-
 /// Existing matching artifacts only. No resolver, download, build or publication.
 pub fn inspect_known(
     ir: &gripsack_ir::Ir,
     repository: &crate::Repository,
-    host: &HostName,
+    _host: &HostName,
     limits: gripsack_fetch::FetchLimits,
 ) -> Result<Vec<(String, LayoutEvidence)>, ExecError> {
-    if ir.has_workspace() {
-        if ir
-            .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
-            .is_none()
-        {
-            return crate::workspace::NativeProfiles::prepare_preview(
-                ir,
-                repository,
-                &gripsack_store::gripsack_home(),
-                &[],
-                limits,
-                None,
-            )
-            .map(|native| native.map_or_else(Vec::new, |native| native.layout_evidence()));
-        }
-        // Read-only catalog admission never realizes unsupported packages/tasks.
-        return Ok(Vec::new());
+    if let Some(diagnostic) =
+        ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
+    {
+        return Err(ExecError::Gate(diagnostic));
     }
-    let lock = match crate::lockfile::read(repository.identity(), host) {
-        crate::lockfile::LockRead::Parsed(lock) => lock,
-        crate::lockfile::LockRead::Missing => Default::default(),
-        crate::lockfile::LockRead::Corrupt(detail) => {
-            return Err(ExecError::Step {
-                module: "*".into(),
-                step: "lockfile".into(),
-                detail,
-            });
-        }
-    };
-    let plans = crate::expand::expand_all(&ir.modules)?;
-    let recipes = crate::resolve::RecipeGraph::new(
+    crate::workspace::NativeProfiles::prepare_preview(
         ir,
         repository,
-        &plans,
-        ir.modules.keys().map(String::as_str),
-    )?;
-    let home = gripsack_store::gripsack_home();
-    let mut reports = Vec::new();
-    for (name, plan) in &plans {
-        if plan.entries().next().is_none() && plan.checks().next().is_none() {
-            continue;
-        }
-        let locked = lock.modules.get(name);
-        let identity = crate::identity::resolve(crate::identity::IdentityInputs {
-            name,
-            recipes: &recipes,
-            plan,
-            home: &home,
-            repo: repository,
-            locked,
-            lock: &lock,
-        })?;
-        let evidence = if identity.present {
-            inspect(
-                name,
-                plan,
-                PayloadStage::PublishedArtifact(&identity.store_path),
-                locked
-                    .and_then(|entry| entry.resolved.as_ref())
-                    .and_then(|pin| pin.version.as_deref()),
-            )?
-        } else {
-            LayoutEvidence {
-                checked_paths: 0,
-                deferred: vec![DeferredLayoutCheck::UnavailableArtifact],
-            }
-        };
-        reports.push((name.clone(), evidence));
-    }
-    Ok(reports)
+        &gripsack_store::gripsack_home(),
+        &[],
+        limits,
+    )
+    .map(|native| native.layout_evidence())
 }

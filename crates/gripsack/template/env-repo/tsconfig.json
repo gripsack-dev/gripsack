@@ -8,5 +8,5 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["hosts/**/*.ts", "modules/**/*.ts"]
+  "include": ["gripsack.ts", "profiles/**/*.ts"]
 }

@@ -8,7 +8,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         (Ok(a), Ok(b)) => {
             assert_eq!(a, b);
             assert_eq!(a.number, gripsack_store::GenerationId::new(1));
-            for state in a.modules.values() {
+            for state in a.deployments.values() {
                 assert!(
                     gripsack_store::paths::validate_store_root(s.home(), &state.store_path).is_ok()
                 );

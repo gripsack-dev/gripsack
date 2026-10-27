@@ -2,8 +2,8 @@
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
-import { callerSpan } from "../module.ts";
-import type { Span } from "../module.ts";
+import { callerSpan } from "../span.ts"
+import type { Span } from "../span.ts"
 import type {
   CheckNode,
   CheckSpec,
@@ -68,7 +68,7 @@ export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
 
 /** Lower an authoring source — a bare `Fetch`, a plain
  *  CondaEnvironmentSpec/PixiLockSpec, or a pre-built
- *  `condaEnvironment(...)`/`pixiFromLock(...)` value — to the current tagged
+ *  `conda.environment(...)`/`pixi.fromLock(...)` value — to the current tagged
  *  wire shape, stamping `span` on freshly wrapped variants. */
 function asSourceValue(source: unknown, span: Span, where: string): AcquisitionSource {
   const rec = asRecord(source, where);
@@ -76,7 +76,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
     return asAcquisitionSource(source, where);
   }
   if (typeof rec.kind === "string" && rec.kind !== "") {
-    // a bare Fetch spec — the v6 fetch wrapper carries the provenance span
+    // A bare Fetch spec gains the acquisition wrapper's provenance span.
     return asAcquisitionSource({ kind: "fetch", fetch: source, span }, where);
   }
   if (rec.channels !== undefined || rec.packages !== undefined) {
@@ -110,12 +110,12 @@ export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSo
   const span = callerSpan();
   if (!span) {
     throw new Error(
-      "condaEnvironment(...): could not capture a source span — construct the source explicitly",
+      "conda.environment(...): could not capture a source span — construct the source explicitly",
     );
   }
-  const rec = asRecord(spec, "condaEnvironment(...)");
-  rejectUnknownFields("condaEnvironment(...)", rec, ["channels", "packages", "platforms", "systemRequirements"]);
-  return freezeDeep(asSourceValue(spec, span, "condaEnvironment(...)") as CondaEnvironmentSource);
+  const rec = asRecord(spec, "conda.environment(...)");
+  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements"]);
+  return freezeDeep(asSourceValue(spec, span, "conda.environment(...)") as CondaEnvironmentSource);
 }
 
 /** An explicit Pixi lock import: `manifest`/`lock` are workspace input
@@ -124,18 +124,18 @@ export function pixiFromLock(spec: PixiLockSpec): PixiLockSource {
   const span = callerSpan();
   if (!span) {
     throw new Error(
-      "pixiFromLock(...): could not capture a source span — construct the source explicitly",
+      "pixi.fromLock(...): could not capture a source span — construct the source explicitly",
     );
   }
-  const rec = asRecord(spec, "pixiFromLock(...)");
-  rejectUnknownFields("pixiFromLock(...)", rec, ["manifest", "lock", "environment"]);
-  return freezeDeep(asSourceValue(spec, span, "pixiFromLock(...)") as PixiLockSource);
+  const rec = asRecord(spec, "pixi.fromLock(...)");
+  rejectUnknownFields("pixi.fromLock(...)", rec, ["manifest", "lock", "environment"]);
+  return freezeDeep(asSourceValue(spec, span, "pixi.fromLock(...)") as PixiLockSource);
 }
 
 /** A direct provider-backed acquisition for `pkg({ producer })` —
  *  the package resolves through the declared provider with its own
  *  provenance, no synthetic recipe output. Accepts a `Fetch` (wrapped as
- *  `{"kind":"fetch",…}`) or a `condaEnvironment(...)`/`pixiFromLock(...)`
+ *  `{"kind":"fetch",…}`) or a `conda.environment(...)`/`pixi.fromLock(...)`
  *  source value. */
 export function provider(source: Fetch | AcquisitionSource): WorkspaceProducer {
   const span = callerSpan();
@@ -434,10 +434,9 @@ export function hook(name: string, spec: HookSpec): WorkspaceOutput<HookNode> {
   return makeOutput(node);
 }
 
-/** Collect returned outputs into a workspace value. Falsy entries
- *  drop out — `ctx.facts.os === "linux" && steam` is the conditional
- *  style, same as `defineEnv` modules. Duplicate names are an
- *  authoring error naming BOTH declaration spans (A1-06). */
+/** Collect returned outputs into a workspace value. Falsy entries drop out,
+ *  so ordinary TypeScript conditions compose outputs. Duplicate names report
+ *  both declaration spans. */
 export function workspace(spec: WorkspaceSpec): WorkspaceValue {
   const what = "workspace(...)";
   asRecord(spec, what);

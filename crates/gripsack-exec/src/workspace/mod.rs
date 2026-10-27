@@ -1,5 +1,6 @@
-//! Native profile files use the existing store, ownership planner, journal,
-//! generation publication and rollback. No builder or alternate transaction.
+//! The required workspace catalog executes through the existing store, ownership
+//! planner, journal, generation publication and rollback. Profile changes admit
+//! migration against the current generation while retaining directory safety.
 mod acquire;
 mod artifact;
 pub(crate) mod conda;
@@ -64,6 +65,11 @@ pub(crate) struct NativeProfiles {
     profiles: BTreeMap<String, PreparedProfile>,
     partial: bool,
     deadline: std::time::Instant,
+}
+
+pub(crate) struct DeploymentOutcome {
+    pub deployments: BTreeMap<String, store::DeploymentState>,
+    pub reports: Vec<(String, Vec<StepReport>)>,
 }
 
 pub(super) fn file_failure(span: &Span, error: impl std::fmt::Display) -> ExecError {
@@ -157,31 +163,14 @@ impl NativeProfiles {
                 profile
                     .intents
                     .iter()
-                    .filter(|intent| intent.trigger != gripsack_ir::Trigger::OnRemove)
+                    .filter(|intent| intent.trigger != gripsack_store::ActivationTrigger::OnRemove)
                     .map(move |intent| store::activation::PendingIntent {
-                        module: name.clone(),
+                        output: name.clone(),
                         action: intent.action.clone(),
                         trigger: intent.trigger,
                     })
             })
             .collect()
-    }
-
-    pub(crate) fn update_reports(&self) -> Result<crate::UpdateSurvey, ExecError> {
-        let mut reports = crate::report::SurveyReports::new(self.profiles.len());
-        for (name, profile) in &self.profiles {
-            reports.push(crate::UpdateReport {
-                module: name.clone(),
-                status: crate::UpdateStatus::Skipped {
-                    reason: "native profile files are captured directly; no external pins",
-                },
-                layout: crate::LayoutEvidence {
-                    checked_paths: profile.files.len(),
-                    deferred: Vec::new(),
-                },
-            })?;
-        }
-        reports.finish()
     }
 
     pub(crate) fn migration(
@@ -203,12 +192,12 @@ impl NativeProfiles {
             profile
                 .files
                 .iter()
-                .map(|file| file.entry.to.as_str())
+                .map(|file| (file.entry.to.as_str(), &file.entry.mode))
                 .chain(
                     profile
                         .deferred
                         .iter()
-                        .map(preview::DeferredFile::destination),
+                        .map(preview::DeferredFile::migration_destination),
                 )
         });
         crate::deploy::Migration::admit(
@@ -227,9 +216,9 @@ impl NativeProfiles {
         &self,
         ctx: &Ctx,
         journal: &store::journal::JournalRun<'_>,
-        previous: &BTreeMap<String, store::ModuleState>,
+        previous: &BTreeMap<String, store::DeploymentState>,
         mut migration: Option<&mut crate::deploy::Migration>,
-    ) -> Result<crate::schedule::ScheduleOutcome, ExecError> {
+    ) -> Result<DeploymentOutcome, ExecError> {
         let mut reports = Vec::new();
         for (name, profile) in &self.profiles {
             let present = match std::fs::symlink_metadata(&profile.store_path) {
@@ -259,7 +248,7 @@ impl NativeProfiles {
             reports.push((
                 name.clone(),
                 vec![StepReport {
-                    module: name.clone(),
+                    output: name.clone(),
                     summary: if present {
                         "profile content reused".into()
                     } else {
@@ -279,8 +268,8 @@ impl NativeProfiles {
             crate::util::crash_hook("directory-after-publish");
         }
         self.prepare_directory_changes(ctx, journal, previous)?;
-        let lineage = crate::schedule::previous_ownership(previous);
-        let mut modules = BTreeMap::new();
+        let lineage = crate::deploy::previous_ownership(previous);
+        let mut deployments = BTreeMap::new();
         #[cfg(debug_assertions)]
         let mut completed_files = 0usize;
         for (name, profile) in &self.profiles {
@@ -296,7 +285,6 @@ impl NativeProfiles {
                         entry: &file.entry,
                         store_path: &profile.store_path,
                         previous: &lineage,
-                        version: None,
                         block_id: file.block_id.as_ref(),
                         migration: migration.as_deref(),
                     },
@@ -305,7 +293,7 @@ impl NativeProfiles {
                     file_failure(file.entry.span.as_ref().unwrap_or(&profile.span), error)
                 })?;
                 file_reports.push(StepReport {
-                    module: name.clone(),
+                    output: name.clone(),
                     summary,
                     kind,
                 });
@@ -316,9 +304,9 @@ impl NativeProfiles {
                 }
             }
             reports.push((name.clone(), file_reports));
-            modules.insert(
+            deployments.insert(
                 name.clone(),
-                store::ModuleState {
+                store::DeploymentState {
                     store_path: profile.store_path.clone(),
                     build_only: false,
                     entries,
@@ -330,11 +318,9 @@ impl NativeProfiles {
                 },
             );
         }
-        Ok(crate::schedule::ScheduleOutcome {
-            modules,
+        Ok(DeploymentOutcome {
+            deployments,
             reports,
-            lock_entries: BTreeMap::new(),
-            failed: None,
         })
     }
 }

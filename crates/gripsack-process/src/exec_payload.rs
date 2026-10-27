@@ -54,36 +54,9 @@ impl ExecPayload {
         role: ProcessRole,
         activation: Option<&ActivationEnvironment>,
         overlay: Option<&EnvironmentOverlay>,
-        confinement: Option<&super::Ruleset>,
     ) -> io::Result<(Self, Vec<String>)> {
-        #[cfg(target_os = "macos")]
-        let execution = if confinement.is_some() {
-            OsStr::new(super::confinement::seatbelt::LAUNCHER)
-        } else {
-            program.execution_image().path.as_os_str()
-        };
-        #[cfg(not(target_os = "macos"))]
         let execution = program.execution_image().path.as_os_str();
-        #[cfg(target_os = "macos")]
-        let initial_arguments = confinement
-            .map(|boundary| {
-                boundary.macos_launch_arguments(
-                    program.execution_argument_zero(),
-                    program.execution_image().path.as_os_str(),
-                )
-            })
-            .into_iter()
-            .flatten()
-            .chain(
-                confinement
-                    .is_none()
-                    .then_some(program.execution_argument_zero()),
-            );
-        #[cfg(not(target_os = "macos"))]
-        let initial_arguments = {
-            let _ = confinement;
-            std::iter::once(program.execution_argument_zero())
-        };
+        let initial_arguments = std::iter::once(program.execution_argument_zero());
         let arguments = initial_arguments
             .chain(program.loader_arguments())
             .chain(program.interpreter_argument.as_deref())
@@ -110,7 +83,7 @@ impl ExecPayload {
                     .as_deref()
                     .map(|value| (OsStr::new("GRIPSACK_ACTIVATION_ATTEMPT"), OsStr::new(value))),
             );
-        let mut operator_entries: Vec<(OsString, OsString)> = match overlay {
+        let operator_entries: Vec<(OsString, OsString)> = match overlay {
             Some(overlay) => overlay.merge(operator.entries(role)).into_iter().collect(),
             None => operator
                 .entries(role)
@@ -118,25 +91,6 @@ impl ExecPayload {
                 .collect(),
         };
         program.admit_gnu_environment(&operator_entries)?;
-        if let Some(libraries) = &program.macho_libraries {
-            if operator_entries
-                .iter()
-                .any(|(key, _)| key.as_bytes().starts_with(b"DYLD_"))
-            {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "caller DYLD environment conflicts with the admitted Mach-O lookup plan",
-                ));
-            }
-            operator_entries.push(("DYLD_LIBRARY_PATH".into(), libraries.clone()));
-            for key in [
-                "DYLD_FALLBACK_LIBRARY_PATH",
-                "DYLD_FRAMEWORK_PATH",
-                "DYLD_FALLBACK_FRAMEWORK_PATH",
-            ] {
-                operator_entries.push((key.into(), "/dev/null".into()));
-            }
-        }
         let environment = operator_entries
             .iter()
             .map(|(key, value)| (key.as_os_str(), value.as_os_str()))

@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 
 fn fixture() -> Value {
     let span = json!({"file":"files.ts","line":1});
-    json!({"ir_version":8,"host":{"os":"linux","arch":"x86_64"},"workspace":{
+    json!({"ir_version":9,"host":{"os":"linux","arch":"x86_64"},"workspace":{
         "span":span,"outputs":[
             {"kind":"profile","name":"personal","span":span,"files":[{
                 "span":span,"source":{"kind":"repo_file","path":"config"},
@@ -31,21 +31,15 @@ fn rejected(document: &Value) {
 
 #[test]
 fn attached_file_subject_does_not_grant_neighbor_output_or_directory_authority() {
-    let original = fixture();
-    for version in [6, 7, 8] {
-        let mut document = original.clone();
-        document["ir_version"] = json!(version);
-        assert!(check(&document.to_string()).is_ok());
-        document["workspace"]["outputs"][1]["run"]["argv"][1]["selector"] = json!("sibling");
-        rejected(&document);
-        document["workspace"]["outputs"][1]["run"]["argv"][1] =
-            json!({"kind":"output","selector":"."});
-        rejected(&document);
-        document["workspace"]["outputs"][1]["run"]["argv"][1] =
-            json!({"kind":"source","selector":"."});
-        document["workspace"]["outputs"][1]["run"]["cwd"] = json!({"kind":"source","selector":"."});
-        rejected(&document);
-    }
+    let mut document = fixture();
+    assert!(check(&document.to_string()).is_ok());
+    document["workspace"]["outputs"][1]["run"]["argv"][1]["selector"] = json!("sibling");
+    rejected(&document);
+    document["workspace"]["outputs"][1]["run"]["argv"][1] = json!({"kind":"output","selector":"."});
+    rejected(&document);
+    document["workspace"]["outputs"][1]["run"]["argv"][1] = json!({"kind":"source","selector":"."});
+    document["workspace"]["outputs"][1]["run"]["cwd"] = json!({"kind":"source","selector":"."});
+    rejected(&document);
 }
 
 #[test]

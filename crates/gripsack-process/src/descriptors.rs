@@ -5,42 +5,13 @@
 mod linux;
 use std::{io, os::fd::RawFd};
 
-pub(crate) struct DescriptorPolicy {
-    #[cfg(target_os = "macos")]
-    maximum: libc::c_int,
-}
+pub(crate) struct DescriptorPolicy {}
 
 impl DescriptorPolicy {
     pub(crate) fn admit() -> io::Result<Self> {
         #[cfg(target_os = "linux")]
         {
             Ok(Self {})
-        }
-        #[cfg(target_os = "macos")]
-        {
-            let mut maximum: libc::c_int = 0;
-            let mut length = std::mem::size_of_val(&maximum);
-            // SAFETY: the fixed sysctl name and writable output/length pointers
-            // have the declared sizes; this runs before fork, not in pre_exec.
-            let result = unsafe {
-                libc::sysctlbyname(
-                    c"kern.maxfilesperproc".as_ptr(),
-                    (&mut maximum as *mut libc::c_int).cast(),
-                    &mut length,
-                    std::ptr::null_mut(),
-                    0,
-                )
-            };
-            if result < 0 {
-                return Err(io::Error::last_os_error());
-            }
-            if length != std::mem::size_of_val(&maximum) || maximum < 3 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "invalid kernel descriptor ceiling",
-                ));
-            }
-            Ok(Self { maximum })
         }
     }
 
@@ -71,22 +42,6 @@ impl DescriptorPolicy {
                 } else {
                     return Err(error);
                 }
-            }
-        }
-        #[cfg(target_os = "macos")]
-        for descriptor in 3..self.maximum {
-            // SAFETY: integer descriptor queries/flag updates do not dereference
-            // pointers. No other thread opens descriptors in the forked child.
-            let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFD) };
-            if flags < 0 {
-                let error = io::Error::last_os_error();
-                if error.raw_os_error() != Some(libc::EBADF) {
-                    return Err(error);
-                }
-            } else if unsafe { libc::fcntl(descriptor, libc::F_SETFD, flags | libc::FD_CLOEXEC) }
-                < 0
-            {
-                return Err(io::Error::last_os_error());
             }
         }
         for descriptor in [

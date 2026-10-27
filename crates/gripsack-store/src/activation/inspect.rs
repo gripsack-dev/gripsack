@@ -106,7 +106,7 @@ pub fn inspect(
             for declaration in intents {
                 let action_sha256 = model::digest(&declaration.action)?;
                 let contributors = [Contributor {
-                    module: declaration.module,
+                    output: declaration.output,
                     trigger: declaration.trigger,
                 }];
                 visit(HookInspection {

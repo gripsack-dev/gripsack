@@ -160,7 +160,7 @@ fn operational(error: impl std::fmt::Display) -> ExecError {
 }
 fn failure(detail: impl Into<String>) -> ExecError {
     ExecError::Step {
-        module: "workspace".into(),
+        output: "workspace".into(),
         step: "solve".into(),
         detail: detail.into(),
     }

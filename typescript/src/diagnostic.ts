@@ -7,7 +7,7 @@
  * Codes are generated from schema/diagnostics.json for core and
  * frontend together, never allocated in this module. */
 
-import type { Span } from "./module.ts";
+import type { Span } from "./span.ts"
 import { diagnosticCodes, frontendDiagnosticCodeRegistry } from "./diagnostic_codes.ts";
 
 export { diagnosticCodes };
@@ -113,7 +113,7 @@ export function asDiagnostic(error: unknown): FrontendDiagnostic | undefined {
 /** Frames of the frontend package itself (embedded copy or a repo's
  *  pinned @gripsack/core, src or dist) are internal; the first frame
  *  outside them is the user's declaration site. Same frame rule as
- *  module.ts's callerSpan, applied to a caught error's stack. */
+ *  span.ts's callerSpan, applied to a caught error's stack. */
 function isPackageFrame(path: string, selfDir: string): boolean {
   return path.startsWith(selfDir) || path.includes("/node_modules/@gripsack/core/");
 }

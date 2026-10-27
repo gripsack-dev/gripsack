@@ -1,7 +1,7 @@
 use super::*;
 use std::os::unix::process::ExitStatusExt;
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "linux")]
 mod confinement;
 #[cfg(all(
     target_os = "linux",

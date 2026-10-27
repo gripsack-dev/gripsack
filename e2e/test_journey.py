@@ -8,76 +8,43 @@ TIME. A red run prints its seed; replay it, then promote the failing
 sequence to a named regression test.
 """
 
+import json
 import random
 
 import pytest
 from conftest import (
     grip,
-    make_env_repo,
+    make_workspace_repo,
     make_tarball,
-    make_toolchain_tarball,
-    refresh_host,
+    refresh_workspace,
 )
 
 SEEDS = [7, 42, 1337, 2026, 31337]
 STEPS = 30
 
-COPY_MOD = """
-import { module, trackedCopy } from "@gripsack/core";
-
-export default module("copy", {
-  config: { "configs/copy/a.conf": trackedCopy("%(copy_to)s") },
+COPY_OUTPUT = """
+import { profile, file, repoFile, identity, trackedCopyTo } from "@gripsack/core";
+export default profile("copy", {
+  files: [file({source: repoFile("configs/copy/a.conf"), content: identity(),
+    destination: trackedCopyTo("%(copy_to)s")})],
 });
 """
 
-LINK_MOD = """
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
-
-export default module("tool", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/tool": symlink("%(link_to)s") }},
-}});
+LINK_OUTPUT = """
+import {{ pkg, provider, tarball, profile, file, artifactFile, identity, symlinkTo }} from "@gripsack/core";
+export default [
+  pkg("tool-payload", {{producer: provider(tarball("{payload}")),
+    commands: {{}}, target: {{os:"linux",arch:"x86_64"}}, layout: {{kind:"relocatable"}}}}),
+  profile("tool", {{files: [file({{source: artifactFile("tool-payload", "bin/tool"),
+    content: identity(), destination: symlinkTo("%(link_to)s")}})]}}),
+];
 """
 
-MERGE_MOD = """
-import { module, merge } from "@gripsack/core";
-
-export default module("shell", {
-  config: { "configs/shell/block.sh": merge("~/.bashrc") },
-});
-"""
-
-HOOK_MOD = """
-import { module, customHook } from "@gripsack/core";
-
-export default module("hook", {
-  activate: [customHook("echo tick >> ~/" + "hook.log")],
-});
-"""
-
-# 0039: a build edge in the world. The toolchain is fetched + stored
-# but NEVER deployed; the consumer builds against it through the
-# closure (which tcc + GRIP_DEP_TOOLCHAIN) and deploys the artifact.
-TOOLCHAIN_MOD = """
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
-
-export default module("toolchain", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/tcc": symlink("~/.local/bin/tcc") }},
-}});
-"""
-
-BUILT_MOD = """
-import { dep, installStep, module, shellStep, symlink } from "@gripsack/core";
-
-export default module("built", {
-  depends: [dep("toolchain", { for: "build" })],
-  steps: [
-    shellStep("mkdir -p out && cp \\"$(which tcc)\\" out/built", "build"),
-    installStep({ "out/built": symlink("~/.local/bin/built") }, "install", {
-      needs: ["build"],
-    }),
-  ],
+MERGE_OUTPUT = """
+import { profile, file, repoFile, identity, managedBlock } from "@gripsack/core";
+export default profile("shell", {
+  files: [file({source: repoFile("configs/shell/block.sh"), content: identity(),
+    destination: managedBlock("~/.bashrc", "shell")})],
 });
 """
 
@@ -150,16 +117,13 @@ class Dest:
         self.drifted = False
 
 
-def module_source(repo_root, kind, to, content):
+def output_source(repo_root, kind, to):
     if kind == "copy":
-        return COPY_MOD % {"copy_to": to}
+        return COPY_OUTPUT % {"copy_to": to}
     if kind == "tool":
-        payload = repo_root / "tool.tar.gz"
-        return LINK_MOD.format(payload=payload) % {"link_to": to}
+        return LINK_OUTPUT.format(payload=(repo_root / "tool.tar.gz").as_uri()) % {"link_to": to}
     if kind == "shell":
-        return MERGE_MOD
-    if kind == "hook":
-        return HOOK_MOD
+        return MERGE_OUTPUT
     raise AssertionError(f"unknown kind {kind}")
 
 
@@ -173,23 +137,18 @@ def test_random_journey(sandbox, seed):
     link_to = "~/.local/bin/tool"
     bashrc = sandbox / ".bashrc"
     bashrc.write_text("# my bashrc\n")
+    foreign_lines = ["# my bashrc\n"]
 
     copy_dest = sandbox / ".config/demo/a.conf"
     link_dest = sandbox / ".local/bin/tool"
     copy_abs = str(copy_dest)
-    link_abs = str(link_dest)
-    built_dest = sandbox / ".local/bin/built"
-    tcc_dest = sandbox / ".local/bin/tcc"
 
     (repo_root / "configs" / "copy").mkdir(parents=True)
     (repo_root / "configs" / "shell").mkdir(parents=True)
-    (repo_root / "configs" / "hook").mkdir(parents=True)
     (repo_root / "configs" / "copy" / "a.conf").write_text("copy-v0\n")
     (repo_root / "configs" / "shell" / "block.sh").write_text("export V=0\n")
     payload = repo_root / "tool.tar.gz"
     make_tarball(payload, {"bin/tool": b"#!/bin/sh\necho tool-v0\n"})
-    tc_payload = repo_root / "toolchain.tar.gz"
-    make_toolchain_tarball(tc_payload, {"bin/tcc": b"#!/bin/sh\necho tcc-v0\n"})
 
     # destination models: copy and merge hold CONTENT; the link holds
     # a marker = the payload bytes it points at
@@ -198,39 +157,28 @@ def test_random_journey(sandbox, seed):
     merge.origin = "# my bashrc\n"
     merge.live = "# my bashrc\n"
     tool = Dest(link_to)
-    built = Dest("~/.local/bin/built")
 
-    present = {"copy": True, "tool": True, "shell": True, "hook": True}
+    present = {"copy": True, "tool": True, "shell": True}
 
     def write_repo():
-        mods = {}
+        outputs = {}
         if present["copy"]:
-            mods["copy"] = module_source(repo_root, "copy", copy.to, None)
+            outputs["copy"] = output_source(repo_root, "copy", copy.to)
         if present["tool"]:
-            mods["tool"] = module_source(repo_root, "tool", tool.to, None)
+            outputs["tool"] = output_source(repo_root, "tool", tool.to)
         if present["shell"]:
-            mods["shell"] = MERGE_MOD
-        if present["hook"]:
-            mods["hook"] = HOOK_MOD
-        # the build edge (0039): both always present — the consumer
-        # rebuilds when the toolchain pin moves; the toolchain itself
-        # never deploys
-        mods["toolchain"] = TOOLCHAIN_MOD.format(payload=tc_payload)
-        mods["built"] = BUILT_MOD
+            outputs["shell"] = MERGE_OUTPUT
         (repo_root / "configs" / "copy" / "a.conf").write_text(copy.repo)
         (repo_root / "configs" / "shell" / "block.sh").write_text(merge.repo)
-        # re-entrant: removed modules' files are DELETED (an
-        # undeclared module is gone, not just unlisted) and the host
-        # is refreshed — make_env_repo never cleans, by design
-        moddir = repo_root / "modules"
-        moddir.mkdir(parents=True, exist_ok=True)
-        for stale in moddir.glob("*.ts"):
-            if stale.stem not in mods:
+        output_dir = repo_root / "outputs"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for stale in output_dir.glob("*.ts"):
+            if stale.stem not in outputs:
                 stale.unlink()
-        for name, src in mods.items():
-            (moddir / f"{name}.ts").write_text(src)
-        refresh_host(repo_root)
-        return mods
+        for name, source in outputs.items():
+            (output_dir / f"{name}.ts").write_text(source)
+        refresh_workspace(repo_root)
+        return outputs
 
     gen = 0
 
@@ -239,13 +187,8 @@ def test_random_journey(sandbox, seed):
         args = ["apply", "--host", "testhost"] + (["--take-over"] if takeover else [])
         out = grip(*args, cwd=repo_root)
         assert out.returncode == 0, f"seed={seed} trace: {' '.join(trace)}\napply failed: {out.stderr}"
-        # satisfied runs cut no generation — read the truth, never
-        # count by hand
-        import re
-
-        m = re.search(r"generation (\d+)", out.stdout)
-        assert m, f"seed={seed}: apply output has no generation: {out.stdout}"
-        gen = int(m.group(1))
+        wire = json.loads((sandbox / ".local/share/gripsack/current/manifest.json").read_text())
+        gen = wire.get("generation", wire)["number"]
         copy.applied(takeover)
         merge.applied(takeover)
         if present["tool"]:
@@ -254,10 +197,6 @@ def test_random_journey(sandbox, seed):
         else:
             tool.undeclare()
             tool.applied()
-        # always declared (0039 fixture): the link lands, rebuilt
-        # against the current toolchain pin
-        built.declared = True
-        built.applied()
         return gen
 
     def check_world():
@@ -287,21 +226,15 @@ def test_random_journey(sandbox, seed):
                 )
             else:
                 assert "gripsack" not in text, f"seed={seed}: merge block should be gone"
+            assert all(line in text for line in foreign_lines), "foreign shell content was lost"
         # the link: present iff gripsack last deployed it
         if tool.managed is not None:
             assert link_dest.is_symlink(), f"seed={seed}: tool link missing"
             target = link_dest.readlink()
             assert "gripsack" in str(target) or "store" in str(target)
+            assert link_dest.read_text() == tool.managed, "link points at the wrong retained revision"
         else:
             assert not link_dest.exists(), f"seed={seed}: tool link should be gone"
-        # 0039 invariants, checked after EVERY step: the build-only
-        # toolchain never deploys, and the consumer's artifact link
-        # stands (rebuilt against the current pin)
-        assert not tcc_dest.exists(), f"seed={seed}: build dep tcc leaked into HOME"
-        if built.managed is not None:
-            assert built_dest.is_symlink(), f"seed={seed}: built link missing"
-            target = built_dest.readlink()
-            assert "gripsack" in str(target) or "store" in str(target)
         # system health
         out = grip("check", "--host", "testhost", cwd=repo_root)
         assert out.returncode == 0, f"seed={seed}: check failed: {out.stderr}"
@@ -312,22 +245,18 @@ def test_random_journey(sandbox, seed):
 
     copy.declare("copy-v0\n")
     merge.declare("export V=0\n")
-    tool.declare("tool-v0\n")
-    built.declare("tcc-v0\n")
-    make_env_repo(repo_root, {
-        "copy": module_source(repo_root, "copy", copy.to, None),
-        "tool": module_source(repo_root, "tool", tool.to, None),
-        "shell": module_source(repo_root, "shell", None, None),
-        "hook": module_source(repo_root, "hook", None, None),
-        "toolchain": TOOLCHAIN_MOD.format(payload=tc_payload),
-        "built": BUILT_MOD,
+    tool.declare("#!/bin/sh\necho tool-v0\n")
+    make_workspace_repo(repo_root, {
+        "copy": output_source(repo_root, "copy", copy.to),
+        "tool": output_source(repo_root, "tool", tool.to),
+        "shell": output_source(repo_root, "shell", None),
     })
     trace = ["init+apply"]
 
     write_repo()
     apply()
 
-    gen_content = {gen: (copy.managed, copy.declared, merge.managed, merge.declared)}
+    gen_content = {gen: (copy.managed, copy.declared, merge.managed, merge.declared, tool.managed)}
 
     for step in range(STEPS):
         op = rng.choice(
@@ -335,7 +264,7 @@ def test_random_journey(sandbox, seed):
                 "edit_copy", "edit_merge", "edit_payload",
                 "apply", "apply", "drift_copy", "drift_merge",
                 "apply_takeover", "toggle_copy", "toggle_merge",
-                "respell_copy", "update_payload", "edit_toolchain",
+                "respell_copy", "update_payload",
                 "rollback",
             ]
         )
@@ -347,42 +276,28 @@ def test_random_journey(sandbox, seed):
             merge.declare(f"export V={rng.randint(1, 9999)}\n")
             write_repo()
         elif op == "edit_payload" and present["tool"]:
-            make_tarball(payload, {b"bin/tool".decode(): f"#!/bin/sh\necho tool-v{rng.randint(1,9999)}\n".encode()})
+            tool.declare(f"#!/bin/sh\necho tool-v{rng.randint(1,9999)}\n")
+            make_tarball(payload, {"bin/tool": tool.repo.encode()})
             out = grip("update", "--host", "testhost", cwd=repo_root)
             assert out.returncode == 0, f"seed={seed} update: {out.stderr}"
             write_repo()
             gen = apply()
-            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared)
+            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared, tool.managed)
             check_world()
-            continue
-        elif op == "edit_toolchain":
-            # 0035 F4's keying across a build edge: a new toolchain
-            # pin must rebuild the consumer — the artifact picks up
-            # the new bytes, proving the closure fed the build
-            tcc = f"#!/bin/sh\necho tcc-v{rng.randint(1, 9999)}\n".encode()
-            make_toolchain_tarball(tc_payload, {"bin/tcc": tcc})
-            out = grip("update", "--host", "testhost", cwd=repo_root)
-            assert out.returncode == 0, f"seed={seed} update: {out.stderr}"
-            write_repo()
-            built.declare(tcc.decode())
-            gen = apply()
-            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared)
-            check_world()
-            assert built_dest.resolve().read_bytes() == tcc, (
-                f"seed={seed}: consumer did not rebuild against the new pin"
-            )
             continue
         elif op == "drift_copy" and copy_dest.exists():
             copy.drift(f"user-{rng.randint(1, 9999)}\n")
             copy_dest.write_text(copy.live)
         elif op == "drift_merge":
             text = bashrc.read_text() if bashrc.exists() else ""
-            bashrc.write_text(text + f"# note {rng.randint(1,9999)}\n")
+            note = f"# note {rng.randint(1,9999)}\n"
+            foreign_lines.append(note)
+            bashrc.write_text(text + note)
             merge.live = bashrc.read_text()
         elif op == "apply_takeover":
             write_repo()
             gen = apply(takeover=True)
-            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared)
+            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared, tool.managed)
             check_world()
             continue
         elif op == "toggle_copy":
@@ -404,12 +319,13 @@ def test_random_journey(sandbox, seed):
             copy.to = copy_abs if copy.to.startswith("~") else "~/.config/demo/a.conf"
             write_repo()
         elif op == "update_payload" and present["tool"]:
-            make_tarball(payload, {"bin/tool": f"#!/bin/sh\necho tool-v{rng.randint(1,9999)}\n".encode()})
+            tool.declare(f"#!/bin/sh\necho tool-v{rng.randint(1,9999)}\n")
+            make_tarball(payload, {"bin/tool": tool.repo.encode()})
             out = grip("update", "--host", "testhost", cwd=repo_root)
             assert out.returncode == 0, f"seed={seed} update: {out.stderr}"
             write_repo()
             gen = apply()
-            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared)
+            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared, tool.managed)
             check_world()
             continue
         elif op == "rollback" and gen > 1:
@@ -417,16 +333,17 @@ def test_random_journey(sandbox, seed):
             out = grip("rollback", str(target), cwd=repo_root)
             assert out.returncode == 0, f"seed={seed} rollback {target}: {out.stderr}"
             if target in gen_content:
-                cm, cd, mm, md = gen_content[target]
+                cm, cd, mm, md, tm = gen_content[target]
                 copy.rolled_back(cm, cd)
                 merge.rolled_back(mm, md)
+                tool.rolled_back(tm, True)
             gen = target
             check_world()
             continue
         else:
             write_repo()
             gen = apply()
-            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared)
+            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared, tool.managed)
             check_world()
             continue
         check_world()

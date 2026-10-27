@@ -1,8 +1,8 @@
 //! One persisted effective ordering. Cache coalescing happens once, before
 //! publication; replay never reconstructs IDs from today's repository.
 use super::{ActivationAction as Action, PendingIntent};
+use crate::ActivationTrigger;
 use crate::selection_wire::{TransactionText, parse_transaction};
-use gripsack_ir::Trigger;
 use gripsack_policy::selection::{SelectionIdentity, TransactionId};
 use gripsack_process::Sha256Digest;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -66,8 +66,9 @@ impl IntentOrdinal {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Contributor {
-    pub module: String,
-    pub trigger: Trigger,
+    #[serde(rename = "module")]
+    pub output: String,
+    pub trigger: ActivationTrigger,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -172,7 +173,7 @@ pub(super) fn effective(
     let mut rest = Vec::new();
     for declaration in declarations {
         let contributor = Contributor {
-            module: declaration.module,
+            output: declaration.output,
             trigger: declaration.trigger,
         };
         match declaration.action {
@@ -252,7 +253,7 @@ impl Plan {
                 || intent
                     .contributors
                     .iter()
-                    .any(|source| source.module.is_empty())
+                    .any(|source| source.output.is_empty())
                 || digest(&intent.action)? != intent.action_digest
                 || identity(
                     instance,

@@ -164,7 +164,7 @@ def validate_manifest(value):
         require(isinstance(compatible[component], str) and VERSION.fullmatch(compatible[component]), "invalid component version")
     require(compatible["core"] == compatible["bridge"] == compatible["conda"], "helper version differs from core")
     keys(compatible["ir"], {"writer", "readers"})
-    require(compatible["ir"] == {"writer": 8, "readers": [3, 4, 5, 6, 7, 8]}, "unsupported IR compatibility contract")
+    require(compatible["ir"] == {"writer": 9, "readers": [9]}, "unsupported IR compatibility contract")
     keys(compatible["helper_pins"], {"bridge", "conda"})
     for pin in compatible["helper_pins"].values():
         require(isinstance(pin, str) and HEX64.fullmatch(pin), "invalid helper pin")
@@ -245,12 +245,11 @@ def compatible_source(source):
     core = tomllib.loads((source / "Cargo.toml").read_text())["workspace"]["package"]["version"]
     sdk = load_json(source / "typescript/package.json")["version"]
     reader = (source / "crates/gripsack-ir/src/parse.rs").read_text()
-    writer = (source / "typescript/src/graph.ts").read_text()
-    require(re.search(r"pub const IR_VERSION: u32 = 8;", reader)
-            and re.search(r"pub const LEGACY_IR_VERSION: u32 = 3;", reader)
-            and "LEGACY_IR_VERSION..=IR_VERSION" in reader
-            and re.search(r"export const IR_VERSION = 8;", writer), "changed IR reader/writer contract")
-    result = {"core": core, "sdk": sdk, "ir": {"writer": 8, "readers": [3, 4, 5, 6, 7, 8]}, "helper_pins": {}}
+    writer = (source / "typescript/src/workspace/emit.ts").read_text()
+    require(re.search(r"pub const IR_VERSION: u32 = 9;", reader)
+            and "version != u64::from(IR_VERSION)" in reader
+            and re.search(r"export const IR_VERSION = 9;", writer), "changed IR reader/writer contract")
+    result = {"core": core, "sdk": sdk, "ir": {"writer": 9, "readers": [9]}, "helper_pins": {}}
     for component in ("bridge", "conda"):
         text = (source / f"crates/gripsack-fetch/src/{component}_pins.rs").read_text()
         version = re.search(rf'{component.upper()}_VERSION: &str = "([^"]+)"', text)

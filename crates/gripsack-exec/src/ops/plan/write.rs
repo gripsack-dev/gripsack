@@ -177,7 +177,7 @@ pub(super) fn plan_migration_write(
         Ownership::TrackedCopy | Ownership::Template
     ) {
         return Err(ExecError::Step {
-            module: view.module.into(),
+            output: view.output.into(),
             step: "migrate".into(),
             detail: "migration write requires a whole-file destination".into(),
         });

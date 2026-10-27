@@ -1,477 +1,132 @@
-//! The versioned v4/v5 workspace tagged-field walk (plan/0052):
-//! every tagged node in the workspace catalog — outputs,
-//! recipe execution and package layout, commands/arguments, the
-//! run_bash interpreter pin, cwd paths, file origin/content/destination
-//! policies, calendar triggers, the producer union and nested v3 fetch
-//! specs under `source.fetch` / `producer.provider.fetch` — is closed
-//! against a per-kind allowlist before serde can drop anything. Plain
-//! structs (workspace, platform/OS version, file, span) use
-//! `deny_unknown_fields` instead.
-//!
-//! Rejections label the NEAREST declaring node's span, read from the
-//! raw JSON: an output-level extra labels the output, a command or
-//! argument extra labels the command (else the owning output), a fetch
-//! extra labels its workspaceFetch source/provider span. v3 diagnostics
-//! never pass through here — the v3 module walk stays in `tagged.rs`
-//! with its span-free messages.
+//! Traverse the single current workspace grammar before typed decoding.
+//! Plain structs deny unknown fields themselves; tagged unions use field rules.
 
 use super::{allowed_fetch_fields, check_tagged_at, raw_node_span};
-use crate::diagnostic::Diagnostic;
+use crate::{Diagnostic, Span};
+use serde_json::Value;
 
-mod v6;
-mod v8;
-type FieldRule = fn(&str) -> Option<&'static [&'static str]>;
+mod commands;
+mod fields;
 
-#[derive(Clone, Copy)]
-pub(super) enum WorkspaceWireVersion {
-    LegacyV4,
-    CurrentV5,
-    CurrentV6,
-    CurrentV7,
-    CurrentV8,
-}
-
-/// Workspace output kinds → allowed keys (the tag plus the variant's
-/// fields; schema/ir/v5.json `workspaceOutput` oneOf).
-fn allowed_workspace_output_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "recipe" => &[
-            "kind",
-            "name",
-            "span",
-            "source",
-            "execution",
-            "output_kind",
-            "target",
-            "steps",
-            "checks",
-        ],
-        "package" => &[
-            "kind", "name", "span", "producer", "commands", "runtime", "target", "layout",
-        ],
-        "environment" => &[
-            "kind", "name", "span", "packages", "target", "prefix", "env",
-        ],
-        "task" => &[
-            "kind",
-            "name",
-            "span",
-            "run",
-            "deps",
-            "environment",
-            "checks",
-        ],
-        "schedule" => &["kind", "name", "span", "task", "trigger", "scope"],
-        "check" => &["kind", "name", "span", "run", "subject"],
-        "image" => &["kind", "name", "span", "packages", "target"],
-        "profile" => &[
-            "kind",
-            "name",
-            "span",
-            "files",
-            "environment",
-            "schedules",
-            "hooks",
-        ],
-        "hook" => &["kind", "name", "span", "run", "trigger"],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_output_fields_v4(kind: &str) -> Option<&'static [&'static str]> {
-    if kind == "environment" {
-        Some(&["kind", "name", "span", "packages", "target", "env"])
-    } else {
-        allowed_workspace_output_fields(kind)
+fn acquisition(node: &Value, path: &str, owner: Option<&Span>, out: &mut Vec<Diagnostic>) {
+    let span = raw_node_span(node);
+    let span = span.as_ref().or(owner);
+    check_tagged_at(node, path, fields::acquisition, span, out);
+    if node.get("kind").and_then(Value::as_str) == Some("fetch")
+        && let Some(fetch) = node.get("fetch")
+    {
+        check_tagged_at(fetch, path, allowed_fetch_fields, span, out);
     }
 }
 
-fn allowed_workspace_execution_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "host" => &["kind", "access"],
-        "isolated_linux" => &["kind", "worker"],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_layout_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "relocatable" => &["kind"],
-        "fixed_prefix" => &["kind", "prefix"],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_command_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "exec" => &["kind", "span", "argv", "env", "cwd"],
-        "run_bash" => &[
-            "kind",
-            "span",
-            "interpreter",
-            "body",
-            "env",
-            "cwd",
-            "line_map",
-        ],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_arg_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "literal" => &["kind", "value"],
-        "artifact" => &["kind", "output", "selector"],
-        "package_command" => &["kind", "package", "command"],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_path_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "literal" => &["kind", "value"],
-        "artifact" => &["kind", "output", "selector"],
-        "host" => &["kind", "path"],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_source_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "repo_file" => &["kind", "path"],
-        "artifact_file" => &["kind", "output", "selector"],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_content_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "identity" => &["kind"],
-        "literal" => &["kind", "text"],
-        "template" => &["kind", "template", "variables"],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_destination_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "symlink" | "tracked_copy" => &["kind", "path"],
-        "managed_block" => &["kind", "path", "marker"],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_calendar_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "daily" => &["kind", "time"],
-        "weekly" => &["kind", "weekday", "time"],
-        _ => return None,
-    })
-}
-
-fn allowed_workspace_producer_fields(kind: &str) -> Option<&'static [&'static str]> {
-    Some(match kind {
-        "recipe" => &["kind", "recipe"],
-        "provider" => &["kind", "provider"],
-        _ => return None,
-    })
-}
-
-/// A workspace command node and every tagged node nested in it: argv
-/// and env arguments, the run_bash interpreter pin, the cwd path.
-/// Rejections label the command's own span, falling back to the
-/// enclosing output's declaration span.
-fn check_workspace_command(
-    node: &serde_json::Value,
-    path: &str,
-    output_span: Option<&crate::Span>,
-    version: WorkspaceWireVersion,
-    out: &mut Vec<Diagnostic>,
-) {
-    let command_span = raw_node_span(node).or_else(|| output_span.cloned());
-    let span = command_span.as_ref();
-    let current_v6 = matches!(
-        version,
-        WorkspaceWireVersion::CurrentV6
-            | WorkspaceWireVersion::CurrentV7
-            | WorkspaceWireVersion::CurrentV8
-    );
-    let command_fields: FieldRule = if current_v6 {
-        v6::command_fields
-    } else {
-        allowed_workspace_command_fields
+pub(super) fn check(value: &Value, out: &mut Vec<Diagnostic>) {
+    let Some(workspace) = value.get("workspace") else {
+        return;
     };
-    let arg_fields: FieldRule = if current_v6 {
-        v6::argument_fields
-    } else {
-        allowed_workspace_arg_fields
-    };
-    let path_fields: FieldRule = if current_v6 {
-        v6::path_fields
-    } else {
-        allowed_workspace_path_fields
-    };
-    check_tagged_at(node, path, command_fields, span, out);
-    let Some(obj) = node.as_object() else { return };
-    if let Some(argv) = obj.get("argv").and_then(|a| a.as_array()) {
-        for arg in argv {
-            check_tagged_at(arg, path, arg_fields, span, out);
+    let workspace_span = raw_node_span(workspace);
+    if let Some(inputs) = workspace.get("inputs").and_then(Value::as_array) {
+        for input in inputs {
+            let span = raw_node_span(input);
+            if let Some(origin) = input.get("origin") {
+                check_tagged_at(
+                    origin,
+                    "workspace input",
+                    fields::input,
+                    span.as_ref().or(workspace_span.as_ref()),
+                    out,
+                );
+            }
         }
     }
-    if let Some(interpreter) = obj.get("interpreter") {
-        check_tagged_at(interpreter, path, arg_fields, span, out);
-    }
-    if let Some(env) = obj.get("env").and_then(|e| e.as_object()) {
-        for arg in env.values() {
-            check_tagged_at(arg, path, arg_fields, span, out);
-        }
-    }
-    if let Some(cwd) = obj.get("cwd") {
-        check_tagged_at(cwd, path, path_fields, span, out);
-    }
-}
-
-/// Walk a strict historical v4 or current v5 workspace catalog.
-pub(super) fn check(
-    value: &serde_json::Value,
-    version: WorkspaceWireVersion,
-    out: &mut Vec<Diagnostic>,
-) {
-    let legacy_v4 = matches!(version, WorkspaceWireVersion::LegacyV4);
-    let current_v6 = matches!(
-        version,
-        WorkspaceWireVersion::CurrentV6
-            | WorkspaceWireVersion::CurrentV7
-            | WorkspaceWireVersion::CurrentV8
-    );
-    if current_v6 {
-        v6::inputs(value, out);
-    }
-    let execution_fields: FieldRule = if current_v6 {
-        v6::execution_fields
-    } else {
-        allowed_workspace_execution_fields
-    };
-    let arg_fields: FieldRule = if current_v6 {
-        v6::argument_fields
-    } else {
-        allowed_workspace_arg_fields
-    };
-    let source_fields: FieldRule = if matches!(version, WorkspaceWireVersion::CurrentV8) {
-        v8::source_fields
-    } else if current_v6 {
-        v6::source_fields
-    } else {
-        allowed_workspace_source_fields
-    };
-    let content_fields: FieldRule = if matches!(version, WorkspaceWireVersion::CurrentV8) {
-        v8::content_fields
-    } else if current_v6 {
-        v6::content_fields
-    } else {
-        allowed_workspace_content_fields
-    };
-    let Some(outputs) = value
-        .get("workspace")
-        .and_then(|w| w.get("outputs"))
-        .and_then(|o| o.as_array())
-    else {
+    let Some(outputs) = workspace.get("outputs").and_then(Value::as_array) else {
         return;
     };
     for output in outputs {
-        let name = output
-            .get("name")
-            .and_then(|n| n.as_str())
-            .unwrap_or("?")
-            .to_string();
-        let kind = output
-            .get("kind")
-            .and_then(|k| k.as_str())
-            .unwrap_or("")
-            .to_string();
+        let name = output.get("name").and_then(Value::as_str).unwrap_or("?");
+        let kind = output.get("kind").and_then(Value::as_str).unwrap_or("");
         let path = format!("workspace output {name:?} ({kind})");
         let output_span = raw_node_span(output);
-        let allowed: fn(&str) -> Option<&'static [&'static str]> = if legacy_v4 {
-            allowed_workspace_output_fields_v4
-        } else if matches!(version, WorkspaceWireVersion::CurrentV8) {
-            v8::output_fields
-        } else if matches!(version, WorkspaceWireVersion::CurrentV7) {
-            v6::output_fields_v7
-        } else if current_v6 {
-            v6::output_fields
-        } else {
-            allowed_workspace_output_fields
-        };
-        check_tagged_at(output, &path, allowed, output_span.as_ref(), out);
-        match kind.as_str() {
+        let span = output_span.as_ref();
+        check_tagged_at(output, &path, fields::output, span, out);
+        match kind {
             "recipe" => {
-                if !legacy_v4 && let Some(execution) = output.get("execution") {
-                    check_tagged_at(
-                        execution,
-                        &path,
-                        execution_fields,
-                        output_span.as_ref(),
-                        out,
-                    );
+                if let Some(execution) = output.get("execution") {
+                    check_tagged_at(execution, &path, fields::execution, span, out);
                 }
                 if let Some(source) = output.get("source") {
-                    // The acquisition source's own span, else the recipe's.
-                    let source_span = raw_node_span(source).or_else(|| output_span.clone());
-                    if current_v6 {
-                        v6::acquisition_source(source, &path, source_span.as_ref(), version, out);
-                    } else if let Some(fetch) = source.get("fetch") {
-                        check_tagged_at(
-                            fetch,
-                            &path,
-                            allowed_fetch_fields,
-                            source_span.as_ref(),
-                            out,
-                        );
-                    }
+                    acquisition(source, &path, span, out);
                 }
-                if current_v6 {
-                    v6::steps(output, &path, output_span.as_ref(), out);
-                } else if let Some(steps) = output.get("steps").and_then(|s| s.as_array()) {
-                    for command in steps {
-                        check_workspace_command(command, &path, output_span.as_ref(), version, out);
-                    }
-                }
+                commands::steps(output, &path, span, out);
             }
             "package" => {
-                if matches!(version, WorkspaceWireVersion::CurrentV8)
-                    && let Some(root) = output.get("archive_root")
-                {
-                    check_tagged_at(
-                        root,
-                        &path,
-                        v8::archive_root_fields,
-                        output_span.as_ref(),
-                        out,
-                    );
+                if let Some(root) = output.get("archive_root") {
+                    check_tagged_at(root, &path, fields::archive_root, span, out);
                 }
-                if !legacy_v4 && let Some(layout) = output.get("layout") {
-                    let layout_fields: FieldRule = if current_v6 {
-                        v6::layout_fields
-                    } else {
-                        allowed_workspace_layout_fields
-                    };
-                    check_tagged_at(layout, &path, layout_fields, output_span.as_ref(), out);
+                if let Some(layout) = output.get("layout") {
+                    check_tagged_at(layout, &path, fields::layout, span, out);
                 }
                 if let Some(producer) = output.get("producer") {
-                    check_tagged_at(
-                        producer,
-                        &path,
-                        allowed_workspace_producer_fields,
-                        output_span.as_ref(),
-                        out,
-                    );
-                    // /workspace/outputs/*/producer/provider/fetch gets
-                    // the same admission as a recipe's source fetch —
-                    // serde cannot close the nested tagged union.
+                    check_tagged_at(producer, &path, fields::producer, span, out);
                     if let Some(provider) = producer.get("provider") {
-                        let provider_span = raw_node_span(provider).or_else(|| output_span.clone());
-                        if current_v6 {
-                            v6::acquisition_source(
-                                provider,
-                                &path,
-                                provider_span.as_ref(),
-                                version,
-                                out,
-                            );
-                        } else if let Some(fetch) = provider.get("fetch") {
-                            check_tagged_at(
-                                fetch,
-                                &path,
-                                allowed_fetch_fields,
-                                provider_span.as_ref(),
-                                out,
-                            );
-                        }
+                        acquisition(provider, &path, span, out);
                     }
                 }
             }
-            "image" if current_v6 => {
+            "image" => {
                 if let Some(arguments) = output
                     .get("config")
                     .and_then(|config| config.get("entrypoint"))
-                    .and_then(serde_json::Value::as_array)
+                    .and_then(Value::as_array)
                 {
                     for argument in arguments {
-                        check_tagged_at(argument, &path, arg_fields, output_span.as_ref(), out);
+                        check_tagged_at(argument, &path, fields::argument, span, out);
                     }
                 }
             }
             "environment" => {
-                if let Some(env) = output.get("env").and_then(|e| e.as_object()) {
-                    for arg in env.values() {
-                        check_tagged_at(arg, &path, arg_fields, output_span.as_ref(), out);
+                if let Some(env) = output.get("env").and_then(Value::as_object) {
+                    for argument in env.values() {
+                        check_tagged_at(argument, &path, fields::argument, span, out);
                     }
                 }
             }
-            "task" | "check" | "hook" => {
-                if current_v6 && kind == "task" {
-                    v6::steps(output, &path, output_span.as_ref(), out);
-                } else if let Some(run) = output.get("run") {
-                    check_workspace_command(run, &path, output_span.as_ref(), version, out);
+            "task" => commands::steps(output, &path, span, out),
+            "check" | "hook" => {
+                if let Some(run) = output.get("run") {
+                    commands::check(run, &path, span, out);
                 }
             }
             "schedule" => {
                 if let Some(trigger) = output.get("trigger") {
-                    check_tagged_at(
-                        trigger,
-                        &path,
-                        allowed_workspace_calendar_fields,
-                        output_span.as_ref(),
-                        out,
-                    );
+                    check_tagged_at(trigger, &path, fields::calendar, span, out);
                 }
             }
             "profile" => {
-                if matches!(version, WorkspaceWireVersion::CurrentV8)
-                    && let Some(launchers) = output.get("launchers")
-                {
-                    v8::launchers(launchers, &path, output_span.as_ref(), out);
+                if let Some(launchers) = output.get("launchers").and_then(Value::as_object) {
+                    for key in launchers.keys() {
+                        if !matches!(key.as_str(), "directory" | "commands") {
+                            out.push(
+                                Diagnostic::error(
+                                    crate::codes::MALFORMED,
+                                    format!("unknown field `{key}` in profile launchers ({path})"),
+                                )
+                                .with_label(span.cloned(), "declared here"),
+                            );
+                        }
+                    }
                 }
-                if let Some(files) = output.get("files").and_then(|f| f.as_array()) {
+                if let Some(files) = output.get("files").and_then(Value::as_array) {
                     for file in files {
-                        // The file declaration's own span, else the profile's.
-                        let file_span = raw_node_span(file).or_else(|| output_span.clone());
+                        let file_span = raw_node_span(file);
+                        let span = file_span.as_ref().or(span);
                         if let Some(source) = file.get("source") {
-                            if !matches!(version, WorkspaceWireVersion::CurrentV8) {
-                                v8::reject_historical_variant(
-                                    source,
-                                    &path,
-                                    file_span.as_ref(),
-                                    out,
-                                );
-                            }
-                            check_tagged_at(source, &path, source_fields, file_span.as_ref(), out);
+                            check_tagged_at(source, &path, fields::source, span, out);
                         }
                         if let Some(content) = file.get("content") {
-                            if !matches!(version, WorkspaceWireVersion::CurrentV8) {
-                                v8::reject_historical_variant(
-                                    content,
-                                    &path,
-                                    file_span.as_ref(),
-                                    out,
-                                );
-                            }
-                            check_tagged_at(
-                                content,
-                                &path,
-                                content_fields,
-                                file_span.as_ref(),
-                                out,
-                            );
+                            check_tagged_at(content, &path, fields::content, span, out);
                         }
                         if let Some(destination) = file.get("destination") {
-                            check_tagged_at(
-                                destination,
-                                &path,
-                                allowed_workspace_destination_fields,
-                                file_span.as_ref(),
-                                out,
-                            );
+                            check_tagged_at(destination, &path, fields::destination, span, out);
                         }
                     }
                 }

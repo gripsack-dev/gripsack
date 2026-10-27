@@ -1,16 +1,15 @@
 //! Graph closures as a verified kernel (0047): the build-dependency
 //! closure every consumer pins rides on, computed over indices. The
-//! IR adapter (gripsack-ir/src/dependencies.rs) hands in a
-//! name-indexed view; ordering-only edges are NOT in the input, so
-//! they can never leak into a build closure — unrepresentable, not
+//! IR adapter (gripsack-ir/src/sema/workspace_model/graph.rs) hands in
+//! name-bound output indices; ordering-only edges are NOT in the input,
+//! so they can never leak into a build closure — unrepresentable, not
 //! just unused.
 //!
 //! Proved: the closure contains exactly the build-reachable non-root
 //! nodes (soundness via ghost witness paths, completeness via the
 //! worklist edge-closure invariant), and the walk terminates on cyclic
-//! input. Unknown dep names are sink nodes by adapter construction —
-//! they join the closure but have no out-edges, the pre-0047
-//! semantics.
+//! input. Catalog reference admission rejects unknown output names before
+//! constructing the production adjacency.
 
 pub mod collector;
 pub mod name_index;
@@ -355,7 +354,7 @@ pub proof fn lemma_reachable_visited(
 /// Production/BuildInput reference whose role the admission adapter
 /// projected into the build adjacency lands in the admitted build
 /// closure — a one-step path witnesses reachability and the closure is
-/// complete. This is the theorem behind the v6 admission check that
+/// complete. This is the theorem behind the workspace admission check that
 /// fails REQUIRED_WORKSPACE_EDGE_MISSING when a declared producer/input
 /// is absent (gripsack-ir/src/sema/workspace_model/graph.rs).
 pub proof fn lemma_projected_build_edge_in_closure(
@@ -384,7 +383,7 @@ pub proof fn lemma_projected_build_edge_in_closure(
 }
 
 /// A projected validation edge is retained as a mandatory publication
-/// gate — never dropped, never a build edge (the v6 adapter's
+/// gate — never dropped, never a build edge (the workspace adapter's
 /// REQUIRED_WORKSPACE_EDGE_MISSING guard for lost validation roles).
 pub proof fn lemma_projected_validation_edge_retained(role: roles::GraphRole)
     requires
@@ -393,37 +392,6 @@ pub proof fn lemma_projected_validation_edge_retained(role: roles::GraphRole)
         roles::role_decision(role).required_validation,
         !roles::role_decision(role).build,
 {
-}
-
-/// build-only membership: incoming build edge and no incoming runtime
-/// edge. (A trivial loop — the contract is the point.)
-pub fn build_only_members(build_target: &[bool], runtime_target: &[bool]) -> (result: Vec<usize>)
-    requires
-        build_target@.len() == runtime_target@.len(),
-    ensures
-        forall|i: usize| result@.contains(i) <==>
-            (i as int) < build_target@.len() && build_target@[i as int] && !runtime_target@[i as int],
-        forall|a: int, b: int| 0 <= a < result@.len() && 0 <= b < result@.len()
-            && result@[a] == result@[b] ==> a == b,
-{
-    let mut result: Vec<usize> = Vec::new();
-    let mut i = 0;
-    while i < build_target.len()
-        invariant
-            i <= build_target@.len(),
-            build_target@.len() == runtime_target@.len(),
-            forall|j: usize| result@.contains(j) <==>
-                (j as int) < i && build_target@[j as int] && !runtime_target@[j as int],
-            forall|a: int, b: int| 0 <= a < result@.len() && 0 <= b < result@.len()
-                && result@[a] == result@[b] ==> a == b,
-        decreases build_target.len() - i,
-    {
-        if build_target[i] && !runtime_target[i] {
-            result.push(i);
-        }
-        i += 1;
-    }
-    result
 }
 
 }

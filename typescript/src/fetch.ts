@@ -5,9 +5,7 @@ export type Fetch =
   | { kind: "tarball"; url: string; sha256?: string }
   | { kind: "git"; url: string; rev?: string }
   | { kind: "file"; path: string }
-  | { kind: "plugin"; name: string; args?: Record<string, unknown> }
-  | { kind: "brew"; formula: string; version?: string; sha256?: string }
-  | { kind: "pixi"; package: string; version?: string; sha256?: string };
+  | { kind: "plugin"; name: string; args?: Record<string, unknown> };
 
 /**
  * GitHub release fetcher. `{version.bare}` strips exactly one leading lowercase
@@ -53,14 +51,5 @@ export function pluginFetch(name: string, args?: Record<string, unknown>): Fetch
   return args === undefined
     ? { kind: "plugin", name }
     : { kind: "plugin", name, args };
-}
-
-/** A Homebrew bottle — resolved from the formula JSON, so the pin
- *  needs no download at update time. `version` is a tripwire: a
- * mismatch fails at resolve (`grip update` to move), never a range. */
-export function brew(formula: string, version?: string): Fetch {
-  return version === undefined
-    ? { kind: "brew", formula }
-    : { kind: "brew", formula, version };
 }
 

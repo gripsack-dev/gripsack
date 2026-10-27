@@ -1,13 +1,10 @@
 [package]
 name = "gripsack-exec"
-description = "gripsack DAG scheduling (plan/0001)"
+description = "gripsack workspace realization and profile lifecycle"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-
-[features]
-loom-tests = []
 
 [dependencies]
 gripsack-conda.workspace = true
@@ -32,8 +29,4 @@ bzip2 = "0.6"
 zstd = "0.14.3"
 tar = "0.4"
 gripsack-buildkit.workspace = true
-
-[dev-dependencies]
-loom = "0.7.2"
-
 

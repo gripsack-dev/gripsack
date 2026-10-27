@@ -42,8 +42,8 @@ pub fn content_hash(content: &str) -> store::hash::BytesHash {
 }
 
 impl<'a> ManagedBlockSet<'a> {
-    pub fn parse(text: &'a str, module: &str) -> Result<Self, MergeParseError> {
-        let blocks = parse::scan(text, module)?
+    pub fn parse(text: &'a str, owner: &str) -> Result<Self, MergeParseError> {
+        let blocks = parse::scan(text, owner)?
             .into_iter()
             .map(|block| ManagedBlock {
                 content_hash: content_hash(block.content),
@@ -96,7 +96,7 @@ impl<'a> ManagedBlockSet<'a> {
 
     pub fn upsert(
         &self,
-        module: &str,
+        owner: &str,
         dest: &Path,
         marker: Option<&str>,
         payload: &str,
@@ -112,7 +112,7 @@ impl<'a> ManagedBlockSet<'a> {
         let content = normalized_content(payload);
         let hash = content_hash(&content);
         let mut generated = format!(
-            "{prefix} >>> gripsack module={module} sha={} mode=0{mode:o} >>>{suffix}{newline}{prefix} !! managed by gripsack — edit the module, not this block !!{suffix}{newline}",
+            "{prefix} >>> gripsack module={owner} sha={} mode=0{mode:o} >>>{suffix}{newline}{prefix} !! managed by gripsack — edit the module, not this block !!{suffix}{newline}",
             &hash.as_str()[..16]
         );
         for line in content.lines() {
@@ -120,7 +120,7 @@ impl<'a> ManagedBlockSet<'a> {
             generated.push_str(newline);
         }
         generated.push_str(&format!(
-            "{prefix} <<< gripsack module={module} <<<{suffix}{newline}"
+            "{prefix} <<< gripsack module={owner} <<<{suffix}{newline}"
         ));
         if self.is_empty() {
             let mut output =

@@ -1,14 +1,13 @@
 //! User-visible step reports (the CLI renders these).
 
 use crate::ctx::Outcome;
-use gripsack_ir::Verify;
 use gripsack_policy::update_survey::{SurveyProgress, UpdateDisposition};
 pub use gripsack_policy::update_survey::{UpdateCheckOutcome, UpdateSummary};
 
 /// One user-visible line of what a step did — the CLI renders these.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StepReport {
-    pub module: String,
+    pub output: String,
     pub summary: String,
     pub kind: ReportKind,
 }
@@ -38,28 +37,13 @@ pub fn describe_fetch(spec: &gripsack_ir::FetchSpec) -> String {
         F::Git { url, rev } => format!("git {url} @ {}", rev.as_deref().unwrap_or("HEAD (float)")),
         F::File { path } => format!("file {path}"),
         F::Plugin { name, .. } => format!("plugin gripfetch-{name}"),
-        F::Brew { formula, .. } => format!("brew {formula}"),
-        F::Pixi { package, .. } => format!("pixi {package}"),
     }
-}
-
-pub(crate) fn describe_verify(
-    verify: &Verify,
-    version: Option<&str>,
-) -> Result<String, gripsack_fetch::PlaceholderError> {
-    let sub = |path: &str| gripsack_fetch::placeholders::payload_path(path, version);
-    Ok(match verify {
-        Verify::BinaryRuns { path, .. } => format!("verified {} runs", sub(path)?),
-        Verify::FileExists { path } => format!("verified {} exists", sub(path)?),
-        Verify::Shell { .. } => "verified (shell check)".to_string(),
-        Verify::FileDeployed { path } => format!("verified {path} deployed"),
-    })
 }
 
 /// One line of an update report.
 #[derive(Debug)]
 pub struct UpdateReport {
-    pub module: String,
+    pub output: String,
     pub status: UpdateStatus,
     pub layout: crate::source::preflight::LayoutEvidence,
 }
@@ -140,7 +124,7 @@ impl SurveyReports {
 
 fn survey_accounting_error() -> crate::ExecError {
     crate::ExecError::Step {
-        module: "*".into(),
+        output: "*".into(),
         step: "survey".into(),
         detail: "update report accounting does not match the selected entries".into(),
     }
@@ -159,7 +143,7 @@ mod update_model {
                     for (index, kind) in kinds.into_iter().enumerate() {
                         reports
                             .push(UpdateReport {
-                                module: format!("fixture-{index}"),
+                                output: format!("fixture-{index}"),
                                 layout: Default::default(),
                                 status: match kind {
                                     0 => UpdateStatus::Unchanged,
@@ -169,7 +153,7 @@ mod update_model {
                                     },
                                     2 => UpdateStatus::Failed {
                                         error: Box::new(crate::ctx::ExecError::Step {
-                                            module: format!("fixture-{index}"),
+                                            output: format!("fixture-{index}"),
                                             step: "resolve".into(),
                                             detail: "unavailable".into(),
                                         }),

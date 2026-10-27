@@ -98,7 +98,7 @@ impl PreparedEvaluation {
         let captured =
             configuration::Configuration::read(sources.repository(), Some(&sources), sink)?;
         initial.require_same(&captured).map_err(operational)?;
-        let mut env = captured.env;
+        let env = captured.env;
         let host = match explicit_host {
             Some(host) => host,
             None => HostName::parse(
@@ -125,7 +125,7 @@ impl PreparedEvaluation {
             super::eval::acquisition_limits(&config.settings),
         ));
         // Only the core-selected runtime is provisioned before approval. Repo
-        // fetcher/linter provisioning belongs to the later authorized path.
+        // fetcher provisioning belongs to the later authorized path.
         let deno = gripsack_exec::ensure_deno(&home, &provisioning).map_err(operational)?;
         let runtime_access =
             runtime::access(&sources, &environment, &deno, &home).map_err(operational)?;
@@ -160,7 +160,7 @@ impl PreparedEvaluation {
         let policy = EvaluationPolicy::capture(
             &sources,
             runtime.identity(),
-            &(&config, &env.linters, &runtime_access),
+            &(&config, &runtime_access),
             limits,
             super::probe::PROBE_ROUNDS,
             super::probe::INPUT_DOCUMENT_BYTES,
@@ -178,14 +178,6 @@ impl PreparedEvaluation {
                 {
                     *path = mapped;
                 }
-            }
-        }
-        for linter in env.linters.values_mut() {
-            if let Some(path) = &mut linter.path
-                && let std::borrow::Cow::Owned(mapped) =
-                    sources.native_path(path).map_err(operational)?
-            {
-                *path = mapped;
             }
         }
         let provenance = provenance::capture(sources.repository_identity(), &environment);
@@ -454,7 +446,7 @@ impl ApprovedEvaluation<'_> {
     }
 }
 
-pub(super) fn map_diagnostics(sources: &SourceBundle, diagnostics: &mut [gripsack_ir::Diagnostic]) {
+fn map_diagnostics(sources: &SourceBundle, diagnostics: &mut [gripsack_ir::Diagnostic]) {
     fn map(sources: &SourceBundle, text: &mut String) {
         if let std::borrow::Cow::Owned(mapped) = sources.logical_text(text) {
             *text = mapped;

@@ -29,8 +29,9 @@ const LEGACY_FORMAT_VERSION: u32 = 1;
 /// all saved declarations execute only after the new selection commits.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PendingIntent {
-    pub module: String,
+    #[serde(rename = "module")]
+    pub output: String,
     pub action: ActivationAction,
     #[serde(default)]
-    pub trigger: gripsack_ir::Trigger,
+    pub trigger: crate::ActivationTrigger,
 }

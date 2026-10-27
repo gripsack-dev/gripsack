@@ -128,10 +128,6 @@ pub(super) fn bind_admitted_program(
         selected
             .with_gnu_loader(std::sync::Arc::clone(loader), &libraries)
             .map_err(operational)
-    } else if let Some(directories) = &command.macho_library_dirs {
-        selected
-            .with_macho_libraries(directories)
-            .map_err(operational)
     } else {
         Ok(selected)
     }

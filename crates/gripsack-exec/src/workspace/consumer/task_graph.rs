@@ -37,10 +37,7 @@ pub(super) struct TaskGraph<'a> {
 
 impl<'a> TaskGraph<'a> {
     pub fn admit(ir: &'a Ir, root: &str) -> Result<Self, ExecError> {
-        let workspace = ir
-            .workspace_catalog
-            .as_ref()
-            .ok_or_else(|| failure("task requires an executable workspace catalog"))?;
+        let workspace = &ir.workspace;
         let outputs: BTreeMap<_, _> = workspace
             .outputs
             .iter()

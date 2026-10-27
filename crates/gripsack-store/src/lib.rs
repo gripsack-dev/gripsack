@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! $GRIPSACK_HOME                  (~/.local/share/gripsack by default)
-//! ├── store/<input-hash>-<name>/  immutable, content-addressed payloads
+//! ├── store/<content-hash>-<name>/ immutable, content-addressed payloads
 //! ├── generations/<N>/            one complete profile tree per apply
 //! ├── current -> generations/<N>  THE symlink — flipping it is activation
 //! ├── locks/                      flock files for named resources (0007 §4)
@@ -25,6 +25,8 @@
 //! activation is a single indivisible rename.
 
 pub mod activation;
+mod deployment;
+pub use deployment::{ActivationTrigger, DeploymentEntry, EnvironmentOperation, Ownership};
 mod generation_wire;
 pub mod generations;
 pub use gripsack_policy::{GenerationId, GenerationInventory, GenerationList};
@@ -37,20 +39,22 @@ mod private_state;
 mod selection_wire;
 pub mod source_bundle;
 pub mod trust;
+mod verification;
+pub use verification::RetainedVerify;
 
 pub use generations::{
-    CommittedSelection, DeployedEntry, EnvironmentContribution, Generation, IntentRecord,
-    ModuleState, StructuredEnvironment, current as current_generation, flip,
+    CommittedSelection, DeployedEntry, DeploymentState, EnvironmentContribution, Generation,
+    IntentRecord, RetainedEnvironment, StructuredEnvironment, current as current_generation, flip,
     list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{
     canonical_bytes_hash, canonical_bytes_identity, canonical_file_hash, canonical_file_hash_in,
-    canonical_overlay_hash, canonical_tree_hash,
+    canonical_tree_hash,
 };
 pub use journal::{Entry as JournalEntry, Prior as JournalPrior, reconcile, record};
 pub use ownership::{ManagedBlockId, OwnershipKey, StoredOwnership};
 pub use paths::{
     GENERATIONS_DIR, HASH_LEN, STORE_DIR, canonical_dest, content_path, current_link, expand_home,
-    generation_dir, gripsack_home, input_hash, store_path,
+    generation_dir, gripsack_home,
 };
 pub use prior::Prior;

@@ -15,13 +15,7 @@ mod inspection;
 mod lease;
 mod observation;
 pub use inspection::{WorkerDiskUsage, WorkerFact, WorkerInspection, WorkerObservation};
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-mod lima;
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 mod linux;
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-use lima as provider;
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 use linux as provider;
 mod manager;
 pub use gripsack_policy::worker_lease::WorkerPhase;
@@ -100,8 +94,6 @@ pub enum WorkerError {
     Deadline,
     #[error("worker lease or epoch counter is exhausted")]
     CounterExhausted,
-    #[error(
-        "owned workers require native Linux x86_64 or macOS ARM64 with Virtualization.framework"
-    )]
+    #[error("owned workers require native Linux x86_64")]
     UnsupportedPlatform,
 }

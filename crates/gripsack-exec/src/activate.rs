@@ -5,32 +5,8 @@ mod effect;
 mod output;
 
 use crate::report::{ReportKind, StepReport};
-use gripsack_ir::step::StepAction;
 use gripsack_store as store;
-use std::{collections::BTreeMap, io, path::Path};
-
-/// Collect declarations once; the store resolves effective cache coalescing
-/// and order before publishing the immutable activation plan.
-pub(crate) fn collect(
-    order: &[String],
-    steps_by_module: &BTreeMap<String, gripsack_ir::prepared::PreparedModule>,
-) -> Vec<store::activation::PendingIntent> {
-    let mut declarations = Vec::new();
-    for name in order {
-        for step in steps_by_module[name.as_str()].steps() {
-            if let StepAction::Intent { action, trigger } = &step.action
-                && *trigger != gripsack_ir::Trigger::OnRemove
-            {
-                declarations.push(store::activation::PendingIntent {
-                    module: name.clone(),
-                    action: action.as_ref().clone().into(),
-                    trigger: *trigger,
-                });
-            }
-        }
-    }
-    declarations
-}
+use std::{io, path::Path};
 
 /// Rollback uses retained actions, never today's repository source. Removal
 /// declarations are added separately only for modules the rollback removes.
@@ -38,11 +14,11 @@ pub(crate) fn collect_from_manifest(
     generation: &store::Generation,
 ) -> Vec<store::activation::PendingIntent> {
     let mut declarations = Vec::new();
-    for (name, state) in &generation.modules {
+    for (name, state) in &generation.deployments {
         for record in &state.intents {
-            if record.trigger != gripsack_ir::Trigger::OnRemove {
+            if record.trigger != gripsack_store::ActivationTrigger::OnRemove {
                 declarations.push(store::activation::PendingIntent {
-                    module: name.clone(),
+                    output: name.clone(),
                     action: record.action.clone(),
                     trigger: record.trigger,
                 });
@@ -106,7 +82,7 @@ pub fn resume_activation(session: &crate::LifecycleSession) -> io::Result<Vec<St
         reports.insert(
             0,
             StepReport {
-                module: "*".into(),
+                output: "*".into(),
                 summary: "resumed interrupted activation; durable outcomes are retained".into(),
                 kind: ReportKind::Warned,
             },

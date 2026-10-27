@@ -388,13 +388,13 @@ class Verification:
                 "installed npm SDK differs from packed bytes")
         self.sdk_root = installed
         self.approve(surface, "sdk", project)
-        output = self.runner.run(surface, "sdk_check", [self.installed, "check", "--host", "laptop", "--json"], cwd=project)
-        evidence.check_output(output, legacy=True)
+        output = self.runner.run(surface, "sdk_check", [self.installed, "check", "--json"], cwd=project)
+        evidence.check_output(output)
         surface["data"] = {"tarball": evidence.reference(self.root, packed),
                            "package_root": str(installed.relative_to(self.root)),
                            "installed_files": {str(p.relative_to(installed)): evidence.reference(self.root, p)
                                                for p in installed.rglob("*") if p.is_file()},
-                           "recipe": evidence.reference(self.root, project / "hosts/laptop.ts"),
+                           "recipe": evidence.reference(self.root, project / "gripsack.ts"),
                            "source_proof": retain_source(self.root, self.root / "example-proof", self.example(), None)}
 
     def default_helpers(self, surface):

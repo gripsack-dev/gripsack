@@ -1,9 +1,28 @@
 use super::*;
+use crate::workspace::conda::subdir;
 use gripsack_ir::workspace_model::lock::LockedCondaPackage;
 use serde_json::json;
 use std::fs;
 use std::io::Cursor;
 use std::os::unix::fs::{PermissionsExt, symlink};
+
+#[test]
+fn conda_subdir_admission_is_linux_x86_64_glibc_only() {
+    for (os, arch, abi, accepted) in [
+        ("linux", "x86_64", "gnu", true),
+        ("linux", "x86_64", "musl", false),
+        ("linux", "aarch64", "gnu", false),
+        ("macos", "x86_64", "darwin", false),
+        ("macos", "aarch64", "darwin", false),
+    ] {
+        let platform = serde_json::from_value(json!({"os":os,"arch":arch,"abi":abi})).unwrap();
+        assert_eq!(
+            subdir("test", &platform).is_ok(),
+            accepted,
+            "{os}/{arch}/{abi}"
+        );
+    }
+}
 
 #[derive(Clone)]
 struct Member {
@@ -579,8 +598,6 @@ fn cold_frozen_lifecycle_refusal_precedes_native_and_image_staging() {
             on_progress: None,
             take_over: false,
             take_over_entries: None,
-            migrate_from: None,
-            jobs: Some(1),
             fetch: Default::default(),
             home_dir: Default::default(),
         };
@@ -633,8 +650,6 @@ fn both_update_modes_require_archive_admission_and_accept_independent_clean_cont
                     on_progress: None,
                     take_over: false,
                     take_over_entries: None,
-                    migrate_from: None,
-                    jobs: Some(1),
                     fetch: Default::default(),
                     home_dir: Default::default(),
                 };

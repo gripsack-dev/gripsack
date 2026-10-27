@@ -4,7 +4,7 @@ use gripsack_ir::{Ir, Span};
 use std::path::Path;
 use std::process::ExitCode;
 
-/// grip check: eval + IR sema + linters, then stop (0011 §9). No
+/// grip check: evaluate and validate workspace outputs and sources. No
 /// lockfile, store payload or destination mutation. Private evaluation receipts
 /// bind the source/input snapshot; captured source bytes are command-owned.
 /// `--json` emits one versioned document on stdout carrying the same
@@ -23,10 +23,9 @@ pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> Exi
         Ok(ir) => ir,
         Err(code) => return sink.finish_failure(code),
     };
-    if ir.has_workspace()
-        && ir
-            .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
-            .is_none()
+    if ir
+        .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
+        .is_none()
         && let Err(error) = gripsack_exec::inspect_known_layouts(
             &ir,
             &repository,
@@ -43,30 +42,25 @@ pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> Exi
         sink.report(&[diagnostic]);
         return sink.finish_failure(ExitCode::FAILURE);
     }
-    match workspace_outputs(&ir, &outcome.sources) {
-        Some(outputs) => check_workspace(&ir, outputs, sink),
-        None => check_legacy(&ir, &outcome, &repository, sink),
-    }
+    check_workspace(&ir, workspace_outputs(&ir, &outcome.sources), sink)
 }
 
 /// The admitted catalog as report rows, without changing versioned semantics.
 fn workspace_outputs(
     ir: &Ir,
     sources: &gripsack_store::source_bundle::SourceBundle,
-) -> Option<Vec<CheckOutputReport>> {
-    ir.has_workspace().then(|| {
-        ir.workspace_outputs()
-            .map(|output| CheckOutputReport {
-                name: output.name.to_owned(),
-                kind: output.kind.to_owned(),
-                span: Span {
-                    file: sources.logical_text(&output.span.file).into_owned(),
-                    line: output.span.line,
-                    col: output.span.col,
-                },
-            })
-            .collect()
-    })
+) -> Vec<CheckOutputReport> {
+    ir.workspace_outputs()
+        .map(|output| CheckOutputReport {
+            name: output.name.to_owned(),
+            kind: output.kind.to_owned(),
+            span: Span {
+                file: sources.logical_text(&output.span.file).into_owned(),
+                line: output.span.line,
+                col: output.span.col,
+            },
+        })
+        .collect()
 }
 
 fn check_workspace(ir: &Ir, outputs: Vec<CheckOutputReport>, sink: DiagnosticSink) -> ExitCode {
@@ -93,81 +87,5 @@ fn check_workspace(ir: &Ir, outputs: Vec<CheckOutputReport>, sink: DiagnosticSin
     for output in &outputs {
         println!("  {} ({})", output.name, output.kind);
     }
-    ExitCode::SUCCESS
-}
-
-/// Legacy module envs: physical destination uniqueness (0030 §P0-1)
-/// and known-layout inspection are read-only — two spellings of one
-/// directory entry are a check-time diagnostic like any other.
-fn check_legacy(
-    ir: &Ir,
-    outcome: &crate::commands::eval::EvalOutcome,
-    repository: &gripsack_exec::Repository,
-    mut sink: DiagnosticSink,
-) -> ExitCode {
-    let unique = gripsack_exec::expand::expand_all(&ir.modules)
-        .and_then(|plans| gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &plans));
-    match unique {
-        Ok(()) => {}
-        Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
-            sink.report(&[d]);
-            return sink.finish_failure(ExitCode::FAILURE);
-        }
-        Err(e) => {
-            eprintln!("grip: {e}");
-            return sink.finish_failure(ExitCode::FAILURE);
-        }
-    }
-    let layouts = match gripsack_exec::inspect_known_layouts(
-        ir,
-        repository,
-        &outcome.host,
-        outcome.fetch.limits(),
-    ) {
-        Ok(layouts) => layouts,
-        Err(error) => {
-            eprintln!("grip: {error}");
-            return sink.finish_failure(ExitCode::FAILURE);
-        }
-    };
-    if sink.is_json() {
-        let mut report = CheckReport::success(sink.into_collected());
-        report.host = Some(CheckHostReport {
-            os: ir.host.os.clone(),
-            arch: ir.host.arch.clone(),
-            tags: ir.host.tags.clone(),
-        });
-        report.modules = Some(ir.modules.keys().cloned().collect());
-        let notes: std::collections::BTreeMap<String, String> = layouts
-            .iter()
-            .filter_map(|(module, evidence)| {
-                evidence.summary().map(|s| (module.clone(), s.to_string()))
-            })
-            .collect();
-        if !notes.is_empty() {
-            report.layouts = Some(notes);
-        }
-        println!("{}", report.to_json());
-        return ExitCode::SUCCESS;
-    }
-    for (module, evidence) in &layouts {
-        if let Some(summary) = evidence.summary() {
-            println!("  {module}: {summary}");
-        }
-    }
-    let palette = sink.palette();
-    let host = &ir.host;
-    println!(
-        "{} {} modules · host {}/{} · tags: {}",
-        palette.good("check: ok"),
-        ir.modules.len(),
-        host.os,
-        host.arch,
-        if host.tags.is_empty() {
-            "(none)".to_string()
-        } else {
-            host.tags.join(", ")
-        }
-    );
     ExitCode::SUCCESS
 }

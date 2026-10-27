@@ -37,7 +37,7 @@ impl<T> WorkerFact<T> {
 pub struct WorkerDiskUsage {
     /// Exact owned scope, never global Docker/host usage.
     pub scope: String,
-    /// Accounting differs between Docker writable layers and host allocated blocks.
+    /// Names the accounting used for this owned Docker scope.
     pub accounting: &'static str,
     pub bytes: WorkerObservation<u64>,
 }
@@ -48,7 +48,6 @@ pub struct WorkerInspection {
     pub configuration_source: &'static str,
     pub image: WorkerFact<String>,
     pub image_id: WorkerObservation<String>,
-    pub vm_image: WorkerFact<String>,
     pub helper_version: WorkerFact<String>,
     pub daemon_version: WorkerFact<String>,
     pub target: WorkerFact<String>,
@@ -74,7 +73,6 @@ impl WorkerInspection {
             },
             image: WorkerFact::new(Some(image.to_owned())),
             image_id: WorkerObservation::Absent,
-            vm_image: WorkerFact::new(None),
             helper_version: WorkerFact {
                 configured: None,
                 observed: WorkerObservation::unavailable(
@@ -172,104 +170,9 @@ pub(super) fn du_bytes(bytes: &[u8]) -> Result<u64, WorkerError> {
         ))
 }
 
-/// Count allocated blocks, not sparse virtual capacity. No symlink traversal,
-/// mount crossing, hardlink double counting, or unbounded directory walk.
-#[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
-pub(super) fn allocated_bytes(
-    directory: &gripsack_fs::Dir,
-    deadline: std::time::Instant,
-) -> Result<u64, WorkerError> {
-    use gripsack_fs::cap_std::fs::MetadataExt;
-    fn visit(
-        directory: &gripsack_fs::Dir,
-        device: u64,
-        seen: &mut std::collections::BTreeSet<(u64, u64)>,
-        remaining: &mut usize,
-        depth: usize,
-        deadline: std::time::Instant,
-    ) -> Result<u64, WorkerError> {
-        if depth > 64 {
-            return Err(WorkerError::Corrupt(
-                "disk measurement depth limit exceeded",
-            ));
-        }
-        let mut bytes = 0_u64;
-        for entry in directory.entries()? {
-            if std::time::Instant::now() >= deadline {
-                return Err(WorkerError::Deadline);
-            }
-            *remaining = remaining.checked_sub(1).ok_or(WorkerError::Corrupt(
-                "disk measurement entry limit exceeded",
-            ))?;
-            let entry = entry?;
-            let name = entry.file_name();
-            let metadata = directory.symlink_metadata(&name)?;
-            if metadata.dev() != device {
-                return Err(WorkerError::Corrupt(
-                    "disk measurement refuses a nested mount",
-                ));
-            }
-            if !seen.insert((metadata.dev(), metadata.ino())) {
-                continue;
-            }
-            let allocated = metadata
-                .blocks()
-                .checked_mul(512)
-                .ok_or(WorkerError::Corrupt("disk block count overflowed"))?;
-            bytes = bytes
-                .checked_add(allocated)
-                .ok_or(WorkerError::Corrupt("disk usage overflowed"))?;
-            if metadata.is_dir() {
-                let child = gripsack_fs::open_dir_nofollow(directory, std::path::Path::new(&name))?;
-                bytes = bytes
-                    .checked_add(visit(&child, device, seen, remaining, depth + 1, deadline)?)
-                    .ok_or(WorkerError::Corrupt("disk usage overflowed"))?;
-            }
-        }
-        Ok(bytes)
-    }
-    let metadata = directory.dir_metadata()?;
-    visit(
-        directory,
-        metadata.dev(),
-        &mut std::collections::BTreeSet::new(),
-        &mut 100_000,
-        0,
-        deadline,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn allocated_measurement_does_not_follow_links_or_charge_sparse_capacity() {
-        use std::os::unix::fs::{MetadataExt, symlink};
-        let root = tempfile::tempdir().unwrap();
-        let foreign = tempfile::tempdir().unwrap();
-        std::fs::write(foreign.path().join("payload"), vec![1; 64 * 1024]).unwrap();
-        let sparse = root.path().join("sparse");
-        std::fs::File::create(&sparse)
-            .unwrap()
-            .set_len(64 * 1024 * 1024)
-            .unwrap();
-        std::fs::hard_link(&sparse, root.path().join("same-inode")).unwrap();
-        let link = root.path().join("foreign");
-        symlink(foreign.path(), &link).unwrap();
-        let directory = gripsack_fs::open(root.path()).unwrap();
-        let expected = (std::fs::metadata(&sparse).unwrap().blocks()
-            + std::fs::symlink_metadata(&link).unwrap().blocks())
-            * 512;
-        assert_eq!(
-            allocated_bytes(
-                &directory,
-                std::time::Instant::now() + std::time::Duration::from_secs(2)
-            )
-            .unwrap(),
-            expected
-        );
-        assert!(allocated_bytes(&directory, std::time::Instant::now()).is_err());
-    }
     #[test]
     fn disk_measurement_distinguishes_zero_missing_and_overflow() {
         assert_eq!(du_bytes(b"0\t/var/lib/buildkit\n").unwrap(), 0);

@@ -12,8 +12,8 @@ maintained shadow copy of example code anywhere in this harness:
   - frontend level: the SDK driver, sourced from the core repo
     (typescript/src/cli.ts — exactly what the core spawns), runs each
     scaffolded repo under the core's sandbox flags;
-  - core level: the real `grip check` (deliberately pinned SDK, sandboxed
-    Deno, two-stage probe binding) must accept the same repo.
+  - core level: the real `grip check` (deliberately pinned SDK and sandboxed
+    Deno) must accept the same root workspace.
 
 Both levels use offline fixtures and an isolated HOME. Illustrative
 fragments are classified explicitly with evidence — never silently
@@ -47,10 +47,10 @@ Input contract:
                    <core-repo>/typescript
   --deno BIN       deno binary (default: $GRIPSACK_DENO, then PATH)
   --grip BIN       grip binary under test
-  --selfcheck      also prove the checker FAILS a deliberately broken
-                   factory (the missing-`return` regression, detected
-                   through eval behavior — modules vanish from the IR —
-                   never through source-text matching)
+  --pixi-fixture DIR  override the checked-in real Pixi manifest/lock pair
+                     used for the explicit-import example
+  --selfcheck      prove a missing root-workspace return is rejected by
+                   evaluation behavior, not source-text matching
   --only ID        run a single manifest entry (repeatable)
   --list           print extraction + classification, run nothing
   --keep           keep scratch dirs on success too
@@ -114,6 +114,9 @@ def main() -> int:
                     help="packed @gripsack/core npm tarball (npm pack output); "
                          "required unless --list")
     ap.add_argument("--frontend")
+    ap.add_argument("--pixi-fixture", type=Path,
+                    default=Path(__file__).resolve().parent / "examples_check" / "pixi",
+                    help="override the checked-in real pixi.toml and pixi.lock pair")
     ap.add_argument("--grip")
     ap.add_argument("--deno")
     ap.add_argument("--selfcheck", action="store_true",
@@ -128,7 +131,6 @@ def main() -> int:
     core_repo = Path(args.core_repo).resolve()
     site = find_site(args.site, core_repo)
     failed = False
-    base = Path(tempfile.mkdtemp(prefix="grip-examples-"))
     try:
         blocks = extract.pair_with_manifest(extract.extract_blocks(site, core_repo), EXAMPLES)
     except CheckFailure as e:
@@ -157,6 +159,15 @@ def main() -> int:
         print("FAIL --sdk is required: the packed @gripsack/core npm tarball "
               "(cd typescript && npm ci && npm run build && npm pack)", file=sys.stderr)
         return 1
+    if any(e.get("pixi_fixture") for e in selected):
+        try:
+            pair = {name: (args.pixi_fixture / name).read_text(encoding="utf-8")
+                    for name in ("pixi.toml", "pixi.lock")}
+        except OSError as e:
+            print(f"FAIL reading Pixi fixture: {e}", file=sys.stderr)
+            return 1
+        selected = [dict(e, fixtures=pair) if e.get("pixi_fixture") else e
+                    for e in selected]
     sdk_src = Path(args.frontend).resolve() if args.frontend else core_repo / "typescript"
     if not (sdk_src / "deno.json").is_file() or not (sdk_src / "src" / "cli.ts").is_file():
         print(f"FAIL {sdk_src} has no driver (need deno.json + src/cli.ts)", file=sys.stderr)
@@ -181,18 +192,6 @@ def main() -> int:
             print(f"FAIL {e}", file=sys.stderr)
             return 1
 
-        # a PATH the probe may or may not resolve on (clean stage) and
-        # one with a fake probe target (bound stage) — probe binding is
-        # a real PATH lookup in the core, so both stages are behavioral
-        clean_dirs = [d for d in os.environ.get("PATH", "/usr/bin:/bin").split(":") if d]
-        ctx["clean_path"] = ":".join(clean_dirs)
-        ctx["clean_has_probe"] = any(
-            os.access(Path(d) / "nvidia-smi", os.X_OK) for d in clean_dirs
-        )
-        fake = base / "fake-bin"
-        fake.mkdir()
-        fixtures.write_executable(fake / "nvidia-smi", "#!/bin/sh\nexit 0\n")
-        ctx["fake_probe_path"] = f"{fake}:{ctx['clean_path']}"
 
         failures = selfchecks.pin_canary(ctx)
         canary_ok = not failures
@@ -216,15 +215,15 @@ def main() -> int:
                 print(f"      {entry['reason']}")
                 continue
             failures = evaluate.run_example(entry, block, ctx)
-            if args.selfcheck and entry["kind"] == "factory":
-                failures += selfchecks.selfcheck_factory(entry, block, ctx)
+            if args.selfcheck:
+                failures += selfchecks.selfcheck_workspace(entry, block, ctx)
             if failures:
                 failed = True
                 print(f"  ! {entry['id']}: FAIL")
                 for f in failures:
                     print(f"      {f}")
             else:
-                extra = " (+selfcheck)" if args.selfcheck and entry["kind"] == "factory" else ""
+                extra = " (+selfcheck)" if args.selfcheck else ""
                 print(f"  ok {entry['id']}: eval + grip check accept{extra}")
     finally:
         if failed or args.keep:

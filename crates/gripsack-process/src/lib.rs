@@ -1,4 +1,4 @@
-//! Bounded, single-threaded Unix process supervision (Linux and macOS).
+//! Bounded, single-threaded Linux/WSL x86_64 process supervision.
 //!
 //! The effective budget ends at the earlier of `timeout` and the caller's
 //! absolute `operation_deadline`. Its final min(remaining / 4, 2 seconds) is
@@ -14,6 +14,9 @@
 //! Concurrent external reaping would invalidate that guarantee. Descendants
 //! that deliberately leave the group cannot be killed by this mechanism;
 //! their inherited pipes are closed at the deadline instead.
+
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+compile_error!("gripsack-process supports only Linux/WSL x86_64");
 
 mod deadline;
 pub use deadline::{OperationDeadline, execution_deadline};

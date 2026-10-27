@@ -1,93 +1,63 @@
-//! Public admission surface for current v5 workspaces: named outputs
-//! do not touch legacy module expansion; provider-backed packages
-//! need no synthetic recipe; serialization preserves versioned shapes.
-//! v3 and historical v4 round trips have separate compatibility tests.
-
-use gripsack_ir::{check, parse};
+//! The public IR envelope has exactly one required current workspace.
+use gripsack_ir::{check, parse, workspace::WorkspaceOperation};
 use serde_json::{Value, json};
 
-fn span() -> Value {
-    json!({"file": "grip.ts", "line": 3})
+fn document() -> Value {
+    json!({"ir_version":9,"host":{"os":"linux","arch":"x86_64"},"workspace":{
+        "span":{"file":"gripsack.ts","line":1},"outputs":[{
+            "kind":"package","name":"tool","span":{"file":"gripsack.ts","line":2},
+            "producer":{"kind":"provider","provider":{"kind":"fetch",
+                "fetch":{"kind":"file","path":"payload"},"span":{"file":"gripsack.ts","line":3}}},
+            "commands":{"tool":"bin/tool"},"target":{"os":"linux","arch":"x86_64"},
+            "layout":{"kind":"relocatable"}
+        }]
+    }})
 }
 
-/// The A1-01 envelope: core-injected os/arch facts (no hostname
-/// selector), a recipe and its package.
-fn no_hostname_envelope() -> Value {
-    json!({
-        "ir_version": 5,
-        "host": {"os": "linux", "arch": "x86_64"},
-        "workspace": {"span": span(), "outputs": [
-            {"kind": "recipe", "name": "build", "span": span(),
-             "source": {"fetch": {"kind": "tarball", "url": "https://example.test/src.tgz"},
-                        "span": span()},
-             "execution": {"kind": "host", "access": "unconfined"}, "output_kind": "tree",
-             "target": {"os": "linux", "arch": "x86_64"}},
-            {"kind": "package", "name": "hello", "span": span(),
-             "producer": {"kind": "recipe", "recipe": "build"},
-             "commands": {"hello": "bin/hello"},
-             "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
-        ]}
-    })
-}
-
-/// The CLI listing surface: `Ir.workspace` exposes named outputs with
-/// their kinds; legacy module expansion stays untouched (empty).
 #[test]
-fn admitted_workspace_exposes_named_outputs() {
-    let ir = check(&no_hostname_envelope().to_string()).unwrap();
-    let workspace = ir.workspace.as_ref().expect("workspace admitted");
-    assert!(ir.modules.is_empty());
-    let names: Vec<&str> = workspace.outputs.iter().map(|o| o.name()).collect();
-    let kinds: Vec<&str> = workspace.outputs.iter().map(|o| o.kind()).collect();
-    assert_eq!(names, ["build", "hello"]);
-    assert_eq!(kinds, ["recipe", "package"]);
-    assert_eq!(ir.host.os, "linux");
+fn required_workspace_lists_provider_outputs_and_round_trips() {
+    let ir = check(&document().to_string()).unwrap();
+    assert_eq!(ir.workspace.outputs.len(), 1);
+    assert_eq!(ir.workspace.outputs[0].name(), "tool");
+    assert_eq!(ir.workspace.outputs[0].kind(), "package");
+    let saved = serde_json::to_value(&ir).unwrap();
+    assert!(saved.get("modules").is_none());
+    assert!(saved.get("workspace").is_some());
+    check(&saved.to_string()).unwrap();
+    for operation in [
+        WorkspaceOperation::Update,
+        WorkspaceOperation::Build,
+        WorkspaceOperation::Run,
+    ] {
+        assert!(ir.workspace_execution_error(operation).is_none());
+    }
 }
 
-/// A provider-backed package is one admitted output — no synthetic
-/// recipe (plan/0052 §2.2 producer = recipe ref OR provider).
 #[test]
-fn provider_backed_package_lists_as_single_output() {
-    let doc = json!({
-        "ir_version": 5,
-        "host": {"os": "linux", "arch": "x86_64"},
-        "workspace": {"span": span(), "outputs": [
-            {"kind": "package", "name": "ripgrep", "span": span(),
-             "producer": {"kind": "provider", "provider": {
-                 "fetch": {"kind": "file", "path": "vendor/ripgrep.tar.gz"},
-                 "span": span()}},
-             "commands": {"rg": "bin/rg"},
-             "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
-        ]}
-    });
-    let ir = check(&doc.to_string()).unwrap();
-    let workspace = ir.workspace.as_ref().unwrap();
-    assert_eq!(workspace.outputs.len(), 1);
-    assert_eq!(workspace.outputs[0].name(), "ripgrep");
-    assert_eq!(workspace.outputs[0].kind(), "package");
-}
-
-/// A v3 empty module map round-trips WITH `modules`; a current v5
-/// workspace omits it (the XOR envelope forbids both keys together).
-#[test]
-fn serialization_preserves_each_version_envelope() {
-    let v3 = parse(r#"{"ir_version": 3, "modules": {}}"#).unwrap();
-    let v3_json = serde_json::to_value(&v3).unwrap();
-    assert!(
-        v3_json.get("modules").is_some(),
-        "v3 keeps its (empty) module map"
-    );
-    assert!(v3_json.get("workspace").is_none());
-
-    let v5 = parse(&no_hostname_envelope().to_string()).unwrap();
-    let v5_json = serde_json::to_value(&v5).unwrap();
-    assert!(
-        v5_json.get("modules").is_none(),
-        "v5 workspace omits modules"
-    );
-    assert!(v5_json.get("workspace").is_some());
-
-    // Both shapes re-enter their own admission unchanged.
-    parse(&v3_json.to_string()).unwrap();
-    check(&v5_json.to_string()).unwrap();
+fn noncurrent_versions_never_gain_admission_or_execution_authority() {
+    let schema = jsonschema::validator_for(
+        &serde_json::from_str::<Value>(include_str!("../schema-v9.json")).unwrap(),
+    )
+    .unwrap();
+    let ir = check(&document().to_string()).unwrap();
+    for version in [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, u32::MAX] {
+        let mut doc = document();
+        doc["ir_version"] = json!(version);
+        assert!(!schema.is_valid(&doc));
+        assert!(parse(&doc.to_string()).is_err());
+        let mut forged = ir.clone();
+        forged.ir_version = version;
+        assert!(!gripsack_ir::sema::run(&forged).is_empty());
+        for operation in [
+            WorkspaceOperation::Update,
+            WorkspaceOperation::Build,
+            WorkspaceOperation::Run,
+        ] {
+            assert!(forged.workspace_execution_error(operation).is_some());
+        }
+        // Serialization is not admission, even for a manually forged typed value.
+        let saved = serde_json::to_value(&forged).unwrap();
+        assert!(!schema.is_valid(&saved));
+        assert!(parse(&saved.to_string()).is_err());
+    }
 }

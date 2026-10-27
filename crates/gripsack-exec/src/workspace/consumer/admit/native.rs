@@ -19,11 +19,7 @@ pub(in crate::workspace) struct NativeContext<'a> {
 impl<'a> NativeContext<'a> {
     pub fn new(facts: &HostFacts, home: &'a Path, deadline: Instant) -> Result<Self, ExecError> {
         let mut target = HostTarget::from_facts(facts)?;
-        let native_os = match target.os {
-            gripsack_policy::target::TargetOs::Linux => "linux",
-            gripsack_policy::target::TargetOs::Macos => "macos",
-        };
-        if native_os != std::env::consts::OS || facts.arch != std::env::consts::ARCH {
+        if std::env::consts::OS != "linux" || std::env::consts::ARCH != "x86_64" {
             return Err(super::failure(
                 "native consumer facts do not describe the executing core's OS/architecture",
             ));

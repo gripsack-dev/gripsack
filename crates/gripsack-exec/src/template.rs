@@ -15,7 +15,7 @@ pub fn render_template(
     from: &str,
 ) -> Result<Vec<u8>, ExecError> {
     let text = std::str::from_utf8(bytes).map_err(|_| ExecError::Step {
-        module: from.to_string(),
+        output: from.to_string(),
         step: "render".into(),
         detail: format!("template payload {from:?} is not UTF-8"),
     })?;
@@ -32,7 +32,7 @@ pub fn render_template(
         let body = &rest[2..];
         let Some(end) = body.find("}}") else {
             return Err(ExecError::Step {
-                module: from.to_string(),
+                output: from.to_string(),
                 step: "render".into(),
                 detail: format!("unbalanced `{{{{` in template {from:?}"),
             });
@@ -42,7 +42,7 @@ pub fn render_template(
             Some(v) => out.push_str(v),
             None => {
                 return Err(ExecError::Step {
-                    module: from.to_string(),
+                    output: from.to_string(),
                     step: "render".into(),
                     detail: format!(
                         "template {from:?} references undefined variable {name:?} (have: {})",

@@ -1,33 +1,19 @@
-//! Store paths (plan/0001 §3.4, hybrid per plan/0014).
+//! Store paths and retained generation layout.
 //!
-//! A store path is `<gripsack-home>/store/<input-hash>-<name>` where the
-//! input hash covers the resolved module plan (fetch spec + pinned refs +
-//! build recipe + dependency hashes). Store paths are immutable; the same
-//! resolved inputs produce the same path on any machine of the same
-//! platform — that is what makes store sharing a trivial later feature.
+//! Workspace payloads use `<gripsack-home>/store/<content-hash>-<name>`.
+//! Objects are immutable. Historical input-addressed objects remain valid
+//! persisted references, but new authoring does not construct their recipes.
 
 use std::path::{Path, PathBuf};
 
 pub const STORE_DIR: &str = "store";
 pub const GENERATIONS_DIR: &str = "generations";
-/// Length of the hex input hash prefix in store path names.
+/// Length in bytes of the digest prefix used in store path names.
 pub const HASH_LEN: usize = 16;
-
-/// Hex sha256 prefix of the canonical serialized module plan. `canonical`
-/// must be a stable serialization (serde struct field order is).
-pub fn input_hash(canonical: &str) -> String {
-    crate::hash::hex_sha256(canonical.as_bytes())[..HASH_LEN * 2].to_string()
-}
-
-/// The store path for a module with the given resolved plan.
-pub fn store_path(home: &Path, name: &str, canonical: &str) -> PathBuf {
-    home.join(STORE_DIR)
-        .join(format!("{}-{name}", input_hash(canonical)))
-}
 
 /// Content-addressed store path (0014): the key IS the canonical tree
 /// hash of the published payload — the name is the expectation, so a
-/// path's presence is proof of content. Same width as input hashes.
+/// path's presence is proof of content.
 /// `tree256` arrives from lockfiles and manifests (disk state): a
 /// short or malformed value must miss the store, never panic.
 pub fn content_path(home: &Path, name: &str, tree256: &str) -> PathBuf {
@@ -170,15 +156,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hash_is_stable_and_input_sensitive() {
-        assert_eq!(input_hash("plan-a"), input_hash("plan-a"));
-        assert_ne!(input_hash("plan-a"), input_hash("plan-b"));
-        assert_eq!(input_hash("plan-a").len(), HASH_LEN * 2);
-    }
-
-    #[test]
-    fn store_path_format() {
-        let p = store_path(Path::new("/gs"), "helix", "plan-a");
+    fn content_path_format() {
+        let p = content_path(Path::new("/gs"), "helix", &"a".repeat(64));
         let name = p.file_name().unwrap().to_str().unwrap();
         assert!(name.ends_with("-helix"));
         assert_eq!(name.len(), HASH_LEN * 2 + 1 + "helix".len());

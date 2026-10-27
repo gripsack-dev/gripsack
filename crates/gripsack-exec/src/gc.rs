@@ -69,7 +69,7 @@ pub fn gc(
         // is pending, and a preview that lies is worse than no preview.
         GcAdmission::RecoveryPending => {
             return Err(ExecError::Step {
-                module: "*".into(),
+                output: "*".into(),
                 step: "gc".into(),
                 detail: format!(
                     "recovery state is pending (journal={}, activation={activation_pending}) — run `grip apply` or \
@@ -82,7 +82,7 @@ pub fn gc(
         // plan is computed — a current without a directory is corruption
         GcAdmission::CorruptCurrent => {
             return Err(ExecError::Step {
-                module: "*".into(),
+                output: "*".into(),
                 step: "gc".into(),
                 detail: format!(
                     "current generation {} has no directory on disk — refusing to collect",
@@ -115,7 +115,7 @@ pub fn gc(
         if pruned.contains(n) {
             continue;
         }
-        for state in manifest.modules.values() {
+        for state in manifest.deployments.values() {
             referenced.insert(utf8_path(&state.store_path)?);
             // Retained generations pin the consumer's transitive build closure.
             for path in &state.build_closure {
@@ -124,7 +124,7 @@ pub fn gc(
         }
         // 0015 §4: generations pin prior blobs the same way — a prior
         // is restorable exactly while its generation lives
-        for state in manifest.modules.values() {
+        for state in manifest.deployments.values() {
             for entry in &state.entries {
                 if let Some(store::Prior::File { hash, .. }) = &entry.prior {
                     referenced.insert(utf8_path(&hash.path_in(home))?);
@@ -164,7 +164,7 @@ fn utf8_path(path: &Path) -> Result<String, ExecError> {
     path.to_str()
         .map(str::to_string)
         .ok_or_else(|| ExecError::Step {
-            module: "*".into(),
+            output: "*".into(),
             step: "gc".into(),
             detail: format!(
                 "{} is not valid UTF-8 — refusing to compute a deletion set",
@@ -173,7 +173,7 @@ fn utf8_path(path: &Path) -> Result<String, ExecError> {
         })
 }
 
-/// All ownership units of a destination belonging to one module or profile.
+/// All ownership units of a destination belonging to one deployment or profile.
 #[derive(Debug)]
 pub struct PathOwner {
     pub name: String,
@@ -191,7 +191,7 @@ pub fn why_owns(home: &Path, path: &str) -> Result<Vec<PathOwner>, ExecError> {
         .unwrap_or_else(|_| path.to_owned());
     let manifest = store::read_manifest(home, n)?;
     let mut owners = Vec::new();
-    for (name, state) in manifest.modules {
+    for (name, state) in manifest.deployments {
         let entries: Vec<_> = state
             .entries
             .into_iter()
@@ -207,15 +207,15 @@ pub fn why_owns(home: &Path, path: &str) -> Result<Vec<PathOwner>, ExecError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gripsack_ir::Ownership;
+    use gripsack_store::Ownership;
     use std::fs;
     use store::GenerationId;
 
     fn mk_gen(n: u64, store_path: PathBuf) -> store::Generation {
-        let mut modules = std::collections::BTreeMap::new();
-        modules.insert(
+        let mut deployments = std::collections::BTreeMap::new();
+        deployments.insert(
             "m".to_string(),
-            store::ModuleState {
+            store::DeploymentState {
                 store_path,
                 build_only: false,
                 intents: vec![],
@@ -239,7 +239,7 @@ mod tests {
         );
         store::Generation {
             number: GenerationId::new(n),
-            modules,
+            deployments,
             directory_transitions: Vec::new(),
             migration: None,
         }

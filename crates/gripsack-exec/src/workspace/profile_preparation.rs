@@ -4,7 +4,7 @@ use super::{
     profile_checks, profile_launchers, realize,
 };
 use crate::ExecError;
-use gripsack_ir::{Diagnostic, codes, workspace::WorkspaceDestination};
+use gripsack_ir::workspace::WorkspaceDestination;
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -12,18 +12,12 @@ use std::path::Path;
 impl NativeProfiles {
     pub(super) fn migration_predecessor(
         home: &Path,
-        expected: Option<store::GenerationId>,
     ) -> Result<Option<store::Generation>, ExecError> {
-        let Some(expected) = expected else {
-            return Ok(None);
-        };
-        if store::current_generation(home)? != Some(expected) {
-            return Err(ExecError::Gate(Diagnostic::error(
-                codes::EXEC_STEP,
-                format!("--migrate-from {expected} requires that exact current generation"),
-            )));
-        }
-        Ok(Some(store::generations::admit_manifest(home, expected)?))
+        store::current_generation(home)?
+            .map(|current| {
+                store::generations::admit_manifest(home, current).map_err(ExecError::from)
+            })
+            .transpose()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -34,9 +28,8 @@ impl NativeProfiles {
         selected: &[String],
         limits: gripsack_fetch::FetchLimits,
         realization: Option<&realize::Realization<'a>>,
-        migrate_from: Option<store::GenerationId>,
-    ) -> Result<Option<Self>, ExecError> {
-        let predecessor = Self::migration_predecessor(home, migrate_from)?;
+    ) -> Result<Self, ExecError> {
+        let predecessor = Self::migration_predecessor(home)?;
         Self::prepare_with(
             ir,
             repository,
@@ -63,10 +56,8 @@ impl NativeProfiles {
         deadline: std::time::Instant,
         predecessor: Option<&store::Generation>,
         protection: Option<&profile_checks::Protection<'_>>,
-    ) -> Result<Option<Self>, ExecError> {
-        let Some(declarations) = declarations::Declarations::from_ir(ir) else {
-            return Ok(None);
-        };
+    ) -> Result<Self, ExecError> {
+        let declarations = declarations::Declarations::from_ir(ir);
         let repo = repository.contents();
         let logical_source = |path: &str| match repository {
             crate::Repository::Direct(_) => path.to_owned(),
@@ -89,17 +80,15 @@ impl NativeProfiles {
             }
         }
         let mut launcher_destinations = Vec::new();
-        if let Some(workspace) = &ir.workspace_catalog {
-            for output in &workspace.outputs {
-                if let gripsack_ir::workspace_model::WorkspaceOutput::Profile(profile) = output {
-                    for path in profile_launchers::destinations(profile)? {
-                        launcher_destinations.push((profile.name.as_str(), &profile.span, path));
-                    }
+        for output in &ir.workspace.outputs {
+            if let gripsack_ir::workspace_model::WorkspaceOutput::Profile(profile) = output {
+                for path in profile_launchers::destinations(profile)? {
+                    launcher_destinations.push((profile.name.as_str(), &profile.span, path));
                 }
             }
         }
         // Selection never hides a physical alias in another declared profile.
-        crate::expand::check_destinations_with(
+        crate::deploy::check_destinations_with(
             declarations
                 .outputs()
                 .filter_map(|output| output.files().map(|files| (output.name(), files)))
@@ -112,7 +101,7 @@ impl NativeProfiles {
                                 (path, Some(marker.to_lowercase()))
                             }
                         };
-                        crate::expand::DestinationDeclaration {
+                        crate::deploy::DestinationDeclaration {
                             owner,
                             path,
                             span: Some(span),
@@ -121,7 +110,7 @@ impl NativeProfiles {
                     })
                 })
                 .chain(launcher_destinations.iter().map(|(owner, span, path)| {
-                    crate::expand::DestinationDeclaration {
+                    crate::deploy::DestinationDeclaration {
                         owner,
                         path,
                         span: Some(span),
@@ -131,10 +120,9 @@ impl NativeProfiles {
             resolve_destination,
         )?;
         let outputs: BTreeMap<_, _> = ir
-            .workspace_catalog
-            .as_ref()
-            .into_iter()
-            .flat_map(|workspace| &workspace.outputs)
+            .workspace
+            .outputs
+            .iter()
             .map(|output| (output.name(), output))
             .collect();
         let host = realization
@@ -298,12 +286,12 @@ impl NativeProfiles {
                 },
             );
         }
-        crate::expand::check_destinations_with(
+        crate::deploy::check_destinations_with(
             profiles.iter().flat_map(|(owner, profile)| {
                 profile
                     .files
                     .iter()
-                    .map(move |file| crate::expand::DestinationDeclaration {
+                    .map(move |file| crate::deploy::DestinationDeclaration {
                         owner,
                         path: &file.entry.to,
                         span: file.entry.span.as_ref().or(Some(&profile.span)),
@@ -315,11 +303,11 @@ impl NativeProfiles {
             }),
             resolve_destination,
         )?;
-        Ok(Some(Self {
+        Ok(Self {
             _capture: capture.temporary,
             profiles,
             partial: !selected.is_empty(),
             deadline,
-        }))
+        })
     }
 }

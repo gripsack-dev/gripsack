@@ -24,7 +24,7 @@ pub struct SelectedGnuLoader {
 
 impl SelectedGnuLoader {
     pub fn select(path: &Path, deadline: Instant) -> io::Result<Self> {
-        if !cfg!(target_os = "linux") || !path.is_absolute() {
+        if !path.is_absolute() {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "GNU loader selection requires an absolute Linux platform interpreter",

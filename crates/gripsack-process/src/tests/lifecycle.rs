@@ -87,10 +87,8 @@ fn completed_cleanup_cannot_erase_an_expired_operation() {
         .unwrap();
     let pid = child.id() as libc::pid_t;
     let (mut guard, _pipes) = crate::lifecycle::Guard::new(child, deadline);
-    // Establish successful signalling while the group is live. Darwin may
-    // legitimately return EPERM for a zombie-only group; with an already
-    // expired budget the classifier cannot prove that EPERM benign. That
-    // earlier syscall error must remain observable, not be hidden by a timeout.
+    // Establish successful signalling before the operation expires so this
+    // test isolates timeout preservation after otherwise-complete cleanup.
     guard.terminate().unwrap();
     let observation_deadline = Instant::now() + Duration::from_secs(2);
     while !guard.observe().unwrap() {

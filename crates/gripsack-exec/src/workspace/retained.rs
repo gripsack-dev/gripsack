@@ -34,9 +34,7 @@ pub(super) fn inspect<'a>(
         packages: BTreeMap::new(),
         inputs: BTreeMap::new(),
     };
-    let Some(workspace) = &ir.workspace_catalog else {
-        return Ok(realized);
-    };
+    let workspace = &ir.workspace;
     if origins.is_empty() {
         return Ok(realized);
     }

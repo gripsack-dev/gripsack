@@ -111,11 +111,11 @@ impl PythonLayout {
         if !safe_path(command) || command.contains('/') {
             return Err("unsafe entry point command".into());
         }
-        let (module, function) = callable
+        let (output, function) = callable
             .trim()
             .split_once(':')
             .ok_or("entry point has no ':'")?;
-        let (module, function) = (module.trim(), function.trim());
+        let (output, function) = (output.trim(), function.trim());
         let identifier = |part: &str| {
             let mut chars = part.chars();
             chars
@@ -123,7 +123,7 @@ impl PythonLayout {
                 .is_some_and(|c| c == '_' || c.is_ascii_alphabetic())
                 && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
         };
-        if !module.split('.').all(identifier) || !function.split('.').all(identifier) {
+        if !output.split('.').all(identifier) || !function.split('.').all(identifier) {
             return Err("unsupported Python entry point identifier".into());
         }
         let executable = format!("{prefix}/{}", self.executable);
@@ -136,7 +136,7 @@ impl PythonLayout {
             .split('.')
             .next()
             .ok_or("missing Python entry point function")?;
-        let bytes = format!("{shebang}\n# -*- coding: utf-8 -*-\nimport re\nimport sys\n\nfrom {module} import {import}\n\nif __name__ == '__main__':\n\tsys.argv[0] = re.sub(r'(-script\\.pyw?|\\.exe)?$', '', sys.argv[0])\n\tsys.exit({function}())\n").into_bytes();
+        let bytes = format!("{shebang}\n# -*- coding: utf-8 -*-\nimport re\nimport sys\n\nfrom {output} import {import}\n\nif __name__ == '__main__':\n\tsys.argv[0] = re.sub(r'(-script\\.pyw?|\\.exe)?$', '', sys.argv[0])\n\tsys.exit({function}())\n").into_bytes();
         Ok((format!("bin/{command}"), bytes))
     }
 }

@@ -1,12 +1,10 @@
-//! Small audited Unix boundary. EINTR from lifecycle operations is returned
+//! Small audited Linux boundary. EINTR from lifecycle operations is returned
 //! to the deadline loop; read/write EINTR/EAGAIN are handled by Exchange.
 use std::io;
 use std::os::fd::RawFd;
 use std::os::unix::process::ExitStatusExt;
 use std::process::ExitStatus;
-use std::time::{Duration, Instant};
-#[cfg(target_os = "macos")]
-mod macos;
+use std::time::Duration;
 
 pub(super) fn nonblocking(fd: RawFd) -> io::Result<()> {
     // SAFETY: caller owns a live pipe descriptor; F_GETFL has no pointer argument.
@@ -64,12 +62,11 @@ pub(super) fn observe(pid: libc::pid_t) -> io::Result<bool> {
     if rc < 0 {
         return Err(io::Error::last_os_error());
     }
-    // SAFETY: waitid initialized the siginfo; libc provides this accessor on
-    // both Linux and macOS (the field layout is platform-specific).
+    // SAFETY: waitid initialized the siginfo; libc provides its Linux accessor.
     Ok(unsafe { info.si_pid() } == pid)
 }
 
-pub(super) fn kill_group(pid: libc::pid_t, _deadline: Instant) -> io::Result<()> {
+pub(super) fn kill_group(pid: libc::pid_t) -> io::Result<()> {
     if pid <= 1 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -81,15 +78,6 @@ pub(super) fn kill_group(pid: libc::pid_t, _deadline: Instant) -> io::Result<()>
     if unsafe { libc::killpg(pid, libc::SIGKILL) } < 0 {
         let error = io::Error::last_os_error();
         if error.raw_os_error() == Some(libc::ESRCH) {
-            return Ok(());
-        }
-        // Darwin's killpg skips zombies. EPERM is benign only after a complete,
-        // identity-stable observation of a zombie-only owned group, never just
-        // because the leader is our child or has exited.
-        #[cfg(target_os = "macos")]
-        if error.raw_os_error() == Some(libc::EPERM)
-            && macos::group_is_zombie_only(pid, _deadline).is_ok_and(|dead| dead)
-        {
             return Ok(());
         }
         return Err(error);
@@ -112,8 +100,7 @@ pub(super) fn reap(pid: libc::pid_t) -> io::Result<Option<ExitStatus>> {
 }
 
 /// Block SIGPIPE only on this thread around a pipe write. Do not alter the
-/// process-wide disposition or steal a pre-existing pending SIGPIPE. Unlike
-/// sigtimedwait, sigwait is available on both supported platforms.
+/// process-wide disposition or steal a pre-existing pending SIGPIPE.
 pub(super) fn without_sigpipe(write: impl FnOnce() -> io::Result<usize>) -> io::Result<usize> {
     // SAFETY: initialized by sigemptyset before being passed as signal sets.
     let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };

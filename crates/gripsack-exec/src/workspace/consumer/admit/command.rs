@@ -1,7 +1,7 @@
 //! Export receipts, executable byte binding and retained script interpreters.
 use super::{
     AdmittedCommand, BinaryAbi, EXECUTABLE_BYTES, ExecError, NativeContext, Package,
-    PinnedInterpreter, Span, elf, gate, macho, operational,
+    PinnedInterpreter, Span, elf, gate, operational,
 };
 use gripsack_ir::workspace_model::identity::ExecutableDigest;
 use gripsack_process::{
@@ -65,18 +65,12 @@ pub(in crate::workspace::consumer) fn admit_command(
             )?,
             ..CommandRuntime::default()
         },
-        Some(ExecutableFormat::MachO) => CommandRuntime {
-            macho_library_dirs: Some(macho::admit(
-                &metadata,
-                &canonical,
-                package,
-                declared_abi,
-                host,
+        _ => {
+            return Err(gate(
                 span,
-            )?),
-            ..CommandRuntime::default()
-        },
-        None => return Err(gate(span, "unrecognized executable format")),
+                "native execution requires ELF or an admitted script",
+            ));
+        }
     };
     Ok(AdmittedCommand {
         path,
@@ -87,7 +81,6 @@ pub(in crate::workspace::consumer) fn admit_command(
             .gnu_loader
             .map(|path| context.gnu_loader(path, span))
             .transpose()?,
-        macho_library_dirs: runtime.macho_library_dirs,
         interpreter: runtime.interpreter,
         bytecode,
     })
@@ -97,7 +90,6 @@ pub(in crate::workspace::consumer) fn admit_command(
 struct CommandRuntime {
     elf: elf::Runtime,
     interpreter: Option<PinnedInterpreter>,
-    macho_library_dirs: Option<Vec<std::path::PathBuf>>,
 }
 
 fn admit_script(
@@ -138,15 +130,10 @@ fn admit_script(
                 gripsack_ir::workspace::PlatformAbi::Musl => BinaryAbi::Musl,
                 gripsack_ir::workspace::PlatformAbi::Darwin => BinaryAbi::Darwin,
             });
-            let (runtime, macho_library_dirs) = match metadata.format {
-                Some(ExecutableFormat::Elf) => (
-                    elf::admit(&metadata, &canonical, &payload, owner, abi, host, span)?,
-                    None,
-                ),
-                Some(ExecutableFormat::MachO) => (
-                    elf::Runtime::default(),
-                    Some(macho::admit(&metadata, &canonical, owner, abi, host, span)?),
-                ),
+            let runtime = match metadata.format {
+                Some(ExecutableFormat::Elf) => {
+                    elf::admit(&metadata, &canonical, &payload, owner, abi, host, span)?
+                }
                 _ => {
                     return Err(gate(
                         span,
@@ -161,7 +148,6 @@ fn admit_script(
                     argument: argument.clone(),
                     executable,
                 }),
-                macho_library_dirs,
             });
         }
         packages.extend(owner.runtime.iter().map(std::sync::Arc::as_ref));

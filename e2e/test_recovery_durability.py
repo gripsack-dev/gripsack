@@ -11,15 +11,16 @@ from pathlib import Path
 import signal
 
 import pytest
-from conftest import GRIP, make_env_repo, run_grip
+from conftest import GRIP, make_workspace_repo, run_grip
 
 
 @pytest.mark.parametrize("prior_kind", ["absent", "file", "symlink"])
 @pytest.mark.parametrize("already_restored", [False, True])
 def test_recovery_sync_failure_retains_evidence_on_retry(sandbox, prior_kind, already_restored):
-    repo = make_env_repo(sandbox / "env", '''
-import { module } from "@gripsack/core";
-export default module("demo", {});
+    repo = make_workspace_repo(sandbox / "env", '''
+import { profile } from "@gripsack/core";
+
+export default profile("demo", {  });
 ''')
     home = sandbox / ".local/share/gripsack"
     destination = sandbox / "interrupted"
@@ -137,9 +138,10 @@ export default module("demo", {});
 
 
 def committed_fixture(sandbox):
-    repo = make_env_repo(sandbox / "env", '''
-import { module } from "@gripsack/core";
-export default module("demo", {});
+    repo = make_workspace_repo(sandbox / "env", '''
+import { profile } from "@gripsack/core";
+
+export default profile("demo", {  });
 ''')
     # Keep frontend provisioning out of the recorded recovery fault ordinals.
     warm = run_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
@@ -224,9 +226,13 @@ def test_corrupt_current_generation_retains_recovery_evidence(sandbox, corruptio
 
 @pytest.mark.parametrize("cut_phase", ["before-second-restore", "after-current-rename"])
 def test_repeated_generation_rollback_uses_transaction_commit_identity(sandbox, cut_phase):
-    repo = make_env_repo(sandbox / "env", '''
-import { module, symlink } from "@gripsack/core";
-export default module("demo", {config: {a: symlink("~/.a"), b: symlink("~/.b")}});
+    repo = make_workspace_repo(sandbox / "env", '''
+import { file, identity, profile, repoFile, symlinkTo } from "@gripsack/core";
+
+export default profile("demo", { files: [
+    file({ source: repoFile("a"), content: identity(), destination: symlinkTo("~/.a") }),
+    file({ source: repoFile("b"), content: identity(), destination: symlinkTo("~/.b") })
+  ] });
 ''')
     (repo / "a").write_text("a")
     (repo / "b").write_text("b")
@@ -281,9 +287,12 @@ def test_legacy_same_generation_marker_remains_ambiguous(sandbox):
 
 
 def test_cached_prior_sync_failure_cannot_authorize_a_deployment(sandbox):
-    repo = make_env_repo(sandbox / "env", '''
-import { module, trackedCopy } from "@gripsack/core";
-export default module("demo", {config: {source: trackedCopy("~/.cached-prior")}});
+    repo = make_workspace_repo(sandbox / "env", '''
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
+
+export default profile("demo", { files: [
+    file({ source: repoFile("source"), content: identity(), destination: trackedCopyTo("~/.cached-prior") })
+  ] });
 ''')
     original = b"original captured bytes\n"
     replacement = b"replacement bytes\n"

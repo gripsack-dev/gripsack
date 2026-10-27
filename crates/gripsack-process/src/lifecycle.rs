@@ -91,7 +91,7 @@ impl Guard {
             }
             SignalAction::Signal => {}
         }
-        match sys::kill_group(self.pid, self.deadline.instant()) {
+        match sys::kill_group(self.pid) {
             Ok(()) => {
                 self.state.signal_succeeded();
                 Ok(())

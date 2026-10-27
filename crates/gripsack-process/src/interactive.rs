@@ -151,16 +151,6 @@ impl<'a> Invocation<'a> {
             .as_ref()
             .map(super::Ruleset::try_clone)
             .transpose()?;
-        #[cfg(target_os = "macos")]
-        let confinement = confinement
-            .map(|ruleset| {
-                let ruleset = ruleset.granting_image_read(&self.program.executable.path)?;
-                match self.program.script.as_ref() {
-                    Some(script) => ruleset.granting_image_read(&script.path),
-                    None => Ok(ruleset),
-                }
-            })
-            .transpose()?;
         let (payload, environment_keys) = exec_payload::ExecPayload::new(
             self.program,
             arguments,
@@ -168,7 +158,6 @@ impl<'a> Invocation<'a> {
             self.role,
             None,
             self.overlay.as_ref(),
-            confinement.as_ref(),
         )?;
         let mut receipt = ProcessReceipt {
             executable_sha256: self.program.executable.digest,
@@ -200,7 +189,6 @@ impl<'a> Invocation<'a> {
         // SAFETY: identical to the piped path — retained image/directory
         // owners outlive spawn and supervision; the closure performs only
         // fchdir/Linux landlock/fcntl/close_range/execve and errno reads.
-        // macOS Seatbelt is installed by the platform launcher after exec.
         unsafe {
             command.pre_exec(move || {
                 #[cfg(target_os = "linux")]
@@ -364,7 +352,7 @@ pub(super) fn observed(mask: u64) -> impl Iterator<Item = libc::c_int> {
 /// returned from this compensation path; the caller keeps the original one.
 fn cleanup(pid: libc::pid_t) {
     let deadline = Instant::now() + CLEANUP_BUDGET;
-    let _ = sys::kill_group(pid, deadline);
+    let _ = sys::kill_group(pid);
     loop {
         let mut raw: libc::c_int = 0;
         // SAFETY: same exclusive-ownership argument as the wait loop.

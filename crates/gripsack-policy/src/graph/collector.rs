@@ -1,4 +1,4 @@
-//! Structural collection laws used by the actual v6 typed collector.
+//! Structural collection laws used by the actual typed workspace collector.
 //! These do not assume the source-to-edge correspondence: its callers prove
 //! that correspondence over the transparent production declaration types.
 use vstd::prelude::*;

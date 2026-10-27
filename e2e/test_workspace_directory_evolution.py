@@ -10,9 +10,9 @@ from test_workspace_migration import directory_predecessor, directory_replacemen
 
 
 def migrated(sandbox):
-    destination, old_target, previous = directory_predecessor(sandbox)
+    destination, old_target, _ = directory_predecessor(sandbox)
     repo = directory_replacement(sandbox)
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     return repo, destination, old_target
 
 

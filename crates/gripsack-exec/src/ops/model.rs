@@ -13,8 +13,9 @@ mod tests {
     use crate::ops::{
         Authority, DestView, ModeInput, OpKind, execute_op, plan_entry_op, preview_ops,
     };
-    use gripsack_ir::{Entry, HostName, Ownership};
+    use gripsack_ir::HostName;
     use gripsack_store as store;
+    use gripsack_store::{DeploymentEntry, Ownership};
     use std::path::{Path, PathBuf};
 
     /// An abstract live state, materialized per case.
@@ -36,8 +37,8 @@ mod tests {
         take_over: bool,
     }
 
-    fn entry(mode: Ownership, to: &Path) -> Entry {
-        Entry {
+    fn entry(mode: Ownership, to: &Path) -> DeploymentEntry {
+        DeploymentEntry {
             from: "payload".into(),
             to: to.to_string_lossy().into_owned(),
             mode,
@@ -195,7 +196,7 @@ mod tests {
         let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest).unwrap();
         let observed = crate::deploy::observe(&dest_dir, &dest_name).unwrap();
         let view = DestView {
-            module: "m",
+            output: "m",
             entry: &entry,
             dest: dest.clone(),
             home,
@@ -280,7 +281,7 @@ mod tests {
                     prev.hash = store::canonical_bytes_hash(b"old").into();
                     prev.file_mode = Some(0o600);
                     let view = DestView {
-                        module: "m",
+                        output: "m",
                         entry: &entry,
                         dest: dest.clone(),
                         home,
@@ -344,7 +345,7 @@ mod tests {
         let (dest_dir, dest_name) = crate::deploy::dest_capability(&tilde).unwrap();
         let observed = crate::deploy::observe(&dest_dir, &dest_name).unwrap();
         let view = DestView {
-            module: "m",
+            output: "m",
             entry: &entry_tilde,
             dest: tilde.clone(),
             home,
@@ -385,7 +386,7 @@ mod tests {
             preserved_drift: false,
         };
         let view = DestView {
-            module: "m",
+            output: "m",
             entry: &entry_abs,
             dest: tilde.clone(),
             home,
@@ -408,12 +409,10 @@ mod tests {
         );
     }
 
-    /// 0039's case class: a build-only dep in the graph plans ZERO
-    /// destination ops — one marker instead — and the consumer's
-    /// destination ops are exactly what they'd be without the edge.
-    /// The shipped planner (preview_ops), not a reimplementation.
+    /// Inert task declarations contribute no destination operations and cannot
+    /// change the ownership plan of a selected profile.
     #[test]
-    fn a_build_only_dep_plans_zero_destination_ops() {
+    fn an_inert_task_plans_zero_destination_ops() {
         for live in [
             Live::Absent,
             Live::File("foreign", 0o600),
@@ -423,85 +422,50 @@ mod tests {
             let repo = dir.path();
             let dest = materialize(repo, &live);
             std::fs::write(repo.join("payload"), "built artifact").unwrap();
-            let mut ir = gripsack_ir::Ir {
-                ir_version: gripsack_ir::IR_VERSION,
-                host: Default::default(),
-                resources: vec![],
-                workspace: None,
-                workspace_v4: None,
-                workspace_catalog: None,
-                modules: [
-                    (
-                        "consumer".into(),
-                        gripsack_ir::Module {
-                            install: vec![entry(Ownership::TrackedCopy, &dest)],
-                            ..Default::default()
-                        },
-                    ),
-                    (
-                        "compiler".into(),
-                        gripsack_ir::Module {
-                            install: vec![entry(
-                                Ownership::TrackedCopy,
-                                &repo.join("compiler-bin"),
-                            )],
-                            ..Default::default()
-                        },
-                    ),
-                ]
-                .into_iter()
-                .collect(),
-            };
-            let lock = crate::lockfile::Lockfile::default();
+            let mut ir: gripsack_ir::Ir = serde_json::from_value(serde_json::json!({
+                "ir_version": gripsack_ir::IR_VERSION,
+                "host": {"os":"linux","arch":"x86_64"},
+                "workspace": {
+                    "span":{"file":"model.ts","line":1},
+                    "outputs":[{
+                        "kind":"profile","name":"consumer",
+                        "span":{"file":"model.ts","line":2},
+                        "files":[{
+                            "span":{"file":"model.ts","line":3},
+                            "source":{"kind":"repo_file","path":"payload"},
+                            "content":{"kind":"identity"},
+                            "destination":{"kind":"tracked_copy","path":dest}
+                        }]
+                    }]
+                }
+            }))
+            .unwrap();
             let adopting = Default::default();
             let repository = crate::Repository::direct(repo.to_path_buf());
-            let runtime = preview_ops(
-                &ir,
-                &repository,
-                None,
-                &adopting,
-                &lock,
-                Default::default(),
-                &[],
-                None,
-            )
-            .unwrap();
-            ir.modules
-                .get_mut("consumer")
-                .unwrap()
-                .depends
-                .push(gripsack_ir::Dependency {
-                    module: "compiler".into(),
-                    edge: gripsack_ir::EdgeKind::Build,
-                    span: None,
-                });
-            let build = preview_ops(
-                &ir,
-                &repository,
-                None,
-                &adopting,
-                &lock,
-                Default::default(),
-                &[],
-                None,
-            )
-            .unwrap();
-            let compiler: Vec<_> = build.iter().filter(|o| o.module == "compiler").collect();
-            assert_eq!(
-                compiler.len(),
-                1,
-                "exactly one closure marker per build-only module"
+            let runtime =
+                preview_ops(&ir, &repository, None, &adopting, Default::default(), &[]).unwrap();
+            ir.workspace.outputs.push(
+                serde_json::from_value(serde_json::json!({
+                    "kind":"task","name":"compiler",
+                    "span":{"file":"model.ts","line":4},
+                    "context":{"kind":"host","mutable_paths":[]},
+                    "steps":[{"command":{
+                        "kind":"exec","span":{"file":"model.ts","line":5},
+                        "argv":[{"kind":"literal","value":"/bin/false"}]
+                    }}]
+                }))
+                .unwrap(),
             );
-            assert!(matches!(compiler[0].kind, OpKind::RunEffect));
-            assert!(compiler[0].dest.as_os_str().is_empty());
+            let build =
+                preview_ops(&ir, &repository, None, &adopting, Default::default(), &[]).unwrap();
             assert!(
-                runtime
-                    .iter()
-                    .any(|o| o.module == "compiler" && !o.dest.as_os_str().is_empty())
+                build.iter().all(|op| op.output != "compiler"),
+                "an uninvoked task must produce no destination or effect operation"
             );
+            assert_eq!(build.len(), runtime.len());
 
-            let control = runtime.iter().find(|o| o.module == "consumer").unwrap();
-            let actual = build.iter().find(|o| o.module == "consumer").unwrap();
+            let control = runtime.iter().find(|o| o.output == "consumer").unwrap();
+            let actual = build.iter().find(|o| o.output == "consumer").unwrap();
             assert_eq!(actual.dest, control.dest);
             assert_eq!(
                 std::mem::discriminant(&actual.kind),
@@ -521,8 +485,6 @@ mod tests {
             on_progress: None,
             take_over: false,
             take_over_entries: Default::default(),
-            migrate_from: None,
-            jobs: Some(1),
             home_dir: std::sync::OnceLock::new(),
             fetch: std::sync::Arc::new(gripsack_fetch::FetchContext::new(Default::default())),
         }

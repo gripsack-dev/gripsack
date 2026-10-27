@@ -7,14 +7,10 @@ description: Inspect an existing tool and declare its packages, configuration an
 
 Preserve the working installation. Inspect what exists, ask only about choices
 that the machine cannot answer, and write a small declaration with a tested
-recovery path. Current core/SDK is 0.48; use matching release assets or the
-embedded frontend, not an assumed npm release.
+recovery path. Use matching core and SDK release assets or the embedded frontend.
 
-A root `gripsack.ts` workspace is the preferred model. Existing
-`modules/*.ts` plus `hosts/*.ts` repositories remain supported; do not mix the
-entrypoints accidentally. A root workspace shadows legacy hosts. Read the
-[SDK reference](../../typescript/README.md) and
-[migration guide](https://gripsack.dev/docs/workspace-migration.html).
+The repository's root `gripsack.ts` is the sole authoring entrypoint. Read the
+[SDK reference](../../typescript/README.md) for current workspace declarations.
 
 ## 1. Inventory before asking
 
@@ -33,7 +29,7 @@ working command as an inventory step.
 - **Source and upgrade policy:** inspect the actual release asset/archive layout.
   Use a package provider such as `githubRelease`, `tarball`, `git`,
   `conda.environment` or captured `pixi.fromLock` as appropriate. A Conda solve is
-  coherent, not a single-package `pixi()` fetcher or an unpinned shell install.
+  coherent, not a set of independent package solves or an unpinned shell install.
   Declare an explicit libc/kernel baseline for cross-host solves. A frozen Pixi
   import does not upgrade its external lock.
 - **Configuration ownership:** use `trackedCopyTo` when tools rewrite files or
@@ -84,10 +80,31 @@ when the user wants Gripsack to manage the tool too; derive them from observed
 asset paths rather than a guessed archive name. See the runnable
 [workspace examples](../../examples/workspaces/).
 
-For an existing legacy repository, follow its module/host convention and current
-SDK signatures. `grip adopt` is a legacy adoption interview, not a workspace
-profile generator. `--yes` skips confirmation, not source approval; generated
-source needs review before `--resume` continues the recorded operation.
+To generate the declarations, run:
+
+```sh
+grip adopt ~/.config/helix --name helix --mode tracked_copy
+```
+
+The interview captures files under `configs/helix/`, writes a default-exported
+profile in `profiles/helix.ts`, and adds it to a simple multiline root
+`gripsack.ts` outputs list. For more complex roots it prints the import/output
+snippet to integrate manually. Modes are `owned` (symlinks), `tracked_copy`,
+and `merge` (managed blocks). Inspect generated declarations and captured files.
+
+Generation deliberately stops with exit status 1 for source review, including
+with `--yes`; it does not apply unapproved source. After reviewing, approve and
+resume the same target and profile:
+
+```sh
+grip trust add .
+grip adopt ~/.config/helix --name helix --resume
+```
+
+If the first invocation used `--host`, keep that identity on resume. Resume
+selects the evaluated profile and rejects destinations outside the adopted
+target; it applies only that profile. `--yes` skips confirmation, never source
+approval.
 
 ## 4. Prove it
 

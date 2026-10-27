@@ -1,11 +1,5 @@
-//! Shared catalog acquisition model: the existing archive/git/file
-//! provider lane plus coherent Conda environments solved through Rattler
-//! and explicit Pixi lock imports. This is a clean cutover, not a reader
-//! extension: the frozen v5 `WorkspaceFetch` stays with the v5 reader,
-//! and v6 sema rejects the legacy Brew/Pixi fetch spellings that the
-//! Conda lanes supersede. Declaration types carry provenance spans; the
-//! portable lock keeps a location-free projection (`LockedSource`) — no
-//! spans, no host paths, versioned by `lock_version`.
+//! Native acquisition, coherent Conda environments and explicit Pixi lock imports.
+//! Declarations carry provenance; portable locks keep location-free identities.
 
 use crate::model::FetchSpec;
 use crate::span::Span;
@@ -22,7 +16,7 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
-/// How a v6 recipe or provider package obtains its payload.
+/// How a recipe or provider package obtains its payload.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AcquisitionSource {
@@ -150,11 +144,6 @@ pub struct PixiLockSource {
 }
 
 impl AcquisitionSource {
-    /// Whether this declaration requires the strict v7 wire grammar.
-    pub fn requires_v7(&self) -> bool {
-        matches!(self, Self::CondaEnvironment(source) if source.system_requirements.is_some())
-    }
-
     /// The declaration span of this source, for diagnostics.
     pub fn span(&self) -> &Span {
         match self {

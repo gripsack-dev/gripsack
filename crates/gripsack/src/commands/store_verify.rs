@@ -21,8 +21,8 @@ pub fn store_verify(repair: bool, palette: Palette) -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(reports) => {
-            for (module, _kind, summary) in &reports {
-                println!("  {} {}", palette.warn(module), summary);
+            for (output, _kind, summary) in &reports {
+                println!("  {} {}", palette.warn(output), summary);
             }
             ExitCode::FAILURE
         }

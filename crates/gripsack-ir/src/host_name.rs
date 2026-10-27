@@ -1,9 +1,4 @@
-//! One admitted host entrypoint/lockfile identity (0048 §1.3).
-//!
-//! A host name is a single path component, never a path. The same
-//! safe-segment grammar already governs module names (E116), but the
-//! types stay distinct: a module cannot be passed where a host selects
-//! `hosts/<host>.ts` or `locks/<host>.lock`.
+//! One admitted workspace host identity, never a path or alternate entrypoint.
 
 use crate::diagnostic::{Diagnostic, codes};
 use std::fmt;
@@ -19,11 +14,17 @@ impl HostName {
     /// An owned String is reused without copying on the successful path.
     pub fn parse(value: impl Into<String>) -> Result<Self, Diagnostic> {
         let value = value.into();
-        if !crate::sema::names::module_name_ok(&value) {
+        if value.is_empty()
+            || value.starts_with('.')
+            || value.contains("..")
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+        {
             return Err(Diagnostic::error(
                 codes::INVALID_HOST_NAME,
                 format!(
-                    "invalid host name {value:?}: a host selects one entrypoint and lockfile name, never a path"
+                    "invalid host name {value:?}: a workspace host identity is a safe name, never a path"
                 ),
             )
             .with_help(

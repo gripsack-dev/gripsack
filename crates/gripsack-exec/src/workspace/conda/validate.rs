@@ -61,7 +61,7 @@ impl FileModes {
 }
 fn failure(output: &str, detail: impl Into<String>) -> ExecError {
     ExecError::Step {
-        module: output.into(),
+        output: output.into(),
         step: "conda".into(),
         detail: detail.into(),
     }

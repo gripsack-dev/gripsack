@@ -10,7 +10,6 @@ import {
   bashBody,
   check,
   conda,
-  condaEnvironment,
   daily,
   environment,
   exec,
@@ -24,7 +23,7 @@ import {
   managedBlock,
   packageCommand,
   pkg,
-  pixiFromLock,
+  pixi,
   profile,
   provider,
   recipe,
@@ -516,8 +515,8 @@ Deno.test("recipe sources emit the current tagged fetch wrapper", () => {
   assert.ok(source.span.line >= 1, "fetch wrapper carries provenance");
 });
 
-Deno.test("condaEnvironment emits the conda_environment wire and rejects bad specs", () => {
-  const env = condaEnvironment({
+Deno.test("conda.environment emits the conda_environment wire and rejects bad specs", () => {
+  const env = conda.environment({
     channels: ["conda-forge"],
     packages: { python: "3.12.*", numpy: "*" },
   });
@@ -542,19 +541,19 @@ Deno.test("condaEnvironment emits the conda_environment wire and rejects bad spe
   assert.deepEqual(source.platforms, [{ os: "linux", arch: "x86_64" }]);
 
   assert.throws(
-    () => condaEnvironment({ channels: [], packages: { python: "*" } }),
+    () => conda.environment({ channels: [], packages: { python: "*" } }),
     /channels must be a non-empty array/,
   );
   assert.throws(
-    () => condaEnvironment({ channels: ["conda-forge"], packages: {} }),
+    () => conda.environment({ channels: ["conda-forge"], packages: {} }),
     /packages must declare at least one package/,
   );
   assert.throws(
-    () => condaEnvironment({ channels: ["conda-forge"], packages: { Python: "3.12.*" } }),
+    () => conda.environment({ channels: ["conda-forge"], packages: { Python: "3.12.*" } }),
     /"Python" must be a lowercase Conda package name/,
   );
   assert.throws(
-    () => condaEnvironment({ channels: ["conda-forge"], packages: { python: "" } }),
+    () => conda.environment({ channels: ["conda-forge"], packages: { python: "" } }),
     /non-empty MatchSpec/,
   );
 });
@@ -571,7 +570,7 @@ Deno.test("v7 Conda solve baselines lower strictly and inherit source provenance
     target: linux, layout: { kind: "prefix_materialized" },
   });
   const envelope = emit(workspace({ outputs: [output] }));
-  assert.equal(envelope.ir_version, 8);
+  assert.equal(envelope.ir_version, 9);
   const wire = envelope.workspace.outputs[0].producer.provider;
   assert.deepEqual(wire.system_requirements, systemRequirements);
   assert.equal("systemRequirements" in wire, false);
@@ -666,22 +665,22 @@ Deno.test("v7 host runtime authority is ordered package policy, never producer d
   }
 });
 
-Deno.test("pixiFromLock emits the pixi_lock wire naming workspace inputs", () => {
-  const locked = pixiFromLock({ manifest: "pixi-manifest", lock: "pixi-lock", environment: "default" });
+Deno.test("pixi.fromLock emits the pixi_lock wire naming workspace inputs", () => {
+  const locked = pixi.fromLock({ manifest: "pixi-manifest", lock: "pixi-lock", environment: "default" });
   assert.equal(locked.kind, "pixi_lock");
   assert.equal(locked.manifest, "pixi-manifest");
   assert.equal(locked.lock, "pixi-lock");
   assert.equal(locked.environment, "default");
   assert.match(locked.span.file, /workspace\.test\.ts$/);
   assert.throws(
-    () => pixiFromLock({ manifest: "", lock: "pixi-lock", environment: "default" }),
+    () => pixi.fromLock({ manifest: "", lock: "pixi-lock", environment: "default" }),
     /manifest must be a non-empty string/,
   );
 });
 
 Deno.test("a conda provider package materializes its prefix", () => {
   const py = pkg("python", {
-    producer: provider(condaEnvironment({
+    producer: provider(conda.environment({
       channels: ["conda-forge"],
       packages: { python: "3.12.*" },
     })),

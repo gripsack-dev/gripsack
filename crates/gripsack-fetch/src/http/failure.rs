@@ -64,7 +64,6 @@ pub(super) enum AuthenticationDisposition {
     Absent,
     PublicBound,
     EnterpriseBound,
-    OtherBound,
     EnterpriseUnbound { configured_host: Option<String> },
 }
 
@@ -140,7 +139,7 @@ impl HttpFailure {
             }
         })?;
         match &self.authentication {
-            AuthenticationDisposition::PublicBound | AuthenticationDisposition::EnterpriseBound | AuthenticationDisposition::OtherBound =>
+            AuthenticationDisposition::PublicBound | AuthenticationDisposition::EnterpriseBound =>
                 Some("a credential was host-bound; check access, token validity/scopes, SSO and server rate-limit policy".into()),
             _ if matches!(host, "github.com" | "api.github.com") => Some(format!(
                 "no GH_TOKEN/GITHUB_TOKEN is bound to github.com; {}authenticate or resolve from another environment",

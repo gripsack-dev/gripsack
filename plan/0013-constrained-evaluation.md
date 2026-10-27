@@ -116,29 +116,28 @@ detector, in the core, feeding one frontend.
 
 ### D5 — The frontend returns a value; no registration by side effect
 
-The frontend contract becomes a function:
+The current entrypoint is root `gripsack.ts`, returning one workspace value:
 
 ```ts
-// hosts/laptop.ts
-import { defineEnv } from "@gripsack/core";
-import { helix } from "../modules/helix.js";
+import {
+  defineWorkspace, file, literalText, profile, trackedCopyTo, workspace,
+} from "@gripsack/core";
 
-export default defineEnv((ctx) => ({
-  tags: ["gui", "work"],
-  modules: [
-    helix,
-    ctx.facts.os === "linux" && steam,   // falsy entries drop out
-    ctx.probe.executable("nvidia-smi") && cuda,
-  ],
-}));
+const home = profile("home", {
+  files: [file({
+    content: literalText("editor = \"vi\"\n"),
+    destination: trackedCopyTo("~/.config/example.toml"),
+  })],
+});
+
+export default defineWorkspace(() => workspace({ outputs: [home] }));
 ```
 
-`module(...)` constructs a value; `defineEnv` receives
-`ctx = { facts, tags, probe, settings }` and returns the environment.
-The driver imports the host entrypoint, calls the function, emits the
-envelope. No global registry, no import-order magic. `Inputs →
-Environment` is testable, cacheable, and is what makes two-stage eval
-(D6) a re-invocation rather than a special mode.
+Ordinary TypeScript functions compose output values. `defineWorkspace` receives
+`ctx = { facts, tags, probe, settings }`; the driver calls it and emits the
+workspace envelope. There is no global registry, import-order registration or
+`hosts/<name>.ts` fallback. Re-invocation with bound probe results remains the
+same pure authoring boundary. Plan0055 retires the original module API.
 
 ### D6 — Effects are symbolic requests; the core binds them (two-stage eval)
 

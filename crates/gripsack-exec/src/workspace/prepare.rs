@@ -58,25 +58,7 @@ impl<'a> Prepared<'a> {
         {
             return Err(ExecError::Gate(diagnostic));
         }
-        let workspace = ir
-            .workspace_catalog
-            .as_ref()
-            .filter(|_| {
-                matches!(
-                    ir.ir_version,
-                    gripsack_ir::WORKSPACE_V6_VERSION
-                        | gripsack_ir::WORKSPACE_V7_VERSION
-                        | gripsack_ir::IR_VERSION
-                ) && ir.workspace.is_none()
-                    && ir.workspace_v4.is_none()
-                    && ir.modules.is_empty()
-            })
-            .ok_or_else(|| {
-                failure(
-                    None,
-                    "selected-output production requires an executable catalog workspace",
-                )
-            })?;
+        let workspace = &ir.workspace;
         let selection = Selection::admit(workspace, requested)?;
         admit_capabilities(&selection)?;
         let definitions = captured_definitions(&ctx.repository)?;
@@ -119,14 +101,14 @@ impl<'a> Prepared<'a> {
                     }
                     AcquisitionSource::CondaEnvironment(_) | AcquisitionSource::PixiLock(_) => {
                         let pin = pin.ok_or_else(|| ExecError::Step {
-                            module: (*name).into(),
+                            output: (*name).into(),
                             step: "conda".into(),
                             detail:
                                 "conda source has no lock; run grip update before frozen acquisition"
                                     .into(),
                         })?;
                         let locked = pin.conda.as_ref().ok_or_else(|| ExecError::Step {
-                            module: (*name).into(),
+                            output: (*name).into(),
                             step: "conda".into(),
                             detail: "conda pin is missing its frozen closure".into(),
                         })?;

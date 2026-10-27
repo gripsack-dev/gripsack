@@ -33,8 +33,7 @@ def extract_blocks(site: Path, core: Path) -> list[Block]:
                if md.relative_to(site).as_posix() != "doc/changelog.md"]
     sources.append((site / "website" / "index.html", "website/index.html"))
     sources.append((core / "README.md", "core/README.md"))
-    # The site renders authenticated core changelog bytes, not its old mirror.
-    sources.append((core / "CHANGELOG.md", "core/CHANGELOG.md"))
+    # Historical changelog examples are not current authoring documentation.
     for md, rel in sources:
         text = md.read_text(encoding="utf-8")
         lines = text.split("\n")
@@ -88,7 +87,7 @@ def pair_with_manifest(blocks: list[Block], examples: list[dict]) -> dict[str, B
         loc = entry["locator"]
         found = None
         fenced_same_file = [
-            x for x in unclaimed if x.file == want_file and x.fenced
+            x for x in blocks if x.file == want_file and x.fenced
         ]
         for b in unclaimed:
             if b.file != want_file:

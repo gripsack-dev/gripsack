@@ -1,11 +1,8 @@
-//! Generation: the repo artifacts adopt writes — payload copy, the
-//! module source, the host-entrypoint edit. Pure functions at the
-//! edges (everything string-shaped is unit-tested); the two io
-//! functions are the only side effects.
+//! Generate explicit workspace profile files and a conservative root import.
 
 use std::path::{Path, PathBuf};
 
-/// Module name from the adopted path: dir basename, or file name with
+/// Profile name from the adopted path: dir basename, or file name with
 /// the dotfile dot stripped. Sanitized to [alnum - _].
 pub fn default_name(dest: &Path, is_dir: bool) -> Option<String> {
     let raw = if is_dir {
@@ -19,7 +16,7 @@ pub fn default_name(dest: &Path, is_dir: bool) -> Option<String> {
     let clean: String = raw
         .chars()
         .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
                 c
             } else {
                 '-'
@@ -29,7 +26,7 @@ pub fn default_name(dest: &Path, is_dir: bool) -> Option<String> {
     if clean.is_empty() { None } else { Some(clean) }
 }
 
-/// A TS-safe identifier for the module name: [alnum _], never
+/// A TS-safe identifier for the profile name: [alnum _], never
 /// digit-leading, never empty (0033 R6).
 pub fn ident(name: &str) -> String {
     let mapped: String = name
@@ -51,7 +48,7 @@ pub fn ident(name: &str) -> String {
 
 /// A TS string literal for an interpolated value (0033 R6): JSON
 /// quoting IS valid TypeScript, and a path containing quotes or
-/// backslashes can neither break nor inject the generated module.
+/// backslashes can neither break nor inject the generated profile.
 fn quoted(value: &str) -> String {
     serde_json::to_string(value).expect("a string always serializes")
 }
@@ -71,97 +68,64 @@ pub const MODE_OWNED: &str = "owned";
 pub const MODE_TRACKED_COPY: &str = "tracked_copy";
 pub const MODE_MERGE: &str = "merge";
 
-/// The generated modules/<name>.ts — exactly what the user would have
-/// written by hand.
-pub fn module_source(name: &str, to: &str, first_rel: &str, mode: &str, is_dir: bool) -> String {
-    let source_path = quoted(&format!("configs/{name}/{first_rel}"));
-    let tree_path = quoted(&format!("configs/{name}"));
-    let (name, to) = (quoted(name), quoted(to));
-    match (mode, is_dir) {
-        (MODE_MERGE, _) => format!(
-            "import {{ merge, module }} from \"@gripsack/core\";\n\n\
-             export default module({name}, {{\n  config: {{\n    {source_path}: merge({to}, \"#\"),\n  }},\n}});\n"
-        ),
-        (_, true) => format!(
-            "import {{ module, tree }} from \"@gripsack/core\";\n\n\
-             export default module({name}, {{\n  config: tree({tree_path}, {to}, \"{mode}\"),\n}});\n"
-        ),
-        _ => {
-            let ctor = match mode {
-                MODE_OWNED => "symlink",
-                _ => "trackedCopy",
-            };
-            format!(
-                "import {{ {ctor}, module }} from \"@gripsack/core\";\n\n\
-                 export default module({name}, {{\n  config: {{\n    {source_path}: {ctor}({to}),\n  }},\n}});\n"
-            )
-        }
-    }
-}
-
-/// Insert the import and the modules-array entry into a defineEnv
-/// host file. Conservative: returns None on any shape it doesn't
-/// recognize — the caller shows the snippet instead of risking a
-/// mangled host file.
-pub fn update_host(src: &str, name: &str) -> Option<String> {
-    let ident = ident(name);
-    let import = format!("import {ident} from \"../modules/{name}.ts\";");
-    if src.contains(&import) {
-        // already imported: still ensure the array entry
-        return insert_module_entry(src, &ident);
-    }
-    let mut lines: Vec<String> = src.lines().map(str::to_string).collect();
-    let last_import = lines
-        .iter()
-        .rposition(|l| l.trim_start().starts_with("import ") && l.contains(" from "))?;
-    lines.insert(last_import + 1, import);
-    let joined = lines.join("\n") + "\n";
-    insert_module_entry(&joined, &ident)
-}
-
-fn insert_module_entry(src: &str, ident: &str) -> Option<String> {
-    let mut lines: Vec<String> = src.lines().map(str::to_string).collect();
-    // the LAST match — the init template documents a `modules: [`
-    // example inside its header comment; the first match inserts into
-    // the comment and the dangling comma breaks eval
-    let pos = lines
-        .iter()
-        .rposition(|l| l.contains("modules: [") && !l.trim_start().starts_with("//"))?;
-    if lines[pos].contains(']') {
-        // single-line array — insert before the closing bracket
-        let close = lines[pos].rfind(']')?;
-        let inner = &lines[pos][..close];
-        if inner.split([',', '['].as_ref()).any(|t| t.trim() == ident) {
-            return Some(src.to_string()); // already listed
-        }
-        let insertion = if inner.trim_end().ends_with('[') {
-            ident.to_string() // empty array: `[]` → `[ident]`
+/// Every inventoried file gets an explicit origin and ownership policy.
+pub fn profile_source(name: &str, to: &str, files: &[String], mode: &str, is_dir: bool) -> String {
+    let constructor = match mode {
+        MODE_OWNED => "symlinkTo",
+        MODE_MERGE => "managedBlock",
+        _ => "trackedCopyTo",
+    };
+    let mut source = format!(
+        "import {{ profile, file, repoFile, identity, {constructor} }} from \"@gripsack/core\";\n\nexport default profile({}, {{\n  files: [\n",
+        quoted(name),
+    );
+    for relative in files {
+        let origin = quoted(&format!("configs/{name}/{relative}"));
+        let destination = quoted(&if is_dir {
+            format!("{}/{relative}", to.trim_end_matches('/'))
         } else {
-            format!(", {ident}") // non-empty: `[a]` → `[a, ident]`
-        };
-        lines[pos].insert_str(close, &insertion);
-    } else {
-        // multiline array: bail if already listed, else insert indented
-        if lines[pos..]
-            .iter()
-            .take_while(|l| !l.contains(']'))
-            .any(|l| l.trim().trim_end_matches(',') == ident)
-        {
-            return Some(src.to_string());
-        }
-        let indent: String = lines[pos]
-            .chars()
-            .take_while(|c| c.is_whitespace())
-            .collect();
-        lines.insert(pos + 1, format!("{indent}  {ident},"));
+            to.to_owned()
+        });
+        let marker = if mode == MODE_MERGE { ", \"#\"" } else { "" };
+        source.push_str(&format!(
+            "    file({{ source: repoFile({origin}), content: identity(), destination: {constructor}({destination}{marker}) }}),\n",
+        ));
     }
+    source.push_str("  ],\n});\n");
+    source
+}
+
+/// Only edit the simple multiline workspace form emitted by init.
+/// Other authoring styles receive a snippet for explicit manual integration.
+pub fn update_workspace(src: &str, name: &str) -> Option<String> {
+    let ident = format!("adopted_{}", ident(name));
+    let import = format!(
+        "import {ident} from {};",
+        quoted(&format!("./profiles/{name}.ts"))
+    );
+    if src.contains(&import) {
+        return None;
+    }
+    if src.contains("/*") || src.contains('`') || src.contains(&ident) {
+        return None;
+    }
+    let mut lines: Vec<String> = src.lines().map(str::to_owned).collect();
+    let opening = lines
+        .iter()
+        .position(|line| line == "export default defineWorkspace(() => workspace({")?;
+    if lines.get(opening + 1)? != "  outputs: [" {
+        return None;
+    }
+    lines.insert(opening + 2, format!("    {ident},"));
+    lines.insert(0, import);
     Some(lines.join("\n") + "\n")
 }
 
-pub fn host_snippet(name: &str) -> String {
-    let ident = ident(name);
+pub fn workspace_snippet(name: &str) -> String {
+    let ident = format!("adopted_{}", ident(name));
     format!(
-        "import {ident} from \"../modules/{name}.ts\";\n// and add `{ident}` to the modules array"
+        "import {ident} from {};\n// Add `{ident}` to the workspace outputs array.",
+        quoted(&format!("./profiles/{name}.ts")),
     )
 }
 
@@ -208,52 +172,20 @@ pub fn write_payload(
 mod tests {
     use super::*;
 
-    const HOST_MULTILINE: &str = "import { defineEnv } from \"@gripsack/core\";\nimport hello from \"../modules/hello.ts\";\n\nexport default defineEnv(() => ({\n  tags: [],\n  modules: [\n    hello,\n  ],\n}));\n";
-
     #[test]
-    fn update_host_multiline_array() {
-        let out = update_host(HOST_MULTILINE, "zed").unwrap();
-        assert!(out.contains("import zed from \"../modules/zed.ts\";"));
-        assert!(out.contains("  zed,\n"), "entry inserted in array:\n{out}");
-        // idempotent
-        let twice = update_host(&out, "zed").unwrap();
-        assert_eq!(twice.matches("modules/zed").count(), 1);
-        assert_eq!(twice.matches("zed,").count(), 1);
+    fn inserts_profile_in_starter_workspace() {
+        let template = include_str!("../../../template/env-repo/gripsack.ts");
+        let out = update_workspace(template, "zed").unwrap();
+        assert!(out.contains("import adopted_zed from \"./profiles/zed.ts\";"));
+        assert!(out.contains("  outputs: [\n    adopted_zed,"));
+        assert!(update_workspace(&out, "zed").is_none());
     }
 
     #[test]
-    fn update_host_single_line_arrays() {
-        let empty = "import { defineEnv } from \"@gripsack/core\";\nexport default defineEnv(() => ({ modules: [] }));\n";
-        let out = update_host(empty, "helix").unwrap();
-        assert!(out.contains("modules: [helix]"), "{out}");
-
-        let one = "import { defineEnv } from \"@gripsack/core\";\nexport default defineEnv(() => ({ modules: [hello] }));\n";
-        let out = update_host(one, "helix").unwrap();
-        assert!(
-            out.contains("modules: [hello, helix]") || out.contains("helix, ]"),
-            "{out}"
-        );
-    }
-
-    #[test]
-    fn update_host_ignores_the_template_header_comment() {
-        // the init template documents a `modules: [` example inside
-        // its // header comment — inserting there broke eval with a
-        // dangling comma (the comment's example swallowed the import)
-        let template = include_str!("../../../template/env-repo/hosts/myhost.ts");
-        let out = update_host(template, "zed").unwrap();
-        assert!(
-            out.contains("modules: [hello, zed]"),
-            "entry lands in the real array, not the comment:\n{out}"
-        );
-        // and the comment example is untouched
-        assert!(out.contains("//       hello,"));
-    }
-
-    #[test]
-    fn update_host_bails_on_unexpected_shape() {
-        assert!(update_host("const x = 1;\n", "zed").is_none());
-        assert!(update_host("import a from \"./a.ts\";\n", "zed").is_none());
+    fn unfamiliar_workspace_shapes_are_left_for_review() {
+        for source in ["const x = 1;\n", "export default myWorkspace;\n"] {
+            assert!(update_workspace(source, "zed").is_none());
+        }
     }
 
     #[test]
@@ -266,37 +198,40 @@ mod tests {
     }
 
     #[test]
-    fn module_source_escapes_hostile_strings() {
-        // a filename with quotes/backslashes can neither break the
-        // generated module nor inject into it (0033 R6)
-        let src = module_source(
+    fn profile_source_escapes_hostile_strings() {
+        let src = profile_source(
             "demo",
             "~/.config/we\"ird.toml",
-            "a\"b.toml",
+            &["a\"b.toml".to_owned()],
             MODE_TRACKED_COPY,
             false,
         );
         assert!(
-            src.contains(r#"trackedCopy("~/.config/we\"ird.toml")"#),
+            src.contains(r#"trackedCopyTo("~/.config/we\"ird.toml")"#),
             "{src}"
         );
-        assert!(src.contains(r#""configs/demo/a\"b.toml""#), "{src}");
+        assert!(
+            src.contains(r#"repoFile("configs/demo/a\"b.toml")"#),
+            "{src}"
+        );
     }
 
     #[test]
-    fn module_source_shapes() {
-        let dir = module_source("helix", "~/.config/helix", "config.toml", MODE_OWNED, true);
-        assert!(dir.contains("tree(\"configs/helix\", \"~/.config/helix\", \"owned\")"));
-        let file = module_source(
+    fn profile_source_preserves_file_destinations_and_ownership() {
+        let files = vec!["config.toml".to_owned(), "themes/custom.toml".to_owned()];
+        let dir = profile_source("helix", "~/.config/helix", &files, MODE_OWNED, true);
+        assert!(dir.contains("symlinkTo(\"~/.config/helix/config.toml\")"));
+        assert!(dir.contains("symlinkTo(\"~/.config/helix/themes/custom.toml\")"));
+        let file = profile_source(
             "gitconfig",
             "~/.gitconfig",
-            "gitconfig",
+            &files[..1],
             MODE_TRACKED_COPY,
             false,
         );
-        assert!(file.contains("trackedCopy(\"~/.gitconfig\")"));
-        let merge = module_source("bashrc", "~/.bashrc", "bashrc", MODE_MERGE, false);
-        assert!(merge.contains("merge(\"~/.bashrc\", \"#\")"));
+        assert!(file.contains("trackedCopyTo(\"~/.gitconfig\")"));
+        let merge = profile_source("bashrc", "~/.bashrc", &files[..1], MODE_MERGE, false);
+        assert!(merge.contains("managedBlock(\"~/.bashrc\", \"#\")"));
     }
 
     #[test]

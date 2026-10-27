@@ -6,27 +6,21 @@ use owo_colors::OwoColorize;
 use std::path::Path;
 use std::process::ExitCode;
 
-/// What an apply run varies by — named, not positional (the CLI flag
-/// surface, the adopt scoping, and the concurrency hint travel
-/// together into the executor).
+/// Profile selection and destination ownership authority for one apply.
 pub struct ApplyOptions {
     pub host: Option<String>,
-    pub modules: Vec<String>,
+    pub profiles: Vec<String>,
     pub take_over: bool,
     pub take_over_entries: Option<std::collections::BTreeSet<String>>,
-    pub migrate_from: Option<gripsack_store::GenerationId>,
-    pub jobs: Option<usize>,
 }
 
 impl ApplyOptions {
-    fn scoped(entries: std::collections::BTreeSet<String>, jobs: Option<usize>) -> Self {
+    fn scoped(profile: String, entries: std::collections::BTreeSet<String>) -> Self {
         ApplyOptions {
             host: None,
-            modules: vec![],
+            profiles: vec![profile],
             take_over: false,
             take_over_entries: Some(entries),
-            migrate_from: None,
-            jobs,
         }
     }
 }
@@ -40,36 +34,18 @@ pub fn apply(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
 /// the destinations it generated — unrelated drift is never clobbered.
 pub fn apply_scoped(
     outcome: EvalOutcome,
+    profile: String,
     entries: std::collections::BTreeSet<String>,
-    jobs: Option<usize>,
     palette: Palette,
 ) -> ExitCode {
-    let opts = ApplyOptions::scoped(entries, jobs);
-    if let Err(code) = admit_jobs(&opts) {
-        return code;
-    }
+    let opts = ApplyOptions::scoped(profile, entries);
     let mut sink =
         crate::render::DiagnosticSink::terminal(palette, outcome.sources.repository_identity());
     sink.bind_captured_source(std::sync::Arc::clone(&outcome.sources));
     apply_evaluated(outcome, opts, palette, &mut sink)
 }
 
-fn admit_jobs(opts: &ApplyOptions) -> Result<(), ExitCode> {
-    if opts.jobs == Some(0) {
-        eprintln!("grip: --jobs 0 would run zero modules — pass a positive count");
-        return Err(ExitCode::from(2));
-    }
-    if opts.jobs.is_none() && std::env::var("GRIPSACK_JOBS").ok().as_deref() == Some("0") {
-        eprintln!("grip: GRIPSACK_JOBS=0 would run zero modules — unset or fix it");
-        return Err(ExitCode::from(2));
-    }
-    Ok(())
-}
-
 fn apply_inner(repo: &Path, mut opts: ApplyOptions, palette: Palette) -> ExitCode {
-    if let Err(code) = admit_jobs(&opts) {
-        return code;
-    }
     let host = opts.host.take();
     let mut sink = crate::render::DiagnosticSink::terminal(palette, repo);
     let outcome = match eval_repo(repo, host, &mut sink) {
@@ -117,21 +93,15 @@ fn apply_evaluated(
             std::sync::Arc::clone(&outcome.sources),
             outcome.receipt,
         ),
-        only: opts.modules,
+        only: opts.profiles,
         host: outcome.host.clone(),
         take_over: opts.take_over,
         take_over_entries: opts.take_over_entries,
-        migrate_from: opts.migrate_from,
         fetch: std::sync::Arc::clone(&outcome.fetch),
-        jobs: opts.jobs.or_else(|| {
-            std::env::var("GRIPSACK_JOBS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-        }),
         on_progress: spinner.as_ref().map(|pb| {
             let pb = pb.clone();
-            Box::new(move |module: &str, verb: &str| {
-                pb.set_message(format!("{module} · {verb}"));
+            Box::new(move |output: &str, verb: &str| {
+                pb.set_message(format!("{output} · {verb}"));
                 pb.tick();
             }) as gripsack_exec::ProgressCallback
         }),
@@ -176,22 +146,18 @@ fn apply_evaluated(
             ExitCode::FAILURE
         }
         Err(e) => {
-            // exec failures get the same span-labeled treatment as
-            // sema errors (0004 §3): step/verify errors name a module,
-            // and the module's span is in the IR
-            let (code, module) = match &e {
-                gripsack_exec::ExecError::Step { module, .. }
-                | gripsack_exec::ExecError::WorkerPanicked { module } => {
-                    (gripsack_ir::codes::EXEC_STEP, Some(module.as_str()))
-                }
-                gripsack_exec::ExecError::Verify { module, .. } => {
-                    (gripsack_ir::codes::EXEC_VERIFY, Some(module.as_str()))
+            // Execution failures carry the named output's declaration span.
+            let (code, output) = match &e {
+                gripsack_exec::ExecError::Step { output, .. } => {
+                    (gripsack_ir::codes::EXEC_STEP, Some(output.as_str()))
                 }
                 _ => (gripsack_ir::codes::EXEC_FETCH, None),
             };
-            let span = module
-                .and_then(|name| ir.modules.get(name))
-                .and_then(|m| m.span.clone());
+            let span = output.and_then(|name| {
+                ir.workspace_outputs()
+                    .find(|output| output.name == name)
+                    .map(|output| output.span.clone())
+            });
             let mut d = gripsack_ir::Diagnostic::error(code, e.to_string());
             if let Some(span) = span {
                 d = d.with_label(Some(span), "raised here");
@@ -202,11 +168,11 @@ fn apply_evaluated(
     }
 }
 
-/// The apply report: aligned module column, symbol, summary (cargo/uv
+/// The apply report: aligned output column, symbol, summary (cargo/uv
 /// conventions — symbols sparse, paths dimmed, quiet by default).
 fn print_reports(reports: &[gripsack_exec::StepReport], palette: Palette) {
     use gripsack_exec::ReportKind as K;
-    let width = reports.iter().map(|r| r.module.len()).max().unwrap_or(0);
+    let width = reports.iter().map(|r| r.output.len()).max().unwrap_or(0);
     for r in reports {
         let symbol = match (r.kind, palette.enabled) {
             (K::Warned, true) => "⚠".yellow().to_string(),
@@ -216,12 +182,12 @@ fn print_reports(reports: &[gripsack_exec::StepReport], palette: Palette) {
             (K::Satisfied, false) => "·".to_string(),
             (_, false) => "✓".to_string(),
         };
-        let module = format!("{:>width$}", r.module);
-        let module = if palette.enabled {
-            module.cyan().to_string()
+        let output = format!("{:>width$}", r.output);
+        let output = if palette.enabled {
+            output.cyan().to_string()
         } else {
-            module
+            output
         };
-        println!("  {module} {symbol} {}", r.summary);
+        println!("  {output} {symbol} {}", r.summary);
     }
 }

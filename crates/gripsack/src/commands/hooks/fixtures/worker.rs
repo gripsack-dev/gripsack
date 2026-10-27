@@ -56,7 +56,7 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
                 &home,
                 &store::Generation {
                     number: generation,
-                    modules: Default::default(),
+                    deployments: Default::default(),
                     directory_transitions: Vec::new(),
                     migration: None,
                 },
@@ -65,9 +65,9 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
                 &home,
                 &pending,
                 vec![store::activation::PendingIntent {
-                    module: "fixture".into(),
-                    action: action.into(),
-                    trigger: gripsack_ir::Trigger::PostActivate,
+                    output: "fixture".into(),
+                    action,
+                    trigger: gripsack_store::ActivationTrigger::PostActivate,
                 }],
             )?;
             let committed = store::flip(pending)?;
@@ -81,8 +81,8 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
         count += 1;
         if row.action_sha256 != expected
             || row.contributors.len() != 1
-            || row.contributors[0].module != "fixture"
-            || row.contributors[0].trigger != gripsack_ir::Trigger::PostActivate
+            || row.contributors[0].output != "fixture"
+            || row.contributors[0].trigger != gripsack_store::ActivationTrigger::PostActivate
         {
             return Err(invalid("fixture worker refuses a non-fixture action"));
         }
