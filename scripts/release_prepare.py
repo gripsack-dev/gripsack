@@ -8,10 +8,11 @@ original complete evidence admission rather than reinterpreting partial receipts
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import sys
@@ -29,6 +30,49 @@ def save(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("xb") as stream:
         stream.write(canonical(value) + b"\n")
+
+
+def source_aliases(source):
+    """Resolve tracked file aliases without consulting paths outside the source."""
+    source = Path(source).resolve(strict=True)
+    tree = subprocess.check_output(["git", "ls-tree", "-rz", "--full-tree", "HEAD"], cwd=source)
+    tracked = {}
+    for entry in tree.decode().split("\0"):
+        if entry:
+            metadata, name = entry.split("\t", 1)
+            tracked[name] = metadata.split()[0]
+    directories = {str(parent) for name in tracked for parent in PurePosixPath(name).parents}
+    aliases = {}
+    for alias, mode in tracked.items():
+        if mode != "120000":
+            continue
+        pending, resolved, seen = deque(PurePosixPath(alias).parts), [], set()
+        while pending:
+            part = pending.popleft()
+            if part == "..":
+                require(resolved, f"source alias escapes repository: {alias}")
+                resolved.pop()
+                continue
+            relative = str(PurePosixPath(*resolved, part))
+            path = source / relative
+            if tracked.get(relative) == "120000":
+                require(relative not in seen, f"source alias cycle: {alias}")
+                seen.add(relative)
+                require(path.is_symlink(), f"tracked source alias changed: {relative}")
+                target = path.readlink()
+                require(not target.is_absolute(), f"absolute source alias: {relative}")
+                pending.extendleft(reversed(target.parts))
+            else:
+                resolved.append(part)
+                if pending:
+                    require(relative in directories and not path.is_symlink() and path.is_dir(),
+                            f"source alias crosses an untracked or non-directory parent: {alias}")
+        target = str(PurePosixPath(*resolved))
+        require(tracked.get(target) in ("100644", "100755"),
+                f"source alias must end at a tracked regular file: {alias}")
+        regular(source / target)
+        aliases[alias] = target
+    return aliases
 
 
 def cargo_inventory(metadata):
@@ -141,10 +185,9 @@ def local_gate():
     require((ROOT / "install.sh").read_text() == render(ROOT), "generated installer is stale")
     require((ROOT / "crates/gripsack/src/commands/self_update/installer.sh").read_text() == render(ROOT),
             "packaged updater installer is stale")
-    # Generated outputs are restored by the controller; tracked source must stay
-    # clean, and no tracked source symlink is transported into a release payload.
-    tracked = subprocess.check_output(["git", "ls-tree", "-r", "HEAD"], cwd=ROOT).decode()
-    require(not any(line.startswith("120000 ") for line in tracked.splitlines()), "source contains tracked symlinks")
+    # Cargo exports internal schema aliases as regular package files. Admit only
+    # tracked, confined file targets; publication archives still forbid links.
+    print("source aliases: " + json.dumps(source_aliases(ROOT), sort_keys=True), flush=True)
     sdk = f"gripsack-core-{profile()['external_inputs']['sdk']['version']}.tgz"
     container(load_image("local-tools"), ["python3", "scripts/release_prepare.py", "packages",
               "--source", "/app", "--commit", revision, "--sdk", "/app/dist/" + sdk,

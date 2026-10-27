@@ -406,6 +406,24 @@ installed consumers and all debug flows, before cancellation at the formal
 boundary. Reproducibility, persistence and publication preparation were still
 pending; the new practical candidate must actually complete them.
 
+Practical candidate `84b10781…`, source `bfbec6b…`, passed16 gates, including
+core reproducibility and all96 persistence partitions. Its final package gate
+rejected the repository's9 tracked schema-file symlinks before invoking Cargo.
+Source alias admission now resolves only tracked relative file chains, rejects
+out-of-root/untracked paths, cycles and directory targets, and preserves the
+strict regular-file publication archive contract. Regression coverage includes
+safe schema chains and8 distinct unsafe/uncaptured cases;129 release tests pass.
+
+Actual VCS-free Cargo packaging then exposed a second issue: the CLI crate
+omitted the embedded `template/env-repo/.gitignore`. The manifest now includes
+its complete source/template inputs explicitly. All14 Cargo packages were
+packaged and build-verified with normal `cargo package`; emitted schema aliases
+and the ignore template are regular files with exact expected bytes. The CLI
+built from the packaged source ran `init` in an isolated HOME and produced the
+expected `node_modules/` ignore rule. These are development checks, not a new
+candidate's qualification. Packaging moves earlier in the unchanged17-gate
+inventory; all96 persistence cases remain required.
+
 
 ## Queued milestone website and documentation refresh
 

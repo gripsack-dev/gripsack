@@ -179,6 +179,21 @@
       ]
     },
     {
+      "id": "publication-packages",
+      "argv": ["python3", "scripts/release_prepare.py", "gate"],
+      "timeout_seconds": 0,
+      "inputs": [
+        "local-ci/images/local-tools.tar",
+        "local-ci/images/local-tools.json",
+        "dist/gripsack-core-0.48.0.tgz"
+      ],
+      "outputs": [
+        "local-ci/publication/packages.tar.gz",
+        "local-ci/publication/index.json",
+        "dist/install.sh"
+      ]
+    },
+    {
       "id": "external-source-pins",
       "argv": [
         "python3",
@@ -364,21 +379,6 @@
         "local-ci/persistence/reports/Linux-apply-prune-copy-kill-7/Linux-apply-prune-copy-kill-7.json",
         "local-ci/persistence/logs.tar.gz",
         "local-ci/persistence/dispatch.json"
-      ]
-    },
-    {
-      "id": "publication-packages",
-      "argv": ["python3", "scripts/release_prepare.py", "gate"],
-      "timeout_seconds": 0,
-      "inputs": [
-        "local-ci/images/local-tools.tar",
-        "local-ci/images/local-tools.json",
-        "dist/gripsack-core-0.48.0.tgz"
-      ],
-      "outputs": [
-        "local-ci/publication/packages.tar.gz",
-        "local-ci/publication/index.json",
-        "dist/install.sh"
       ]
     }
   ],

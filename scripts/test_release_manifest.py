@@ -5,14 +5,16 @@ import copy
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
+import subprocess
 import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import release_manifest as release
-from release_prepare import cargo_inventory, deterministic_archive
+from release_prepare import cargo_inventory, deterministic_archive, source_aliases
 from check_ci_gate import PERSISTENCE_SCENARIOS, PERSISTENCE_SHARDS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -263,6 +265,68 @@ class BoundedInputTests(unittest.TestCase):
         metadata["packages"][2]["dependencies"] = [{"name": "fuzz", "kind": None, "path": "/source/fuzz"}]
         with self.assertRaisesRegex(ValueError, "unpublishable"):
             cargo_inventory(metadata)
+
+
+class SourceAliasTests(unittest.TestCase):
+    def fixture(self, directory):
+        source = Path(directory) / "source"
+        source.mkdir()
+        environment = {"PATH": os.environ["PATH"], "HOME": directory,
+                       "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
+
+        def git(*arguments):
+            subprocess.run(["git", "-c", "user.name=fixture",
+                            "-c", "user.email=fixture@example.invalid",
+                            "-c", "commit.gpgsign=false", *arguments],
+                           cwd=source, env=environment, capture_output=True, check=True)
+
+        git("init", "-q")
+        (source / "schema").mkdir()
+        (source / "schema/value.json").write_text('{"type":"object"}\n')
+        return source, git
+
+    def test_schema_alias_chain_resolves_to_its_tracked_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, git = self.fixture(directory)
+            (source / "first.json").symlink_to("schema/value.json")
+            (source / "crate").mkdir()
+            (source / "crate/export.json").symlink_to("../first.json")
+            git("add", "schema", "first.json", "crate")
+            git("commit", "-qm", "fixture")
+            self.assertEqual(source_aliases(source), {
+                "first.json": "schema/value.json", "crate/export.json": "schema/value.json"})
+
+    def test_unsafe_or_uncaptured_alias_targets_refuse(self):
+        for kind in ("escape", "absolute", "dangling", "cycle", "untracked", "untracked-parent", "directory", "reentry"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                source, git = self.fixture(directory)
+                outside = Path(directory) / "outside"
+                outside.mkdir()
+                (outside / "value.json").write_text("foreign\n")
+                if kind == "escape":
+                    target = "../outside/value.json"
+                elif kind == "absolute":
+                    target = str(source / "schema/value.json")
+                elif kind == "dangling":
+                    target = "missing.json"
+                elif kind == "cycle":
+                    target = "alias.json"
+                elif kind == "untracked":
+                    (source / "untracked.json").write_text("untracked\n")
+                    target = "untracked.json"
+                elif kind == "untracked-parent":
+                    (source / "untracked-parent").symlink_to("schema")
+                    target = "untracked-parent/value.json"
+                elif kind == "directory":
+                    target = "schema"
+                else:
+                    (outside / "return").symlink_to(source / "schema/value.json")
+                    target = "../outside/return"
+                (source / "alias.json").symlink_to(target)
+                git("add", "schema", "alias.json")
+                git("commit", "-qm", "fixture")
+                with self.assertRaises(ValueError):
+                    source_aliases(source)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,12 @@ This source version alone is not a passing gate or signature.
   RUSTSEC-2026-0403 and RUSTSEC-2026-0398 advisories and associated Zstd
   unsoundness warnings. The helper uses the current compatible async codec
   backend; bounded dependency overrides preserve its Rattler/Pixi type family.
+- Package preparation accepts tracked, confined relative schema-file aliases
+  instead of rejecting every source symlink. Escapes, cycles, absolute links,
+  directory targets and untracked inputs still refuse; emitted release payloads
+  remain regular files.
+- Cargo source packages explicitly include the `.gitignore` embedded by
+  `grip init`, including when packaging without a Git checkout.
 
 ### Compatibility and migration
 
@@ -58,6 +64,8 @@ This source version alone is not a passing gate or signature.
   consumer failures surface earlier. Three `workspace-file` interruption cases
   are explicitly debug-only; their complete crash/recovery assertions remain
   mandatory in the debug gate, not misapplied to the shipped binary.
+- Publication packaging runs before long consumer/flow/persistence checks so
+  source-package failures surface earlier without removing any required gate.
 - SDK documentation no longer invalidates Rust compiler layers; the generated
   frontend's source and metadata still undergo freshness checking.
 -0.48 publication uses locally qualified, unsigned assets at the owner's

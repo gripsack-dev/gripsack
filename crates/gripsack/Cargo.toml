@@ -6,6 +6,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+# Cargo's VCS-free file discovery otherwise omits the embedded dotfile.
+include = ["src/**", "template/**", "template/env-repo/.gitignore"]
 
 [[bin]]
 name = "grip"
