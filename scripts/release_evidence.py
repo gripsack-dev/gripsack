@@ -17,6 +17,8 @@ from local_artifact_consumers import EXTERNAL
 
 FORMAT = "gripsack.release-completion.v2"
 SURFACE_FORMAT = "gripsack.release-observation.v1"
+# Historical signed-completion wire contract, not current static-site metadata.
+# Preserve retained record semantics; unsigned publication does not emit it.
 SITE_URL = "https://gripsack.dev/release.json"
 MAX_LOG = 16 * 1024 * 1024
 ENV_KEYS = frozenset({"PATH", "LANG", "LC_ALL", "TZ", "HOME", "TMPDIR", "GRIPSACK_HOME",

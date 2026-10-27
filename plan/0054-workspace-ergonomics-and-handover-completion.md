@@ -1,7 +1,45 @@
 # 0054 — Workspace ergonomics and original handover completion
 
-Status: implementation in progress; no release or handover closure claimed.
+Status: 0.47 and 0.48 published; milestone website live; original handover open.
 Owner: integration agent. Direction confirmed by the owner on 2026-10-23.
+
+## Current delivery — 2026-10-27
+
+This section supersedes earlier pending-release/website notes below; historical
+attempts, failures and owner decisions remain intact.
+
+- `core-v0.47.0` remains the immutable unsigned, unverified reviewer prerelease
+  from `96ce8e4c75c35f282ffe88c847fd6181c0ed75bd`.
+- `core-v0.48.0` is public/latest, unsigned, from
+  `3a845bc8c83a42dd1b529789730d421208f929ae`. Candidate
+  `397f0086093d59cb62315d0916d557eb80f492300a65ed9af38fd3bb03e6e418`
+  passed all 17 practical local gates and all 96 persistence partitions.
+  All 15 uploaded assets passed download readback. Installed packed/embedded
+  frontend consumers, default public helper provisioning and frozen Conda
+  execution passed. No signature, registry publication or formal qualification
+  is claimed. [Public evidence](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.48.0).
+- Main fast-forwarded to the qualified source under the truthful
+  `local-practical-qualification` status, with strict status enforcement retained.
+  GitHub reported the owner's PR-requirement exemption; no hosted test was forged.
+- The refreshed site is live from source
+  `a9ec21af3f80bf085357bb3cca1b1a89489d2fef`, static commit
+  `cd4075464ba3fc34b333f140d84208d8d4294682`. The
+  [publish-only Pages job](https://github.com/gripsack-dev/gripsack-dev.github.io/actions/runs/40525000333)
+  took 18 seconds. No product compilation or signature admission ran there.
+  Actual 0.48 core/SDK accepted 13 executable examples; four fragments remain
+  explicitly classified. Desktop/mobile, light/dark, reduced-motion, no-script
+  content, 241 local anchor references and legacy URL preservation were checked;
+  public desktop/mobile navigation was then exercised.
+- A separate actual-release smoke confirmed an editor-only SDK excluded with
+  the literal `node_modules/@gripsack/core` rule can coexist with suffix cache
+  globs and internal aliases. Cache creation/removal retained approval; template
+  execution, physical copied aliases, unchanged apply and store integrity passed.
+
+Postrelease documentation/maintainer edits do not rewrite the qualified source,
+tags, public bytes or receipts. The original schedule/job, semantic comparison/
+saved-plan, portable-artifact and formal obligations below remain open; this
+milestone is not a claim that the entire 178-row handover is complete.
+
 
 ## Scope and completion rule
 

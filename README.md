@@ -14,20 +14,20 @@ and their manual installation instructions for unsigned builds.
 The existing verified installer and `grip self-update` still require signatures;
 they are not the installation path for these unsigned releases.
 
-**[0.47.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.47.0)
-is an unsigned, unverified reviewer prerelease.** Follow that release's manual
-installation instructions and use its matching SDK archive. Asset readback
-and manual install/SDK smoke checks are not full qualification. This is not
-a claim of npm or crates.io publication.
+**[0.48.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.48.0)
+is the current unsigned release**, qualified with 17 practical local gates,
+including all 96 persistence partitions. TLC/TLAPS/Verus are not claimed
+qualified; npm/crates.io publication is not implied. Use its matching SDK
+archive or the embedded frontend.
 
-Capture-glob exclusions and the `--focus` view require **core/SDK 0.48**;
-they are not in 0.47. Check the [release records](https://github.com/gripsack-dev/gripsack/releases)
-for available artifacts and qualification evidence, not just a version string.
+[0.47.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.47.0)
+remains an unverified reviewer prerelease. Capture globs and focused review
+require 0.48. [Release scope](https://gripsack.dev/docs/roadmap.html#release-qualification).
 
 ## A workspace
 
 Save this complete example as `gripsack.ts` in a repository, using matching
-core/SDK bytes (the 0.47 reviewer prerelease supports this declaration):
+core/SDK 0.48 bytes:
 
 ```ts
 import {

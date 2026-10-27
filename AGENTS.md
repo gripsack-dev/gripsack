@@ -124,15 +124,15 @@ the baseline, not permission to bypass plan 0048's stronger gates.
 - `ci`, `examples`, `repro` and `demo` are explicit manual diagnostics or
   maintenance only, not automatic acceptance. Do not dispatch them for release
   qualification. Pin-update proposals never dispatch hosted builds.
-- Before landing this cutover, the owner must reconcile authenticated branch
-  protection's legacy required `test` context with real local admission, not
-  fabricate a successful hosted status or remove qualification enforcement.
+- Main requires the strict `local-practical-qualification` status, not the
+  retired hosted `test` context. Status descriptions and evidence must identify
+  their actual source and check scope; a status alone is not release authority.
 - Releases use immutable `core-vX.Y.Z` and coordinated locally prepared
   core/SDK/helper assets. The owner chose unsigned, Actions-free0.48 publication
   after practical local qualification; no signer or registry publication is
   required. Existing verified installer/updater checks are not bypassed.
-- The owner removed the website signature requirement. Build static pages
-  locally; only their upload/deployment may use a publish-only Pages job.
-  Main/release-sidebar visibility and remaining website cleanup follow0.48.
+- The website has no signature requirement. Build static pages locally from a
+  selected core commit, then use the site's `website/publish.py` for the
+  publish-only Pages job. Core release/demo workflows do not dispatch site builds.
 - The website lives in `gripsack-dev/gripsack-dev.github.io` — edit
   there, not here.

@@ -1,144 +1,129 @@
 ---
 name: gripsack-adopt
-description: Interview the user about an existing tool on their machine and write a correct gripsack module for it — fetcher choice, version pinning, config ownership, verify contract
+description: Inspect an existing tool and declare its packages, configuration and commands with explicit ownership, verification and recovery
 ---
 
 # Adopting a tool into gripsack
 
-The user has a working machine and wants one tool managed by gripsack.
-Your job: figure out what the tool actually IS on their system, ask the
-questions only they can answer, and write a module that applies cleanly.
-Never guess when the system can tell you.
+Preserve the working installation. Inspect what exists, ask only about choices
+that the machine cannot answer, and write a small declaration with a tested
+recovery path. Current core/SDK is 0.48; use matching release assets or the
+embedded frontend, not an assumed npm release.
 
-The frontend is typed TypeScript (plan/0013 D5): `modules/<tool>.ts`
-default-exports its module value — `module()` constructs, it never
-registers — and `hosts/<host>.ts` imports the modules it wants and
-returns them from `defineEnv`. Falsy entries drop out; that is where
-per-host gating belongs.
+A root `gripsack.ts` workspace is the preferred model. Existing
+`modules/*.ts` plus `hosts/*.ts` repositories remain supported; do not mix the
+entrypoints accidentally. A root workspace shadows legacy hosts. Read the
+[SDK reference](../../typescript/README.md) and
+[migration guide](https://gripsack.dev/docs/workspace-migration.html).
 
 ## 1. Inventory before asking
 
-```bash
-which <tool>                       # where does the binary live?
-<tool> --version                   # what version are they on?
-ls ~/.config/<tool>/               # what config exists?
-readlink -f $(which <tool>)        # is the binary a symlink? to where?
-```
+Find the actual executable, its resolved target, version and installation
+method. Inspect its configuration tree, modes, internal aliases and any runtime
+resources loaded relative to the executable. Determine whether the application
+rewrites its config or installed package tree. Check existing ownership with
+`grip why-owns PATH` before proposing a destination.
 
-Also: how was it installed? (`apt list --installed`, `brew list`,
-`pixi global list`, `ls ~/.cargo/bin`, GitHub release? an internal
-registry?) The install method decides the fetcher.
+Use read-only observations first. Do not execute an unknown binary merely to
+identify it, install a solver, mutate an existing environment, or replace a
+working command as an inventory step.
 
 ## 2. Grill the user (only what you can't see)
 
-- **Pin or float?** Pinned version (reproducible) or `update`-tracked
-  latest? Pinned is the default recommendation; the lockfile makes it
-  painless either way.
-- **Which fetcher?** Map from what you found (all exported from
-  `@gripsack/core`):
-  - GitHub release → `githubRelease({ repo, asset })`
-  - tarball URL → `tarball(url, sha256)`
-  - git source build → `git(url, rev)` + build step
-  - internal registry / mTLS / non-HTTP → a `gripfetch-*` plugin
-    (transport runs in the core; eval is sandboxed and has no network,
-    so repo code cannot do credentialed resolution — 0002, 0013 D8)
-  - pixi/conda → `shellStep` running pixi with `outputs` declared and
-    the `pixi-lock` resource (0007 §4)
-- **Config ownership per file** (0001 §3.7) — THE question that matters:
-  - "Does this app ever rewrite its own config?" (VS Code, most GUI
-    apps) → `trackedCopy` (drift is kept, never clobbered)
-  - Disciplined read-only tools (helix, git) → `symlink` (owned)
-  - Files other tools also write (`.bashrc`) → `merge` (gripsack owns
-    one managed block; everything outside the markers is never touched)
-  - Per-host content differences → `template` with `vars` computed from
-    `ctx.facts` inside the host entrypoint (undefined variables fail
-    loudly at apply)
-- **A verify contract**: almost always `verifyBinary("bin/<tool>")`.
-- **Payload layouts per fetcher** (what `install` keys look like):
-  - `tarball`/`githubRelease`: the archive's contents, verbatim.
-  - `fileFetch`: the directory's contents; a bare file stages under its
-    basename.
-  - `pixi`: the conda env root — `bin/<tool>` works directly.
-  - `brew`: the RAW bottle layout — binaries live at
-    `{formula}/{version}/bin/<tool>`, so write
-    `install: { "{formula}/{version}/bin/jq": symlink(...) }`;
-    `{version}` is substituted from the lock. `brew()` floats to the
-    current formula (the API only serves stable) — the `version` arg is
-    a tripwire that fails at resolve with `grip update` to move, not a
-    range.
+- **Source and upgrade policy:** inspect the actual release asset/archive layout.
+  Use a package provider such as `githubRelease`, `tarball`, `git`,
+  `conda.environment` or captured `pixi.fromLock` as appropriate. A Conda solve is
+  coherent, not a single-package `pixi()` fetcher or an unpinned shell install.
+  Declare an explicit libc/kernel baseline for cross-host solves. A frozen Pixi
+  import does not upgrade its external lock.
+- **Configuration ownership:** use `trackedCopyTo` when tools rewrite files or
+  require physical siblings; `symlinkTo` for immutable individual files; and
+  `managedBlock` for a shared shell file. Captured executable `repoFile` plus
+  `templateFile` avoids duplicated template bodies. Use `repoTree` for captured
+  trees and safe internal aliases, not a generated manifest.
+- **Command exposure:** select an environment and explicit profile launcher
+  directory/commands for editor or SSH PATH. Activation alone does not create
+  a launcher. Match the actual target ABI; host library authority is explicit,
+  not inferred from direct host success.
+- **Payload selection:** workspace selectors are literal. For a release with one
+  versioned root directory, opt into `archiveRoot: { kind: "single_directory" }`
+  and use root-relative selectors. Ambiguous roots must refuse. Release trees
+  with self-location or extension-sensitive consumers need physical copies.
+- **Verification:** use sealed package checks only with a complete admitted
+  runtime closure. A deliberately deployed-host check proves host behavior,
+  not hermetic closure. Keep functional checks relevant to the actual consumer.
 
-## 3. Write the module
+Pure typed functions can compose declarations. Do not add ambient filesystem,
+network or environment reads to evaluation, a custom walker, or a second
+configuration framework.
 
-Data style for most tools; class style when there's a custom step.
+## 3. Write the declaration
+
+A complete configuration-only workspace can adopt a captured Helix config tree
+without moving its package management:
 
 ```ts
-// modules/helix.ts
-import { module, symlink, trackedCopy, verifyBinary } from "@gripsack/core";
+import {
+  defineWorkspace, file, identity, profile, repoTree, trackedCopyTo, workspace,
+} from "@gripsack/core";
 
-export default module("helix", {
-  fetch: githubRelease({ repo: "helix-editor/helix", asset: "helix-…-x86_64-linux.tar.xz" }),
-  install: { "hx": symlink("~/.local/bin/hx") },
-  config: { "configs/helix": trackedCopy("~/.config/helix") },
-  verify: verifyBinary("hx", ["--version"]),
+const helix = profile("helix", {
+  files: [file({
+    source: repoTree("configs/helix"),
+    content: identity(),
+    destination: trackedCopyTo("~/.config/helix"),
+  })],
 });
+
+export default defineWorkspace(() => workspace({ outputs: [helix] }));
 ```
 
-```ts
-// hosts/laptop.ts — the module is inert until a host returns it
-import { defineEnv } from "@gripsack/core";
-import helix from "../modules/helix.ts";
+Copy the intended configuration into `configs/helix` before capture, preserving
+executable bits and reviewing secrets. Add package/environment/launcher declarations only
+when the user wants Gripsack to manage the tool too; derive them from observed
+asset paths rather than a guessed archive name. See the runnable
+[workspace examples](../../examples/workspaces/).
 
-export default defineEnv((ctx) => ({
-  tags: ["gui"],
-  modules: [helix],
-}));
-```
-
-Rules you must hold:
-
-- Every module: a `verify` — no exceptions.
-- Destinations absolute or `~/`-prefixed (E102).
-- `dep()` for real dependencies; `dep(name, { for: "build" })` for
-  build-only toolchains (0039) — fetched and staged, never deployed.
-- If the tool needs a lock (package managers!) declare
-  `resource("pixi.lock")` first and require it on the step.
-- Config `from` paths are repo-relative; the file must exist in the
-  repo. If the user's config lives only on disk, copy it into the repo
-  FIRST and tell them it's now managed there.
-- Machine differences (OS, arch, an optional dependency on some binary
-  existing) are host-entrypoint decisions: `ctx.facts`,
-  `hasTag("gui", ctx)`, `ctx.probe.executable("nvidia-smi")` — never
-  environment reads or filesystem probes inside module files (eval has
-  none of those anyway).
+For an existing legacy repository, follow its module/host convention and current
+SDK signatures. `grip adopt` is a legacy adoption interview, not a workspace
+profile generator. `--yes` skips confirmation, not source approval; generated
+source needs review before `--resume` continues the recorded operation.
 
 ## 4. Prove it
 
-Review `grip trust inspect --json` before evaluating a new or edited repository.
-Approval binds its captured bytes and actual policy, not just its path or Git
-commit. Interactive commands show both fingerprints; automation must use
-`grip trust add --bundle <expected> --policy <expected>`. Never set
-`GRIPSACK_TRUST_ALL`: it no longer grants authority. Lockfile changes can require
-renewed approval too, because locks inside the repository remain in its read set.
+Inspect `grip trust inspect --json`, review changed source and policy, then
+approve that exact snapshot. Interactive `grip trust add` supports review;
+automation supplies reviewed `--bundle` and `--policy` digests. Never approve
+whatever an unreviewed script captures or use `GRIPSACK_TRUST_ALL`.
 
-For the built-in `grip adopt` flow, generation of a module creates new source
-that needs its own approval. `--yes` skips confirmation only. In non-interactive
-use, inspect and approve the generated snapshot, then repeat with `--resume`
-and without `--mode`; this preserves generated files and target-scoped takeover.
+When source/frontend pins change, run `grip update`, review the resulting lock,
+and approve the changed snapshot before execution. Declare cache exclusions in
+`env.toml`; Git ignore files do not define captured authority. Global globs must
+not carve an admitted SDK pin. An editor-only SDK can be excluded explicitly to
+select the embedded frontend.
 
-```bash
-grip plan                    # must be clean — no E1xx
-grip apply <tool>            # subset apply, just this module
-<tool> --version             # the deployed binary works
-grip apply <tool>            # must report already satisfied
+```sh
+grip check
+grip plan helix
+grip apply helix
 ```
 
-If the second apply isn't satisfied, the module has an unstable input —
-find it (lockfile hash, repo file hash) and fix it, don't ship a
-flickering module.
+Resolve reported destination conflicts before applying. Use `--take-over` only
+for explicitly reviewed foreign/drifted tracked copies. Intact legacy ownership
+instead uses generation-bound `--migrate-from N`; prepare replacements first and
+retain that predecessor until functional checks pass.
+
+Exercise the deployed tool, not just the declaration: executable mode, PATH,
+sibling resources, application loading and meaningful error behavior. Reapply
+unchanged source and inspect the result. Complete unchanged workspace state can
+reuse its generation, but checks/hooks may still execute and external effects
+are not necessarily idempotent. Test recovery in isolation before a live cutover.
 
 ## 5. The honesty bit
 
-Tell the user what changed: which files are now managed, where the
-original config was backed up (suggest one), and that `grip rollback`
-undoes it. gripsack never deletes their old config — but make them hear
-that.
+Report which destinations changed, how originals and prior generations are
+retained, the verification actually performed, and the recovery command. Keep
+backups independent of generation retention. `grip rollback N` restores retained
+managed state, not arbitrary external side effects; late activation failure does
+not automatically roll back. Never delete journals, discard generations, or
+claim an unexercised recovery path works.

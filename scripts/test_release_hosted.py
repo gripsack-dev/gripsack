@@ -127,27 +127,6 @@ class Publication(unittest.TestCase):
                 hosted.publish(self.args)
             self.assertFalse(self.created)
 
-    def test_site_dispatch_rejects_noncanonical_run_ids_before_mutation(self):
-        args = argparse.Namespace(bundle=self.bundle, channel="site")
-        for run_id in ("", "0", "-1", "+1", "01", "1.0", " 1", "1\n", "١",
-                       "9223372036854775808", "1" * 100):
-            with self.subTest(run_id=run_id), \
-                 patch.dict(os.environ, {"GITHUB_RUN_ID": run_id}), \
-                 patch.object(hosted.consumer, "select_release", return_value={"tag_name": "core-v1.2.3"}), \
-                 patch.object(hosted, "gh") as dispatch:
-                with self.assertRaisesRegex(ValueError, "GITHUB_RUN_ID"):
-                    hosted.promote(args)
-                dispatch.assert_not_called()
-
-    def test_site_dispatch_requires_run_id_environment(self):
-        args = argparse.Namespace(bundle=self.bundle, channel="site")
-        with patch.dict(os.environ, {}, clear=True), \
-             patch.object(hosted.consumer, "select_release", return_value={"tag_name": "core-v1.2.3"}), \
-             patch.object(hosted, "gh") as dispatch:
-            with self.assertRaisesRegex(ValueError, "GITHUB_RUN_ID"):
-                hosted.promote(args)
-            dispatch.assert_not_called()
-
 
 class HostedWitnessAdmission(unittest.TestCase):
     def setUp(self):

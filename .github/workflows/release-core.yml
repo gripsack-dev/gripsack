@@ -113,13 +113,7 @@ jobs:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           test -n "$GH_TOKEN" || { echo 'HOMEBREW_TAP_TOKEN is required for formula promotion' >&2; exit 1; }
-          python3 scripts/release_hosted.py promote --bundle "$CANDIDATE_ROOT" --channel tap
-      - name: Request compatible site promotion
-        env:
-          GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
-        run: |
-          test -n "$GH_TOKEN" || { echo 'SITE_REPO_TOKEN is required for site promotion' >&2; exit 1; }
-          python3 scripts/release_hosted.py promote --bundle "$CANDIDATE_ROOT" --channel site
+          python3 scripts/release_hosted.py promote --bundle "$CANDIDATE_ROOT"
       - name: Retain partial publication observation
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

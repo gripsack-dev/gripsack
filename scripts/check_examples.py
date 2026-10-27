@@ -12,8 +12,8 @@ maintained shadow copy of example code anywhere in this harness:
   - frontend level: the SDK driver, sourced from the core repo
     (typescript/src/cli.ts — exactly what the core spawns), runs each
     scaffolded repo under the core's sandbox flags;
-  - core level: the real `grip check` (embedded frontend, sandboxed
-    deno, two-stage probe binding) must accept the same repo.
+  - core level: the real `grip check` (deliberately pinned SDK, sandboxed
+    Deno, two-stage probe binding) must accept the same repo.
 
 Both levels use offline fixtures and an isolated HOME. Illustrative
 fragments are classified explicitly with evidence — never silently
@@ -31,8 +31,8 @@ Usage (core CI / local — candidate SDK package + core):
         --sdk typescript/gripsack-core-<version>.tgz \
         [--grip target/debug/grip] [--deno $(which deno)] [--selfcheck]
 
-Website CI downloads the published package instead:
-    npm pack @gripsack/core@$GRIPSACK_VERSION   # deliberate pin
+For published artifacts, use the matching SDK archive attached to the release.
+These checks run locally; the website's Pages job only deploys static files.
 
 Input contract:
   --site DIR       website checkout (default: sibling gripsack-site

@@ -35,18 +35,18 @@ environment, so `Inputs → Environment` is testable and cacheable.
 
 ## A workspace is a function (IR v8)
 
-Use matching **0.47.0 core and SDK reviewer-prerelease assets** for captured templates/trees,
+Use matching **0.48 core and SDK release assets** for captured templates/trees,
 archive-root selection and managed profile launchers. Older strict cores do not
 admit v8. The new core retains strict v7/v6/v5 execution with each version's
 original field set, v4 read-only workspaces and v3 historical modules; older
 envelopes never acquire v8 authority.
 
-0.47 is an unsigned, unverified prerelease with
-[manual installation instructions](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.47.0),
-not the authenticated signed-installer selection or a claim of registry
-publication. Capture globs and focused approval display require **core/SDK 0.48**.
-Check the [release records](https://github.com/gripsack-dev/gripsack/releases)
-for publication and qualification evidence; a version string is not proof.
+[0.48 is locally qualified and unsigned](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.48.0).
+Use its manual installation instructions and matching SDK archive; no signature
+or npm/crates.io publication is implied. The 17 practical local gates include
+all 96 persistence partitions, but not TLC/TLAPS/Verus qualification.
+0.47 remains an unverified prerelease. Capture globs and focused approval display
+require **core/SDK 0.48**.
 
 Linux and WSL2 on x86_64 are the supported host scope. Installing the npm package does
 not upgrade the core binary. Workspace locks capture frontend identity, so
@@ -537,7 +537,7 @@ and may have no structured diagnostic in the JSON document.
 | Versioned archive prefixes repeated in commands/artifact selectors | Opt-in `archiveRoot`, then root-relative literal selectors |
 | Dereferenced font-copy cache solely to recover filename extensions | Deploy the font tree with `trackedCopyTo` and point the consumer at that physical destination |
 
-1. Install matching 0.47.0 reviewer-prerelease core/SDK assets (or remove a deliberate npm pin to use the
+1. Install matching 0.48 core/SDK assets (or remove a deliberate npm pin to use the
    matching embedded frontend). Retain the previous generation and recovery
    data; an SDK change is not itself a lock refresh or source approval.
 2. Replace declarations as above. Keep captured template bodies and executable
@@ -580,8 +580,8 @@ With isolated `HOME` and `GRIPSACK_HOME`, approve that copy, then run `grip chec
 `grip plan dotfiles`, `grip apply dotfiles` and
 `"$HOME/.local/bin/editor-theme"`. The optional alias deploys as a physical file
 alongside `theme.toml` under `$HOME/.config/editor/assets`; adding it needs no
-manifest regeneration. The checkout itself remains compatible with the local
-release gate's no-source-symlink policy. No upstream editor/formatter is run.
+manifest regeneration. The alias must remain inside approved captured source;
+no upstream editor/formatter is run.
 
 ### Frequent content edits: select a profile, not a trust bypass
 
@@ -658,6 +658,24 @@ Required configuration, lock authority, entrypoints and admitted SDK roots
 refuse glob matches instead of being omitted by any spelling. The captured
 configuration binds those rules to the approved bundle, and evaluator runtime
 grants never overlap the repository or its exclusions.
+
+A global cache glob that could match any descendant of a deliberately pinned
+SDK refuses even when no cache currently exists. To keep a locally installed
+SDK for editor support only, explicitly exclude its literal root and use the
+embedded frontend:
+
+```toml
+[capture]
+exclude = ["node_modules/@gripsack/core", "**/__pycache__", "**/.ruff_cache"]
+```
+
+Use real `node_modules` ancestry, or exclude a symlinked parent as a whole.
+Prefix-scoped patterns require real, unaliased potential ancestry; do not span
+internal file/directory aliases with them. Suffix patterns such as
+`**/__pycache__` work for aliased captured trees with the embedded frontend.
+If an SDK must remain a runtime pin, retain its complete root and scope
+patterns to unaliased content outside it, or use literal exclusions.
+
 
 Old path-only trust entries do not authorize execution. Unset
 `GRIPSACK_TRUST_ALL`; `=1` now fails with migration guidance. Interactive

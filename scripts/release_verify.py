@@ -3,6 +3,10 @@
 
 No publication, signing, global installation, caller waivers, or mock fallback.
 A missing external surface produces retained pending evidence, never completion.
+
+This is the closed historical signed-completion protocol, including its site
+binding. It is not the unsigned 0.48 publication path or the current static-site
+publisher. A retired/missing binding remains pending, never inferred success.
 """
 from __future__ import annotations
 

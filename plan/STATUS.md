@@ -5,6 +5,24 @@ One row per plan. "Deferred" items live on the
 settled (don't relitigate without new evidence). Update this file in
 the same PR as the plan it tracks (convention since 0036).
 
+## Current release and website — 2026-10-27
+
+0.48 is public/latest and unsigned, at immutable source
+`3a845bc8c83a42dd1b529789730d421208f929ae`. Its exact-source practical local
+candidate passed all 17 gates, including all 96 persistence partitions; uploaded
+assets were read back and real installed consumers passed. TLC/TLAPS/Verus are
+explicitly unqualified by this release. 0.47 remains an unverified prerelease.
+No npm/crates.io publication is implied.
+
+Main now uses strict `local-practical-qualification` status enforcement instead
+of hosted `test`. The refreshed website is public from source `a9ec21a`; local
+rendering and an 18-second static Pages deployment replaced signed-site admission.
+Postrelease maintainer edits remove obsolete site dispatch and refresh current
+guidance without changing release tags or artifacts. See [0054's current delivery](0054-workspace-ergonomics-and-handover-completion.md#current-delivery-2026-10-27)
+for evidence. Earlier pending-release notes below are historical; original
+handover/product/formal completion is still not claimed.
+
+
 ## Active platform scope — 2026-10-09
 
 Standing owner amendment **PLATFORM-LINUX-X64-2026-10-09** makes Linux/WSL

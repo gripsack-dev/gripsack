@@ -149,18 +149,6 @@ def promote(args):
     tag = f"core-v{version}"
     release = consumer.select_release(version)
     consumer.require(release["tag_name"] == tag, "native release must be finalized before promotion")
-    if args.channel == "site":
-        run_id = os.environ.get("GITHUB_RUN_ID", "")
-        consumer.require(re.fullmatch(r"[1-9][0-9]{0,18}", run_id) is not None
-                         and int(run_id) <= 9223372036854775807,
-                         "site promotion requires a canonical positive GITHUB_RUN_ID")
-        # Selectors only: the site must authenticate this run against the
-        # published attestation and fixed trusted workflow/source identity.
-        gh("api", "repos/gripsack-dev/gripsack-dev.github.io/dispatches", "--method", "POST",
-           "-f", "event_type=rebuild", "-f", f"client_payload[release_tag]={tag}",
-           "-f", f"client_payload[manifest_sha256]={schema.digest(manifest_path(args.bundle))}",
-           "-F", f"client_payload[run_id]={run_id}")
-        return
     package = next(item for item in manifest["packages"]
                    if item["registry"] == "crates.io" and item["name"] == "gripsack")
     with tempfile.TemporaryDirectory(prefix="gripsack-tap-") as directory:
@@ -206,9 +194,8 @@ def main():
     publication.add_argument("--bundle", type=Path, required=True)
     publication.add_argument("--publication", type=Path, required=True)
     publication.add_argument("--signature", type=Path, required=True)
-    promotion = sub.add_parser("promote")
+    promotion = sub.add_parser("promote", help="Promote the verified crates.io source formula")
     promotion.add_argument("--bundle", type=Path, required=True)
-    promotion.add_argument("--channel", choices=("tap", "site"), required=True)
     args = parser.parse_args()
     {"admit": admit, "verify": verify, "publish": publish, "promote": promote}[args.command](args)
 

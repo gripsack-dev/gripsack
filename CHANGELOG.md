@@ -4,6 +4,17 @@ User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
 
+## Unreleased
+
+### Maintenance
+
+- Publish the website from a local static build, independently of product
+  signatures. Retire the old release/demo site-dispatch hooks; Pages only
+  uploads and deploys prebuilt files.
+- Refresh repository release/adoption guidance for the published 0.48 assets,
+  workspace APIs and current local qualification policy. Released tags and
+  artifacts remain unchanged.
+
 ## [0.48.0]
 
 Publication and qualification are recorded with the
