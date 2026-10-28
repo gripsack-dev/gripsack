@@ -13,7 +13,7 @@ pub(crate) fn version_error(version: u64) -> Diagnostic {
 }
 
 /// Tagged-field admission runs before serde can discard unknown enum fields.
-/// Decode the JSON once; move the admitted value into the current typed model.
+/// Move admitted values into the model; re-decode only errors for JSON locations.
 pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
     let value: serde_json::Value = serde_json::from_str(json).map_err(|error| {
         Diagnostic::error(codes::MALFORMED, format!("invalid IR JSON: {error}"))
@@ -28,7 +28,9 @@ pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
     if let Some(diagnostic) = diagnostics.into_iter().next() {
         return Err(diagnostic);
     }
-    serde_json::from_value(value).map_err(|error| {
-        Diagnostic::error(codes::MALFORMED, format!("invalid workspace IR: {error}"))
-    })
+    serde_json::from_value(value)
+        .or_else(|_| serde_json::from_str(json))
+        .map_err(|error| {
+            Diagnostic::error(codes::MALFORMED, format!("invalid workspace IR: {error}"))
+        })
 }

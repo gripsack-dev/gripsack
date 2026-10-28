@@ -16,6 +16,8 @@ User-visible changes per release. Design archaeology lives in
 - Removed retired macOS/Lima execution backends. Linux/WSL x86_64 is the target.
 - Optional editor setup downloads the SDK archive matching the installed core;
   it no longer assumes a matching npm publication.
+- Directory growth over restorable prior content refuses before changing files;
+  malformed IR diagnostics retain their JSON locations.
 - Product-first website and guides for native tools, environments, dotfiles,
   BuildKit source builds, OCI image exports and explicit tasks.
 

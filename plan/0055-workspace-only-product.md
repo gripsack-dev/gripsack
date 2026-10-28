@@ -99,6 +99,20 @@ their dead implementation, not as passing checks.
   across the two groups, including the corrected executable fixture, current
   lockfile lifecycle and nonpublishing survey. Captured-content unit tests
   passed 8/8; release-script unit tests passed 128/128; Rust formatting passed.
+- Frozen candidate `02ff5ef186462f2972f4c70b5af4989274518f63ed3a25d6245fff8e141e83e7`
+  (`fa35190`) passed inventory and stopped in the Rust gate at an obsolete
+  positive Mach runtime test. That test is removed with the retired parser,
+  rather than restoring unsupported platform code.
+- Focused review found two introduced defects: typed IR errors lost JSON
+  positions, and directory growth could restore a prior before failing and
+  compensating. Error-only re-decoding preserves positions without parsing
+  valid IR twice. Directory evolution now admits every blocker before any
+  removal and requires the intended result to be absence.
+- The held-inode regression fails before that repair. Actual corrected CLI
+  runs refuse the prior-carrying case without changing inode, mode, bytes or
+  generation; a separate two-blocker growth/rollback succeeds and ordinary
+  pruning restores the private 0600 prior. Malformed IR again reports its JSON
+  line/column. Updated exec/IR library tests passed 119/119 and 26/26.
 
 These are development observations, not a relabelled qualification receipt.
 The frozen 0.50 release must still complete its practical profile.
