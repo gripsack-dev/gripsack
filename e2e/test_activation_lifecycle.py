@@ -2,11 +2,11 @@
 
 import subprocess
 
-from conftest import native_target, grip, make_tarball, make_workspace_repo, remove_output
+from conftest import native_target, grip, make_toolchain_tarball, make_workspace_repo, remove_output
 
 
 def test_exported_env_profile_tracks_the_generation(sandbox):
-    payload = make_tarball(sandbox / "myenv" / "zed.tar.gz", {"bin/zed": b"#!/bin/sh\nexit 0\n"})
+    payload = make_toolchain_tarball(sandbox / "myenv" / "zed.tar.gz", {"bin/zed": b"#!/bin/sh\nprintf 'exported command\\n'\n"})
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
@@ -28,15 +28,12 @@ profile("zed", {{ files: [
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     exported = subprocess.run(
-        ["/bin/sh", "-c", '. "$1"; printf "%s\\n" "$EDITOR"; command -v zed',
+        ["/bin/sh", "-c", '. "$1"; printf "%s\\n" "$EDITOR"; zed',
          "profile-test", str(profile)],
         capture_output=True, text=True, timeout=20,
     )
     assert exported.returncode == 0, exported.stderr
-    editor, command = exported.stdout.splitlines()
-    assert editor == "zed"
-    assert command.startswith(str(sandbox / ".local/share/gripsack/store"))
-    assert command.endswith("/commands/zed")
+    assert exported.stdout == "zed\nexported command\n"
 
     # drop the env declaration — the profile must not go stale
     (repo / "outputs" / "hello.ts").write_text(

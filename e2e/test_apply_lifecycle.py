@@ -156,8 +156,7 @@ profile("hello", {{ files: [
     out = grip("update", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
-    lock = repo / "locks" / "testhost.lock"
-    assert lock.exists()
+    lock = repo / "gripsack.lock"
     first_pin = lock.read_text()
 
     # no movement -> unchanged

@@ -46,11 +46,11 @@ def rendered_profile(value, link="~/.linked"):
 
 
 def deployment_state(sandbox, repo):
-    """Snapshot authority-bearing state, not evaluator capture/approval caches."""
+    """Snapshot published authority, not mutex files or evaluator/approval caches."""
     home = sandbox / ".local/share/gripsack"
     roots = [home / name for name in (
         "store", "generations", "current", "roots", "workspace-staging",
-        "buildkit", "journal", "locks/apply.flock", "tools/conda-helper",
+        "buildkit", "journal", "tools/conda-helper",
     )] + [repo / "gripsack.lock", repo / "locks"]
     result = {}
     for root in roots:

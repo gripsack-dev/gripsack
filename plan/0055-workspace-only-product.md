@@ -95,6 +95,10 @@ their dead implementation, not as passing checks.
 - An unreceipted native file-to-directory replacement remains safely refused.
   The same isolated scenario also fails on published 0.48 without changing its
   generation; this is a pre-existing directory-ownership gap, not widened here.
+- Focused native-contract and lifecycle reruns now pass all 161 selected cases
+  across the two groups, including the corrected executable fixture, current
+  lockfile lifecycle and nonpublishing survey. Captured-content unit tests
+  passed 8/8; release-script unit tests passed 128/128; Rust formatting passed.
 
 These are development observations, not a relabelled qualification receipt.
 The frozen 0.50 release must still complete its practical profile.
