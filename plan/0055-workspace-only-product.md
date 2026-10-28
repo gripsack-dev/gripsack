@@ -113,6 +113,12 @@ their dead implementation, not as passing checks.
   generation; a separate two-blocker growth/rollback succeeds and ordinary
   pruning restores the private 0600 prior. Malformed IR again reports its JSON
   line/column. Updated exec/IR library tests passed 119/119 and 26/26.
+- The reviewed directory/retained-state flow group passed 31/31. Candidate
+  `4b7efded87489ebc241444e2f51af532e13874afe3dd89c096cb34b7ec2e77e4`
+  (`0924bb6`) then exposed a stale HTTP adapter name in the practical runner,
+  not a relaxed transport check. The runner now names the current tool-artifact
+  TLS refusal. HTTP (13 properties/4 mutants), process bounds (35/10), and
+  update survey (3/7) all passed their positive and negative calibrations.
 
 These are development observations, not a relabelled qualification receipt.
 The frozen 0.50 release must still complete its practical profile.

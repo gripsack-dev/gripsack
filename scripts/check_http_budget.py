@@ -23,7 +23,7 @@ EXPECTED = (
     'retry::tests::real_retry_policy_has_fixed_deadline_and_bounded_attempts',
     'retry::tests::terminal_classes_and_upstream_cooldowns_never_get_fast_replays',
     'tests::host_binding_survives_url_normalization',
-    'tests::bound_credentials_require_tls_and_registry_artifact_refuses_cleartext',
+    'tests::bound_credentials_require_tls_and_tool_artifact_refuses_cleartext',
     'tests::credential_routing_model_uses_actual_host_selector',
     'tests::proxy_bypass_preserves_domain_and_port_boundaries',
     'request::tests::a_successful_body_consumer_cannot_complete_after_the_operation_deadline',
