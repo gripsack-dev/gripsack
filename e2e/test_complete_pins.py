@@ -213,7 +213,7 @@ def test_first_apply_and_repeat_update_leave_complete_lock_unchanged(sandbox, mo
     assert (repo / LOCK).read_bytes() == baseline
     run(repo, "update")
     assert (repo / LOCK).read_bytes() == baseline
-    run(repo, "store", "verify")
+    run(repo, "store-verify")
 
 
 def test_repository_template_changes_do_not_move_external_package_pins(sandbox):

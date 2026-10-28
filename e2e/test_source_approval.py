@@ -304,10 +304,11 @@ def test_source_mutation_after_approval_and_between_rounds_cannot_change_evaluat
             value_file(value, "before")
     if rounds == 2:
         (repo / "gripsack.ts").write_text(
-            'import {defineWorkspace, workspace} from "@gripsack/core";\n'
+            'import {defineWorkspace, workspace, profile} from "@gripsack/core";\n'
             'import selected from "./outputs/selected.ts";\n'
             'export default defineWorkspace(ctx => workspace({outputs: '
-            'ctx.probe.executable("sh") ? [selected] : []}));\n'
+            '[profile("baseline", {files: []}), '
+            '...(ctx.probe.executable("sh") ? [selected] : [])]}));\n'
         )
     control = pause_runtime(sandbox, monkeypatch)
     source = approve_source(repo)
@@ -326,7 +327,8 @@ def test_source_mutation_after_approval_and_between_rounds_cannot_change_evaluat
             (control / f"release-{round}").touch()
         stdout, stderr = process.communicate(timeout=30)
         assert process.returncode == 0, stdout + stderr
-        assert [output["name"] for output in json.loads(stdout)["outputs"]] == ["before"]
+        expected = ["baseline", "before"] if rounds == 2 else ["before"]
+        assert [output["name"] for output in json.loads(stdout)["outputs"]] == expected
     finally:
         if process.poll() is None:
             process.kill()

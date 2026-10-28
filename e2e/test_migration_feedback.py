@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import grip, make_workspace_repo, make_tarball, remove_output
+from conftest import grip, make_workspace_repo, make_tarball
 
 
 def run(repo, *args):
@@ -57,8 +57,12 @@ def test_chmod_template_drift_is_visible_and_never_pruned(sandbox, reapply):
     dest.chmod(0o600)
     preview = run(repo, 'plan', '--host', 'testhost')
     assert 'drift' in preview.stdout.lower()
-    verify = grip('store-verify', '--repair', cwd=repo)
-    assert verify.returncode != 0
+    # templateFile transforms content; trackedCopyTo still owns a tracked copy,
+    # not the removed template ownership mode. Its live drift is reported by
+    # plan/apply, while store-verify verifies the immutable rendered artifact.
+    run(repo, 'store-verify', '--repair')
+    assert dest.read_bytes() == content
+    assert dest.stat().st_mode & 0o777 == 0o600
     state = current(sandbox)['modules']['demo']
     payload = Path(state['store_path']) / state['entries'][0]['from']
     assert payload.is_file(), 'destination chmod is not store corruption'
@@ -69,7 +73,9 @@ def test_chmod_template_drift_is_visible_and_never_pruned(sandbox, reapply):
             assert dest.stat().st_mode & 0o777 == 0o600
         run(repo, 'rollback', '1')
         assert dest.stat().st_mode & 0o777 == 0o600
-    remove_output(repo, 'hello')
+    (repo / 'outputs/hello.ts').write_text(
+        "import {profile} from '@gripsack/core'; export default profile('demo', {files:[]});"
+    )
     run(repo, 'apply', '--host', 'testhost')
     assert dest.read_bytes() == content
     assert dest.stat().st_mode & 0o777 == 0o600
@@ -97,14 +103,17 @@ export default profile('demo', {{files:[file({{source:repoFile('payload'),
         result = run(repo, 'apply', '--host', 'testhost')
         assert 'drift' in (result.stdout + result.stderr).lower()
         assert dest.read_bytes() == before
-    remove_output(repo, 'hello')
+    (repo / 'outputs/hello.ts').write_text(
+        "import {profile} from '@gripsack/core'; export default profile('demo', {files:[]});"
+    )
     run(repo, 'apply', '--host', 'testhost')
     assert dest.read_bytes() == before
     assert dest.stat().st_mode & 0o777 == 0o644
 
 
 def test_doctor_reports_installed_copy_not_declared_spec(sandbox):
-    repo = make_workspace_repo(sandbox / 'env', {})
+    repo = make_workspace_repo(sandbox / 'env',
+        "import {profile} from '@gripsack/core'; export default profile('demo', {files:[]});")
     (repo / 'package.json').write_text(json.dumps({'devDependencies': {'@gripsack/core': '^0.36.0'}}))
     package = repo / 'node_modules/@gripsack/core'
     package.mkdir(parents=True)

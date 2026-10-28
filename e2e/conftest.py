@@ -52,6 +52,7 @@ def native_target() -> str:
 
 def make_tarball(path: Path, files: dict[str, bytes]) -> Path:
     """Build a fixture package payload without the network."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(path, "w:gz") as tar:
         for name, content in files.items():
             info = tarfile.TarInfo(name)
@@ -64,6 +65,7 @@ def make_toolchain_tarball(path: Path, files: dict[str, bytes]) -> Path:
     """A fixture tarball with EXECUTABLE members — `which <bin>`
     inside a build step needs the exec bit (0039 fixtures); the plain
     helper above is data-only by default."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(path, "w:gz") as tar:
         for name, content in files.items():
             info = tarfile.TarInfo(name)

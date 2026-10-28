@@ -68,14 +68,14 @@ def test_plan_creates_nothing_and_reads_state_correctly(sandbox):
     """0035 F7: plan is read-only (no parent dirs appear), a satisfied
     owned link previews as satisfied, and a deferred fetched
     destination is never shown as a prune."""
-    payload = make_tarball(sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hi\n"})
+    payload = make_tarball(sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hi\n"})
     repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "hello": f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];

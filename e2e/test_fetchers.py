@@ -19,6 +19,7 @@ from conftest import (
     make_tarball,
     run_grip,
 )
+from test_complete_pins import pins
 
 
 
@@ -419,19 +420,28 @@ export default [
     assert updated.returncode == 0, updated.stdout + updated.stderr
     out = grip("apply", "hello-profile", cwd=repo)
     assert out.returncode == 0, out.stderr
-    before = (sandbox / ".local/bin/hello").resolve()
+    before = (sandbox / ".local/bin/hello").read_bytes()
+    pin_before = pins(repo)["hello"]
+    assert pin_before["source"]["fetch"]["path"] == str(payload_a)
     store = sandbox / ".local/share/gripsack/store"
     sources_before = sorted(store.glob("*-workspace-source"))
+    assert len(sources_before) == 1
+    assert (sources_before[0] / "bin/hello").read_bytes() == before
 
     # the mirror swap: different URL, identical bytes
     output_ts = repo / "outputs" / "hello.ts"
     output_ts.write_text(output_ts.read_text().replace(str(payload_a), str(payload_b)))
+    payload_a.unlink()
     updated = grip("update", cwd=repo)
     assert updated.returncode == 0, updated.stdout + updated.stderr
+    pin_after = pins(repo)["hello"]
+    assert pin_after["source"]["fetch"]["path"] == str(payload_b)
+    assert pin_after["resolved"]["tree256"] == pin_before["resolved"]["tree256"]
     out = grip("apply", "hello-profile", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert sorted(store.glob("*-workspace-source")) == sources_before
-    assert (sandbox / ".local/bin/hello").resolve() == before
+    assert (sandbox / ".local/bin/hello").is_symlink()
+    assert (sandbox / ".local/bin/hello").read_bytes() == before
 
 
 def test_install_mapping_edit_does_not_refetch(sandbox):

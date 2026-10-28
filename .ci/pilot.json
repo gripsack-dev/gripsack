@@ -400,11 +400,11 @@
     "repositories": {
       "site": {
         "url": "https://github.com/gripsack-dev/gripsack-dev.github.io.git",
-        "commit": "c4c0eb5940678449a01c23347ce5c3a150cec4ec"
+        "commit": "4a157e3a36c2f6e891e7beb3f3a8f8240259b853"
       },
       "example": {
         "url": "https://github.com/gripsack-dev/example-env-typescript.git",
-        "commit": "dc0e5140b422d2fb9d37971615051556d70f7bed"
+        "commit": "e8efdbb214e5ee5805f83a9ee1159cd7e287acac"
       }
     },
     "sdk": {

@@ -1,5 +1,9 @@
 //! Generation-bound profile transitions from retained ownership. Ordinary files
 //! use the shared planner; directory transitions preserve exact link authority.
+//! A regular payload below an inode-owned directory is a native leaf, even when
+//! its stored ownership is `Legacy(Owned)`. Its evolution into a directory belongs
+//! to the native journal path: the ordinary removal planner must admit the leaf
+//! before the journal publishes its new directory shape.
 use crate::ExecError;
 use gripsack_store as store;
 use gripsack_store::Ownership;
@@ -82,6 +86,18 @@ impl Migration {
                     ));
                 }
                 let (state, old) = predecessors[&key];
+                if previous.directory_transitions.iter().any(|receipt| {
+                    key != receipt.destination && key.starts_with(&receipt.destination)
+                }) && std::fs::symlink_metadata(state.store_path.join(&old.from))?.is_file()
+                {
+                    // Projection is not removal authority. Keep children below
+                    // their recorded leaf instead of resolving a live owned link
+                    // into the store. Native preview inspects the receipt without
+                    // following that link; apply admits its ordinary removal and
+                    // journals the directory birth before writing children.
+                    logical_roots.insert(declared_parent.to_owned(), key);
+                    continue;
+                }
                 let target = authorize(state, old, &key, &mut verified_stores)?;
                 if !std::fs::symlink_metadata(&target)?.is_dir() {
                     return Err(failure(format!(

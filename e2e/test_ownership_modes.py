@@ -21,14 +21,14 @@ SHELL_BLOCK = "w1-" + hashlib.sha256(b"shell").hexdigest()
 
 def test_owned_deploy_refuses_foreign_paths_unless_take_over(sandbox):
     payload = make_tarball(
-        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+        sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];
@@ -51,14 +51,14 @@ def test_owned_deploy_refuses_foreign_symlinks(sandbox):
     """Review finding E4: a stow-style foreign symlink is exactly the
     path the guard is for — refuse unless --take-over."""
     payload = make_tarball(
-        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+        sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];
@@ -121,6 +121,7 @@ export default profile("shell", { files: [
     assert content.endswith("# more user stuff\n")
 
     # undeclare prunes only the block; the foreign file stays
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "hello")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
@@ -320,14 +321,14 @@ def test_owned_replaces_a_stale_symlink_into_the_repo(sandbox):
     instead of the stale link: a hard stop on the first apply after
     upgrading, with no in-product way out."""
     payload = make_tarball(
-        sandbox / "owned.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
+        sandbox / "myenv" / "owned.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("m-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("m-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("m", {{ files: [
     file({{ source: artifactFile("m-payload", "bin/tool"), content: identity(), destination: symlinkTo("~/.local/bin/tool") }})
   ] }})];
@@ -381,8 +382,8 @@ export default profile("m", { files: [
 
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
-    assert "resolves inside the env repo" in out.stderr
-    assert "symlink into the repo" in out.stderr, out.stderr
+    assert "E301" in out.stderr
+    assert dest.is_symlink() and dest.readlink() == repo / "stale-conf"
     assert (repo / "stale-conf").read_text() == "stale\n"
 
 
@@ -425,6 +426,7 @@ def test_adoption_origin_survives_generations_and_gc(sandbox):
 
     # undeclare the ADOPTED module (not the scaffold) — the ORIGINAL
     # comes back
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "a-toml")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
@@ -483,6 +485,7 @@ export default profile("demo", { files: [
     assert out.returncode == 0, out.stderr
     assert "kept" in out.stdout
 
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "hello")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
@@ -520,6 +523,7 @@ export default profile("demo", { files: [
     assert dest.read_text() == "repo\n"
 
     # and the link is the recorded prior — undeclare restores it
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "hello")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr

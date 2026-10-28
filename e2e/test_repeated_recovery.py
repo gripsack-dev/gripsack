@@ -42,7 +42,7 @@ profile("demo", {{ environment: "demo-environment" }})];
 ''')
     grip_home = home / ".local/share/gripsack"
     environment = dict(os.environ, HOME=str(home), GRIPSACK_HOME=str(grip_home))
-    apply = ["apply", "--host", "testhost", "--jobs", "1"]
+    apply = ["apply", "--host", "testhost"]
     trace = sandbox / "repeated-recovery.tsv"
 
     def invoke(arguments, extra=None):

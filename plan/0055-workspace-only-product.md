@@ -61,3 +61,40 @@ this release does not manufacture proof completion or a signature. No fuzz or
 saved-corpus replay is introduced. The obsolete module scheduler's Loom gate,
 13 exclusively retired policy obligations and its latch mutant disappear with
 their dead implementation, not as passing checks.
+
+## Integration observations
+
+- The main cutover checkpoint `f0b7c9b` removes 38,585 lines net across code,
+  schemas, fixtures and documentation. Retired native Mac/Lima implementations
+  and the obsolete module-linter coordinator are also removed; data-only
+  readers needed by retained records remain.
+- Development CLI smoke exercised workspace init, explicit approval, preview,
+  apply, no-op generation reuse, changed-source refusal, rollback, adoption
+  with private permissions, and store verification. A separate published-0.48
+  producer created real legacy generations; 0.50 restored both and performed
+  an ordinary workspace transition without losing their bytes or 0600 modes.
+- The website's actual BuildKit example built and ran natively, exported an OCI
+  archive with independently checked descriptors/DiffIDs/program bytes, and ran
+  in Docker. Native output still ran after owned worker/cache removal; neither
+  build created a personal generation.
+- Actual native, Conda and explicit Pixi-lock consumers ran. The imported Pixi
+  environment stayed at its locked ripgrep 15.1.0 while the independent solved
+  environment used 15.2.0; foreign lock bytes and the active profile were unchanged.
+- Nine complete website/README examples passed packaged-SDK emission and real
+  core admission with negative calibration; one task extension is explicitly a
+  fragment. Desktop/mobile navigation, dark/light rendering, 519 internal link
+  references, reduced-motion scrolling and script-free content were exercised.
+- The first complete flow run passed 548 cases and found 84 failures. Fixture
+  migrations are corrected rather than bypassed. It also exposed real captured
+  file-alias, directory-transition routing and source-diagnostic defects; their
+  existing behavioral regressions remain and the native boundaries are repaired.
+- The corrected binary executed a captured absolute file alias. A published-0.48
+  directory producer then exercised ordinary workspace transition, leaf-to-directory
+  growth and explicit rollback; foreign sibling content and the old immutable tree
+  survived. Store verification passed afterward.
+- An unreceipted native file-to-directory replacement remains safely refused.
+  The same isolated scenario also fails on published 0.48 without changing its
+  generation; this is a pre-existing directory-ownership gap, not widened here.
+
+These are development observations, not a relabelled qualification receipt.
+The frozen 0.50 release must still complete its practical profile.

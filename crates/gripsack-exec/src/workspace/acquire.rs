@@ -189,12 +189,29 @@ pub(super) fn acquire(
         .fetch
         .fetch(&concrete, &payload, locked_json.as_ref())
         .map_err(|error| {
-            ExecError::Fetch(match &source.fetch {
+            let error = match &source.fetch {
                 FetchSpec::GithubRelease { base_url, .. } => {
                     error.with_github_context(base_url.as_deref())
                 }
                 _ => error,
-            })
+            };
+            match error {
+                gripsack_fetch::FetchError::Diagnostics(mut diagnostics) => {
+                    for diagnostic in &mut diagnostics {
+                        if !diagnostic.labels.iter().any(|label| label.span.is_some()) {
+                            diagnostic.labels.push(gripsack_ir::Label {
+                                span: Some(source.span.clone()),
+                                note: "source declared here".into(),
+                            });
+                        }
+                    }
+                    ExecError::Fetch(gripsack_fetch::FetchError::Diagnostics(diagnostics))
+                }
+                error => ExecError::Gate(
+                    Diagnostic::error(codes::EXEC_FETCH, format!("fetch failed: {error}"))
+                        .with_label(Some(source.span.clone()), "source declared here"),
+                ),
+            }
         })?;
     tracing::info!(output = name, "fetched");
     // FetchContext already applied the shared payload validator. Preserve its

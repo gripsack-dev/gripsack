@@ -54,6 +54,7 @@ def test_ambiguous_markers_abort_without_losing_foreign_tail(sandbox, merge_repo
         assert result.returncode != 0, result.stdout + result.stderr
         assert dest.read_bytes() == before
         assert (sandbox / '.local/share/gripsack/current').readlink() == pointer
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, 'hello')
     result = grip('apply', '--host', 'testhost', cwd=repo)
     assert result.returncode != 0
@@ -74,6 +75,7 @@ def test_every_duplicate_mode_record_guards_reapply_and_prune(sandbox, merge_rep
         assert dest.read_bytes() == before
         manifest = json.loads((sandbox / '.local/share/gripsack/current/manifest.json').read_text())
         assert manifest['modules']['shell']['entries'][0]['preserved_drift']
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, 'hello')
     run(repo, 'apply', '--host', 'testhost')
     assert dest.read_bytes() == before
@@ -88,6 +90,7 @@ def test_later_edits_regenerate_and_foreign_bytes_survive(sandbox, merge_repo):
     dest.write_bytes(b'USER-PREFIX\r\n' + block + between + block.replace(b'managed-one', b'edited-second') + tail)
     run(repo, 'apply', '--host', 'testhost')
     assert b'edited-second' not in dest.read_bytes()
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, 'hello')
     run(repo, 'apply', '--host', 'testhost')
     assert dest.read_bytes() == b'USER-PREFIX\r\n' + between + tail
@@ -112,6 +115,7 @@ def test_multibyte_marker_prefixes_preserve_foreign_bytes_through_update_and_pru
     updated = dest.read_bytes()
     assert "managed-界\r\n".encode() in updated
     assert b"managed-one" not in updated
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "hello")
     run(repo, "apply", "--host", "testhost")
     assert dest.read_bytes() == prefix + middle + tail

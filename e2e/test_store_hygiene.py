@@ -21,14 +21,14 @@ from conftest import (
 
 def test_gc_collects_unreferenced_store_paths_and_why_owns(sandbox):
     payload = make_tarball(
-        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho v1\n"}
+        sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho v1\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];
@@ -49,6 +49,7 @@ profile("hello", {{ files: [
     assert len(roots) >= 2, "the profile and its native package are both retained"
 
     # drop the module entirely; deployment pruned on the next apply
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "hello")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
@@ -58,15 +59,18 @@ profile("hello", {{ files: [
     # (rollback!). keep_generations = 1 is what releases it.
     out = grip("gc", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert set({p.name for p in store.iterdir()}) == before
+    assert before <= {p.name for p in store.iterdir()}
 
     user_conf = sandbox / ".config/gripsack"
     user_conf.mkdir(parents=True)
     (user_conf / "config.toml").write_text("[settings]\nkeep_generations = 1\n")
     out = grip("gc", cwd=repo)
     assert out.returncode == 0, out.stderr
-    after = set(store.iterdir()) if store.exists() else set()
-    assert not after, f"gc left {after}"
+    after = {p.name for p in store.iterdir()} if store.exists() else set()
+    assert not (after & roots), f"gc retained retired payloads: {after & roots}"
+    current_manifest = json.loads((sandbox / ".local/share/gripsack/current/manifest.json").read_text())
+    current_roots = {Path(module["store_path"]).name for module in current_manifest["modules"].values()}
+    assert current_roots <= after, "gc must retain the explicit empty profile"
     assert not (sandbox / ".local/share/gripsack/generations/1").exists()
     assert (sandbox / ".local/share/gripsack/generations/2").exists()
     out = grip("why-owns", "~/.local/bin/hello", cwd=repo)
@@ -161,20 +165,21 @@ export default profile("demo", { files: [
 
 def test_gc_dry_run_previews_without_deleting(sandbox):
     payload = make_tarball(
-        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho v1\n"}
+        sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho v1\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];
 """,
     )
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "hello")
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
     user_conf = sandbox / ".config/gripsack"
@@ -236,13 +241,13 @@ def test_store_verify_covers_native_package_payloads(sandbox):
     lock's TRANSPORT hash (never matches) under a hostname-keyed lock
     lookup (usually skipped). The manifest's tree256 is the expectation
     now — a tampered fetched payload fails verify, hostname-free."""
-    payload = make_tarball(sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
+    payload = make_tarball(sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];

@@ -8,14 +8,14 @@ from conftest import native_target, grip, make_workspace_repo, make_tarball
 
 def test_apply_creates_generation_and_symlinks(sandbox):
     payload = make_tarball(
-        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+        sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];
@@ -102,14 +102,14 @@ export default profile("zed", { files: [
 def test_apply_repo_from_elsewhere(sandbox):
     """The bootstrap story: apply a repo that isn't the cwd."""
     payload = make_tarball(
-        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+        sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];
@@ -139,7 +139,7 @@ profile("hello", {{ files: [
 
 
 def test_update_rewrites_lockfile_then_apply_deploys(sandbox):
-    """The flake cycle: update moves the lockfile, apply executes it."""
+    """Explicit update pins an external source; frozen apply consumes that pin."""
     payload = sandbox / "hello.tar.gz"
     make_tarball(payload, {"bin/hello": b"#!/bin/sh\necho v1\n"})
     repo = make_workspace_repo(
@@ -153,6 +153,8 @@ profile("hello", {{ files: [
   ] }})];
 """,
     )
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
     lock = repo / "locks" / "testhost.lock"
     assert lock.exists()
@@ -161,25 +163,24 @@ profile("hello", {{ files: [
     # no movement -> unchanged
     out = grip("update", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "unchanged" in out.stdout
+    assert (sandbox / ".local/bin/hello").read_bytes() == b"#!/bin/sh\necho v1\n"
     assert lock.read_text() == first_pin
 
     # payload changes -> update bumps the pin, apply deploys it
     make_tarball(payload, {"bin/hello": b"#!/bin/sh\necho v2\n"})
     out = grip("update", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "bumped" in out.stdout
     assert lock.read_text() != first_pin
 
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "applied" in out.stdout
+    assert (sandbox / ".local/bin/hello").read_bytes() == b"#!/bin/sh\necho v2\n"
 
 
 def test_config_tree_gain_deploys_from_store(sandbox):
     """A captured tree gain deploys from immutable store content, with either
     a warm store or a cold store under an unchanged provider pin."""
-    payload = make_tarball(sandbox / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\n"})
+    payload = make_tarball(sandbox / "myenv" / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\n"})
     confdir = sandbox / "myenv" / "configs" / "tool"
     confdir.mkdir(parents=True)
     (confdir / "a.conf").write_text("a\n")
@@ -188,7 +189,7 @@ def test_config_tree_gain_deploys_from_store(sandbox):
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, repoTree, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("tool-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("tool-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("tool", {{ files: [
     file({{ source: artifactFile("tool-payload", "bin/tool"), content: identity(), destination: symlinkTo("~/.local/bin/tool") }}),
     file({{ source: repoTree("configs/tool"), content: identity(), destination: symlinkTo("~/.config/tool") }})

@@ -7,21 +7,55 @@ import subprocess
 import time
 
 import pytest
-from conftest import GRIP, grip, make_env_repo, remove_module, run_grip, start_grip
+from conftest import GRIP, grip, make_workspace_repo, remove_output, run_grip, start_grip
 
 
 def fixture_repo(sandbox, script, *, trigger="post_activate", second=None):
-    declarations = [f"customHook({json.dumps(script)}, {json.dumps(trigger)})"]
+    scripts = [] if script is None else [(script, trigger)]
     if second is not None:
-        declarations.append(f"customHook({json.dumps(second)})")
-    repo = make_env_repo(sandbox / "env", {"demo": f'''
-import {{ module, trackedCopy, customHook }} from "@gripsack/core";
-export default module("demo", {{
-  config: {{ payload: trackedCopy("~/.owned") }},
-  activate: [{", ".join(declarations)}],
-}});
-'''})
+        scripts.append((second, "post_activate"))
+    names = [f"effect{index}" for index in range(len(scripts))]
+    declarations = [
+        f'hook({json.dumps(name)}, {{trigger: {json.dumps(when)}, '
+        'run: exec({argv: [lit("/bin/sh"), lit("-c"), lit(' + json.dumps(body) + ')]})})'
+        for name, (body, when) in zip(names, scripts)
+    ]
+    declarations.append(
+        'profile("demo", {files: [file({source: repoFile("payload"), content: identity(), '
+        'destination: trackedCopyTo("~/.owned")})], hooks: ' + json.dumps(names) + '})'
+    )
+    repo = make_workspace_repo(sandbox / "env", {
+        "demo": 'import {profile, file, repoFile, identity, trackedCopyTo, hook, exec, lit} '
+                'from "@gripsack/core";\nexport default [' + ",".join(declarations) + '];\n',
+        "remaining": 'import {profile} from "@gripsack/core";\n'
+                     'export default profile("remaining", {});\n',
+    })
     (repo / "payload").write_text("owned bytes\n")
+    return repo
+
+
+def retained_pending(sandbox, monkeypatch, effect):
+    """Prepare real legacy-action records without restoring a legacy authoring API."""
+    repo = fixture_repo(sandbox, None)
+    applied = grip("apply", "--host", "testhost", cwd=repo)
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    pointer = sandbox / ".local/share/gripsack/activation.json"
+    pointer.write_text(json.dumps({"generation": 1, "intents": [{
+        "module": "demo", "action": {"kind": "custom_shell", "script": append_script(effect)},
+    }]}))
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "hook-after-start")
+    interrupted = grip("apply", "--host", "testhost", cwd=repo)
+    assert interrupted.returncode != 0
+    assert not effect.exists(), "the retained fixture must precede every effect"
+    instance = json.loads(pointer.read_text())["instance"]
+    records = pointer.parent / "activation" / instance / "outcomes"
+    for path in records.glob("*.json"):
+        record = json.loads(path.read_text())
+        assert record["state"] == {"kind": "started", "attempt": 1}
+        # Reconstruct the previous format's initial pending state using the
+        # real plan/intent identities; no process or effect receipt is invented.
+        record["state"] = {"kind": "pending"}
+        path.write_text(json.dumps(record))
     return repo
 
 
@@ -143,12 +177,12 @@ def test_pending_hook_evidence_blocks_gc_in_both_modes(sandbox, monkeypatch):
     assert len(effect.read_text().splitlines()) == 1
 
 
-def test_saved_removal_hook_replays_after_its_module_is_gone(sandbox, monkeypatch):
+def test_saved_removal_hook_replays_after_its_profile_is_gone(sandbox, monkeypatch):
     effect = sandbox / "removed-effects"
     repo = fixture_repo(sandbox, append_script(effect), trigger="on_remove")
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
     assert not effect.exists()
-    remove_module(repo, "demo")
+    remove_output(repo, "demo")
     monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "hook-after-effect")
     assert grip("apply", "--host", "testhost", cwd=repo).returncode != 0
     pending = outcomes(repo)
@@ -178,7 +212,7 @@ def test_missing_intent_record_never_becomes_fresh_attempt(sandbox, monkeypatch)
     assert (home / "activation.json").read_bytes() == pointer
 
 
-def test_identical_custom_declarations_have_distinct_delivery_identity(sandbox):
+def test_identical_hook_commands_have_distinct_delivery_identity(sandbox):
     effect = sandbox / "duplicates"
     script = append_script(effect)
     repo = fixture_repo(sandbox, script, second=script)
@@ -187,7 +221,6 @@ def test_identical_custom_declarations_have_distinct_delivery_identity(sandbox):
     rows = outcomes(repo)
     assert len(rows) == 2 and rows[0]["intent"] != rows[1]["intent"]
     assert effect.read_text().splitlines() == [f'{row["intent"]}:1' for row in rows]
-    assert rows[0]["action_sha256"] == rows[1]["action_sha256"]
 
 
 def test_legacy_pending_migrates_before_first_replay_and_keeps_the_new_token(sandbox, monkeypatch):
@@ -356,10 +389,10 @@ def test_replay_uses_saved_action_not_changed_repository(sandbox, monkeypatch):
     monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "hook-after-effect")
     assert grip("apply", "--host", "testhost", cwd=repo).returncode != 0
     identity = outcomes(repo)[0]["intent"]
-    module = repo / "modules/demo.ts"
-    source = module.read_text()
-    module.write_text(source.replace(json.dumps(append_script(original)),
-                                     json.dumps(f"touch {shlex.quote(str(replacement))}")))
+    declaration = repo / "outputs/demo.ts"
+    source = declaration.read_text()
+    declaration.write_text(source.replace(json.dumps(append_script(original)),
+                                          json.dumps(f"touch {shlex.quote(str(replacement))}")))
     monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
     monkeypatch.setenv("GRIPSACK_FS_RECOVER_ONLY", "1")
     resumed = grip("apply", "--host", "testhost", cwd=repo)
@@ -421,7 +454,7 @@ def test_corrupt_activation_authority_refuses_before_effects(sandbox, monkeypatc
     if corruption.endswith("version"):
         value["version"] = 99
     elif corruption == "plan-action":
-        value["intents"][0]["action"]["script"] = "touch " + shlex.quote(str(effect))
+        value["intents"][0]["action"]["context"] = str(effect)
     else:
         value["intent"] = "0" * 64
     target.write_text(json.dumps(value))
@@ -455,9 +488,7 @@ def test_exhausted_attempt_counter_retains_evidence_without_launch(sandbox, monk
 
 def test_retained_v1_activation_replays_without_changing_identity(sandbox, monkeypatch):
     effect = sandbox / "legacy-version-effects"
-    repo = fixture_repo(sandbox, append_script(effect))
-    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "before-adapters")
-    assert grip("apply", "--host", "testhost", cwd=repo).returncode != 0
+    repo = retained_pending(sandbox, monkeypatch, effect)
     home = sandbox / ".local/share/gripsack"
     pointer_path = home / "activation.json"
     pointer = json.loads(pointer_path.read_text())
@@ -483,9 +514,7 @@ def test_retained_v1_activation_replays_without_changing_identity(sandbox, monke
 def test_pointer_plan_version_mismatch_refuses_before_effect(
         sandbox, monkeypatch, plan_version, pointer_version):
     effect = sandbox / "must-not-run"
-    repo = fixture_repo(sandbox, append_script(effect))
-    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "before-adapters")
-    assert grip("apply", "--host", "testhost", cwd=repo).returncode != 0
+    repo = retained_pending(sandbox, monkeypatch, effect)
     home = sandbox / ".local/share/gripsack"
     pointer_path = home / "activation.json"
     pointer = json.loads(pointer_path.read_text())

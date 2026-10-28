@@ -58,7 +58,6 @@ impl NativeProfiles {
         protection: Option<&profile_checks::Protection<'_>>,
     ) -> Result<Self, ExecError> {
         let declarations = declarations::Declarations::from_ir(ir);
-        let repo = repository.contents();
         let logical_source = |path: &str| match repository {
             crate::Repository::Direct(_) => path.to_owned(),
             crate::Repository::Evaluated { sources, .. } => sources.logical_text(path).into_owned(),
@@ -129,7 +128,7 @@ impl NativeProfiles {
             .filter(|_| !readonly)
             .map(|_| consumer::admit::NativeContext::new(&ir.host, home, deadline))
             .transpose()?;
-        let mut capture = content::Capture::new(repo, limits)?;
+        let mut capture = content::Capture::from_repository(repository, limits)?;
         let mut profiles = BTreeMap::new();
         for (index, output) in declarations
             .outputs()

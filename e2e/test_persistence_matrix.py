@@ -29,10 +29,10 @@ def snapshot(home):
 
 def workspace_outputs(version, installed):
     files = 'file({ source: repoFile("payload"), content: identity(), destination: trackedCopyTo("~/.matrix") })' if installed else ''
-    return f'''import {{ environment, file, hook, identity, lit, profile, repoFile, runBash, trackedCopyTo }} from "@gripsack/core";
+    return f'''import {{ environment, file, hook, identity, lit, profile, repoFile, exec, trackedCopyTo }} from "@gripsack/core";
 export default [
   environment("matrix-environment", {{ packages: [], target: {native_target()}, env: {{ MATRIX: lit("{version}") }} }}),
-  hook("matrix-hook", {{ trigger: "post_activate", run: runBash({{ body: 'touch "$HOME/hook-{version}"' }}) }}),
+  hook("matrix-hook", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit('touch "$HOME/hook-{version}"')] }}) }}),
   profile("demo", {{ files: [{files}], environment: "matrix-environment", hooks: ["matrix-hook"] }}),
 ];'''
 
@@ -70,7 +70,7 @@ def test_every_reachable_persistence_boundary(sandbox, scenario, fault):
     (home / '.matrix').chmod(0o600)
     repo = make_workspace_repo(sandbox / 'env', workspace_outputs('one', scenario != 'rollback-prune'))
     (repo / 'payload').write_text('one')
-    base = ['apply', '--host', 'testhost', '--jobs', '1', '--take-over']
+    base = ['apply', '--host', 'testhost', '--take-over']
     out = command(repo, base, env)
     assert out.returncode == 0, out.stderr
     if scenario.startswith('rollback'):
@@ -82,7 +82,7 @@ def test_every_reachable_persistence_boundary(sandbox, scenario, fault):
     else:
         (repo / 'outputs/hello.ts').write_text(workspace_outputs('two', 'deploy' in scenario))
         (repo / 'payload').write_text('two')
-        operation = ['apply', '--host', 'testhost', '--jobs', '1']
+        operation = ['apply', '--host', 'testhost']
     # Hook effects are idempotent markers; only this transition may create them.
     for marker in home.glob('hook-*'):
         marker.unlink()

@@ -33,7 +33,7 @@ MAX_BUNDLE_BYTES = 2 * 1024 * 1024 * 1024
 # Private controller image outputs are references, not shipped bundle members.
 MAX_OBSERVED_OUTPUT_BYTES = (1 << 63) - 1
 EXCLUSIONS = ["REL-FUZZ-2026-09-27", "linux-aarch64", "macos", "native-windows",
-              "hardware-power-loss", "github-hosted-build", "REL-FORMAL-048-2026-10-27",
+              "hardware-power-loss", "github-hosted-build", "REL-PRACTICAL-050-2026-10-27",
               "formal-tlc", "formal-tlaps", "formal-verus"]
 REQUIRED_GATES = frozenset((
     "inventory", "test", "gnu-test", "ts-test", "runtime-images",

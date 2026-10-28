@@ -40,6 +40,7 @@ export default profile("demo", { files: [
         blob.unlink()
         blob.symlink_to(outside)
     manifest_file.write_text(json.dumps(manifest))
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "hello")
     result = grip("apply", "--host", "testhost", cwd=repo)
     assert result.returncode != 0, "an invalid prior must not authorize restoration"
@@ -123,14 +124,14 @@ export default profile("{name}", {{ files: [
 
 def test_rollback_restores_previous_generation(sandbox):
     payload = make_tarball(
-        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+        sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];
@@ -150,7 +151,7 @@ profile("hello", {{ files: [
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("extra-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("extra-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("extra", {{ files: [
     file({{ source: artifactFile("extra-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/extra") }})
   ] }})];
@@ -292,14 +293,14 @@ def test_a_repaired_destination_cuts_a_generation(sandbox):
     work — the run must cut a generation so rollback can undo it,
     not summarize 'already satisfied' over a modified machine."""
     payload = make_tarball(
-        sandbox / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
+        sandbox / "myenv" / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("m-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("m-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("m", {{ files: [
     file({{ source: artifactFile("m-payload", "bin/tool"), content: identity(), destination: symlinkTo("~/.local/bin/tool") }})
   ] }})];

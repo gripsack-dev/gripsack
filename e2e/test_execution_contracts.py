@@ -1,4 +1,4 @@
-"""Workspace preparation gates and scheduler admission.
+"""Workspace preparation gates and lifecycle checks.
 
 Universal step ordering, shell-build timing and module verifier receipts were
 removed with that executor. Task ordering lives in test_task_graphs; builder
@@ -6,7 +6,6 @@ execution belongs to the BuildKit harness, not host-shell stand-ins.
 """
 import json
 
-import pytest
 from conftest import grip, make_workspace_repo
 
 
@@ -32,7 +31,7 @@ def test_failed_preflip_check_fails_every_retry(sandbox):
         assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
-def test_fixed_check_runs_then_satisfied_apply_reuses_receipt(sandbox):
+def test_preflip_check_runs_on_each_apply_without_cutting_a_generation(sandbox):
     counter = sandbox / "checks"
     repo = checked_repo(sandbox, 'printf "checked\\n" >> "$HOME/checks"')
     first = grip("apply", cwd=repo)
@@ -43,7 +42,8 @@ def test_fixed_check_runs_then_satisfied_apply_reuses_receipt(sandbox):
     second = grip("apply", cwd=repo)
     assert second.returncode == 0, second.stdout + second.stderr
     assert current.readlink() == generation
-    assert counter.read_text() == "checked\n"
+    # Profile checks are lifecycle gates, not cached module-verifier receipts.
+    assert counter.read_text() == "checked\nchecked\n"
 
 
 def test_typo_field_cannot_become_a_prune_instruction(sandbox):
@@ -61,20 +61,3 @@ export default profile("demo", {files:[file({content:literalText("original"),
     assert result.returncode != 0
     assert (sandbox / ".config-file").read_text() == "original"
     assert current.readlink() == previous
-
-
-@pytest.mark.parametrize("source", ["argument", "environment"])
-def test_jobs_zero_is_rejected_without_deployment(sandbox, monkeypatch, source):
-    repo = make_workspace_repo(sandbox / "env", '''import {
- profile,file,literalText,trackedCopyTo} from "@gripsack/core";
-export default profile("demo", {files:[file({content:literalText("safe"),
- destination:trackedCopyTo("~/.jobs-zero")})]});''')
-    args = ["apply"]
-    if source == "argument":
-        args += ["--jobs", "0"]
-    else:
-        monkeypatch.setenv("GRIPSACK_JOBS", "0")
-    result = grip(*args, cwd=repo)
-    assert result.returncode != 0
-    assert not (sandbox / ".jobs-zero").exists()
-    assert not (sandbox / ".local/share/gripsack/current").exists()

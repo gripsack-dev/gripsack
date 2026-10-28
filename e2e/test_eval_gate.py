@@ -141,10 +141,11 @@ def test_repo_build_path_does_not_choose_core_fact_detector(sandbox):
                   'export default profile("hosted", { files: [] });\n'
     },)
     (repo / "gripsack.ts").write_text(
-        'import { defineWorkspace, workspace } from "@gripsack/core";\n'
+        'import { defineWorkspace, workspace, profile } from "@gripsack/core";\n'
         'import hosted from "./outputs/hosted.ts";\n'
         'export default defineWorkspace(ctx => workspace({ '
-        'outputs: ctx.facts.libc === "glibc-999.0" ? [hosted] : [] }));\n'
+        'outputs: [profile("baseline", {files: []}), '
+        '...(ctx.facts.libc === "glibc-999.0" ? [hosted] : [])] }));\n'
     )
     (repo / "env.toml").write_text(
         f'[env]\nname = "fixture"\n\n[eval]\nenv = {{ PATH = "{shimdir}" }}\n'
@@ -153,7 +154,7 @@ def test_repo_build_path_does_not_choose_core_fact_detector(sandbox):
     out = grip("check", "--json", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert not marker.exists(), "repo PATH must never choose the core's ldd"
-    assert json.loads(out.stdout)["outputs"] == []
+    assert [output["name"] for output in json.loads(out.stdout)["outputs"]] == ["baseline"]
 
 
 def test_repo_build_env_does_not_reach_frontend_runtime(sandbox, monkeypatch):
@@ -199,10 +200,11 @@ def test_probe_fixpoint_converges_in_two_rounds(sandbox):
     },)
     # The root declaration actually requests a core-bound probe.
     (repo / "gripsack.ts").write_text(
-        'import { defineWorkspace, workspace } from "@gripsack/core";\n'
+        'import { defineWorkspace, workspace, profile } from "@gripsack/core";\n'
         'import hosted from "./outputs/hosted.ts";\n'
         "export default defineWorkspace((ctx) => workspace({\n"
-        '  outputs: ctx.probe.executable("sh") ? [hosted] : [],\n'
+        '  outputs: [profile("baseline", {files: []}), '
+        '...(ctx.probe.executable("sh") ? [hosted] : [])],\n'
         "}));\n"
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
@@ -267,9 +269,18 @@ def test_init_scaffolds_a_working_env_repo(sandbox):
     assert (sandbox / ".config" / "hello" / "hello.toml").is_symlink()
 
     # init never clobbers an existing env repo
+    existing = {
+        path.relative_to(repo): path.read_bytes()
+        for path in repo.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repo).parts
+    }
     out = grip("init", cwd=repo)
     assert out.returncode != 0
-    assert "already looks like an env repo" in out.stderr
+    assert {
+        path.relative_to(repo): path.read_bytes()
+        for path in repo.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repo).parts
+    } == existing
 
 
 
@@ -433,7 +444,7 @@ export default [
     payload.unlink()
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
-    assert "E301" in out.stderr
+    assert "E201" in out.stderr
     assert "outputs/hello.ts" in out.stderr
     assert str(repo / "outputs/hello.ts") in out.stderr
     assert not (sandbox / ".failed-fetch").exists()

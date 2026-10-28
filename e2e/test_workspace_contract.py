@@ -66,11 +66,12 @@ def test_project_native_files_plan_without_effects_and_apply(sandbox):
     checked = grip("check", cwd=repo)
     assert checked.returncode == 0, checked.stdout + checked.stderr
     assert "dotfiles (profile)" in checked.stdout
-    for command in [("plan",), ("update", "--check")]:
+    for command, expected in [(("plan",), 0), (("update", "--check"), 1)]:
         result = grip(*command, cwd=repo)
-        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.returncode == expected, result.stdout + result.stderr
         assert not (sandbox / ".config/demo/settings.conf").exists()
         assert not (sandbox / ".local/share/gripsack/current").exists()
+        assert not (repo / "gripsack.lock").exists()
     applied = grip("apply", cwd=repo)
     assert applied.returncode == 0, applied.stdout + applied.stderr
     assert (sandbox / ".config/demo/settings.conf").read_text() == "setting=1\n"
@@ -303,7 +304,7 @@ def recipe_and_package():
     return recipe, package
 
 
-def test_decoded_artifact_reference_rejects_non_artifact_with_both_sites(sandbox):
+def test_decoded_artifact_reference_rejects_non_artifact_at_consumer(sandbox):
     task = {
         "kind": "task",
         "name": "not-an-artifact",
@@ -326,8 +327,9 @@ def test_decoded_artifact_reference_rejects_non_artifact_with_both_sites(sandbox
     assert result.returncode != 0
     assert "E126" in result.stderr, result.stderr
     assert "gripsack.ts:10" in result.stderr
-    assert "gripsack.ts:15" in result.stderr
     assert "E124" not in result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+    assert not (sandbox / ".config/demo/settings.conf").exists()
 
 
 def test_decoded_check_subject_must_exist_before_execution(sandbox):
@@ -364,8 +366,8 @@ def test_decoded_recipe_tool_cycle_is_rejected_before_execution(sandbox):
     assert result.returncode != 0
     assert "E127" in result.stderr, result.stderr
     assert "gripsack.ts:2" in result.stderr
-    assert "gripsack.ts:3" in result.stderr
     assert "E124" not in result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_decoded_artifact_selector_rejects_parent_escape(sandbox):
@@ -406,10 +408,10 @@ def test_decoded_fixed_prefix_package_cannot_enter_prefixless_environment(sandbo
     }
     result = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
     assert result.returncode != 0
-    assert "fixed_prefix" in result.stderr
-    assert "gripsack.ts:3" in result.stderr
+    assert "E128" in result.stderr, result.stderr
     assert "gripsack.ts:6" in result.stderr
     assert "E124" not in result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_publication_check_cycle_is_admitted_without_pruning_or_execution(sandbox):
@@ -464,17 +466,21 @@ def test_minimum_os_and_abi_compare_declared_targets_not_checking_host(sandbox):
     assert admitted.returncode == 0, admitted.stdout + admitted.stderr
     environment["target"]["minimum_os"] = {"major": 4, "minor": 19}
     rejected = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E126" in rejected.stderr and "target mismatch" in rejected.stderr
+    assert rejected.returncode != 0
+    assert "E128" in rejected.stderr, rejected.stderr
     assert "gripsack.ts:3" in rejected.stderr and "gripsack.ts:6" in rejected.stderr
 
     environment["target"] = {**target, "abi": "musl"}
     wrong_abi = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E126" in wrong_abi.stderr and "target mismatch" in wrong_abi.stderr
+    assert wrong_abi.returncode != 0
+    assert "E128" in wrong_abi.stderr, wrong_abi.stderr
     assert "gripsack.ts:3" in wrong_abi.stderr and "gripsack.ts:6" in wrong_abi.stderr
     environment["target"].pop("abi")
     missing_abi = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E126" in missing_abi.stderr and "target mismatch" in missing_abi.stderr
+    assert missing_abi.returncode != 0
+    assert "E128" in missing_abi.stderr, missing_abi.stderr
     assert "gripsack.ts:3" in missing_abi.stderr and "gripsack.ts:6" in missing_abi.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_fixed_prefix_selection_requires_exact_declared_environment_path(sandbox):
@@ -490,7 +496,11 @@ def test_fixed_prefix_selection_requires_exact_declared_environment_path(sandbox
     assert admitted.returncode == 0, admitted.stdout + admitted.stderr
     environment["prefix"] = "/different"
     rejected = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E126" in rejected.stderr and "fixed_prefix" in rejected.stderr
+    assert rejected.returncode != 0
+    assert "E128" in rejected.stderr, rejected.stderr
+    assert "gripsack.ts:6" in rejected.stderr
     package["layout"]["prefix"] = "/opt/../escape"
     unsafe = run_plan_ir(sandbox, workspace_ir(recipe, package))
+    assert unsafe.returncode != 0
     assert "E130" in unsafe.stderr and "gripsack.ts:3" in unsafe.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()

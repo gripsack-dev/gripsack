@@ -75,7 +75,11 @@ def test_rendered_content_composes_with_all_ownership_policies_and_rolls_back(sa
     shared.write_bytes(b"FOREIGN\r\n")
     run(repo, "check")
     run(repo, "plan")
-    run(repo, "update", "--check")
+    before_survey = deployment_state(sandbox, repo)
+    survey = grip("update", "--check", cwd=repo)
+    assert survey.returncode == 1, survey.stdout + survey.stderr
+    assert deployment_state(sandbox, repo) == before_survey
+    assert shared.read_bytes() == b"FOREIGN\r\n"
     assert not (sandbox / ".linked").exists()
     assert not (sandbox / ".local/share/gripsack/current").exists()
     run(repo, "apply")

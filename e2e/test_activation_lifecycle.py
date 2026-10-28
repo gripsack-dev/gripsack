@@ -6,14 +6,14 @@ from conftest import native_target, grip, make_tarball, make_workspace_repo, rem
 
 
 def test_exported_env_profile_tracks_the_generation(sandbox):
-    payload = make_tarball(sandbox / "zed.tar.gz", {"bin/zed": b"#!/bin/sh\nexit 0\n"})
+    payload = make_tarball(sandbox / "myenv" / "zed.tar.gz", {"bin/zed": b"#!/bin/sh\nexit 0\n"})
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ environment, file, fileFetch, identity, lit, pkg, profile, provider, repoFile, trackedCopyTo }} from "@gripsack/core";
 
 export default [
-pkg("zed-tool", {{ producer: provider(fileFetch("{payload}")), commands: {{ zed: "bin/zed" }}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+pkg("zed-tool", {{ producer: provider(fileFetch("{payload.name}")), commands: {{ zed: "bin/zed" }}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 environment("zed-environment", {{ packages: ["zed-tool"], target: {native_target()}, env: {{ EDITOR: lit("zed") }} }}),
 profile("zed", {{ files: [
     file({{ source: repoFile("configs/zed/a"), content: identity(), destination: trackedCopyTo("~/.config/zed/a") }})
@@ -62,9 +62,9 @@ def test_failed_post_activation_hook_does_not_fail_apply(sandbox):
     repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { file, hook, identity, profile, repoFile, runBash, trackedCopyTo } from "@gripsack/core";
+import { file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo } from "@gripsack/core";
 
-export default [hook("daemon-hook-0", { trigger: "post_activate", run: runBash({ body: "exit 1" }) }),
+export default [hook("daemon-hook-0", { trigger: "post_activate", run: exec({ argv: [lit("/bin/sh"), lit("-c"), lit("exit 1")] }) }),
 profile("daemon", { files: [
     file({ source: repoFile("configs/daemon/a"), content: identity(), destination: trackedCopyTo("~/.config/daemon/a") })
   ], hooks: ["daemon-hook-0"] })];
@@ -90,9 +90,9 @@ def test_crash_before_adapters_resumes_next_run(sandbox, monkeypatch):
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ file, hook, identity, profile, repoFile, runBash, trackedCopyTo }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default [hook("demo-hook-0", {{ trigger: "post_activate", run: runBash({{ body: "touch {marker}" }}) }}),
+export default [hook("demo-hook-0", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("touch {marker}")] }}) }}),
 profile("demo", {{ files: [
     file({{ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") }})
   ], hooks: ["demo-hook-0"] }})];
@@ -115,7 +115,7 @@ profile("demo", {{ files: [
     assert not pending.exists(), "the record drained"
 
 
-def test_stale_pending_record_is_discarded_never_run(sandbox):
+def test_stale_pending_record_is_discarded_never_run(sandbox, monkeypatch):
     """0032: a pending record naming a generation that never became
     current (crash between pending-write and flip) is discarded by
     the next run — adapters never run for non-current state."""
@@ -126,9 +126,9 @@ def test_stale_pending_record_is_discarded_never_run(sandbox):
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ file, hook, identity, profile, repoFile, runBash, trackedCopyTo }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default [hook("demo-hook-0", {{ trigger: "post_activate", run: runBash({{ body: "touch {marker}" }}) }}),
+export default [hook("demo-hook-0", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("touch {marker}")] }}) }}),
 profile("demo", {{ files: [
     file({{ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") }})
   ], hooks: ["demo-hook-0"] }})];
@@ -137,27 +137,23 @@ profile("demo", {{ files: [
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert marker.exists()
-
-    # hand-craft a pending record naming a future (never-committed)
-    # generation — as if a run died between the pending write and
-    # the flip
     marker.unlink()
-    import json
+    current = sandbox / ".local/share/gripsack/current"
+    previous = current.readlink()
 
+    # Preserve an authentic pending plan, but model its generation never
+    # becoming current. No legacy action or hand-crafted plan is admitted.
+    (confdir / "a.toml").write_text("candidate\n")
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "before-adapters")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "the crash hook must kill the run"
+    assert not marker.exists()
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
     pending = sandbox / ".local/share/gripsack/activation.json"
-    pending.write_text(
-        json.dumps(
-            {
-                "generation": 99,
-                "intents": [
-                    {
-                        "module": "demo",
-                        "action": {"kind": "custom_shell", "script": f"touch {marker}"},
-                    }
-                ],
-            }
-        )
-    )
+    assert pending.exists()
+    current.unlink()
+    current.symlink_to(previous)
+    (confdir / "a.toml").write_text("a\n")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert not marker.exists(), "a non-current generation's adapters never run"
@@ -175,9 +171,9 @@ def test_on_remove_hook_fires_at_removal_not_install(sandbox):
         sandbox / "myenv",
         {
             "demo": f"""
-import {{ file, hook, identity, profile, repoFile, runBash, trackedCopyTo }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default [hook("demo-hook-0", {{ trigger: "on_remove", run: runBash({{ body: "touch {marker}" }}) }}),
+export default [hook("demo-hook-0", {{ trigger: "on_remove", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("touch {marker}")] }}) }}),
 profile("demo", {{ files: [
     file({{ source: repoFile("configs/demo/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.conf") }})
   ], hooks: ["demo-hook-0"] }})];
@@ -188,6 +184,7 @@ profile("demo", {{ files: [
     assert out.returncode == 0, out.stderr
     assert not marker.exists(), "on_remove must not fire at install"
 
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "demo")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
@@ -206,9 +203,9 @@ def test_activation_record_failure_compensates(sandbox):
         sandbox / "myenv",
         {
             "demo": f"""
-import {{ file, hook, identity, profile, repoFile, runBash, trackedCopyTo }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default [hook("demo-hook-0", {{ trigger: "post_activate", run: runBash({{ body: "true" }}) }}),
+export default [hook("demo-hook-0", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("true")] }}) }}),
 profile("demo", {{ files: [
     file({{ source: repoFile("configs/demo/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.conf") }})
   ], hooks: ["demo-hook-0"] }})];
@@ -248,9 +245,9 @@ def test_rollback_runs_the_target_generations_hooks(sandbox):
         sandbox / "myenv",
         {
             "demo": f"""
-import {{ file, hook, identity, profile, repoFile, runBash, trackedCopyTo }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default [hook("demo-hook-0", {{ trigger: "post_activate", run: runBash({{ body: "echo activated >> {marker}" }}) }}),
+export default [hook("demo-hook-0", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("echo activated >> {marker}")] }}) }}),
 profile("demo", {{ files: [
     file({{ source: repoFile("configs/demo/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.conf") }})
   ], hooks: ["demo-hook-0"] }})];
@@ -284,9 +281,9 @@ import { profile } from "@gripsack/core";
 export default profile("demo", {  });
 """,
             "ephemeral": f"""
-import {{ hook, profile, runBash }} from "@gripsack/core";
+import {{ hook, profile, exec, lit }} from "@gripsack/core";
 
-export default [hook("ephemeral-hook-0", {{ trigger: "on_remove", run: runBash({{ body: "echo removed >> {marker}" }}) }}),
+export default [hook("ephemeral-hook-0", {{ trigger: "on_remove", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("echo removed >> {marker}")] }}) }}),
 profile("ephemeral", {{ hooks: ["ephemeral-hook-0"] }})];
 """,
         },
@@ -317,9 +314,9 @@ def test_profile_hook_runs_after_activation(sandbox):
     repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { file, hook, identity, profile, repoFile, runBash, symlinkTo } from "@gripsack/core";
+import { file, hook, identity, profile, repoFile, exec, lit, symlinkTo } from "@gripsack/core";
 
-export default [hook("demo-hook-0", { trigger: "post_activate", run: runBash({ body: "echo post-activate > ~/hook-ran" }) }),
+export default [hook("demo-hook-0", { trigger: "post_activate", run: exec({ argv: [lit("/bin/sh"), lit("-c"), lit("echo post-activate > ~/hook-ran")] }) }),
 profile("demo", { files: [
     file({ source: repoFile("configs/demo/a.txt"), content: identity(), destination: symlinkTo("~/.config/demo/a.txt") })
   ], hooks: ["demo-hook-0"] })];

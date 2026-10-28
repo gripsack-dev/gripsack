@@ -2,6 +2,8 @@
 
 The gh executable here is explicitly a test double. Actual signature acceptance
 must additionally be exercised with a real signed candidate and real gh.
+The current release contract is writer 9/readers [9]; historical reader ranges
+are rejection cases, not supported compatibility fixtures.
 """
 from __future__ import annotations
 
@@ -16,6 +18,14 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 REPO = Path(__file__).resolve().parents[1]
+
+REJECTED_IR_CONTRACTS = [
+    ("legacy-range", {"writer": 8, "readers": [3, 4, 5, 6, 7, 8]}),
+    ("mixed-readers", {"writer": 9, "readers": [8, 9]}),
+    ("wrong-reader", {"writer": 9, "readers": [8]}),
+    ("wrong-writer", {"writer": 8, "readers": [9]}),
+    ("missing-reader", {"writer": 9, "readers": []}),
+]
 
 
 def fixture_manifest(version, artifacts):

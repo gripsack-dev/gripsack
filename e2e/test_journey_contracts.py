@@ -2,7 +2,8 @@
 
 Every seed visits the contract families, but their order, pending source edits
 and payloads vary. The oracle records commits, not declarations: update and
-failed apply are never permission to advance the deployed-content model.
+pre-flip failure cannot advance deployment; post-link failures are durable
+lifecycle outcomes after a commit and must not roll it back or retry silently.
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ import pytest
 from conftest import grip, make_workspace_repo, make_tarball
 
 
-Fault = Literal["none", "source", "rendered", "post_link"]
+Fault = Literal["none", "source", "rendered", "deployed", "post_link"]
 SEEDS = (42, 2026, 31337)
 
 
@@ -40,7 +41,7 @@ class Model:
 
 def declaration(payload: Path, fault: Fault = "none") -> str:
     """Native acquired content must pass explicit workspace file checks."""
-    subject = "deployed" if fault == "post_link" else "source" if fault == "source" else "rendered"
+    subject = "deployed" if fault in {"deployed", "post_link"} else "source" if fault == "source" else "rendered"
     stage = "post_link" if fault == "post_link" else "pre_flip"
     command = "/usr/bin/true" if fault == "none" else "/usr/bin/false"
     return f'''import {{pkg,provider,tarball,profile,file,artifactFile,identity,
@@ -196,14 +197,32 @@ export default [
         before = self.lock_bytes()
         output = self.repo / "outputs/recipe.ts"
         output.write_text(declaration(self.payload, fault))
-        for _ in range(2):
-            # The state contract is the oracle: the run fails, and the
-            # committed generation, its destinations and the lock stay
-            # byte-identical. Which diagnostic phrased it is not.
-            self.command("apply", "--host", "testhost", error="")
-            assert self.model.committed == committed
-            self.check_committed()
+        # Pre-flip validation gates deployment. Post-link validation instead
+        # records a terminal lifecycle outcome after the new generation commits.
+        if fault == "post_link":
+            previous = json.loads(self.command("hooks", "list", "--json").stdout)["intents"]
+            previous_ids = {row["intent"] for row in previous}
+            self.apply()
+            assert self.model.committed != committed
+            outcomes = json.loads(self.command("hooks", "list", "--json").stdout)["intents"]
+            failed = [row for row in outcomes if row["intent"] not in previous_ids]
+            assert len(failed) == 1
+            assert failed[0]["state"] == {"kind": "failed", "attempt": 1}
+            assert failed[0]["processes"][0]["exit_code"] == 1
+            assert not failed[0]["pending"]
+            activated = self.model.committed
+            self.apply()
+            assert self.model.committed == activated
+            assert json.loads(self.command("hooks", "list", "--json").stdout)["intents"] == outcomes
             assert self.lock_bytes() == before
+        else:
+            for _ in range(2):
+                # Failure authorizes neither destination writes nor a new
+                # current generation, including deployed pre-flip validation.
+                self.command("apply", "--host", "testhost", error="")
+                assert self.model.committed == committed
+                self.check_committed()
+                assert self.lock_bytes() == before
         output.write_text(declaration(self.payload))
         self.apply()
         assert self.model.committed != committed
@@ -278,7 +297,7 @@ def test_seeded_contract_journey(sandbox: Path, seed: int) -> None:
     # recipes, retained generations, and already acquired source revisions.
     actions = [
         "edit", "edit", "update_apply", "update_apply",
-        "source", "rendered", "post_link", "rendered",
+        "source", "rendered", "deployed", "post_link", "rendered",
         "warm", "cold", "retained", "current",
     ]
     world.rng.shuffle(actions)
@@ -291,7 +310,7 @@ def test_seeded_contract_journey(sandbox: Path, seed: int) -> None:
                 world.edit()
                 world.update()
                 world.apply()
-            elif action in {"source", "rendered", "post_link"}:
+            elif action in {"source", "rendered", "deployed", "post_link"}:
                 world.fail_and_heal(action)
             elif action in {"warm", "cold"}:
                 world.reconstruct(cold=action == "cold")

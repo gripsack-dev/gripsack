@@ -48,7 +48,9 @@ pub(crate) fn execution_error(ir: &Ir, operation: WorkspaceOperation) -> Option<
     let output = workspace.outputs.first();
     let span = output.map(WorkspaceOutput::span).unwrap_or(&workspace.span);
     let message = match output {
-        Some(WorkspaceOutput::Profile(_)) => "profile schedule registration is not available",
+        Some(WorkspaceOutput::Profile(_) | WorkspaceOutput::Schedule(_)) => {
+            "schedule registration is not available"
+        }
         _ => {
             "select a profile output; packages and images use build, environments and tasks use run"
         }

@@ -251,9 +251,13 @@ def test_random_journey(sandbox, seed):
         "tool": output_source(repo_root, "tool", tool.to),
         "shell": output_source(repo_root, "shell", None),
     })
-    trace = ["init+apply"]
+    trace = ["init+update+apply"]
 
     write_repo()
+    # tarball(file://...) is an external source even inside the repository.
+    # Establish its pin explicitly before exercising frozen apply and rollback.
+    out = grip("update", "--host", "testhost", cwd=repo_root)
+    assert out.returncode == 0, f"seed={seed} initial update: {out.stderr}"
     apply()
 
     gen_content = {gen: (copy.managed, copy.declared, merge.managed, merge.declared, tool.managed)}

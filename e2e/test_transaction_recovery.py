@@ -78,11 +78,11 @@ export default profile("aaa", { files: [
     marker = sandbox / "check-observed-both-writes"
     (repo / "outputs" / "bbb.ts").write_text(
         f"""
-import {{ check, file, literalText, profile, runBash, trackedCopyTo }} from "@gripsack/core";
+import {{ check, file, literalText, profile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
 export default [
-  check("reject-candidate", {{ subject: "bbb", run: runBash({{
-    body: 'test "$(cat "{sandbox}/.out/a.conf")" = v2 && test "$(cat "{sandbox}/.out/b")" = candidate && touch "{marker}"; exit 1'
+  check("reject-candidate", {{ subject: "bbb", run: exec({{
+    argv: [lit("/bin/sh"), lit("-c"), lit('test "$(cat "{sandbox}/.out/a.conf")" = v2 && test "$(cat "{sandbox}/.out/b")" = candidate && touch "{marker}"; exit 1')]
   }}) }}),
   profile("bbb", {{ files: [file({{
     content: literalText("candidate"),
@@ -312,13 +312,13 @@ export default profile("demo", { files: [
 
 def test_failed_apply_restores_previous_owned_link(sandbox):
     """A failed deployed check restores the exact prior immutable store link."""
-    payload = make_tarball(sandbox / "a.tar.gz", {"a.txt": b"original\n"})
+    payload = make_tarball(sandbox / "myenv" / "a.tar.gz", {"a.txt": b"original\n"})
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("aa-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("aa-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("aa", {{ files: [
     file({{ source: artifactFile("aa-payload", "a.txt"), content: identity(), destination: symlinkTo("~/.local/bin/aa") }})
   ] }})];
@@ -330,17 +330,17 @@ profile("aa", {{ files: [
     previous_target = link.readlink()
     current = sandbox / ".local/share/gripsack/current"
     previous_selection = current.readlink()
-    updated = make_tarball(sandbox / "a-v2.tar.gz", {"a.txt": b"candidate\n"})
+    updated = make_tarball(sandbox / "myenv" / "a-v2.tar.gz", {"a.txt": b"candidate\n"})
     declaration = repo / "outputs/hello.ts"
-    declaration.write_text(declaration.read_text().replace(str(payload), str(updated)))
+    declaration.write_text(declaration.read_text().replace(payload.name, updated.name))
     marker = sandbox / "check-observed-new-link"
     (repo / "outputs" / "zz.ts").write_text(
         f"""
-import {{ check, file, literalText, profile, runBash, trackedCopyTo }} from "@gripsack/core";
+import {{ check, file, literalText, profile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
 export default [
-  check("reject-link", {{ subject: "zz", run: runBash({{
-    body: 'test "$(cat "{link}")" = candidate && touch "{marker}"; exit 1'
+  check("reject-link", {{ subject: "zz", run: exec({{
+    argv: [lit("/bin/sh"), lit("-c"), lit('test "$(cat "{link}")" = candidate && touch "{marker}"; exit 1')]
   }}) }}),
   profile("zz", {{ files: [file({{
     content: literalText("candidate"),
@@ -382,14 +382,14 @@ def test_apply_recovers_from_an_interrupted_run(sandbox):
     import json
 
     payload = make_tarball(
-        sandbox / "a.tar.gz", {"conf.txt": b"v=new\n"}
+        sandbox / "myenv" / "a.tar.gz", {"conf.txt": b"v=new\n"}
     )
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, trackedCopyTo }} from "@gripsack/core";
 
-export default [pkg("a-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("a-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("a", {{ files: [
     file({{ source: artifactFile("a-payload", "conf.txt"), content: identity(), destination: trackedCopyTo("~/.config/a/conf.txt") }})
   ] }})];
@@ -439,13 +439,13 @@ def test_recovery_leaves_user_edits_alone(sandbox):
     import hashlib
     import json
 
-    payload = make_tarball(sandbox / "a.tar.gz", {"conf.txt": b"v=new\n"})
+    payload = make_tarball(sandbox / "myenv" / "a.tar.gz", {"conf.txt": b"v=new\n"})
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, trackedCopyTo }} from "@gripsack/core";
 
-export default [pkg("a-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("a-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("a", {{ files: [
     file({{ source: artifactFile("a-payload", "conf.txt"), content: identity(), destination: trackedCopyTo("~/.config/a/conf.txt") }})
   ] }})];
@@ -488,13 +488,13 @@ def test_legacy_untagged_entry_fails_closed(sandbox):
     import hashlib
     import json
 
-    payload = make_tarball(sandbox / "a.tar.gz", {"conf.txt": b"v=new\n"})
+    payload = make_tarball(sandbox / "myenv" / "a.tar.gz", {"conf.txt": b"v=new\n"})
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, trackedCopyTo }} from "@gripsack/core";
 
-export default [pkg("a-payload", {{ producer: provider(fileFetch("{payload}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("a-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("a", {{ files: [
     file({{ source: artifactFile("a-payload", "conf.txt"), content: identity(), destination: trackedCopyTo("~/.config/a/conf.txt") }})
   ] }})];

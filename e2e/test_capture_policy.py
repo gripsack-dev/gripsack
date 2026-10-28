@@ -273,7 +273,7 @@ def test_glob_exclusions_still_refuse_required_roots_and_pins(sandbox):
     (repo / "locks/testhost.lock").write_text("{}\n")
     before = receipt_paths()
     # Wildcard heads parse; the walk itself refuses the authority match.
-    for pattern in ["ho*", "**/*.lock"]:
+    for pattern in ["lo*", "**/*.lock"]:
         exclude(repo, pattern)
         failed = grip("trust", "inspect", str(repo), "--json", approve=False)
         assert failed.returncode != 0, pattern

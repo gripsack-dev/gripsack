@@ -273,6 +273,7 @@ export default profile("renamed", { files: [
     assert "updated" in out.stdout, out.stdout
     assert original.read_text() == "v2\n"
 
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "renamed")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
@@ -304,6 +305,7 @@ def test_double_takeover_keeps_the_first_origin(sandbox):
     assert out.returncode == 0, out.stderr
     assert original.read_text() == "B\n"
 
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
     remove_output(repo, "a-toml")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr

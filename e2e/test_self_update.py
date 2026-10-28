@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 from conftest import GRIP
-from release_fixture import Releases as SelfUpdateReleases
+from release_fixture import REJECTED_IR_CONTRACTS, Releases as SelfUpdateReleases
 
 
 
@@ -107,6 +107,52 @@ def wait_for(predicate, timeout: float = 60.0, what: str = "condition") -> None:
             return
         time.sleep(0.05)
     raise AssertionError(f"timed out waiting for {what}")
+
+
+@pytest.mark.parametrize("contract", [contract for _, contract in REJECTED_IR_CONTRACTS],
+                         ids=[name for name, _ in REJECTED_IR_CONTRACTS])
+def test_noncurrent_ir_contract_preserves_installed_executable(sandbox, contract):
+    server = SelfUpdateReleases()
+    try:
+        server.serve("9.9.9", release_tarball("9.9.9"))
+        server.mutate_manifest("9.9.9", lambda m: m["compatible"].update(ir=contract))
+        exe = install_real_cli(sandbox)
+        original = exe_state(exe)
+        result = subprocess.run([str(exe), "self-update"], env=cli_env(sandbox, server),
+                                capture_output=True, text=True, timeout=120)
+        assert result.returncode != 0
+        assert "unsupported IR compatibility contract" in result.stderr
+        assert exe_state(exe) == original
+        assert server.count(".tar.gz") == 0
+    finally:
+        server._server.shutdown()
+        server._server.server_close()
+
+
+@pytest.mark.parametrize("signature", ["missing", "invalid", "refused"])
+def test_unverified_update_preserves_installed_executable(sandbox, signature):
+    server = SelfUpdateReleases()
+    try:
+        server.serve("9.9.9", release_tarball("9.9.9"))
+        assets = server.releases["9.9.9"]["assets"]
+        bundle = "gripsack-release-9.9.9.json.sigstore.json"
+        if signature == "missing":
+            del assets[bundle]
+        elif signature == "invalid":
+            assets[bundle] = b"not a signature"
+        exe = install_real_cli(sandbox)
+        original = exe_state(exe)
+        env = cli_env(sandbox, server)
+        if signature == "refused":
+            env["FIXTURE_SIGNATURE_FAILURE"] = "test-double refusal"
+        result = subprocess.run([str(exe), "self-update"], env=env,
+                                capture_output=True, text=True, timeout=120)
+        assert result.returncode != 0
+        assert exe_state(exe) == original
+        assert server.count(".tar.gz") == 0
+    finally:
+        server._server.shutdown()
+        server._server.server_close()
 
 
 # --------------------------------------------------------------------------
