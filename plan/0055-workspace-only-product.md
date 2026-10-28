@@ -158,6 +158,19 @@ their dead implementation, not as passing checks.
   Consumer and release-evidence readers now take external identities from the
   frozen profile; release-script unit tests passed 128/128 after that cutover.
   Installed-release flows also include native integrity and preview scenarios.
+- The normal assertion-enabled `54c1c29` flow image passed all 648 cases.
+  Candidate `f94a9ea2021abd7c6a9dfbc327d2204400b881bcd31ffbfb92923dd968b9a14d`
+  (`83e4922`) additionally passed packaged documentation examples and 227
+  installed-release flows before the root example correctly refused incomplete
+  frontend/import pins: the runner had copied the SDK but omitted its locked
+  development dependencies. Preparation now seeds those exact archives and uses
+  offline `npm ci`, preserving both package manifests and gripsack.lock.
+- A continued real-artifact smoke completed the corrected root consumer,
+  frozen Conda build/run/task/apply and retained reuse, plus both `.conda` and
+  `.tar.bz2` archive consumers and their negative controls (62 commands).
+  The archive fixture now uses `pixi.fromLock`; no retired flat alias remains
+  in active consumer declarations. No lock refresh or public SDK substitution
+  was used to turn the refusal into success.
 
 These are development observations, not a relabelled qualification receipt.
 The frozen 0.50 release must still complete its practical profile.

@@ -17,7 +17,7 @@ import tempfile
 import tomllib
 import xml.etree.ElementTree as ET
 
-from examples_check.fixtures import install_sdk, prepare_sdk
+from examples_check.fixtures import prepare_sdk
 from examples_check.extract import CheckFailure
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -305,7 +305,24 @@ class Consumer:
         repo = self.work / "example"
         shutil.copytree(self.args.example, repo, ignore=shutil.ignore_patterns(".git"))
         before = snapshot(repo)
-        install_sdk(repo, self.sdk)
+        # artifacts() seeded the exact SDK tarball in this private npm cache.
+        # Fetch only the other locked archives, then forbid network fallback
+        # while npm reconstructs the complete tree captured by gripsack.lock.
+        packages = json.loads((repo / "package-lock.json").read_text())["packages"]
+        for name, package in sorted(packages.items()):
+            if name in ("", "node_modules/@gripsack/core"):
+                continue
+            require(package.get("resolved") and package.get("integrity"),
+                    f"npm dependency {name} is not frozen to an archive identity")
+            self.run(["npm", "cache", "add", "--ignore-scripts", package["resolved"]], cwd=repo)
+        self.run(["npm", "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=repo)
+        require(all(sha(repo / name) == before[name]["sha256"]
+                    for name in ("package.json", "package-lock.json", "gripsack.lock")),
+                "frozen npm preparation changed a source manifest or lock")
+        installed = repo / "node_modules/@gripsack/core"
+        require({name: value["sha256"] for name, value in snapshot(installed).items()}
+                == {name: value["sha256"] for name, value in snapshot(self.sdk).items()},
+                "frozen workspace SDK differs from candidate bytes")
         # Frozen root caller: no automatic lock migration or mutable GitHub release install.
         self.approve(repo)
         self.run([self.grip, "check"], cwd=repo)
@@ -343,7 +360,7 @@ class Consumer:
         self.receipt["external_consumer"] = {"root": "root workspace check with candidate installed SDK",
             "conda": "embedded-frontend frozen build/run/task/apply/apply; unavailable-helper retained build/gc/shell",
             "frozen_lock_sha256": sha(lock), "retained_prefixes": retained,
-            "network": "initial exact lock-pinned public archives fetched by core; retained reuse is not a network-namespace isolation claim"}
+            "network": "npm dependency archives and Conda archives are lock-pinned; the candidate SDK install is offline; retained reuse is not a network-namespace isolation claim"}
 
     def execute(self):
         self.source_identity()
