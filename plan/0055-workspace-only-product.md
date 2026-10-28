@@ -147,6 +147,10 @@ their dead implementation, not as passing checks.
   generation stayed unchanged and the image flow created none. Healthy native
   and image inventories audited with deliberately unavailable runtimes/helpers,
   confirming that verification does not evaluate or provision.
+- The capability-hashing source `c591f37` produced identical native helper bytes
+  in two independent builds: `1026d2f1c7761c072beae615e78d0f9c7fea983979855431c942ec1ce6044e89`.
+  Static/protocol checks passed and the helper lock remained unchanged; the core
+  pin is updated to these measured bytes before the next qualification snapshot.
 
 These are development observations, not a relabelled qualification receipt.
 The frozen 0.50 release must still complete its practical profile.
