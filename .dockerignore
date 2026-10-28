@@ -12,3 +12,5 @@ local-ci/
 site/
 example/
 repro/
+tools/buildkit-bridge/bridge-bin
+verification/buildkit-qualification/bridge/bridge-bin

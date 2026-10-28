@@ -1,10 +1,10 @@
 //! Semantic normalization kernels for workspace identity (plan/0052 §5.1):
-//! the length-delimited framing every v6 identity encoder hashes, the
+//! the length-delimited framing every workspace identity encoder hashes, the
 //! canonical order every unordered declaration collection is normalized
 //! to before encoding, and the proved boundary between semantic content
 //! (hashed) and provenance (spans, line maps, labels — never hashed).
 //!
-//! Production binding: the v6 identity encoder
+//! Production binding: the workspace identity encoder
 //! (gripsack-ir/src/workspace_model/identity) frames every field through
 //! `FrameBuffer` and normalizes every unordered collection (environment
 //! maps, unordered string sets, mutation locks) through
@@ -924,7 +924,7 @@ pub proof fn lemma_sorted_repeat_adjacent(values: Seq<(Seq<u8>, Seq<u8>)>, from:
 }
 
 /// The canonical form of an unordered collection: the unique sorted,
-/// duplicate-free presentation. Module, label and import declaration
+/// duplicate-free presentation. Unordered declaration
 /// order cannot change it.
 pub open spec fn canonical_form(values: Seq<(Seq<u8>, Seq<u8>)>) -> Seq<(Seq<u8>, Seq<u8>)> {
     dedup_sorted(values.sort_by(leq_pair_fn()))
@@ -960,7 +960,7 @@ pub proof fn lemma_canonical_form_properties(values: Seq<(Seq<u8>, Seq<u8>)>)
 }
 
 /// Canonical-form uniqueness: presentations with the same members —
-/// any module/label/import order, any duplicate spelling — normalize
+/// any unordered declaration order, any duplicate spelling — normalize
 /// to one sequence.
 pub proof fn lemma_canonical_form_unique(a: Seq<(Seq<u8>, Seq<u8>)>, b: Seq<(Seq<u8>, Seq<u8>)>)
     requires
@@ -1142,8 +1142,8 @@ pub open spec fn ordered_frames(values: Seq<Seq<u8>>) -> Seq<Seq<u8>> {
     seq![le64(values.len() as u64)] + values
 }
 
-/// Label/module/import-order invariance: presentations with the same
-/// members encode to the same frames.
+/// Unordered-declaration invariance: presentations with the same members
+/// encode to the same frames.
 pub proof fn lemma_unordered_presentation_invariant(
     a: Seq<(Seq<u8>, Seq<u8>)>,
     b: Seq<(Seq<u8>, Seq<u8>)>,

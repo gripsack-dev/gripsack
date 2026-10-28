@@ -1,5 +1,5 @@
 //! Classify admitted graph edges by role before closure/admission.
-//! One pure implementation is used by the v4 IR adapter and Verus.
+//! One pure implementation is used by the workspace IR adapter and Verus.
 //! A required validation edge must remain in the validation projection;
 //! runtime, task and retention edges never become build inputs.
 
@@ -70,70 +70,6 @@ pub fn project_graph_role(role: GraphRole) -> (decision: RoleDecision)
         GraphRole::Runtime | GraphRole::Ordering | GraphRole::TaskPrereq | GraphRole::Retention =>
             RoleDecision { build: false, required_validation: false },
     }
-}
-
-
-/// A recipe's publication checks cannot be pruned as dead build
-/// inputs. Runtime/task/ordering/retention edges must not enter build
-/// closure; every input receives exactly one decision.
-pub fn project_graph_roles(roles: &[GraphRole]) -> (result: Vec<RoleDecision>)
-    ensures
-        result@.len() == roles@.len(),
-        forall|j: int| 0 <= j < roles@.len() ==> (
-            result@[j].build == (roles@[j] == GraphRole::Production
-                || roles@[j] == GraphRole::BuildInput)
-            && result@[j].required_validation == (roles@[j] == GraphRole::Validation)
-        ),
-{
-    let mut result: Vec<RoleDecision> = Vec::new();
-    let mut i: usize = 0;
-    while i < roles.len()
-        invariant
-            i <= roles@.len(),
-            result@.len() == i,
-            forall|j: int| 0 <= j < i ==> (
-                result@[j].build == (roles@[j] == GraphRole::Production
-                    || roles@[j] == GraphRole::BuildInput)
-                && result@[j].required_validation == (roles@[j] == GraphRole::Validation)
-            ),
-        decreases roles.len() - i,
-    {
-        let ghost previous = result@;
-        let role = roles[i];
-        let decision = project_graph_role(role);
-        proof {
-            assert(decision.build == (role == GraphRole::Production
-                || role == GraphRole::BuildInput));
-            assert(decision.required_validation == (role == GraphRole::Validation));
-        }
-        let ghost decided = decision;
-        result.push(decision);
-        proof {
-            assert(result@ == previous.push(decided));
-            assert forall|j: int| 0 <= j < i + 1 implies (
-                result@[j].build == (roles@[j] == GraphRole::Production
-                    || roles@[j] == GraphRole::BuildInput)
-                && result@[j].required_validation == (roles@[j] == GraphRole::Validation)
-            ) by {
-                if j < i {
-                    assert(previous[j].build == (roles@[j] == GraphRole::Production
-                        || roles@[j] == GraphRole::BuildInput));
-                    assert(previous[j].required_validation ==
-                        (roles@[j] == GraphRole::Validation));
-                    assert(result@[j] == previous[j]);
-                } else {
-                    assert(j == i);
-                    assert(roles@[j] == role);
-                    assert(result@[j] == decided);
-                    assert(decided.build == (role == GraphRole::Production
-                        || role == GraphRole::BuildInput));
-                    assert(decided.required_validation == (role == GraphRole::Validation));
-                }
-            };
-        }
-        i += 1;
-    }
-    result
 }
 
 }

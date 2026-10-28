@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 pub enum ByteBinding {
     /// The launched image is addressed through the retained executable handle.
     ExecutableHandle,
-    /// Hashed bytes copied privately, but execution still reopens a pathname.
+    /// Historical receipt value only; no current execution path emits it.
+    /// Hashed bytes were copied privately but execution reopened a pathname.
     PrivateCopyPath,
 }
 

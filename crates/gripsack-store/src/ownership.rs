@@ -55,18 +55,18 @@ impl<'de> Deserialize<'de> for ManagedBlockId {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum StoredOwnership {
-    Legacy(gripsack_ir::Ownership),
+    Legacy(crate::Ownership),
     ManagedBlock { managed_block: ManagedBlockId },
 }
 
 impl StoredOwnership {
     pub fn for_entry(
-        policy: &gripsack_ir::Ownership,
+        policy: &crate::Ownership,
         block: Option<&ManagedBlockId>,
     ) -> io::Result<Self> {
         match block {
             None => Ok(Self::Legacy(policy.clone())),
-            Some(block) if *policy == gripsack_ir::Ownership::Merge => Ok(Self::ManagedBlock {
+            Some(block) if *policy == crate::Ownership::Merge => Ok(Self::ManagedBlock {
                 managed_block: block.clone(),
             }),
             Some(_) => Err(io::Error::new(
@@ -76,10 +76,10 @@ impl StoredOwnership {
         }
     }
 
-    pub fn policy(&self) -> gripsack_ir::Ownership {
+    pub fn policy(&self) -> crate::Ownership {
         match self {
             Self::Legacy(policy) => policy.clone(),
-            Self::ManagedBlock { .. } => gripsack_ir::Ownership::Merge,
+            Self::ManagedBlock { .. } => crate::Ownership::Merge,
         }
     }
 
@@ -113,7 +113,7 @@ impl OwnershipKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gripsack_ir::Ownership;
+    use crate::Ownership;
     use serde_json::json;
 
     #[test]

@@ -125,25 +125,20 @@ until `apply` exists; the placeholder tape exercises `--version` and
 
 ## 8. Versioning and IR compatibility
 
-- Package versions are independent; the **IR version** is the real
-  contract. The core accepts explicit versioned envelopes from v3 through
-  v7; the frontend emits only v7. V3 module maps remain readable, v4
-  workspaces remain read-only, and v5 retains native file-profile behavior.
-  V6 keeps its original executing semantics but rejects v7-only baseline
-  and host-runtime declarations. `grip doctor` reports incompatible pins.
-- Pre-1.0: keep package versions loosely synced to spare confusion.
-- The v3–v7 readers reject unknown structural fields (serde
-  `deny_unknown_fields` plus a versioned tagged-field pre-pass). The old
-  unknown-field-tolerance sentence was not implemented and MUST NOT be
-  used to justify an unversioned schema change. A new field is
-  backwards-compatible only if the older declared reader explicitly
-  supports that extension point; otherwise bump `ir_version` and
-  retain a versioned reader. Writers emit only schema-described fields.
-  Persisted generation/lock formats are separate contracts; changing
-  their IR-derived serde values requires a compatible reader or tested
-  migration, never an implicit reinterpretation.
+- The core and TypeScript SDK speak one current **IR version**. As of the
+  owner-directed 0.50 cutover ([0055](0055-workspace-only-product.md)), that is
+  IR9 and the workspace is its only envelope. Obsolete readers, schemas and
+  authoring APIs are removed; historical bytes remain in Git history.
+- Keep core, SDK and shipped helper versions coordinated while pre-1.0.
+- Strict tagged admission and `deny_unknown_fields` reject structural extras.
+  An incompatible wire change bumps `ir_version`; writers emit only fields
+  described by that schema. Do not add compatibility shims to preserve an
+  obsolete authoring API.
+- Persisted generations, locks, receipts and recovery journals are separate
+  contracts. Preserve retained ownership and rollback data; never reinterpret
+  old persistent bytes merely because the authoring IR changed.
 
 ## 9. Branch protection
 
-`main`: PRs only, `test` check required, linear history. The repo owner
-merges with admin override (bot PRs never get CI — expected).
+`main` uses strict `local-practical-qualification` status enforcement.
+Changes go through PRs; the owner may merge with the existing admin exemption.

@@ -23,14 +23,14 @@ pub fn generations() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     for n in all {
-        let modules = match store::read_manifest(&home, n) {
-            Ok(g) => g.modules.len().to_string(),
+        let profiles = match store::read_manifest(&home, n) {
+            Ok(g) => g.deployments.len().to_string(),
             // a corrupt generation shows as corrupt (0027 §4), never
-            // as "0 modules"
+            // as "0 profiles"
             Err(_) => "corrupt".to_string(),
         };
         let marker = if Some(n) == current { "→" } else { " " };
-        println!("{marker} {n:>3}  ({modules} modules)");
+        println!("{marker} {n:>3}  ({profiles} profiles)");
     }
     ExitCode::SUCCESS
 }

@@ -260,16 +260,6 @@ impl<'a> Invocation<'a> {
             .as_ref()
             .map(super::Ruleset::try_clone)
             .transpose()?;
-        #[cfg(target_os = "macos")]
-        let confinement = confinement
-            .map(|ruleset| {
-                let ruleset = ruleset.granting_image_read(&self.program.executable.path)?;
-                match self.program.script.as_ref() {
-                    Some(script) => ruleset.granting_image_read(&script.path),
-                    None => Ok(ruleset),
-                }
-            })
-            .transpose()?;
         let (payload, environment_keys) = super::exec_payload::ExecPayload::new(
             self.program,
             arguments,
@@ -277,7 +267,6 @@ impl<'a> Invocation<'a> {
             self.role,
             activation,
             self.overlay.as_ref(),
-            confinement.as_ref(),
         )?;
         let mut command = Command::new(&self.program.executable.path);
         command.env_clear();
@@ -287,8 +276,7 @@ impl<'a> Invocation<'a> {
         let images = self.program.inherited_images();
         // SAFETY: retained image/directory owners outlive spawn and supervision.
         // The closure performs only fchdir, Linux Landlock syscalls,
-        // fcntl/close_range, execve and errno reads. macOS Seatbelt is installed
-        // by the trusted platform launcher AFTER this exec.
+        // fcntl/close_range, execve and errno reads.
         unsafe {
             command.pre_exec(move || {
                 #[cfg(target_os = "linux")]

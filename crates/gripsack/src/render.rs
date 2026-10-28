@@ -3,7 +3,7 @@
 //! user's frontend code — a missing file degrades to the header alone,
 //! never an error.
 
-use gripsack_ir::{Diagnostic, HostName, Ir, Severity, Span};
+use gripsack_ir::{Diagnostic, Ir, Severity, Span};
 use owo_colors::OwoColorize;
 use std::io::{IsTerminal, Read};
 use std::path::{Component, Path, PathBuf};
@@ -34,10 +34,6 @@ impl Palette {
 
     pub fn warn(&self, text: &str) -> String {
         self.style(text, |t| t.yellow().bold().to_string())
-    }
-
-    pub fn badge(&self, text: &str) -> String {
-        self.style(text, |t| t.blue().bold().to_string())
     }
 
     pub fn cyan(&self, text: &str) -> String {
@@ -175,122 +171,6 @@ fn snippet(span: &Span, note: &str, palette: Palette, root: Option<&SourceRoot>)
     } else {
         out
     }
-}
-
-/// Render one module's plan (0007 §5): what it fetches, deploys, needs,
-/// which wave it lands in — and how reversible each mutation is
-/// (review 0020 §10): a plan that says what it will do should also
-/// say what undoing it means.
-pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palette) -> String {
-    let Some(module) = ir.modules.get(name) else {
-        return format!("no module {name:?}");
-    };
-    let wave = waves
-        .iter()
-        .position(|w| w.iter().any(|m| m == name))
-        .map(|i| i.to_string())
-        .unwrap_or_else(|| "?".into());
-    let title = format!("{name}  (wave {wave})");
-    let mut out = if palette.enabled {
-        title.green().bold().to_string()
-    } else {
-        title
-    };
-    if let Some(fetch) = &module.fetch {
-        out.push_str(&format!(
-            "\n  fetch    {}",
-            gripsack_exec::report::describe_fetch(fetch)
-        ));
-    }
-    // 0039: a build-only dependency deploys nothing — its declared
-    // install/config lines must not read as plan intent
-    let build_only = gripsack_ir::dependencies::build_only_modules(&ir.modules).contains(name);
-    if build_only {
-        let consumers: Vec<&str> = ir
-            .modules
-            .iter()
-            .filter(|(_, m)| {
-                m.depends
-                    .iter()
-                    .any(|d| d.module == name && d.edge == gripsack_ir::EdgeKind::Build)
-            })
-            .map(|(n, _)| n.as_str())
-            .collect();
-        out.push_str(&format!(
-            "\n  closure  build-only ({} builds against it) — fetched + staged, never deployed",
-            consumers.join(", ")
-        ));
-    }
-    for entry in module.install.iter().filter(|_| !build_only) {
-        out.push_str(&format!(
-            "\n  install  {} → {} ({:?}) [reversible: prior state recorded]",
-            entry.from, entry.to, entry.mode
-        ));
-    }
-    for entry in module.config.iter().filter(|_| !build_only) {
-        out.push_str(&format!(
-            "\n  config   {} → {} ({:?}) [reversible: prior state recorded]",
-            entry.from, entry.to, entry.mode
-        ));
-    }
-    for dep in module.depends.iter() {
-        out.push_str(&format!("\n  depends  {} ({:?})", dep.module, dep.edge));
-    }
-    let dependents: Vec<_> = ir
-        .modules
-        .iter()
-        .filter(|(_, m)| m.depends.iter().any(|d| d.module == name))
-        .map(|(n, _)| n.as_str())
-        .collect();
-    if !dependents.is_empty() {
-        out.push_str(&format!("\n  blocks   {}", dependents.join(", ")));
-    }
-    for intent in module.activate.iter().filter(|_| !build_only) {
-        out.push_str(&format!(
-            "\n  activate {:?} [best-effort: adapter re-runs, no automatic inverse]",
-            intent.action
-        ));
-    }
-    if let Some(steps) = &module.steps {
-        out.push_str("\n  steps");
-        for step in steps {
-            if build_only
-                && matches!(
-                    step.action,
-                    gripsack_ir::StepAction::Install { .. }
-                        | gripsack_ir::StepAction::ConfigDeploy { .. }
-                        | gripsack_ir::StepAction::Intent { .. }
-                        | gripsack_ir::StepAction::Verify {
-                            verify: gripsack_ir::Verify::FileDeployed { .. }
-                        }
-                )
-            {
-                continue;
-            }
-            let needs = if step.needs.is_empty() {
-                String::new()
-            } else {
-                format!(" ← {}", step.needs.join(", "))
-            };
-            let risk = match &step.action {
-                // deploy steps record priors — the journal covers them
-                gripsack_ir::step::StepAction::Install { .. }
-                | gripsack_ir::step::StepAction::ConfigDeploy { .. } => "",
-                gripsack_ir::step::StepAction::Fetch { .. } => "",
-                // custom code runs with your privileges; undoing it
-                // needs its own inverse, which gripsack cannot know
-                gripsack_ir::step::StepAction::Run { .. }
-                | gripsack_ir::step::StepAction::CustomShell { .. }
-                | gripsack_ir::step::StepAction::Build { .. } => {
-                    "  [no automatic inverse: runs custom code]"
-                }
-                gripsack_ir::step::StepAction::Intent { .. } => "  [best-effort: adapter re-runs]",
-                _ => "",
-            };
-            out.push_str(&format!("\n    {}{needs}{risk}", step.id));
-        }
-    }
-    out
 }
 
 /// Render diagnostic facts without opening source paths. Use the
@@ -461,7 +341,7 @@ pub const CHECK_JSON_VERSION: u32 = 1;
 
 /// `grip check --json`'s document (0052 A1-06): failures carry the
 /// diagnostics; success carries the same facts the terminal listing
-/// prints (host, named outputs or legacy modules, layout notes).
+/// prints (host and named workspace outputs).
 #[derive(Debug, serde::Serialize)]
 pub struct CheckReport {
     pub version: u32,
@@ -473,10 +353,6 @@ pub struct CheckReport {
     pub host: Option<CheckHostReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outputs: Option<Vec<CheckOutputReport>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub modules: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub layouts: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -502,8 +378,6 @@ impl CheckReport {
             diagnostics,
             host: None,
             outputs: None,
-            modules: None,
-            layouts: None,
         }
     }
 
@@ -521,20 +395,14 @@ impl CheckReport {
     }
 }
 
-/// `grip plan`'s change section: what apply would do, computed against
-/// the current generation (0004 pass 5 — the diff that sells the
-/// architecture). Config entries hash offline; fetched modules show
-/// their store-path satisfaction without a fetch.
-#[allow(clippy::too_many_arguments)]
+/// Preview the same profile operations apply executes, without deployment.
 pub fn diff_section(
     ir: &Ir,
     repository: &gripsack_exec::Repository,
-    host: &HostName,
     adopting: &std::collections::BTreeSet<String>,
     palette: Palette,
     selected: &[String],
     limits: gripsack_fetch::FetchLimits,
-    migrate_from: Option<gripsack_store::GenerationId>,
 ) -> Result<String, gripsack_exec::ExecError> {
     let home = gripsack_store::gripsack_home();
     let current = gripsack_store::current_generation(&home)?
@@ -559,35 +427,14 @@ pub fn diff_section(
         None => b("changes: no current generation (first apply)"),
     }];
 
-    // THE operation list (0034): what apply would execute, rendered.
-    // plan/apply agreement is by construction — one planner.
-    // the lockfile resolves warm fetched payloads to their store
-    // paths (0035 F7) — a deployed module previews satisfied, not
-    // deferred; a cold or unpinned one stays deferred
-    let lock = if ir.has_workspace() {
-        gripsack_exec::lockfile::Lockfile::default()
-    } else {
-        match gripsack_exec::lockfile::read(repository.identity(), host) {
-            gripsack_exec::lockfile::LockRead::Parsed(lock) => lock,
-            gripsack_exec::lockfile::LockRead::Missing => Default::default(),
-            gripsack_exec::lockfile::LockRead::Corrupt(detail) => {
-                return Err(gripsack_exec::ExecError::Step {
-                    module: "*".into(),
-                    step: "lockfile".into(),
-                    detail,
-                });
-            }
-        }
-    };
+    // Plan and apply use the same workspace operation planner.
     let ops = gripsack_exec::ops::preview_ops(
         ir,
         repository,
         current.as_ref(),
         adopting,
-        &lock,
         limits,
         selected,
-        migrate_from,
     )?;
     let mut by_module: std::collections::BTreeMap<&str, Vec<String>> =
         std::collections::BTreeMap::new();
@@ -634,11 +481,11 @@ pub fn diff_section(
                 }
                 _ => format!("  ~ {} drifted — kept (apply preserves)", op.declared_to()),
             },
-            OpKind::RunEffect | OpKind::Deferred => {
+            OpKind::Deferred => {
                 format!("  · {}", op.note().unwrap_or("deferred"))
             }
         };
-        by_module.entry(op.module()).or_default().push(line);
+        by_module.entry(op.output()).or_default().push(line);
     }
     for (name, lines) in &by_module {
         // one marker note per module, not per step (dedup)
@@ -663,16 +510,6 @@ pub fn diff_section(
 mod tests {
     use super::*;
     use gripsack_ir::codes;
-
-    #[test]
-    fn renders_header_and_help_without_color() {
-        let d = Diagnostic::error(codes::UNKNOWN_DEPENDENCY, "module \"a\" is unknown")
-            .with_help("declare it in modules/");
-        let out = render_diagnostics(&[d], Palette::plain());
-        assert!(out.contains("error[E101]"));
-        assert!(out.contains("help: declare it"));
-        assert!(!out.contains('\u{1b}'));
-    }
 
     #[test]
     fn renders_snippet_when_file_exists() {

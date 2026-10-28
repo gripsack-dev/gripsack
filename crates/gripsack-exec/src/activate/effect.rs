@@ -165,10 +165,10 @@ pub(super) fn run(
         Ok(())
     })();
     let failure = result.err();
-    let module = match intent.action() {
+    let report_output = match intent.action() {
         Action::Fonts => "fonts".to_owned(),
         Action::DesktopEntry => "desktop-entry".to_owned(),
-        _ => intent.contributors()[0].module.clone(),
+        _ => intent.contributors()[0].output.clone(),
     };
     let action = match intent.action() {
         Action::Fonts => "fontconfig cache refresh".to_owned(),
@@ -195,7 +195,7 @@ pub(super) fn run(
         failure,
         output,
         report: StepReport {
-            module,
+            output: report_output,
             summary,
             kind: if failure.is_some() {
                 ReportKind::Warned

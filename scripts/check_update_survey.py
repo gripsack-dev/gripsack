@@ -11,10 +11,10 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-UPDATE = Path('crates/gripsack-exec/src/update.rs')
+UPDATE = Path('crates/gripsack-exec/src/workspace/update.rs')
 REPORT = Path('crates/gripsack-exec/src/report.rs')
-METADATA_CASE = 'update::tests::check_and_publish_agree_on_metadata_only_pin_changes'
-COMPLETE_CASE = 'update::tests::selected_survey_preserves_every_result_and_only_complete_publish_changes_lock'
+METADATA_CASE = 'workspace::update::tests::check_and_publish_agree_on_metadata_only_pin_changes'
+COMPLETE_CASE = 'workspace::update::tests::selected_survey_preserves_every_result_and_only_complete_publish_changes_lock'
 EXPECTED = (
     'report::update_model::every_survey_order_preserves_error_over_change_precedence',
     METADATA_CASE,
@@ -34,30 +34,38 @@ class Mutant:
 
 MUTANTS = (
     Mutant('missing-selected-observation', UPDATE,
-           'for name in missing {', 'for name in missing.into_iter().take(0) {',
-           COMPLETE_CASE, 'selected_survey_did_not_account_for_all_modules'),
+           'for name in &selection.required {',
+           'for name in selection.required.iter().take(0) {',
+           COMPLETE_CASE, 'selected_survey_did_not_account_for_all_outputs'),
     Mutant('failure-status-projection', REPORT,
            'UpdateStatus::Failed { .. } => UpdateDisposition::Failed,',
            'UpdateStatus::Failed { .. } => UpdateDisposition::Changed,',
            COMPLETE_CASE, 'survey_disposition_counts_misclassified'),
     Mutant('partial-entry-equality', UPDATE,
-           'let unchanged = old_entry == Some(&prepared.entry);',
-           'let unchanged = old.is_some_and(|old| old.sha256 == pin.sha256);',
+           '                            let previous =\n'
+           '                                resolution.pins.iter().position(|pin| pin.output == *name);\n'
+           '                            if previous.is_some_and(|index| resolution.pins[index] == next) {',
+           '                            let previous =\n'
+           '                                resolution.pins.iter().position(|pin| pin.output == *name);\n'
+           '                            if previous.is_some_and(|index| resolution.pins[index].resolved.tree256 == next.resolved.tree256) {',
            METADATA_CASE, 'check_full_entry_change_was_missed'),
     Mutant('check-source-publication', UPDATE,
-           'if mode == UpdateMode::Publish {', 'if true {',
+           'let resolved = if mode == UpdateMode::Publish {',
+           'let resolved = if true {',
            COMPLETE_CASE, 'check_published_source_cache'),
     Mutant('check-lock-publication', UPDATE,
            'if survey.summary().publishes_lock(mode) {',
            'if survey.summary().publishes_lock(UpdateMode::Publish) {',
            METADATA_CASE, 'check_published_lock'),
     Mutant('dropped-lock-effect', UPDATE,
-           '        crate::lockfile::write(ctx.repository.identity(), &ctx.host, &lock)?;', '',
+           '        pins.publish(ctx, &session, lock)?;', '',
            METADATA_CASE, 'published lock missing'),
     Mutant('premature-lock-effect', UPDATE,
-           '                lock.modules.insert(name.clone(), prepared.entry);',
-           '                lock.modules.insert(name.clone(), prepared.entry);\n'
-           '                crate::lockfile::write(ctx.repository.identity(), &ctx.host, &lock)?;',
+           '        reports.push(UpdateReport {\n            output: (*name).to_owned(),',
+           '        if mode == UpdateMode::Publish && had_definitions {\n'
+           '            WorkspacePins::read(&ctx.repository)?.publish(ctx, &session, lock.clone())?;\n'
+           '        }\n'
+           '        reports.push(UpdateReport {\n            output: (*name).to_owned(),',
            COMPLETE_CASE, 'failed_update_partially_published_lock'),
 )
 
@@ -86,10 +94,11 @@ def main():
                 'target', 'node_modules', '.venv', '__pycache__',
             ))
         inputs = [Path('Cargo.toml'), Path('Cargo.lock'), UPDATE, REPORT,
-                  Path('crates/gripsack-exec/src/update/prepare.rs'),
-                  Path('crates/gripsack-exec/src/update/tests.rs'),
-                  Path('crates/gripsack-exec/src/source/preflight.rs'),
-                  Path('crates/gripsack-exec/src/workspace/mod.rs'),
+                  Path('crates/gripsack-exec/src/workspace/update/tests.rs'),
+                  Path('crates/gripsack-exec/src/workspace/acquire.rs'),
+                  Path('crates/gripsack-exec/src/workspace/pins.rs'),
+                  Path('crates/gripsack-exec/src/workspace/definitions.rs'),
+                  Path('crates/gripsack-exec/src/workspace/selection.rs'),
                   Path('crates/gripsack-policy/src/update_survey.rs')]
         print('UPDATE_SURVEY_INPUT_SHA256=' + json.dumps({str(path): hashlib.sha256(
             (tree / path).read_bytes()).hexdigest() for path in sorted(inputs)}, sort_keys=True), flush=True)

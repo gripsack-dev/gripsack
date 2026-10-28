@@ -81,14 +81,10 @@ pub struct OwnedWorker<'a> {
     deadline: Instant,
 }
 impl<'a> OwnedWorker<'a> {
-    /// Admit native host availability and resource policy before roots, staging,
-    /// or optional helper acquisition. This never opens a worker home, downloads
-    /// builder inputs, or starts a VM. Acquisition rechecks native admission.
+    /// Admit native Linux availability and resource policy before opening a
+    /// worker home or acquiring builder inputs.
     pub fn preflight(options: &WorkerOptions, deadline: Instant) -> Result<(), WorkerError> {
-        if !cfg!(any(
-            all(target_os = "linux", target_arch = "x86_64"),
-            all(target_os = "macos", target_arch = "aarch64")
-        )) {
+        if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
             return Err(WorkerError::UnsupportedPlatform);
         }
         provider::preflight(options, deadline)
@@ -101,14 +97,9 @@ impl<'a> OwnedWorker<'a> {
         options: WorkerOptions,
         deadline: Instant,
     ) -> Result<Self, WorkerError> {
-        if !cfg!(any(
-            all(target_os = "linux", target_arch = "x86_64"),
-            all(target_os = "macos", target_arch = "aarch64")
-        )) {
+        if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
             return Err(WorkerError::UnsupportedPlatform);
         }
-        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-        provider::validate_options(&options)?;
         let home = WorkerHome::open(home, profile)?;
         let provider = Provider::new(environment, &home, deadline)?;
         Ok(Self {
@@ -175,10 +166,6 @@ impl<'a> OwnedWorker<'a> {
         let lock = self.home.lock(self.deadline)?;
         let mut record = self.record()?;
         let inventory = Inventory::observe(&self.home)?;
-        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-        self.provider.preflight(&self.options)?;
-        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-        self.provider.prepare_control(self.options.offline, &lock)?;
         self.reconcile_previous_for_acquire(&mut record, &inventory, &lock)?;
         let mut observed = self.observe(&mut record, &lock)?;
         let inconsistent = !inventory.stale.is_empty()
@@ -446,12 +433,6 @@ impl<'a> OwnedWorker<'a> {
             });
         };
         let observed = self.observe(&mut record, &lock)?;
-        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-        if record.state == RecordState::Ready
-            && observed.as_ref().is_some_and(|instance| instance.running)
-        {
-            self.provider.validate_ready(&self.home, &record, &lock)?;
-        }
         let mut inspection =
             self.provider
                 .configured_details(&self.home, Some(&record), &self.options);

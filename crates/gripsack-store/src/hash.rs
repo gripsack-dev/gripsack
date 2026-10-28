@@ -190,129 +190,42 @@ pub fn canonical_bytes_hash(bytes: &[u8]) -> BytesHash {
 /// Canonical hash of a directory tree: sorted relative paths plus each
 /// entry's canonical identity. Deterministic across machines.
 pub fn canonical_tree_hash(root: &Path) -> std::io::Result<PayloadHash> {
+    canonical_tree_hash_in(&gripsack_fs::open(root)?)
+}
+
+/// The canonical tree domain through an already pinned directory capability.
+pub fn canonical_tree_hash_in(root: &gripsack_fs::Dir) -> std::io::Result<PayloadHash> {
     let mut entries = Vec::new();
-    collect_entries(root, root, &mut entries)?;
+    collect_entries(root, Path::new(""), &mut entries)?;
     entries.sort();
     let mut hasher = Sha256::new();
     for rel in entries {
         hasher.update(rel.as_bytes());
         hasher.update(b"\0");
-        hasher.update(canonical_file_hash(&root.join(&rel))?.as_str().as_bytes());
+        hasher.update(
+            canonical_file_hash_in(root, Path::new(&rel))?
+                .as_str()
+                .as_bytes(),
+        );
         hasher.update(b"\0");
     }
     Ok(PayloadHash(hex(&hasher.finalize())))
 }
 
-/// Canonical tree hash of a NOT-YET-STAGED overlay (0014): repo files
-/// at their `from` relative paths, ancestor dirs synthesized — the same
-/// digest `canonical_tree_hash` gives the staged directory, without
-/// materializing it. Plan-time content identity for config-only
-/// modules.
-pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<PayloadHash> {
-    let dir_hash = directory_entry_hash();
-    let mut entries: Vec<(String, String)> = Vec::new();
-    for from in froms {
-        let from = Path::new(from)
-            .components()
-            .filter(|component| *component != std::path::Component::CurDir)
-            .collect::<std::path::PathBuf>()
-            .to_string_lossy()
-            .into_owned();
-        let source = repo.join(&from);
-        let metadata = match source.symlink_metadata() {
-            Ok(metadata) => metadata,
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
-                ) =>
-            {
-                continue;
-            }
-            Err(error) => return Err(error),
-        };
+fn collect_entries(
+    directory: &gripsack_fs::Dir,
+    prefix: &Path,
+    out: &mut Vec<String>,
+) -> std::io::Result<()> {
+    for entry in directory.entries()? {
+        let name = entry?.file_name();
+        let name = Path::new(&name);
+        let relative = prefix.join(name);
+        let metadata = directory.symlink_metadata(name)?;
+        out.push(relative.to_string_lossy().into_owned());
         if metadata.is_dir() {
-            // a directory `from` stages recursively at publish — hash
-            // the same closure here or plan-time and publish-time
-            // identity diverge
-            let mut ancestor = Path::new(from.as_str()).parent();
-            while let Some(dir) = ancestor {
-                if dir.as_os_str().is_empty() {
-                    break;
-                }
-                entries.push((dir.to_string_lossy().into_owned(), dir_hash.clone()));
-                ancestor = dir.parent();
-            }
-            if !from.is_empty() {
-                entries.push((from.clone(), dir_hash.clone()));
-            }
-            let mut rels = Vec::new();
-            collect_entries(&source, &source, &mut rels)?;
-            for rel in rels {
-                let rel_path = Path::new(&from).join(&rel).to_string_lossy().into_owned();
-                let hash = if source.join(&rel).is_dir() && !source.join(&rel).is_symlink() {
-                    dir_hash.clone()
-                } else {
-                    canonical_file_hash(&source.join(&rel))?.to_string()
-                };
-                entries.push((rel_path, hash));
-            }
-            continue;
-        }
-        if !metadata.is_file() && !metadata.is_symlink() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "overlay source is not a file, directory or symlink",
-            ));
-        }
-        // ancestor dirs are stage entries too (create_dir_all at
-        // publish) — synthesize them or the digests diverge
-        let mut ancestor = Path::new(from.as_str()).parent();
-        while let Some(dir) = ancestor {
-            if dir.as_os_str().is_empty() {
-                break;
-            }
-            let rel = dir.to_string_lossy().into_owned();
-            entries.push((rel, dir_hash.clone()));
-            ancestor = dir.parent();
-        }
-        entries.push((from.clone(), canonical_file_hash(&source)?.to_string()));
-    }
-    entries.sort();
-    entries.dedup();
-    Ok(hash_sorted_entries(entries))
-}
-
-pub(crate) fn directory_entry_hash() -> String {
-    hex(&Sha256::digest(b"dir\0"))
-}
-
-/// Callers supply one sorted, duplicate-free row per logical tree entry.
-pub(crate) fn hash_sorted_entries(
-    entries: impl IntoIterator<Item = (String, String)>,
-) -> PayloadHash {
-    let mut hasher = Sha256::new();
-    for (rel, hash) in entries {
-        hasher.update(rel.as_bytes());
-        hasher.update(b"\0");
-        hasher.update(hash.as_bytes());
-        hasher.update(b"\0");
-    }
-    PayloadHash(hex(&hasher.finalize()))
-}
-
-fn collect_entries(root: &Path, dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let path = entry?.path();
-        let rel = path
-            .strip_prefix(root)
-            .expect("walked path is under root")
-            .to_string_lossy()
-            .into_owned();
-        let is_real_dir = path.is_dir() && !path.is_symlink();
-        out.push(rel);
-        if is_real_dir {
-            collect_entries(root, &path, out)?;
+            let child = gripsack_fs::open_dir_nofollow(directory, name)?;
+            collect_entries(&child, &relative, out)?;
         }
     }
     Ok(())
@@ -419,58 +332,6 @@ mod tests {
     }
 
     #[test]
-    fn overlay_hash_matches_materialized_staging() {
-        // 0014's load-bearing invariant: the plan-time overlay hash of
-        // repo sources equals the tree hash of the staging publish
-        // would assemble — ancestor dirs synthesized, exec bit covered
-        let dir = tempfile::tempdir().unwrap();
-        let repo = dir.path().join("repo");
-        std::fs::create_dir_all(repo.join("configs/demo")).unwrap();
-        std::fs::write(repo.join("configs/demo/a.toml"), b"a\n").unwrap();
-        std::fs::write(repo.join("tool.sh"), b"#!/bin/sh\necho hi\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(repo.join("tool.sh"), std::fs::Permissions::from_mode(0o755))
-                .unwrap();
-        }
-        let froms = vec!["configs/demo/a.toml".to_string(), "tool.sh".to_string()];
-        let overlay = canonical_overlay_hash(&repo, &froms).unwrap();
-
-        let stage = dir.path().join("stage");
-        for from in &froms {
-            let dest = stage.join(from);
-            std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
-            std::fs::copy(repo.join(from), dest).unwrap();
-        }
-        assert_eq!(overlay, canonical_tree_hash(&stage).unwrap());
-
-        // a content edit moves the overlay hash
-        std::fs::write(repo.join("configs/demo/a.toml"), b"b\n").unwrap();
-        assert_ne!(canonical_overlay_hash(&repo, &froms).unwrap(), overlay);
-    }
-
-    #[test]
-    fn overlay_hash_of_dir_source_matches_staged_tree() {
-        let dir = tempfile::tempdir().unwrap();
-        let repo = dir.path().join("repo");
-        std::fs::create_dir_all(repo.join("configs/app/nested")).unwrap();
-        std::fs::write(repo.join("configs/app/a.toml"), b"a\n").unwrap();
-        std::fs::write(repo.join("configs/app/nested/b.toml"), b"b\n").unwrap();
-        std::os::unix::fs::symlink("a.toml", repo.join("configs/app/link")).unwrap();
-        let froms = vec!["configs/app".to_string()];
-        let overlay = canonical_overlay_hash(&repo, &froms).unwrap();
-        // what publish stages: the dir copied under its from path
-        let staged = dir.path().join("staged");
-        gripsack_fs::copy_dir(&repo.join("configs/app"), &staged.join("configs/app")).unwrap();
-        assert_eq!(
-            overlay,
-            canonical_tree_hash(&staged).unwrap(),
-            "plan-time overlay and staged tree must agree or the pinned tree check false-fires"
-        );
-    }
-
-    #[test]
     fn tree_hash_is_deterministic_and_content_sensitive() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("sub")).unwrap();
@@ -480,6 +341,23 @@ mod tests {
         assert_eq!(canonical_tree_hash(dir.path()).unwrap(), before);
         std::fs::write(dir.path().join("z"), b"z").unwrap();
         assert_ne!(canonical_tree_hash(dir.path()).unwrap(), before);
+    }
+
+    #[test]
+    fn tree_hash_keeps_the_admitted_directory_when_its_name_is_replaced() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("object");
+        let foreign = temporary.path().join("foreign");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&foreign).unwrap();
+        std::fs::write(root.join("payload"), b"admitted").unwrap();
+        std::fs::write(foreign.join("payload"), b"replacement").unwrap();
+        let directory = gripsack_fs::open(&root).unwrap();
+        let expected = canonical_tree_hash_in(&directory).unwrap();
+        std::fs::rename(&root, temporary.path().join("retained")).unwrap();
+        std::os::unix::fs::symlink(&foreign, &root).unwrap();
+        assert_ne!(canonical_tree_hash(&root).unwrap(), expected);
+        assert_eq!(canonical_tree_hash_in(&directory).unwrap(), expected);
     }
 }
 

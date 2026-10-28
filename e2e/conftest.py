@@ -9,11 +9,9 @@ Rules:
   git repos. Network in e2e is a bug;
 - the binary comes from GRIPSACK_BIN (set in docker; the gate stage has
   already compiled it — never rebuild from e2e);
-- fixture env repos use the TypeScript frontend under the defineEnv
-  contract (plan/0013 D5): each modules/<name>.ts default-exports its
-  module value — module() constructs, it never registers — and
-  hosts/<host>.ts imports the modules it wants and returns them from
-  defineEnv. Falsy entries drop out; that is how tests undeclare.
+- fixture repositories have a root gripsack.ts importing default workspace
+  values from outputs/*.ts and adopted profiles/*.ts in deterministic order;
+  duplicate basenames are rejected before root rewriting or declaration removal.
 """
 
 from __future__ import annotations
@@ -21,8 +19,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import platform
 import stat
-import re
 import subprocess
 import shutil
 import sys
@@ -40,8 +38,21 @@ GRIP = Path(os.environ.get("GRIPSACK_BIN", str(_REPO_ROOT / "target/debug/grip")
 _fixture_root: Path | None = None
 
 
+def native_target() -> str:
+    """A TypeScript object literal matching this offline fixture's native host."""
+    machine = platform.machine()
+    target = {
+        "os": "macos" if sys.platform == "darwin" else "linux",
+        "arch": {"arm64": "aarch64", "AMD64": "x86_64"}.get(machine, machine),
+    }
+    if target["os"] == "linux":
+        target["abi"] = "musl" if platform.libc_ver()[0] == "musl" else "gnu"
+    return json.dumps(target)
+
+
 def make_tarball(path: Path, files: dict[str, bytes]) -> Path:
-    """Build a fixture tarball: module payload without the network."""
+    """Build a fixture package payload without the network."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(path, "w:gz") as tar:
         for name, content in files.items():
             info = tarfile.TarInfo(name)
@@ -54,6 +65,7 @@ def make_toolchain_tarball(path: Path, files: dict[str, bytes]) -> Path:
     """A fixture tarball with EXECUTABLE members — `which <bin>`
     inside a build step needs the exec bit (0039 fixtures); the plain
     helper above is data-only by default."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(path, "w:gz") as tar:
         for name, content in files.items():
             info = tarfile.TarInfo(name)
@@ -63,56 +75,58 @@ def make_toolchain_tarball(path: Path, files: dict[str, bytes]) -> Path:
     return path
 
 
-def refresh_host(repo: Path, host: str = "testhost") -> Path:
-    """(Re)write hosts/<host>.ts importing every modules/*.ts — the
-    defineEnv contract. Deterministic: files are globbed sorted, so the
-    emitted module order (and the IR) is stable."""
-    mods = sorted((repo / "modules").glob("*.ts")) if (repo / "modules").is_dir() else []
-    # hyphens are legal filenames but not JS identifiers
-    ident = lambda stem: re.sub(r"\W", "_", stem)  # noqa: E731
-    imports = "".join(
-        f'import {ident(p.stem)} from "../modules/{p.stem}.ts";\n' for p in mods
+def workspace_output_files(repo: Path) -> list[Path]:
+    """Discover authored and adopted outputs, refusing ambiguous basenames."""
+    outputs = sorted(
+        path
+        for directory in ("outputs", "profiles")
+        for path in (repo / directory).glob("*.ts")
     )
-    listing = ", ".join(ident(p.stem) for p in mods)
-    (repo / "hosts").mkdir(exist_ok=True)
-    (repo / "hosts" / f"{host}.ts").write_text(
-        f'import {{ defineEnv }} from "@gripsack/core";\n'
-        f"{imports}"
-        f"\n"
-        f"export default defineEnv((ctx) => ({{\n"
-        f'  tags: ["test"],\n'
-        f"  modules: [{listing}],\n"
-        f"}}));\n"
+    names = set()
+    for path in outputs:
+        if path.stem in names:
+            raise ValueError(f"duplicate workspace output basename: {path.stem}")
+        names.add(path.stem)
+    return outputs
+
+
+def refresh_workspace(repo: Path) -> Path:
+    """Rebuild root imports from current authored and adopted output values."""
+    outputs = workspace_output_files(repo)
+    imports = "".join(
+        f'import output_{index} from "./{path.relative_to(repo).as_posix()}";\n'
+        for index, path in enumerate(outputs)
+    )
+    listing = "".join(f"    output_{index},\n" for index in range(len(outputs)))
+    (repo / "gripsack.ts").write_text(
+        'import { defineWorkspace, workspace } from "@gripsack/core";\n'
+        + imports
+        + "export default defineWorkspace(() => workspace({\n"
+        + "  outputs: [\n"
+        + listing
+        + "  ].flat(),\n"
+        + "}));\n"
     )
     return repo
 
 
-def make_env_repo(
-    root: Path,
-    modules: dict[str, str] | str,
-    host: str = "testhost",
-) -> Path:
-    """A fixture env repo mirroring plan/0001 §5, TypeScript frontend.
-
-    `modules` maps a file basename under modules/ to file content; a
-    bare string is shorthand for {"hello": ...}. Each file must
-    default-export its module value (or an array of them)."""
-    if isinstance(modules, str):
-        modules = {"hello": modules}
-    (root / "modules").mkdir(parents=True)
-    (root / "hosts").mkdir()
+def make_workspace_repo(root: Path, outputs: dict[str, str] | str) -> Path:
+    """Write real workspace output declarations, never translate legacy DSL."""
+    if isinstance(outputs, str):
+        outputs = {"hello": outputs}
+    (root / "outputs").mkdir(parents=True, exist_ok=True)
     (root / "env.toml").write_text('[env]\nname = "fixture"\n')
-    for name, ts in modules.items():
-        (root / "modules" / f"{name}.ts").write_text(ts)
-    return refresh_host(root, host=host)
+    for name, source in outputs.items():
+        (root / "outputs" / f"{name}.ts").write_text(source)
+    return refresh_workspace(root)
 
 
-def remove_module(repo: Path, name: str, host: str = "testhost") -> None:
-    """Undeclare a module: delete its file and drop it from the host
-    entrypoint (registration is explicit now — an unimported file is
-    inert, but keeping the host honest is the point)."""
-    (repo / "modules" / f"{name}.ts").unlink(missing_ok=True)
-    refresh_host(repo, host=host)
+def remove_output(repo: Path, name: str) -> None:
+    """Remove the declaration and its explicit root import."""
+    for path in workspace_output_files(repo):
+        if path.stem == name:
+            path.unlink()
+    refresh_workspace(repo)
 
 
 

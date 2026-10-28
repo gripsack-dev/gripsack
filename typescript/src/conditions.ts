@@ -1,6 +1,6 @@
 /** Conditional logic over core-injected facts (0001 §5, 0013 D4).
  *  Pure functions: they take the fact view as an argument instead of
- *  reading a global — `when(cond, ctx)` inside a `defineEnv`
+ *  reading a global — `when(cond, ctx)` inside a `defineWorkspace`
  *  function, where ctx is handed in. */
 
 import type { HostFacts } from "./facts.ts";
@@ -22,9 +22,8 @@ export interface Condition {
   notTags?: string[];
 }
 
-/** Build a condition over host facts — evaluate directly:
- *  `when({ os: "linux" }, ctx) && module(...)`, or gate a whole entry
- *  on it. Falsy-drop in `defineEnv`'s modules array does the rest. */
+/** Evaluate a condition over injected facts. A false value can omit an
+ *  output from `workspace({ outputs: [when(cond, ctx) && profile] })`. */
 export function when(cond: Condition, view: FactView): boolean {
   const f = view.facts;
   if (cond.os !== undefined && f.os !== cond.os) return false;

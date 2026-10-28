@@ -1,19 +1,23 @@
 """Generation environment exports and durable activation hooks."""
 
-import os
-from conftest import grip, make_env_repo, remove_module
+import subprocess
+
+from conftest import native_target, grip, make_toolchain_tarball, make_workspace_repo, remove_output
 
 
 def test_exported_env_profile_tracks_the_generation(sandbox):
-    repo = make_env_repo(
+    payload = make_toolchain_tarball(sandbox / "myenv" / "zed.tar.gz", {"bin/zed": b"#!/bin/sh\nprintf 'exported command\\n'\n"})
+    repo = make_workspace_repo(
         sandbox / "myenv",
-        """
-import { module, trackedCopy } from "@gripsack/core";
+        f"""
+import {{ environment, file, fileFetch, identity, lit, pkg, profile, provider, repoFile, trackedCopyTo }} from "@gripsack/core";
 
-export default module("zed", {
-  config: { "configs/zed/a": trackedCopy("~/.config/zed/a") },
-  env: { EDITOR: "zed", "PATH+": "{store}/bin" },
-});
+export default [
+pkg("zed-tool", {{ producer: provider(fileFetch("{payload.name}")), commands: {{ zed: "bin/zed" }}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+environment("zed-environment", {{ packages: ["zed-tool"], target: {native_target()}, env: {{ EDITOR: lit("zed") }} }}),
+profile("zed", {{ files: [
+    file({{ source: repoFile("configs/zed/a"), content: identity(), destination: trackedCopyTo("~/.config/zed/a") }})
+  ], environment: "zed-environment" }})];
 """,
     )
     (repo / "configs" / "zed").mkdir(parents=True)
@@ -23,22 +27,22 @@ export default module("zed", {
     profile = sandbox / ".local/share/gripsack/current/env/profile.sh"
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    text = profile.read_text()
-    assert 'export EDITOR="zed"' in text
-    store_bin = next(
-        line for line in text.splitlines() if line.startswith("export PATH=")
+    exported = subprocess.run(
+        ["/bin/sh", "-c", '. "$1"; printf "%s\\n" "$EDITOR"; zed',
+         "profile-test", str(profile)],
+        capture_output=True, text=True, timeout=20,
     )
-    assert "/bin:${PATH}" in store_bin
-    assert "/store/" in store_bin and "-zed/bin:" in store_bin
+    assert exported.returncode == 0, exported.stderr
+    assert exported.stdout == "zed\nexported command\n"
 
     # drop the env declaration — the profile must not go stale
-    (repo / "modules" / "hello.ts").write_text(
+    (repo / "outputs" / "hello.ts").write_text(
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("zed", {
-  config: { "configs/zed/a": trackedCopy("~/.config/zed/a") },
-});
+export default profile("zed", { files: [
+    file({ source: repoFile("configs/zed/a"), content: identity(), destination: trackedCopyTo("~/.config/zed/a") })
+  ] });
 """
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -50,25 +54,25 @@ export default module("zed", {
     assert not profile.exists()
 
 
-def test_service_intent_runs_the_adapter_without_failing_apply(sandbox):
-    """systemd-user adapter: no systemctl/user bus in the sandbox —
-    the intent must degrade to a warning, never a failed apply
-    (0001 §3.8: never roll back on post-activation failure)."""
-    repo = make_env_repo(
+def test_failed_post_activation_hook_does_not_fail_apply(sandbox):
+    """A failed post-activation command cannot roll back committed files."""
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, service, trackedCopy } from "@gripsack/core";
+import { file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo } from "@gripsack/core";
 
-export default module("daemon", {
-  config: { "configs/daemon/a": trackedCopy("~/.config/daemon/a") },
-  activate: [service("my-daemon.service")],
-});
+export default [hook("daemon-hook-0", { trigger: "post_activate", run: exec({ argv: [lit("/bin/sh"), lit("-c"), lit("exit 1")] }) }),
+profile("daemon", { files: [
+    file({ source: repoFile("configs/daemon/a"), content: identity(), destination: trackedCopyTo("~/.config/daemon/a") })
+  ], hooks: ["daemon-hook-0"] })];
 """,
     )
     (repo / "configs" / "daemon").mkdir(parents=True)
     (repo / "configs" / "daemon" / "a").write_text("a\n")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
+    assert (sandbox / ".config/daemon/a").read_text() == "a\n"
+    assert (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_crash_before_adapters_resumes_next_run(sandbox, monkeypatch):
@@ -80,15 +84,15 @@ def test_crash_before_adapters_resumes_next_run(sandbox, monkeypatch):
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
     marker = sandbox / "hook-ran"
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default module("demo", {{
-  config: {{ "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") }},
-  activate: [customHook("touch {marker}")],
-}});
+export default [hook("demo-hook-0", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("touch {marker}")] }}) }}),
+profile("demo", {{ files: [
+    file({{ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") }})
+  ], hooks: ["demo-hook-0"] }})];
 """,
     )
 
@@ -108,7 +112,7 @@ export default module("demo", {{
     assert not pending.exists(), "the record drained"
 
 
-def test_stale_pending_record_is_discarded_never_run(sandbox):
+def test_stale_pending_record_is_discarded_never_run(sandbox, monkeypatch):
     """0032: a pending record naming a generation that never became
     current (crash between pending-write and flip) is discarded by
     the next run — adapters never run for non-current state."""
@@ -116,41 +120,37 @@ def test_stale_pending_record_is_discarded_never_run(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
     marker = sandbox / "hook-ran"
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default module("demo", {{
-  config: {{ "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") }},
-  activate: [customHook("touch {marker}")],
-}});
+export default [hook("demo-hook-0", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("touch {marker}")] }}) }}),
+profile("demo", {{ files: [
+    file({{ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") }})
+  ], hooks: ["demo-hook-0"] }})];
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert marker.exists()
-
-    # hand-craft a pending record naming a future (never-committed)
-    # generation — as if a run died between the pending write and
-    # the flip
     marker.unlink()
-    import json
+    current = sandbox / ".local/share/gripsack/current"
+    previous = current.readlink()
 
+    # Preserve an authentic pending plan, but model its generation never
+    # becoming current. No legacy action or hand-crafted plan is admitted.
+    (confdir / "a.toml").write_text("candidate\n")
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "before-adapters")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "the crash hook must kill the run"
+    assert not marker.exists()
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
     pending = sandbox / ".local/share/gripsack/activation.json"
-    pending.write_text(
-        json.dumps(
-            {
-                "generation": 99,
-                "intents": [
-                    {
-                        "module": "demo",
-                        "action": {"kind": "custom_shell", "script": f"touch {marker}"},
-                    }
-                ],
-            }
-        )
-    )
+    assert pending.exists()
+    current.unlink()
+    current.symlink_to(previous)
+    (confdir / "a.toml").write_text("a\n")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert not marker.exists(), "a non-current generation's adapters never run"
@@ -164,16 +164,16 @@ def test_on_remove_hook_fires_at_removal_not_install(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "a.conf").write_text("a\n")
     marker = sandbox / "removed-hook-ran"
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "demo": f"""
-import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default module("demo", {{
-  config: {{ "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") }},
-  activate: [customHook("touch {marker}", "on_remove")],
-}});
+export default [hook("demo-hook-0", {{ trigger: "on_remove", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("touch {marker}")] }}) }}),
+profile("demo", {{ files: [
+    file({{ source: repoFile("configs/demo/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.conf") }})
+  ], hooks: ["demo-hook-0"] }})];
 """
         },
     )
@@ -181,7 +181,8 @@ export default module("demo", {{
     assert out.returncode == 0, out.stderr
     assert not marker.exists(), "on_remove must not fire at install"
 
-    remove_module(repo, "demo")
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
+    remove_output(repo, "demo")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert marker.exists(), "on_remove fires when the module leaves"
@@ -195,16 +196,16 @@ def test_activation_record_failure_compensates(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.conf").write_text("v1\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "demo": f"""
-import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default module("demo", {{
-  config: {{ "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") }},
-  activate: [customHook("true")],
-}});
+export default [hook("demo-hook-0", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("true")] }}) }}),
+profile("demo", {{ files: [
+    file({{ source: repoFile("configs/demo/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.conf") }})
+  ], hooks: ["demo-hook-0"] }})];
 """
         },
     )
@@ -237,16 +238,16 @@ def test_rollback_runs_the_target_generations_hooks(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "a.conf").write_text("v1\n")
     marker = sandbox / "hook-log"
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "demo": f"""
-import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+import {{ file, hook, identity, profile, repoFile, exec, lit, trackedCopyTo }} from "@gripsack/core";
 
-export default module("demo", {{
-  config: {{ "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") }},
-  activate: [customHook("echo activated >> {marker}")],
-}});
+export default [hook("demo-hook-0", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("echo activated >> {marker}")] }}) }}),
+profile("demo", {{ files: [
+    file({{ source: repoFile("configs/demo/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.conf") }})
+  ], hooks: ["demo-hook-0"] }})];
 """
         },
     )
@@ -268,26 +269,25 @@ def test_rollback_fires_on_remove_for_undeclared_modules(sandbox):
     """0037: a module present now but absent from the rollback target
     is undeclared BY the rollback — its on_remove hook fires."""
     marker = sandbox / "remove-hook-log"
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "demo": """
-import { module } from "@gripsack/core";
+import { profile } from "@gripsack/core";
 
-export default module("demo", {});
+export default profile("demo", {  });
 """,
             "ephemeral": f"""
-import {{ module, customHook }} from "@gripsack/core";
+import {{ hook, profile, exec, lit }} from "@gripsack/core";
 
-export default module("ephemeral", {{
-  activate: [customHook("echo removed >> {marker}", "on_remove")],
-}});
+export default [hook("ephemeral-hook-0", {{ trigger: "on_remove", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit("echo removed >> {marker}")] }}) }}),
+profile("ephemeral", {{ hooks: ["ephemeral-hook-0"] }})];
 """,
         },
     )
     out = grip("apply", "--host", "testhost", cwd=repo)  # gen 1: both modules
     assert out.returncode == 0, out.stderr
-    remove_module(repo, "ephemeral")
+    remove_output(repo, "ephemeral")
     out = grip("apply", "--host", "testhost", cwd=repo)  # gen 2: demo only
     assert out.returncode == 0, out.stderr
     assert marker.exists(), "on_remove fired at the undeclaring apply"
@@ -302,80 +302,21 @@ export default module("ephemeral", {{
     assert marker.exists(), "on_remove fires for a module the rollback undeclares"
 
 
-def test_fonts_and_desktop_entry_adapters_run_once_per_apply(sandbox, monkeypatch):
-    """PostLink intents: fonts() runs fc-cache, desktop_entry() runs
-    update-desktop-database — deduped across modules, tolerating
-    absence (0001 §3.8)."""
-    bindir = sandbox / "bin"
-    bindir.mkdir()
-    log = sandbox / "calls.log"
-    for tool in ("fc-cache", "update-desktop-database"):
-        (bindir / tool).write_text(f'#!/bin/sh\necho "{tool} $@" >> {log}\n')
-        (bindir / tool).chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
-    confdir = sandbox / "myenv" / "configs" / "font"
-    confdir.mkdir(parents=True)
-    (confdir / "myfont.ttf").write_text("fake font\n")
-    repo = make_env_repo(
-        sandbox / "myenv",
-        {
-            "font-a": """
-import { desktopEntry, fonts, module, symlink } from "@gripsack/core";
-
-export default module("font-a", {
-  config: { "configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf") },
-  activate: [fonts(), desktopEntry()],
-});
-""",
-            "font-b": """
-import { fonts, module, symlink } from "@gripsack/core";
-
-export default module("font-b", {
-  config: { "configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont-b.ttf") },
-  activate: [fonts()],
-});
-""",
-        },
-    )
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    calls = log.read_text().splitlines()
-    assert calls.count("fc-cache -f") == 1, calls
-    assert sum(1 for c in calls if "update-desktop-database" in c and "applications" in c) == 1, calls
 
 
-def test_fonts_adapter_skips_cleanly_without_fc_cache(sandbox):
-    """No fc-cache on PATH → a warning, never an apply error."""
-    confdir = sandbox / "myenv" / "configs" / "font"
-    confdir.mkdir(parents=True)
-    (confdir / "myfont.ttf").write_text("fake font\n")
-    repo = make_env_repo(
+
+
+def test_profile_hook_runs_after_activation(sandbox):
+    """A declared workspace hook executes its real post-activate command."""
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { fonts, module, symlink } from "@gripsack/core";
+import { file, hook, identity, profile, repoFile, exec, lit, symlinkTo } from "@gripsack/core";
 
-export default module("font", {
-  config: { "configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf") },
-  activate: [fonts()],
-});
-""",
-    )
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-
-
-def test_step_form_intents_run_through_adapters(sandbox):
-    """Step-form intents (class-style) execute via the activation
-    adapters — a custom hook's post-activate script really runs."""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { customHook, module, symlink } from "@gripsack/core";
-
-export default module("demo", {
-  config: { "configs/demo/a.txt": symlink("~/.config/demo/a.txt") },
-  activate: [customHook("echo post-activate > ~/hook-ran")],
-});
+export default [hook("demo-hook-0", { trigger: "post_activate", run: exec({ argv: [lit("/bin/sh"), lit("-c"), lit("echo post-activate > ~/hook-ran")] }) }),
+profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.txt"), content: identity(), destination: symlinkTo("~/.config/demo/a.txt") })
+  ], hooks: ["demo-hook-0"] })];
 """,
     )
     confdir = repo / "configs" / "demo"

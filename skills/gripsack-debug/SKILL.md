@@ -32,11 +32,10 @@ One JSON object per line. Key fields:
 | `fields.code` | stable diagnostic code (E101, …) when applicable |
 | `spans` | the ancestry chain — this IS causality |
 
-**Causality**: `spans` lists the nesting root-first, e.g.
-`["run", "plan", "module:helix", "step:fetch"]` means "this event
-happened inside the fetch step of helix, inside plan, inside the run".
-To answer "why did X happen", walk up the chain; to answer "what did X
-cause", grep for events whose `spans` contain X's span name.
+**Causality**: `spans` lists nesting root-first. Follow the actual recorded
+operation and output names rather than inferring execution from declaration
+order. To answer "why did X happen", walk up the chain; to answer "what did X
+cause", filter events containing the same recorded span.
 
 Useful filters:
 
@@ -44,7 +43,7 @@ Useful filters:
 L=$(readlink ~/.local/share/gripsack/runs/latest)
 jq -c 'select(.level == "ERROR")' "$L"          # every error
 jq -c 'select(.fields.code != null)' "$L"       # every coded diagnostic
-jq -c 'select([.spans[].name] | index("module:helix"))' "$L"  # one module's events
+jq -c 'select(.spans != null) | {spans, fields}' "$L"  # recorded operation ancestry
 ```
 
 ## 3. Diagnostic codes (the sema contract)
@@ -53,13 +52,8 @@ jq -c 'select([.spans[].name] | index("module:helix"))' "$L"  # one module's eve
 |---|---|---|
 | E000 | malformed IR JSON | frontend bug — check the emitter |
 | E100 | wrong `ir_version` | core/frontend version skew — `grip doctor` |
-| E101 | unknown module dependency | typo or missing module file; the span points at the line |
-| E102 | destination not absolute/`~/` | fix the path in the module |
-| E103 | module mixes `steps` with declarative fields | pick one shape |
-| E104 | `needs` references unknown step | check sibling ids and `module:step` refs |
-| E106 | duplicate or reserved (`done`) step id | rename the step |
-| E107 | undeclared resource | `resource("name")` first, or use a built-in |
-| E112 | probe set unstable — each eval round requested new probes (cap 4) | a probe depending on a probe is an authoring error; restructure the host entrypoint (0013 D6) |
+| E130 | invalid workspace declaration | inspect the labeled declaration and the suggested field/reference fix |
+| E112 | probe set unstable | restructure the workspace so probe requests converge |
 | E113 | unsupported probe kind | probes are a closed enum: `executable`, `file_exists` |
 
 
@@ -68,15 +62,15 @@ jq -c 'select([.spans[].name] | index("module:helix"))' "$L"  # one module's eve
 1. `latest` run → find ERROR events → note `code` and the span chain.
 2. The rendered console error (same information, human form) includes a
    source snippet when the file is reachable — point the user at the
-   exact module line.
-3. `grip plan --ir <file>` reproduces sema failures without touching
-   the system; `grip plan --ir <file> <module>` scopes to one module.
+   exact workspace declaration line.
+3. `grip plan --ir <file>` reproduces admission failures without touching
+   deployed state; use an IR9 workspace envelope.
 4. For more detail, re-run with `GRIPSACK_LOG=debug`.
 
 ## 5. What NOT to do
 
 - Don't suggest editing files under `$GRIPSACK_HOME` — store paths and
-  generations are immutable by contract; fix the module, re-apply.
+  generations are immutable by contract; fix the workspace, re-apply.
 - Don't suggest deleting `runs/` logs mid-investigation; they are the
   evidence.
 - Don't retry on E2xx hash mismatches — that's a tampering signal

@@ -56,10 +56,7 @@ pub fn build_workspace(
     ctx: &Ctx,
     options: &BuildOptions<'_>,
 ) -> Result<BuildResult, ExecError> {
-    let workspace = ir
-        .workspace_catalog
-        .as_ref()
-        .ok_or_else(|| failure("build requires a current typed workspace"))?;
+    let workspace = &ir.workspace;
     let selection = super::selection::Selection::admit(workspace, &ctx.only)?;
     for name in &ctx.only {
         if !matches!(
@@ -447,7 +444,7 @@ fn operational(error: impl std::fmt::Display) -> ExecError {
 }
 fn failure(detail: impl Into<String>) -> ExecError {
     ExecError::Step {
-        module: "workspace".into(),
+        output: "workspace".into(),
         step: "build".into(),
         detail: detail.into(),
     }

@@ -11,7 +11,7 @@ import shutil
 import signal
 import stat
 
-from conftest import GRIP, make_env_repo, run_grip
+from conftest import native_target, GRIP, make_workspace_repo, run_grip
 
 
 def test_repeated_recovery_preserves_destination_and_collection_authority(sandbox):
@@ -34,13 +34,15 @@ def test_repeated_recovery_preserves_destination_and_collection_authority(sandbo
         return ("absent",)
 
     original = [state(path) for path in paths]
-    repo = make_env_repo(sandbox / "env", '''
-import { module } from "@gripsack/core";
-export default module("demo", {env: {RECOVERY_VERSION: "one"}});
+    repo = make_workspace_repo(sandbox / "env", f'''
+import {{ environment, lit, profile }} from "@gripsack/core";
+
+export default [environment("demo-environment", {{ packages: [], target: {native_target()}, env: {{ RECOVERY_VERSION: lit("one") }} }}),
+profile("demo", {{ environment: "demo-environment" }})];
 ''')
     grip_home = home / ".local/share/gripsack"
     environment = dict(os.environ, HOME=str(home), GRIPSACK_HOME=str(grip_home))
-    apply = ["apply", "--host", "testhost", "--jobs", "1"]
+    apply = ["apply", "--host", "testhost"]
     trace = sandbox / "repeated-recovery.tsv"
 
     def invoke(arguments, extra=None):
@@ -53,13 +55,16 @@ export default module("demo", {env: {RECOVERY_VERSION: "one"}});
         return result
 
     succeeds(apply)
-    config = ",\n".join(
-        f'"payload-{index}": {"trackedCopy" if index < 3 else "symlink"}("~/destinations/{index}")'
+    files = ",\n".join(
+        f'file({{ source: repoFile("payload-{index}"), content: identity(), destination: {"trackedCopyTo" if index < 3 else "symlinkTo"}("~/destinations/{index}") }})'
         for index in range(6)
     )
-    (repo / "modules/hello.ts").write_text(f'''
-import {{ module, trackedCopy, symlink }} from "@gripsack/core";
-export default module("demo", {{env: {{RECOVERY_VERSION: "two"}}, config: {{{config}}}}});
+    (repo / "outputs/hello.ts").write_text(f'''
+import {{ environment, file, identity, lit, profile, repoFile, symlinkTo, trackedCopyTo }} from "@gripsack/core";
+export default [
+  environment("demo-environment", {{ packages: [], target: {native_target()}, env: {{ RECOVERY_VERSION: lit("two") }} }}),
+  profile("demo", {{ environment: "demo-environment", files: [{files}] }}),
+];
 ''')
     for index in range(6):
         (repo / f"payload-{index}").write_text(f"deployed-{index}\n")

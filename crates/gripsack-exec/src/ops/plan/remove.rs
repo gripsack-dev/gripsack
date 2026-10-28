@@ -7,13 +7,13 @@ use super::*;
 /// needs doing; Preserved when the drift guard keeps the destination
 /// (a drifted merge block, a modified copy — the user's now).
 pub(crate) fn plan_remove_op(
-    module: &str,
+    output: &str,
     entry: &store::DeployedEntry,
     store_path: &Path,
     home: &gripsack_fs::Dir,
 ) -> Result<Option<Op>, ExecError> {
     let fail = |detail: String| ExecError::Step {
-        module: module.to_string(),
+        output: output.to_string(),
         step: "plan".into(),
         detail,
     };
@@ -39,7 +39,7 @@ pub(crate) fn plan_remove_op(
     let kept = |note: String| {
         tracing::warn!("{note}");
         Ok(Some(Op::new(
-            module.to_string(),
+            output.to_string(),
             dest.clone(),
             entry.to.clone(),
             entry.ownership.policy().clone(),
@@ -65,7 +65,7 @@ pub(crate) fn plan_remove_op(
         let (bytes, splice_mode) = existing;
         let existing = String::from_utf8(bytes).map_err(|e| fail(e.to_string()))?;
         let blocks =
-            crate::managed_blocks::ManagedBlockSet::parse(&existing, entry.merge_owner(module))
+            crate::managed_blocks::ManagedBlockSet::parse(&existing, entry.merge_owner(output))
                 .map_err(|e| fail(e.to_string()))?;
         match blocks.blocks() {
             [] => return Ok(None),
@@ -83,7 +83,7 @@ pub(crate) fn plan_remove_op(
                     )))
                 };
                 return Ok(Some(Op::new(
-                    module.to_string(),
+                    output.to_string(),
                     dest,
                     entry.to.clone(),
                     entry.ownership.policy().clone(),
@@ -117,7 +117,7 @@ pub(crate) fn plan_remove_op(
     let intended =
         crate::deploy::restore::prune_intent(entry, home).map_err(|e| fail(format!("{e}")))?;
     Ok(Some(Op::new(
-        module.to_string(),
+        output.to_string(),
         dest,
         entry.to.clone(),
         entry.ownership.policy().clone(),

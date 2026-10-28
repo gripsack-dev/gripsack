@@ -1,8 +1,8 @@
-/** v5 workspace emission: named references, role admission and cycles. */
+/** Current workspace emission: named references, role admission and cycles. */
 
 import type { HostFacts } from "../facts.ts";
-import { IR_VERSION } from "../graph.ts";
-import type { Span } from "../module.ts";
+export const IR_VERSION = 9;
+import type { Span } from "../span.ts"
 import type {
   PackageNode,
   WorkspaceArg,
@@ -201,9 +201,8 @@ function orList(kinds: readonly string[]): string {
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the v8 workspace IR envelope —
- *  `{ir_version: 8, host, workspace}`, never `modules` (the schema
- *  admits exactly one of the two). Admission mirrors the decoded core:
+/** Serialize a workspace value as the IR9 envelope —
+ *  `{ir_version: 9, host, workspace}`. Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
  *  paths, environment values are data only, producer/consumer OS,

@@ -1,33 +1,88 @@
-"""Generation-bound owned-policy migration through the ordinary transaction."""
+"""Retained ownership transitions through ordinary workspace transactions.
+
+Pre-cutover state is seeded on disk, never evaluated with the removed module DSL.
+"""
+import hashlib
 import json
 import signal
 import subprocess
 
 import pytest
 
-from conftest import grip, make_env_repo
+from conftest import grip
 from test_workspace_files import declare, manifest, run
 
 
+def persist_predecessor(sandbox, payloads, *, origin=None):
+    """Write the pre-cutover manifest, immutable store, links and prior blob.
+
+    Hashes use the persisted store identity domain: directory entries are
+    ``dir\\0`` and files are ``file\\0`` plus the execute bit and bytes.
+    The unversioned manifest is the actual retained pre-cutover wire format.
+    """
+    home = sandbox / ".local/share/gripsack"
+    store = home / "store/retained-legacy"
+    store.mkdir(parents=True)
+    for relative, (content, mode) in payloads.items():
+        path = store / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        path.chmod(mode)
+
+    def identity(path):
+        if path.is_dir():
+            return hashlib.sha256(b"dir\0").hexdigest()
+        return hashlib.sha256(
+            b"file\0" + bytes([bool(path.stat().st_mode & 0o111)]) + path.read_bytes()
+        ).hexdigest()
+
+    tree = hashlib.sha256()
+    for path in sorted(store.rglob("*"), key=lambda path: path.relative_to(store).as_posix()):
+        tree.update(path.relative_to(store).as_posix().encode() + b"\0")
+        tree.update(identity(path).encode() + b"\0")
+    entries = []
+    destinations = {"command": ".migrated", "other": ".unrelated-legacy",
+                    "tree": ".migrated-tree"}
+    for source in sorted({path.split("/")[0] for path in payloads}):
+        destination = sandbox / destinations[source]
+        entry = {"from": source, "to": "~/" + destinations[source],
+                 "key": str(destination), "mode": "owned",
+                 "hash": identity(store / source)}
+        if origin is not None and source != "other":
+            content, mode = origin
+            digest = hashlib.sha256(content).hexdigest()
+            prior = home / "prior"
+            prior.mkdir(mode=0o700, exist_ok=True)
+            blob = prior / digest
+            blob.write_bytes(content)
+            blob.chmod(0o600)
+            entry["prior"] = {"kind": "file", "hash": digest, "mode": mode}
+        destination.symlink_to(store / source)
+        entries.append(entry)
+    previous = {"number": 1, "modules": {"legacy": {
+        "store_path": str(store), "entries": entries, "env": [],
+        "tree256": tree.hexdigest(),
+    }}}
+    generation = home / "generations/1"
+    (generation / "env").mkdir(parents=True)
+    (generation / "env/profile.sh").write_text("")
+    (generation / "manifest.json").write_text(json.dumps(previous))
+    (home / "current").symlink_to("generations/1")
+    for path in store.rglob("*"):
+        path.chmod(0o555 if path.is_dir() or path.stat().st_mode & 0o111 else 0o444)
+    store.chmod(0o555)
+    return previous
+
+
 def predecessor(sandbox, *, origin=False, extra=False):
-    entries = '"command": symlink("~/.migrated")'
+    payloads = {"command": (b"#!/bin/sh\nprintf 'old\\n'\n", 0o755)}
     if extra:
-        entries += ', "other": symlink("~/.unrelated-legacy")'
-    repo = make_env_repo(
-        sandbox / "legacy",
-        'import { module, symlink } from "@gripsack/core";\n'
-        'export default module("legacy", { config: { ' + entries + ' } });\n',
+        payloads["other"] = (b"unrelated retained content\n", 0o644)
+    previous = persist_predecessor(
+        sandbox, payloads,
+        origin=(b"original user content\n", 0o644) if origin else None,
     )
-    (repo / "command").write_text("#!/bin/sh\nprintf 'old\\n'\n")
-    (repo / "command").chmod(0o755)
-    if extra:
-        (repo / "other").write_text("unrelated retained content\n")
-    destination = sandbox / ".migrated"
-    if origin:
-        destination.write_text("original user content\n")
-    run(repo, "apply", "--host", "testhost", *(["--take-over"] if origin else []))
-    previous = manifest(sandbox)
-    return destination, previous
+    return sandbox / ".migrated", previous
 
 
 def replacement(sandbox, *, hook=None, source=None):
@@ -50,15 +105,15 @@ def replacement(sandbox, *, hook=None, source=None):
     return repo
 
 
-def test_exact_predecessor_migration_preserves_origin_and_explicit_rollback(sandbox):
+def test_owned_transition_preserves_origin_and_explicit_rollback(sandbox):
     destination, previous = predecessor(sandbox, origin=True)
     old_target = destination.readlink()
     repo = replacement(sandbox)
     before = manifest(sandbox)
-    run(repo, "plan", "--migrate-from", str(previous["number"]))
+    run(repo, "plan")
     assert manifest(sandbox) == before
     assert destination.readlink() == old_target
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     current = manifest(sandbox)
     assert not destination.is_symlink()
     assert destination.stat().st_mode & 0o111
@@ -68,20 +123,17 @@ def test_exact_predecessor_migration_preserves_origin_and_explicit_rollback(sand
     run(repo, "rollback", str(previous["number"]))
     assert destination.readlink() == old_target
     assert manifest(sandbox)["number"] == previous["number"]
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     declare(repo, 'profile("empty", {})')
     run(repo, "apply")
     assert destination.read_text() == "original user content\n"
 
 
-@pytest.mark.parametrize("tamper", ["stale", "foreign", "drift"])
-def test_migration_refuses_stale_generation_foreign_and_drift(sandbox, tamper):
+@pytest.mark.parametrize("tamper", ["foreign", "drift"])
+def test_transition_refuses_foreign_and_drift(sandbox, tamper):
     destination, previous = predecessor(sandbox)
     repo = replacement(sandbox)
-    generation = previous["number"]
-    if tamper == "stale":
-        generation += 99
-    elif tamper == "foreign":
+    if tamper == "foreign":
         destination.unlink()
         destination.write_text("foreign bytes\n")
     else:
@@ -89,7 +141,7 @@ def test_migration_refuses_stale_generation_foreign_and_drift(sandbox, tamper):
         destination.symlink_to(sandbox / "different-target")
     before = destination.readlink() if destination.is_symlink() else destination.read_bytes()
     for command in ("plan", "apply"):
-        refused = grip(command, "--migrate-from", str(generation), cwd=repo)
+        refused = grip(command, cwd=repo)
         assert refused.returncode != 0
         assert manifest(sandbox) == previous
         after = destination.readlink() if destination.is_symlink() else destination.read_bytes()
@@ -97,7 +149,7 @@ def test_migration_refuses_stale_generation_foreign_and_drift(sandbox, tamper):
 
 
 @pytest.mark.parametrize("unavailable", ["content", "runtime", "package"])
-def test_migration_preflight_keeps_old_command_when_replacement_unavailable(sandbox, unavailable):
+def test_transition_preflight_keeps_old_command_when_replacement_unavailable(sandbox, unavailable):
     destination, previous = predecessor(sandbox)
     old_target = destination.readlink()
     repo = replacement(sandbox, hook=["/no/such/gripsack-migration-runtime"] if unavailable == "runtime" else None)
@@ -108,7 +160,7 @@ def test_migration_preflight_keeps_old_command_when_replacement_unavailable(sand
           target: {os: "linux", arch: "x86_64"}, layout: {kind: "relocatable"}}),
           profile("personal", {files: [file({source: artifactFile("missing", "command"),
           content: identity(), destination: trackedCopyTo("~/.migrated")})]})''')
-    refused = grip("apply", "--migrate-from", str(previous["number"]), cwd=repo)
+    refused = grip("apply", cwd=repo)
     assert refused.returncode != 0
     assert manifest(sandbox) == previous
     assert destination.readlink() == old_target
@@ -122,12 +174,12 @@ def test_migration_preflight_keeps_old_command_when_replacement_unavailable(sand
     pytest.param("workspace-file:1", marks=pytest.mark.requires_fault_controls),
     "after-prune",
 ])
-def test_interrupted_migration_restores_predecessor_before_retry(sandbox, monkeypatch, cut):
+def test_interrupted_transition_restores_predecessor_before_retry(sandbox, monkeypatch, cut):
     destination, previous = predecessor(sandbox)
     old_target = destination.readlink()
     repo = replacement(sandbox)
     monkeypatch.setenv("GRIPSACK_CRASH_AFTER", cut)
-    interrupted = grip("apply", "--migrate-from", str(previous["number"]), cwd=repo)
+    interrupted = grip("apply", cwd=repo)
     assert interrupted.returncode == -signal.SIGABRT, interrupted.stderr
     assert manifest(sandbox) == previous
     monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
@@ -135,15 +187,15 @@ def test_interrupted_migration_restores_predecessor_before_retry(sandbox, monkey
     run(repo, "apply")
     monkeypatch.delenv("GRIPSACK_FS_RECOVER_ONLY")
     assert destination.readlink() == old_target
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     assert not destination.is_symlink()
 
 
-def test_failed_postactivation_verification_retains_migration_until_explicit_rollback(sandbox):
+def test_failed_postactivation_hook_keeps_new_state_until_explicit_rollback(sandbox):
     destination, previous = predecessor(sandbox)
     old_target = destination.readlink()
     repo = replacement(sandbox, hook=["/bin/sh", "-c", "exit 9"])
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     migrated = manifest(sandbox)
     assert migrated["number"] != previous["number"]
     assert not destination.is_symlink()
@@ -152,22 +204,16 @@ def test_failed_postactivation_verification_retains_migration_until_explicit_rol
     run(repo, "apply")
     assert manifest(sandbox) == migrated
     assert json.loads(run(repo, "hooks", "list", "--json").stdout)["intents"] == rows
-    configuration = sandbox / ".config/gripsack"
-    configuration.mkdir(parents=True, exist_ok=True)
-    (configuration / "config.toml").write_text("[settings]\nkeep_generations = 1\n")
-    run(repo, "gc")
-    assert (sandbox / ".local/share/gripsack/generations" / str(previous["number"])).is_dir()
-    assert old_target.is_file()
     run(repo, "rollback", str(previous["number"]))
     assert destination.readlink() == old_target
 
 
-def test_partial_migration_transfers_only_selected_ownership(sandbox):
+def test_partial_transition_transfers_only_selected_ownership(sandbox):
     destination, previous = predecessor(sandbox, extra=True)
     unrelated = sandbox / ".unrelated-legacy"
     other_target = unrelated.readlink()
     repo = replacement(sandbox)
-    run(repo, "apply", "personal", "--migrate-from", str(previous["number"]))
+    run(repo, "apply", "personal")
     active = manifest(sandbox)
     assert set(active["modules"]) == {"legacy", "personal"}
     assert [entry["to"] for entry in active["modules"]["legacy"]["entries"]] == ["~/.unrelated-legacy"]
@@ -179,22 +225,12 @@ def test_partial_migration_transfers_only_selected_ownership(sandbox):
 
 
 def directory_predecessor(sandbox, *, origin=False):
-    repo = make_env_repo(
-        sandbox / "legacy-directory",
-        'import { module, symlink } from "@gripsack/core";\n'
-        'export default module("legacy", {config: {"tree": symlink("~/.migrated-tree")}});\n',
-    )
-    tree = repo / "tree"
-    (tree / "nested").mkdir(parents=True)
-    (tree / "nested/command").write_text("#!/bin/sh\nprintf 'old tree\\n'\n")
-    (tree / "nested/command").chmod(0o755)
-    (tree / "data").write_text("old tree data\n")
+    previous = persist_predecessor(sandbox, {
+        "tree/nested/command": (b"#!/bin/sh\nprintf 'old tree\\n'\n", 0o755),
+        "tree/data": (b"old tree data\n", 0o644),
+    }, origin=(b"original directory-path user file\n", 0o600) if origin else None)
     destination = sandbox / ".migrated-tree"
-    if origin:
-        destination.write_text("original directory-path user file\n")
-        destination.chmod(0o600)
-    run(repo, "apply", "--host", "testhost", *(["--take-over"] if origin else []))
-    return destination, destination.readlink(), manifest(sandbox)
+    return destination, destination.readlink(), previous
 
 
 def directory_replacement(sandbox):
@@ -212,16 +248,16 @@ def directory_replacement(sandbox):
     return repo
 
 
-def test_directory_migration_plan_apply_rollback_reactivation_and_gc(sandbox):
+def test_directory_transition_plan_apply_rollback_reactivation_and_gc(sandbox):
     destination, old_target, previous = directory_predecessor(sandbox)
     repo = directory_replacement(sandbox)
     before = {str(path.relative_to(old_target)): path.read_bytes()
               for path in old_target.rglob("*") if path.is_file()}
-    run(repo, "plan", "--migrate-from", str(previous["number"]))
+    run(repo, "plan")
     assert destination.is_symlink()
     assert destination.readlink() == old_target
     assert not list(sandbox.glob(".gripsack-directory-*")), "plan created preparation artifacts"
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     migrated = manifest(sandbox)
     assert not destination.is_symlink()
     assert destination.is_dir()
@@ -257,7 +293,7 @@ def test_directory_failed_preparation_never_replaces_old_layout(sandbox):
       file({source: repoFile("tree/nested/command"), content: identity(),
         destination: trackedCopyTo("~/.migrated-tree/nested/command")})
     ]})''')
-    refused = grip("apply", "--migrate-from", str(previous["number"]), cwd=repo)
+    refused = grip("apply", cwd=repo)
     assert refused.returncode != 0
     assert destination.readlink() == old_target
     assert manifest(sandbox) == previous
@@ -273,7 +309,7 @@ def test_directory_crash_recovery_is_child_before_parent(sandbox, monkeypatch, c
     destination, old_target, previous = directory_predecessor(sandbox)
     repo = directory_replacement(sandbox)
     monkeypatch.setenv("GRIPSACK_CRASH_AFTER", cut)
-    interrupted = grip("apply", "--migrate-from", str(previous["number"]), cwd=repo)
+    interrupted = grip("apply", cwd=repo)
     assert interrupted.returncode == -signal.SIGABRT, interrupted.stderr
     assert manifest(sandbox) == previous
     monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
@@ -282,14 +318,14 @@ def test_directory_crash_recovery_is_child_before_parent(sandbox, monkeypatch, c
     monkeypatch.delenv("GRIPSACK_FS_RECOVER_ONLY")
     assert destination.readlink() == old_target
     assert (old_target / "data").read_text() == "old tree data\n"
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     assert not destination.is_symlink()
 
 
 def test_directory_rollback_preserves_foreign_child_and_current_selection(sandbox):
     destination, old_target, previous = directory_predecessor(sandbox)
     repo = directory_replacement(sandbox)
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     migrated = manifest(sandbox)
     foreign = destination / "nested/foreign"
     foreign.write_text("do not delete\n")
@@ -304,7 +340,7 @@ def test_directory_rollback_preserves_foreign_child_and_current_selection(sandbo
 def test_directory_ancestor_replacement_blocks_apply_without_touching_target(sandbox):
     destination, _, previous = directory_predecessor(sandbox)
     repo = directory_replacement(sandbox)
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     migrated = manifest(sandbox)
     (destination / "nested").rename(sandbox / "moved-owned-directory")
     foreign = sandbox / "foreign-directory"
@@ -320,7 +356,7 @@ def test_directory_ancestor_replacement_blocks_apply_without_touching_target(san
 def test_directory_undeclare_restores_original_ownership_lineage(sandbox):
     destination, _, previous = directory_predecessor(sandbox, origin=True)
     repo = directory_replacement(sandbox)
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     migrated = manifest(sandbox)
     declare(repo, 'profile("empty", {})')
     run(repo, "apply")
@@ -343,13 +379,13 @@ def test_directory_undeclare_restores_original_ownership_lineage(sandbox):
 def test_directory_multiple_incarnations_and_interrupted_rollback(sandbox, monkeypatch):
     destination, old_target, previous = directory_predecessor(sandbox)
     repo = directory_replacement(sandbox)
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     first = manifest(sandbox)
     first_inode = destination.stat().st_ino
     run(repo, "rollback", str(previous["number"]))
     assert destination.readlink() == old_target
     (repo / "tree/data").write_text("second migration epoch\n")
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     second = manifest(sandbox)
     second_inode = destination.stat().st_ino
     assert second_inode != first_inode
@@ -380,9 +416,9 @@ def test_directory_transition_preserves_physical_destination_alias_identity(sand
         'trackedCopyTo("~/.migrated-tree")',
         'trackedCopyTo("~/.destination-alias/.migrated-tree")',
     ))
-    run(repo, "plan", "--migrate-from", str(previous["number"]))
+    run(repo, "plan")
     assert destination.readlink() == old_target
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     migrated = manifest(sandbox)
     assert migrated["directory_transitions"][0]["destination"] == str(destination)
     assert {entry["key"] for entry in migrated["modules"]["personal"]["entries"]} == {

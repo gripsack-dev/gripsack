@@ -1,26 +1,13 @@
-/** Workspace declarations (0052 A1): the supported surface for the
- *  v8 workspace frontend — pure value constructors for nine typed
- *  output variants plus the shared command/file grammar and current
- *  emitter. No global registry or import-order magic — the
- *  root `gripsack.ts` entrypoint RETURNS a {@link WorkspaceValue}
- *  built by {@link workspace}, and the driver turns that value into
- *  IR (JSON) via {@link emitWorkspaceIr}.
+/** Pure workspace constructors for named outputs, commands and profile files.
  *
- *  Wire shape is exactly `schema/ir/v8.json`: every node carries a
- *  mandatory provenance span, all structs reject unknown fields at
- *  construction time (JS callers and casts get the same boundary as
- *  the type-checker), and returned values are deeply frozen — an
- *  authoring value never changes after construction. Execution is
- *  declared, never performed here: unavailable capabilities
- *  (`isolated_linux` before B2, schedule registration before E3) are
- *  emitted explicitly and rejected by the core's admission, never
- *  silently reinterpreted by the frontend.
+ * Root `gripsack.ts` returns a {@link WorkspaceValue}; the explicit compiler
+ * entrypoint emits the strict current schema (`schema/ir/v9.json`).
+ * Declarations carry provenance, reject unknown fields and stay deeply frozen.
+ * Construction declares work; only the core admits and performs effects.
  *
- *  Implementation is split into cohesive modules under ./workspace/
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), target.ts (execution/target/layout
- *  admission), commands.ts, files.ts, outputs.ts and emit.ts.
- *  This file is the supported re-export surface. */
+ * Implementations live under ./workspace/ by responsibility: wire types,
+ * value/target admission, commands, files, outputs and emission.
+ */
 
 export { artifact, bash, bashBody, exec, hostPath, lit, packageCommand, runBash, sourcePath, outputPath } from "./workspace/commands.ts";
 export type { BashBuilder, BashCommandBuilder, ExecBuilder } from "./workspace/commands.ts";
@@ -109,14 +96,12 @@ export type {
 } from "./workspace/ir.ts";
 export {
   check,
-  condaEnvironment,
   daily,
   defineWorkspace,
   environment,
   hook,
   image,
   pkg,
-  pixiFromLock,
   profile,
   provider,
   recipe,
@@ -128,23 +113,8 @@ export {
 } from "./workspace/outputs.ts";
 
 import { condaEnvironment as condaEnvironmentImpl, pixiFromLock as pixiFromLockImpl } from "./workspace/outputs.ts";
-import { DiagnosticError, diagnosticCodes } from "./diagnostic.ts";
-import { callerSpan } from "./module.ts";
 
 /** Conda acquisition namespace: `conda.environment({ channels, packages, platforms? })`. */
 export const conda = { environment: condaEnvironmentImpl };
-/** Pixi acquisition namespace: `pixi.fromLock({ manifest, lock, environment })`.
- * The public type is deliberately not callable. The runtime call trap only
- * diagnoses retired JavaScript/pre-typecheck callers; it never emits a fetch. */
-export const pixi: { fromLock: typeof pixiFromLockImpl } = Object.assign(
-  function removedPixiConstructor(): never {
-    throw new DiagnosticError({
-      code: diagnosticCodes.invalidWorkspaceValue,
-      severity: "error",
-      message: "pixi(package) was removed in 0.44; a coherent environment belongs in a gripsack.ts workspace",
-      labels: [{ span: callerSpan() ?? null, note: "removed single-package constructor called here" }],
-      help: "Use conda.environment(...) or pixi.fromLock(...). Migration guide: https://gripsack.dev/docs/workspace-migration.html",
-    });
-  },
-  { fromLock: pixiFromLockImpl },
-);
+/** Explicit import of an existing Pixi lockfile. */
+export const pixi = { fromLock: pixiFromLockImpl };

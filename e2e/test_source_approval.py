@@ -13,7 +13,7 @@ import subprocess
 import time
 
 import pytest
-from conftest import GRIP, grip, make_env_repo
+from conftest import GRIP, grip, make_workspace_repo
 
 
 def git(repo, *arguments):
@@ -61,7 +61,7 @@ def checked(repo, expected, source):
     before = receipt_paths()
     result = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout)["modules"] == [expected]
+    assert [output["name"] for output in json.loads(result.stdout)["outputs"]] == [expected]
     receipt = new_receipt(before)
     assert receipt["outcome"] == "completed"
     assert receipt["source"] == source["bundle_digest"]
@@ -87,10 +87,10 @@ def value_file(path, value):
 
 
 def value_repo(root, imported="../value.ts"):
-    return make_env_repo(root, {
-        "selected": 'import { module } from "@gripsack/core";\n'
+    return make_workspace_repo(root, {
+        "selected": 'import { profile } from "@gripsack/core";\n'
                     f'import value from {json.dumps(imported)};\n'
-                    'export default module(value, { install: [] });\n',
+                    'export default profile(value, { files: [] });\n',
     })
 
 
@@ -303,8 +303,13 @@ def test_source_mutation_after_approval_and_between_rounds_cannot_change_evaluat
         else:
             value_file(value, "before")
     if rounds == 2:
-        host = repo / "hosts/testhost.ts"
-        host.write_text(host.read_text().replace("modules: [selected]", 'modules: [ctx.probe.executable("sh") && selected]'))
+        (repo / "gripsack.ts").write_text(
+            'import {defineWorkspace, workspace, profile} from "@gripsack/core";\n'
+            'import selected from "./outputs/selected.ts";\n'
+            'export default defineWorkspace(ctx => workspace({outputs: '
+            '[profile("baseline", {files: []}), '
+            '...(ctx.probe.executable("sh") ? [selected] : [])]}));\n'
+        )
     control = pause_runtime(sandbox, monkeypatch)
     source = approve_source(repo)
     before = receipt_paths()
@@ -322,7 +327,8 @@ def test_source_mutation_after_approval_and_between_rounds_cannot_change_evaluat
             (control / f"release-{round}").touch()
         stdout, stderr = process.communicate(timeout=30)
         assert process.returncode == 0, stdout + stderr
-        assert json.loads(stdout)["modules"] == ["before"]
+        expected = ["baseline", "before"] if rounds == 2 else ["before"]
+        assert [output["name"] for output in json.loads(stdout)["outputs"]] == expected
     finally:
         if process.poll() is None:
             process.kill()
@@ -410,10 +416,11 @@ def test_stale_noninteractive_approval_cannot_authorize_changed_source_or_runtim
 
 @pytest.mark.parametrize("alias_kind", ["relative", "absolute", "directory"])
 def test_native_overlay_materializes_captured_alias_targets(sandbox, alias_kind):
-    source = 'tree("alias", "~/.aliased", "owned")' if alias_kind == "directory" else '{alias: symlink("~/.aliased/file")}'
-    repo = make_env_repo(sandbox / "repo", {
-        "aliased": 'import {module,symlink,tree} from "@gripsack/core";\n'
-                   f'export default module("aliased", {{config: {source}}});\n',
+    source = 'repoTree("alias")' if alias_kind == "directory" else 'repoFile("alias")'
+    destination = "~/.aliased" if alias_kind == "directory" else "~/.aliased/file"
+    repo = make_workspace_repo(sandbox / "repo", {
+        "aliased": 'import {profile,file,repoFile,repoTree,identity,symlinkTo} from "@gripsack/core";\n'
+                   f'export default profile("aliased", {{files:[file({{source:{source},content:identity(),destination:symlinkTo({json.dumps(destination)})}})]}});\n',
     })
     original = repo / "original/file"
     original.parent.mkdir()
@@ -447,13 +454,13 @@ def test_native_overlay_materializes_captured_alias_targets(sandbox, alias_kind)
 
 
 def test_takeover_cannot_replace_a_directory_entry_inside_approved_source(sandbox):
-    repo = make_env_repo(sandbox / "repo", {})
+    repo = make_workspace_repo(sandbox / "repo", {})
     (repo / "original").write_text("source bytes\n")
     (repo / "destination").symlink_to("original")
     (repo / "payload").write_text("replacement\n")
-    (repo / "hosts/testhost.ts").write_text(
-        'import {defineEnv,module,symlink} from "@gripsack/core";\n'
-        f'export default defineEnv(() => ({{modules:[module("guard",{{config:{{payload:symlink({json.dumps(str(repo / "destination"))})}}}})]}}));\n'
+    (repo / "gripsack.ts").write_text(
+        'import {defineWorkspace,workspace,profile,file,repoFile,identity,symlinkTo} from "@gripsack/core";\n'
+        f'export default defineWorkspace(() => workspace({{outputs:[profile("guard",{{files:[file({{source:repoFile("payload"),content:identity(),destination:symlinkTo({json.dumps(str(repo / "destination"))})}})]}})]}}));\n'
     )
     approve_source(repo)
     result = grip("apply", "--host", "testhost", "--take-over", cwd=repo, approve=False)
@@ -482,18 +489,18 @@ def test_hoisted_node_modules_never_become_ambient_evaluation_sources(sandbox, m
 
 def test_round_file_grant_does_not_grant_its_parent_directory(sandbox):
     prelude = (
-        'import {module} from "@gripsack/core";\n'
+        'import {profile} from "@gripsack/core";\n'
         'const input = Deno.args[Deno.args.indexOf("--inputs") + 1];\n'
         'const facts = JSON.parse(Deno.readTextFileSync(input));\n'
         'if (facts.version !== 1) throw new Error("invalid fixture input");\n'
     )
-    repo = make_env_repo(sandbox / "repo", {
-        "selected": prelude + 'export default module("input-file", {install: []});\n',
+    repo = make_workspace_repo(sandbox / "repo", {
+        "selected": prelude + 'export default profile("input-file", {files: []});\n',
     })
     checked(repo, "input-file", approve_source(repo))
-    (repo / "modules/selected.ts").write_text(
+    (repo / "outputs/selected.ts").write_text(
         prelude + 'Array.from(Deno.readDirSync(input.slice(0, input.lastIndexOf("/"))));\n'
-        'export default module("parent-directory-leak", {install: []});\n'
+        'export default profile("parent-directory-leak", {files: []});\n'
     )
     approve_source(repo)
     before = receipt_paths()
@@ -507,48 +514,48 @@ def test_round_file_grant_does_not_grant_its_parent_directory(sandbox):
 def test_focus_filters_display_but_approval_binds_whole_bundle(sandbox):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "before")
-    sibling = repo / "modules-extra/note.txt"
+    sibling = repo / "outputs-extra/note.txt"
     sibling.parent.mkdir()
     sibling.write_text("before\n")
     approved = approve_source(repo)
     checked(repo, "before", approved)
-    # Two edited subtrees: modules/ (in focus) and the root value.ts (out of focus).
-    (repo / "modules/selected.ts").write_text(
-        'import { module } from "@gripsack/core";\n'
+    # Focused output edits must not hide authority changes elsewhere.
+    (repo / "outputs/selected.ts").write_text(
+        'import { profile } from "@gripsack/core";\n'
         'import value from "../value.ts";\n'
-        'export default module(value, { install: [] });\n'
+        'export default profile(value, { files: [] });\n'
         '// focused edit\n'
     )
     value_file(repo / "value.ts", "changed")
     sibling.write_text("outside the selected subtree\n")
-    focused = grip("trust", "inspect", str(repo), "--focus", "modules", approve=False)
+    focused = grip("trust", "inspect", str(repo), "--focus", "outputs", approve=False)
     assert focused.returncode == 0, focused.stderr
     text = focused.stdout
-    assert "focus: modules" in text
-    assert "modules/selected.ts" in text
+    assert "focus: outputs" in text
+    assert "outputs/selected.ts" in text
     assert "value.ts" not in text, "focused view must not list out-of-focus paths"
-    assert "modules-extra/note.txt" not in text
+    assert "outputs-extra/note.txt" not in text
     assert re.search(r"unhidden: 2 out-of-focus changes \(digest [0-9a-f]{64}\)", text)
     # Policy, runtime and native disclosure survives the focused view.
     assert "runtime: " in text and "native policy: " in text
     assert "native configuration: " in text
     # JSON stays complete; focus is an added field only, digests unchanged.
     plain = inspect_source(repo)
-    narrowed = json.loads(grip("trust", "inspect", str(repo), "--focus", "modules",
+    narrowed = json.loads(grip("trust", "inspect", str(repo), "--focus", "outputs",
                                "--json", approve=False).stdout)
-    assert narrowed["focus"] == "modules" and plain["focus"] is None
+    assert narrowed["focus"] == "outputs" and plain["focus"] is None
     assert narrowed["bundle_digest"] == plain["bundle_digest"]
     assert narrowed["policy_digest"] == plain["policy_digest"]
     assert narrowed["approval"]["changes"] == plain["approval"]["changes"]
     root_focus = grip("trust", "inspect", str(repo), "--focus", ".", approve=False)
     assert root_focus.returncode == 0, root_focus.stderr
-    assert "repo/modules/selected.ts" in root_focus.stdout
-    assert "repo/modules-extra/note.txt" in root_focus.stdout
-    for invalid_focus in ("../modules", "/modules"):
+    assert "repo/outputs/selected.ts" in root_focus.stdout
+    assert "repo/outputs-extra/note.txt" in root_focus.stdout
+    for invalid_focus in ("../outputs", "/outputs"):
         refused = grip("trust", "inspect", str(repo), "--focus", invalid_focus, approve=False)
         assert refused.returncode != 0
     # Stale digests are refused with --focus exactly as without it.
-    stale = grip("trust", "add", str(repo), "--focus", "modules",
+    stale = grip("trust", "add", str(repo), "--focus", "outputs",
                  "--bundle", approved["bundle_digest"], "--policy", approved["policy_digest"],
                  approve=False)
     assert stale.returncode == 1

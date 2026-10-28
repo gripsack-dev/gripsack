@@ -18,7 +18,7 @@ Sleep 2s
 Type@40ms "find . -type f -not -path './.git/*' | sort"
 Enter
 Sleep 4s
-Type@40ms "# check - approve captured source, eval + sema + linters"
+Type@40ms "# check - approve captured source and validate the workspace"
 Enter
 Sleep 2s
 Type@40ms "grip check"
@@ -27,7 +27,7 @@ Sleep 4s
 Type@40ms "y"
 Enter
 Sleep 4s
-Type@40ms "# first apply deploys the hello module"
+Type@40ms "# first apply deploys the generated profile"
 Enter
 Sleep 2s
 Type@40ms "grip apply"

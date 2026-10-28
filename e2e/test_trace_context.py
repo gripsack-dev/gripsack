@@ -3,22 +3,24 @@ import json
 import os
 from pathlib import Path
 
-from conftest import grip, latest_run_log, make_env_repo, make_tarball
+from conftest import grip, latest_run_log, make_workspace_repo, make_tarball
 
 
-def test_parallel_fetch_events_keep_their_module_and_run(sandbox):
-    modules = {}
+def test_fetch_events_keep_their_output_and_run(sandbox):
+    outputs = {}
     for name in ("alpha", "beta"):
         payload = make_tarball(sandbox / f"{name}.tar.gz", {"data": name.encode()})
-        modules[name] = f'''
-import {{ module, fileFetch, fetchStep, installStep, symlink }} from "@gripsack/core";
-export default module("{name}", {{ steps: [
-  fetchStep(fileFetch({json.dumps(str(payload))}), "fetch-{name}"),
-  installStep({{ data: symlink("~/.trace/{name}") }}, "install-{name}", {{ needs: ["fetch-{name}"] }}),
-] }});
+        outputs[name] = f'''
+import {{ pkg, provider, fileFetch, profile, file, artifactFile, identity, symlinkTo }} from "@gripsack/core";
+export default [
+  pkg("{name}", {{producer:provider(fileFetch({json.dumps(str(payload))})),
+    commands:{{}},target:{{os:"linux",arch:"x86_64"}},layout:{{kind:"relocatable"}}}}),
+  profile("{name}-profile", {{files:[file({{source:artifactFile("{name}","data"),
+    content:identity(),destination:symlinkTo("~/.trace/{name}")}})]}}),
+];
 '''
-    repo = make_env_repo(sandbox / "env", modules)
-    result = grip("apply", "--host", "testhost", "--jobs", "2", cwd=repo)
+    repo = make_workspace_repo(sandbox / "env", outputs)
+    result = grip("update", "--host", "testhost", cwd=repo)
     assert result.returncode == 0, result.stdout + result.stderr
     log = latest_run_log(sandbox / ".local/share/gripsack/runs")
     assert log is not None
@@ -29,12 +31,11 @@ export default module("{name}", {{ steps: [
             continue
         spans = event["spans"]
         names = [span["name"] for span in spans]
-        assert names.index("run") < names.index("module") < names.index("step")
-        module = next(span["module"] for span in spans if span["name"] == "module")
-        step = next(span["step"] for span in spans if span["name"] == "step")
-        assert step == event["fields"]["step"] == f"fetch-{module}"
+        assert names.index("run") < names.index("output")
+        output = next(span["output"] for span in spans if span["name"] == "output")
+        assert output == event["fields"]["output"]
         assert next(span["run_id"] for span in spans if span["name"] == "run") == log.stem
-        fetched.append(module)
+        fetched.append(output)
     assert sorted(fetched) == ["alpha", "beta"]
 
 

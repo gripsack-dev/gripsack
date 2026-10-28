@@ -9,12 +9,13 @@ mod tests;
 use super::{consumer, content::PreparedFile, hooks, realize::Realization};
 use crate::ExecError;
 use gripsack_ir::{
-    Span, Trigger,
+    Span,
     workspace_model::{
         FileCheckStage, FileCheckSubject, ProfileOutput, WorkspaceFileCheck, WorkspaceOutput,
     },
 };
 use gripsack_process::{OperatorEnvironment, Sha256Digest};
+use gripsack_store::ActivationTrigger;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -180,15 +181,15 @@ pub(super) fn prepare(
                     digest,
                     span: check.span.clone(),
                 }),
-                FileCheckStage::PostLink => {
-                    prepared
-                        .hooks
-                        .push(hooks::PreparedHook::new(name, digest, Trigger::PostLink))
-                }
+                FileCheckStage::PostLink => prepared.hooks.push(hooks::PreparedHook::new(
+                    name,
+                    digest,
+                    ActivationTrigger::PostLink,
+                )),
                 FileCheckStage::PostActivate => prepared.hooks.push(hooks::PreparedHook::new(
                     name,
                     digest,
-                    Trigger::PostActivate,
+                    ActivationTrigger::PostActivate,
                 )),
             }
         }

@@ -2,7 +2,7 @@
 
 import { rejectUnknownFields } from "../fields.ts";
 import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
-import type { Span } from "../module.ts";
+import type { Span } from "../span.ts"
 import type {
   BashBody,
   ExecSpec,

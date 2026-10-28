@@ -273,7 +273,7 @@ fn crash_after_flip_but_before_cleanup_reads_committed() {
     // the flip: generation 1 becomes current; commit_run never ran
     let manifest = crate::generations::Generation {
         number: crate::GenerationId::new(1),
-        modules: Default::default(),
+        deployments: Default::default(),
         directory_transitions: Vec::new(),
         migration: None,
     };
@@ -365,7 +365,7 @@ fn commit_run_clears_the_window() {
 fn manifest(n: u64) -> crate::generations::Generation {
     crate::generations::Generation {
         number: crate::GenerationId::new(n),
-        modules: Default::default(),
+        deployments: Default::default(),
         directory_transitions: Vec::new(),
         migration: None,
     }

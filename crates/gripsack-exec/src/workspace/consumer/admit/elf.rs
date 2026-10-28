@@ -270,14 +270,11 @@ pub(super) fn header(
     launch: bool,
     span: &Span,
 ) -> Result<(), ExecError> {
-    let architecture = match host.arch {
-        TargetArch::X86_64 => ExecutableArch::X86_64,
-        TargetArch::Aarch64 => ExecutableArch::Aarch64,
-    };
     if host.os != TargetOs::Linux
+        || host.arch != TargetArch::X86_64
         || metadata.format != Some(ExecutableFormat::Elf)
         || metadata.class != Some(WordClass::SixtyFour)
-        || metadata.arch != Some(architecture)
+        || metadata.arch != Some(ExecutableArch::X86_64)
         || metadata.endianness != Some(Endianness::Little)
     {
         return Err(gate(
@@ -691,14 +688,12 @@ fn admit_search_directory(
             "runtime search directory contains a GNU loader delimiter or token",
         ));
     }
-    let capabilities: &[&str] = match arch {
-        TargetArch::X86_64 => &[
-            "tls", "sse2", "x86_64", "avx512_1", "i586", "i686", "haswell", "xeon_phi",
-        ],
-        // With sanitized loader environment, AArch64's HWCAP_IMPORTANT is
-        // ATOMICS, in addition to the kernel platform string and TLS.
-        TargetArch::Aarch64 => &["tls", "aarch64", "atomics"],
-    };
+    if arch != TargetArch::X86_64 {
+        return Err(gate(span, "native runtime search supports only x86_64"));
+    }
+    let capabilities = [
+        "tls", "sse2", "x86_64", "avx512_1", "i586", "i686", "haswell", "xeon_phi",
+    ];
     for capability in capabilities {
         let candidate = directory.join(capability);
         match std::fs::symlink_metadata(&candidate) {

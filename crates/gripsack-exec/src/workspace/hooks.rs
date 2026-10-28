@@ -7,23 +7,23 @@ pub(super) mod snapshot;
 use super::{consumer, realize::Realization};
 use crate::ExecError;
 use gripsack_ir::{
-    Span, Trigger,
+    Span,
     workspace_model::{HookTrigger, WorkspaceOutput},
 };
 use gripsack_process::{
     ActivationEnvironment, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessRole,
     Sha256Digest,
 };
-use gripsack_store::{self as store, activation::ActivationAction};
+use gripsack_store::{self as store, ActivationTrigger, activation::ActivationAction};
 use std::{collections::BTreeMap, ffi::OsString, io, path::Path, time::Instant};
 
 pub(super) struct PreparedHook {
     file: String,
     digest: Sha256Digest,
-    trigger: Trigger,
+    trigger: ActivationTrigger,
 }
 impl PreparedHook {
-    pub(super) fn new(file: String, digest: Sha256Digest, trigger: Trigger) -> Self {
+    pub(super) fn new(file: String, digest: Sha256Digest, trigger: ActivationTrigger) -> Self {
         Self {
             file,
             digest,
@@ -79,9 +79,9 @@ pub(super) fn prepare(
             file,
             digest: Sha256Digest::of(&bytes),
             trigger: match hook.trigger {
-                HookTrigger::PostLink => Trigger::PostLink,
-                HookTrigger::PostActivate => Trigger::PostActivate,
-                HookTrigger::OnRemove => Trigger::OnRemove,
+                HookTrigger::PostLink => ActivationTrigger::PostLink,
+                HookTrigger::PostActivate => ActivationTrigger::PostActivate,
+                HookTrigger::OnRemove => ActivationTrigger::OnRemove,
             },
         });
     }

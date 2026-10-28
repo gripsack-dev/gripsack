@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce the A1 domain-crate dependency direction (plan/0052 §3).
+"""Enforce workspace domain-crate dependency direction.
 
 Policy kernels, IR admission and the durable store cannot depend on
 execution/fetcher/backend/OS-manager crates, and no workspace member
@@ -28,7 +28,7 @@ ALLOWED: dict[str, frozenset[str]] = {
     "gripsack-policy": frozenset({"vstd"}),
     "gripsack-ir": frozenset({
         "gripsack-policy", "serde", "serde_json", "thiserror", "jsonschema",
-        # Pure semantic identities and the production Collector refinement.
+        # Pure semantic identities and verified workspace admission kernels.
         "sha2", "vstd",
     }),
     "gripsack-store": frozenset({

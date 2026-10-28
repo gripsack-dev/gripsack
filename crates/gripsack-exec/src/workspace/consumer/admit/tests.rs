@@ -5,6 +5,28 @@ use gripsack_process::executable::{
 };
 
 #[test]
+fn native_host_admission_is_linux_x86_64_only() {
+    for (os, arch, accepted) in [
+        ("linux", "x86_64", true),
+        ("linux", "aarch64", false),
+        ("macos", "x86_64", false),
+        ("darwin", "aarch64", false),
+        ("windows", "x86_64", false),
+    ] {
+        let facts = gripsack_ir::HostFacts {
+            os: os.into(),
+            arch: arch.into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            HostTarget::from_facts(&facts).is_ok(),
+            accepted,
+            "{os}/{arch}"
+        );
+    }
+}
+
+#[test]
 fn declared_abi_cannot_hide_an_unproven_minimum_os_floor() {
     let target = WorkspacePlatform {
         os: PlatformOs::Linux,

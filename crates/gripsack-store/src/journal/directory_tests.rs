@@ -51,7 +51,7 @@ fn write_leaf(run: &JournalRun<'_>, receipt: &DirectoryTransition) {
 fn generation(number: u64, receipts: Vec<DirectoryTransition>) -> crate::Generation {
     crate::Generation {
         number: crate::GenerationId::new(number),
-        modules: Default::default(),
+        deployments: Default::default(),
         directory_transitions: receipts,
         migration: None,
     }

@@ -30,11 +30,11 @@ fn history() -> (tempfile::TempDir, PathBuf) {
     }
     let prior = store::prior::store_blob(&cap, b"original user bytes").unwrap();
     for (number, names) in [(1, &OBJECTS[..3]), (2, &OBJECTS[3..6]), (3, &OBJECTS[..0])] {
-        let mut modules = BTreeMap::new();
+        let mut deployments = BTreeMap::new();
         if !names.is_empty() {
-            modules.insert(
+            deployments.insert(
                 "consumer".into(),
-                store::ModuleState {
+                store::DeploymentState {
                     store_path: home.join("store").join(names[0]),
                     build_only: false,
                     entries: vec![store::DeployedEntry {
@@ -42,7 +42,7 @@ fn history() -> (tempfile::TempDir, PathBuf) {
                         to: home.join("deployed").to_str().unwrap().into(),
                         key: None,
                         ownership: store::StoredOwnership::Legacy(
-                            gripsack_ir::Ownership::TrackedCopy,
+                            gripsack_store::Ownership::TrackedCopy,
                         ),
                         vars: Default::default(),
                         hash: store::hash::ManifestHash::from_raw("a".repeat(64)),
@@ -69,7 +69,7 @@ fn history() -> (tempfile::TempDir, PathBuf) {
             &cap,
             &store::Generation {
                 number: GenerationId::new(number),
-                modules,
+                deployments,
                 directory_transitions: Vec::new(),
                 migration: None,
             },

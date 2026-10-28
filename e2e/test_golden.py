@@ -5,14 +5,9 @@ fixtures/envs/ is evaluated by the SDK driver with a FIXED inputs file.
 This SDK-only harness uses the core's grant profile, but does not claim the
 core's source approval, retained runtime or evaluation receipt guarantees.
 
-Determinism: facts come from the inputs file (never this host), tags are
-fixed, and module order is the host entrypoint's import order (sorted).
-
-Provenance normalization: `span` and `line_map` carry source file
-locations. They move when a fixture is edited without changing the
-workspace's meaning, so only those diagnostic-location keys are
-stripped recursively before canonical comparison. Everything else —
-module fields, command text, edge order, probe_requests — must match.
+Determinism: facts come from the inputs file, never this host. Root
+workspace declaration order is preserved. Diagnostic spans and Bash line
+maps remain part of the snapshots so current source provenance is covered.
 
 Regenerate after an INTENDED IR or fixture change:
 
@@ -29,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import GRIP, grip, make_env_repo
+from conftest import grip, make_workspace_repo
 
 FIXTURES = Path(__file__).parent / "fixtures" / "envs"
 GOLDEN = Path(__file__).parent / "fixtures" / "golden"
@@ -65,12 +60,26 @@ def strip_provenance(node):
     return node
 
 
+def relative_provenance(node, repo):
+    """Keep source locations, removing only the disposable repository prefix."""
+    if isinstance(node, dict):
+        result = {key: relative_provenance(value, repo) for key, value in node.items()}
+        if "file" in result and "line" in result:
+            path = Path(result["file"])
+            if path.is_absolute() and path.is_relative_to(repo):
+                result["file"] = path.relative_to(repo).as_posix()
+        return result
+    if isinstance(node, list):
+        return [relative_provenance(value, repo) for value in node]
+    return node
+
+
 def canonical(envelope: dict) -> str:
     return json.dumps(
         {
-            "ir": strip_provenance(envelope["ir"]),
-            "diagnostics": strip_provenance(envelope.get("diagnostics", [])),
-            "probe_requests": strip_provenance(envelope.get("probe_requests", [])),
+            "ir": envelope["ir"],
+            "diagnostics": envelope.get("diagnostics", []),
+            "probe_requests": envelope.get("probe_requests", []),
         },
         indent=2,
         sort_keys=True,
@@ -84,18 +93,12 @@ def find_deno() -> str | None:
 def materialize_frontend(sandbox: Path) -> Path:
     """Force the core to materialize the embedded frontend by running
     any eval command once; return its ts-<version>/ directory."""
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "probe",
-        """
-import { module, trackedCopy } from "@gripsack/core";
-
-export default module("c", {
-  config: { "x.toml": trackedCopy("~/.config/x.toml") },
-});
-""",
+        'import { profile } from "@gripsack/core";\n'
+        'export default profile("probe", {});\n',
     )
-    (repo / "x.toml").write_text("probe = true\n")
-    out = grip("check", "--host", "testhost", cwd=repo)
+    out = grip("check", cwd=repo)
     assert out.returncode == 0, out.stderr
     front = sandbox / ".local/share/gripsack/frontend"
     drivers = sorted(front.glob("ts-*/src/cli.ts"))
@@ -135,7 +138,7 @@ def evaluate(
     )
     assert out.returncode == 0, out.stderr
     lines = [ln for ln in out.stdout.splitlines() if ln.strip()]
-    return json.loads(lines[-1])
+    return relative_provenance(json.loads(lines[-1]), repo.resolve())
 
 
 @pytest.mark.parametrize("env", sorted(p.name for p in FIXTURES.iterdir()))
@@ -165,7 +168,7 @@ def test_golden_ir_snapshot(sandbox, env, request):
         golden.with_suffix(".ir.json.actual").write_text(actual)
     assert actual == expected, (
         f"{env}: emitted envelope drifted from the golden snapshot "
-        f"(diagnostic source locations removed, canonical JSON).\nExpected: {golden}\n"
+        f"(canonical JSON including source provenance).\nExpected: {golden}\n"
         f"Actual written next to it as .actual — if the change is "
         f"intended, regenerate with REGEN_GOLDEN=1 pytest e2e/test_golden.py"
     )
@@ -179,7 +182,7 @@ def test_workspace_golden_rejects_a_changed_typed_command_input(sandbox):
         pytest.skip("deno not installed (the e2e gate image ships it)")
     frontend = materialize_frontend(sandbox)
     repo = sandbox / "changed-command"
-    shutil.copytree(FIXTURES / "all-output-kinds", repo)
+    shutil.copytree(FIXTURES / "native-workspace", repo)
     source = repo / "gripsack.ts"
     original = source.read_text()
     input_value = "from a typed environment value"
@@ -188,12 +191,12 @@ def test_workspace_golden_rejects_a_changed_typed_command_input(sandbox):
     source.write_text(original.replace(input_value, changed_value))
 
     actual = json.loads(canonical(evaluate(deno, frontend, repo, sandbox)))
-    expected = json.loads((GOLDEN / "all-output-kinds.ir.json").read_text())
+    expected = json.loads((GOLDEN / "native-workspace.ir.json").read_text())
 
     def command_env(document):
         build = next(
             output for output in document["ir"]["workspace"]["outputs"]
-            if output["name"] == "build"
+            if output["name"] == "invoke"
         )
         return build["steps"][0]["command"]["env"]["INPUT"]
 

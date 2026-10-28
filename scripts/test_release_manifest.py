@@ -115,7 +115,7 @@ def fixture(root):
         "recipe_sha256": hashlib.sha256(release.canonical(profile)).hexdigest(), "platform": "linux-x86_64",
         "signer": {"workflow": release.WORKFLOW, "ref": "refs/tags/core-v" + core},
         "compatible": {"core": core, "sdk": sdk, "bridge": core, "conda": core,
-                       "ir": {"writer": 8, "readers": [3, 4, 5, 6, 7, 8]}, "helper_pins": pins},
+                       "ir": {"writer": 9, "readers": [9]}, "helper_pins": pins},
         "gates": gates, "partitions": partitions, "exclusions": release.EXCLUSIONS,
         "provenance": {"builder": "local", "hosted_build": False}, "artifacts": artifacts,
         "packages": packages, "evidence": []}
@@ -142,6 +142,16 @@ class ManifestAdmissionTests(unittest.TestCase):
         checked = release.validate_bundle(self.root)
         self.assertEqual(checked["candidate_id"], self.manifest["candidate_id"])
         self.assertEqual(checked["provenance"], {"builder": "local", "hosted_build": False})
+
+    def test_rejects_legacy_ir_compatibility(self):
+        for compatibility in ({"writer": 8, "readers": [3, 4, 5, 6, 7, 8]},
+                              {"writer": 9, "readers": [8, 9]},
+                              {"writer": 8, "readers": [9]}):
+            with self.subTest(compatibility=compatibility):
+                value = copy.deepcopy(self.manifest)
+                value["compatible"]["ir"] = compatibility
+                with self.assertRaisesRegex(ValueError, "unsupported IR compatibility contract"):
+                    release.validate_manifest(value)
 
     def test_source_bound_admission_rejects_self_consistent_bundle_omitting_all_crates(self):
         # The synthetic hierarchy is internally hashed, but not a release proof.

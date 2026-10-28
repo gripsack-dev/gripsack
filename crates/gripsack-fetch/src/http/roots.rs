@@ -46,7 +46,6 @@ fn append(
     roots.add_parsable_certificates(result.certs);
 }
 
-#[cfg(not(target_os = "macos"))]
 fn system(roots: &mut rustls::RootCertStore) {
     // rustls/openssl-probe's Linux bundle order, without its ambient-env lookup.
     const BUNDLES: &[&str] = &[
@@ -74,39 +73,4 @@ fn system(roots: &mut rustls::RootCertStore) {
             append(roots, None, Some(directory));
         }
     }
-}
-
-#[cfg(target_os = "macos")]
-fn system(roots: &mut rustls::RootCertStore) {
-    use security_framework::trust_settings::{Domain, TrustSettings, TrustSettingsForCertificate};
-    // Native trust precedence matches rustls-native-certs: user > admin > system.
-    // Call the OS API directly because its public loader re-reads SSL_CERT_*.
-    let mut certificates = std::collections::HashMap::new();
-    for domain in [Domain::User, Domain::Admin, Domain::System] {
-        let settings = TrustSettings::new(domain);
-        let iterator = match settings.iter() {
-            Ok(iterator) => iterator,
-            Err(_) => {
-                tracing::warn!("system CA trust domain could not be read");
-                continue;
-            }
-        };
-        for certificate in iterator {
-            let trust = match settings.tls_trust_settings_for_certificate(&certificate) {
-                Ok(trust) => trust.unwrap_or(TrustSettingsForCertificate::TrustRoot),
-                Err(_) => {
-                    tracing::warn!("system CA trust settings could not be read");
-                    continue;
-                }
-            };
-            certificates.entry(certificate.to_der()).or_insert(trust);
-        }
-    }
-    roots.add_parsable_certificates(certificates.into_iter().filter_map(|(der, trust)| {
-        matches!(
-            trust,
-            TrustSettingsForCertificate::TrustRoot | TrustSettingsForCertificate::TrustAsRoot
-        )
-        .then(|| rustls::pki_types::CertificateDer::from(der))
-    }));
 }

@@ -1,29 +1,28 @@
-# my-env — a gripsack environment
+# My workspace
 
-Your whole environment, in one bag: tools, configs, per-host
-variations — declarative, content-addressed, with generations and
-instant rollback.
+`gripsack.ts` declares named outputs. The starter `hello` profile deploys
+`configs/hello/hello.toml` to `~/.config/hello/hello.toml` as a store-backed
+symlink. Edit the repository file, not the deployed symlink.
 
-```bash
-grip check        # validate everything, zero side effects
-grip apply        # deploy — one atomic generation per run
-grip plan         # what would apply change?
-grip generations  # history
-grip rollback     # undo the last apply, instantly
+```sh
+grip trust inspect .
+grip trust add .
+grip check
+grip plan
+grip apply
+grip generations
+grip rollback
 ```
 
-Layout:
+Approval is bound to captured source bytes and policy. Review and renew it
+after source changes. `env.toml` excludes editor-only `node_modules` from
+capture; evaluation uses the embedded SDK. Optional `npm install` downloads
+the matching SDK archive from the core release for editor types. Linux and
+WSL on x86_64 are supported.
 
-- `env.toml` — the environment declaration (name, settings)
-- `hosts/` — one TypeScript entrypoint per machine; each is a function
-  receiving the machine's facts and returning the environment
-- `modules/` — one TypeScript file per concern (a module is a value)
-- `configs/` — config payloads, deployed into the store by reference
-- `grip.lock` — fetch pins; commit it (created on first fetch)
+To import existing files, run `grip adopt PATH`, review the generated profile
+and copied files, approve the changed workspace, then follow the printed
+`grip adopt PATH --resume` command. Original destination state is retained
+for rollback.
 
-Evaluation is sandboxed (no env vars, no network, no subprocesses —
-plan/0013): machine facts and probes arrive through the entrypoint's
-`ctx`, so a plan tells you exactly what influenced it.
-
-Docs: https://gripsack.dev — the `gripsack-adopt` skill teaches an
-agent to migrate an existing dotfiles setup into this layout.
+Documentation: https://gripsack.dev

@@ -76,10 +76,10 @@ def test_script_runtime_cannot_grant_live_source_via_path(sandbox, monkeypatch, 
     checked(repo, "captured", approve_source(repo))
     live = repo / ".venv/bin/live.js"
     value_file(live, "EXCLUDED_PATH_MODULE")
-    (repo / "modules/selected.ts").write_text(
-        'import {module} from "@gripsack/core";\n'
+    (repo / "outputs/selected.ts").write_text(
+        'import {profile} from "@gripsack/core";\n'
         f'import value from {json.dumps(live.as_uri())};\n'
-        'export default module(value, {install:[]});\n'
+        'export default profile(value, {files:[]});\n'
     )
     approve_source(repo)
     before = receipt_paths()

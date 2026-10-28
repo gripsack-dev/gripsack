@@ -1,13 +1,6 @@
-//! Read-only workspace admission is not an execution entitlement.
-//! Both the CLI and direct executor entrypoints ask this single core
-//! gate before opening a home, a lockfile, a worker or a scheduler.
-//! Label the first declared unavailable output rather than an invented
-//! host fallback or an undifferentiated workspace root.
+//! Operation-specific admission before opening state or starting any effects.
 
-use super::{RecipeExecution, WorkspaceOutput, WorkspaceSource};
-use crate::diagnostic::{Diagnostic, codes};
-use crate::model::Ir;
-use crate::span::Span;
+use crate::{Diagnostic, Ir, codes, workspace_model::WorkspaceOutput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceOperation {
@@ -34,273 +27,39 @@ impl std::fmt::Display for WorkspaceOperation {
     }
 }
 
-/// The executor milestone that owns one declared capability. This is
-/// diagnostic classification only: it never authorizes an effect.
-#[derive(Clone, Copy)]
-enum UnavailableCapability {
-    HostRecipe,
-    IsolatedLinuxRecipe,
-    Package,
-    Environment,
-    Task,
-    TaskPrerequisites,
-    Schedule,
-    Check,
-    Image,
-    Profile,
-    Hook,
-    HistoricalV4,
-    EmptyCatalog,
-}
-
-impl UnavailableCapability {
-    fn description(self) -> &'static str {
-        match self {
-            Self::HostRecipe => "host recipe realization",
-            Self::IsolatedLinuxRecipe => "isolated_linux recipe worker",
-            Self::Package => "package realization",
-            Self::Environment => "environment activation",
-            Self::Task => "task invocation",
-            Self::TaskPrerequisites => "task prerequisite execution",
-            Self::Schedule => "schedule registration",
-            Self::Check => "check execution",
-            Self::Image => "image materialization",
-            Self::Profile => "profile deployment",
-            Self::Hook => "hook execution",
-            Self::HistoricalV4 => "historical v4 workspace execution",
-            Self::EmptyCatalog => "empty workspace catalog",
-        }
-    }
-
-    fn owner(self) -> &'static str {
-        match self {
-            Self::HostRecipe | Self::Package | Self::Profile | Self::Hook | Self::EmptyCatalog => {
-                "A2"
-            }
-            Self::IsolatedLinuxRecipe => "B2",
-            Self::Environment | Self::Task => "A2-P",
-            Self::TaskPrerequisites => "E1",
-            Self::Schedule => "E2/E3",
-            Self::Check => "A2/E1",
-            Self::Image => "B4",
-            Self::HistoricalV4 => "A5 migration",
-        }
-    }
-}
-
-struct DeclaredCapability<'a> {
-    capability: UnavailableCapability,
-    name: &'a str,
-    span: &'a Span,
-    workspace_span: &'a Span,
-}
-
-fn current_output<'a>(ir: &'a Ir, operation: WorkspaceOperation) -> Option<DeclaredCapability<'a>> {
-    if let Some(workspace) = &ir.workspace_catalog {
-        return current_v6_output(workspace, operation);
-    }
-    let workspace = ir.workspace.as_ref()?;
-    let Some(output) = workspace
-        .outputs
-        .iter()
-        .find(|output| !native_profile(output))
-    else {
-        if !workspace.outputs.is_empty() {
-            return None;
-        }
-        return Some(DeclaredCapability {
-            capability: UnavailableCapability::EmptyCatalog,
-            name: "workspace",
-            span: &workspace.span,
-            workspace_span: &workspace.span,
-        });
-    };
-    let capability = match output {
-        WorkspaceOutput::Recipe(recipe) => match recipe.execution {
-            RecipeExecution::Host { .. } => UnavailableCapability::HostRecipe,
-            RecipeExecution::IsolatedLinux { .. } => UnavailableCapability::IsolatedLinuxRecipe,
-        },
-        WorkspaceOutput::Package(_) => UnavailableCapability::Package,
-        WorkspaceOutput::Environment(_) => UnavailableCapability::Environment,
-        WorkspaceOutput::Task(task) if !task.deps.is_empty() => {
-            UnavailableCapability::TaskPrerequisites
-        }
-        WorkspaceOutput::Task(_) => UnavailableCapability::Task,
-        WorkspaceOutput::Schedule(_) => UnavailableCapability::Schedule,
-        WorkspaceOutput::Check(_) => UnavailableCapability::Check,
-        WorkspaceOutput::Image(_) => UnavailableCapability::Image,
-        WorkspaceOutput::Profile(_) => UnavailableCapability::Profile,
-        WorkspaceOutput::Hook(_) => UnavailableCapability::Hook,
-    };
-    Some(DeclaredCapability {
-        capability,
-        name: output.name(),
-        span: output.span(),
-        workspace_span: &workspace.span,
-    })
-}
-
-fn native_profile(output: &WorkspaceOutput) -> bool {
-    matches!(output, WorkspaceOutput::Profile(profile)
-        if profile.environment.is_none() && profile.hooks.is_empty() && profile.schedules.is_empty()
-        && profile.files.iter().all(|file| !matches!(file.source, Some(WorkspaceSource::ArtifactFile { .. }))))
-}
-
-/// Profile deployability is operation-specific. `apply` realizes and
-/// deploys environment selections and artifact/tree file origins through the
-/// common realization service. `plan` previews the SAME profiles offline:
-/// produced content renders as explicit deferred operations and no builder,
-/// download, solve or activation runs. Staged checks preserve pre-flip subject
-/// validation or durable post-flip activation; schedules have their own lane.
-fn current_v6_output(
-    workspace: &crate::workspace_model::WorkspaceCatalog,
-    operation: WorkspaceOperation,
-) -> Option<DeclaredCapability<'_>> {
-    use crate::workspace_model::{RecipeExecution, WorkspaceOutput};
-    let deployable = |profile: &crate::workspace_model::ProfileOutput| profile.schedules.is_empty();
-    let mut first_non_profile: Option<&WorkspaceOutput> = None;
-    let mut has_deployable_profile = false;
-    for output in &workspace.outputs {
-        match output {
-            WorkspaceOutput::Profile(profile) if deployable(profile) => {
-                has_deployable_profile = true;
-            }
-            other => {
-                if first_non_profile.is_none() {
-                    first_non_profile = Some(other);
-                }
-            }
-        }
-    }
-    // A deployable profile deploys through apply and previews through plan;
-    // declarations it does not reference stay inert and must not block it.
-    if has_deployable_profile
-        && matches!(
-            operation,
-            WorkspaceOperation::Apply | WorkspaceOperation::Plan
-        )
-    {
-        return None;
-    }
-    let Some(output) = first_non_profile else {
-        return workspace.outputs.is_empty().then_some(DeclaredCapability {
-            capability: UnavailableCapability::EmptyCatalog,
-            name: "workspace",
-            span: &workspace.span,
-            workspace_span: &workspace.span,
-        });
-    };
-    let capability = match output {
-        WorkspaceOutput::Recipe(recipe) => match recipe.execution {
-            RecipeExecution::Host { .. } => UnavailableCapability::HostRecipe,
-            RecipeExecution::IsolatedLinux { .. } => UnavailableCapability::IsolatedLinuxRecipe,
-        },
-        WorkspaceOutput::Package(_) => UnavailableCapability::Package,
-        WorkspaceOutput::Environment(_) => UnavailableCapability::Environment,
-        WorkspaceOutput::Task(task) if !task.deps.is_empty() => {
-            UnavailableCapability::TaskPrerequisites
-        }
-        WorkspaceOutput::Task(_) => UnavailableCapability::Task,
-        WorkspaceOutput::Schedule(_) => UnavailableCapability::Schedule,
-        WorkspaceOutput::Check(_) => UnavailableCapability::Check,
-        WorkspaceOutput::Image(_) => UnavailableCapability::Image,
-        WorkspaceOutput::Profile(_) => UnavailableCapability::Profile,
-        WorkspaceOutput::Hook(_) => UnavailableCapability::Hook,
-    };
-    Some(DeclaredCapability {
-        capability,
-        name: output.name(),
-        span: output.span(),
-        workspace_span: &workspace.span,
-    })
-}
-
-fn historical_output<'a>(ir: &'a Ir) -> Option<DeclaredCapability<'a>> {
-    let workspace = ir.workspace_v4.as_ref()?;
-    let Some(output) = workspace.outputs.first() else {
-        return Some(DeclaredCapability {
-            capability: UnavailableCapability::HistoricalV4,
-            name: "workspace",
-            span: &workspace.span,
-            workspace_span: &workspace.span,
-        });
-    };
-    Some(DeclaredCapability {
-        capability: UnavailableCapability::HistoricalV4,
-        name: output.name(),
-        span: output.span(),
-        workspace_span: &workspace.span,
-    })
-}
-
 pub(crate) fn execution_error(ir: &Ir, operation: WorkspaceOperation) -> Option<Diagnostic> {
-    if ir.ir_version < crate::IR_VERSION
-        && ir
-            .workspace_catalog
-            .as_ref()
-            .is_some_and(|workspace| workspace.requires_v8())
-    {
-        return Some(Diagnostic::error(
-            codes::MALFORMED,
-            "v8 declaration authority is forbidden before ir_version 8",
-        ));
+    if ir.ir_version != crate::IR_VERSION {
+        return Some(crate::parse::version_error(u64::from(ir.ir_version)));
     }
-    if ir.ir_version == crate::WORKSPACE_V6_VERSION
-        && ir
-            .workspace_catalog
-            .as_ref()
-            .is_some_and(|workspace| workspace.requires_v7())
-    {
-        return Some(Diagnostic::error(
-            codes::MALFORMED,
-            "v7 declaration authority is forbidden in ir_version 6",
-        ));
-    }
-    // These services admit the selected closure themselves. Catalog entries
-    // that are not selected must not acquire effects or block another output.
-    if matches!(
-        ir.ir_version,
-        crate::WORKSPACE_V6_VERSION | crate::WORKSPACE_V7_VERSION | crate::IR_VERSION
-    ) && ir.workspace_catalog.is_some()
-        && ir.workspace.is_none()
-        && ir.workspace_v4.is_none()
-        && ir.modules.is_empty()
-        && matches!(
-            operation,
-            WorkspaceOperation::Update
-                | WorkspaceOperation::Build
-                | WorkspaceOperation::Run
-                | WorkspaceOperation::Shell
-                | WorkspaceOperation::Task
-        )
-    {
+    // These consumers admit their selected closure. Unselected catalog entries
+    // must neither acquire effects nor block a supported selected output.
+    if !matches!(
+        operation,
+        WorkspaceOperation::Apply | WorkspaceOperation::Plan
+    ) {
         return None;
     }
-    let declaration = current_output(ir, operation).or_else(|| historical_output(ir))?;
-    let capability = declaration.capability;
-    let help = match capability {
-        UnavailableCapability::HistoricalV4 => {
-            "historical v4 workspaces stay read-only; migrate authoring to the current v7 wire. grip check still validates the saved workspace"
+    let workspace = &ir.workspace;
+    if workspace.outputs.iter().any(|output| {
+        matches!(output, WorkspaceOutput::Profile(profile) if profile.schedules.is_empty())
+    }) {
+        return None;
+    }
+    let output = workspace.outputs.first();
+    let span = output.map(WorkspaceOutput::span).unwrap_or(&workspace.span);
+    let message = match output {
+        Some(WorkspaceOutput::Profile(_) | WorkspaceOutput::Schedule(_)) => {
+            "schedule registration is not available"
         }
         _ => {
-            "native profiles deploy captured files and realize artifact/environment inputs at apply; this output still requires its named executor capability"
+            "select a profile output; packages and images use build, environments and tasks use run"
         }
     };
     Some(
         Diagnostic::error(
             codes::WORKSPACE_EXEC_UNAVAILABLE,
-            format!(
-                "{operation} cannot execute output `{}`: {} belongs to {}; its executor capability is unavailable",
-                declaration.name,
-                capability.description(),
-                capability.owner(),
-            ),
+            format!("{operation}: {message}"),
         )
-        .with_label(Some(declaration.span.clone()), "unavailable output declared here")
-        .with_label(
-            Some(declaration.workspace_span.clone()),
-            "workspace declared here",
-        )
-        .with_help(help),
+        .with_label(Some(span.clone()), "declared here"),
     )
 }

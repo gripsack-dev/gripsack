@@ -22,8 +22,6 @@ pub enum ResolveError {
     },
     #[error(transparent)]
     Placeholder(#[from] crate::PlaceholderError),
-    #[error(transparent)]
-    Bottle(#[from] crate::bottle::SelectionFailure),
 }
 
 impl ResolveError {
@@ -43,8 +41,6 @@ pub struct ResolvedRelease {
     /// The API asset endpoint, when the registry has one (GitHub) —
     /// the authenticated download path for private releases.
     pub api_url: Option<String>,
-    /// Present when the registry gives us the hash upfront (brew bottles).
-    pub sha256: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -77,7 +73,6 @@ pub fn pick_asset(
                 version: tag.to_string(),
                 url: url.clone(),
                 api_url: Some(api_url.clone()),
-                sha256: None,
             });
         }
     }
@@ -304,77 +299,6 @@ mod tests {
             other => panic!("{other:?}"),
         }
     }
-}
-
-// ---------------------------------------------------------------- brew
-
-#[derive(Deserialize)]
-pub struct Formula {
-    pub versions: Versions,
-    pub bottle: Bottles,
-}
-
-#[derive(Deserialize)]
-pub struct Versions {
-    pub stable: String,
-}
-
-#[derive(Deserialize)]
-pub struct Bottles {
-    pub stable: BottleStable,
-}
-
-#[derive(Deserialize)]
-pub struct BottleStable {
-    pub files: std::collections::BTreeMap<String, BottleFile>,
-}
-
-#[derive(Deserialize)]
-pub struct BottleFile {
-    pub url: String,
-    pub sha256: String,
-}
-
-/// Select the bottle tag for the acquiring host. Pure policy over the
-/// injected platform facts (A0-01): OS/architecture filter plus macOS
-/// codename chronology — never lexical tag ordering.
-pub fn bottle_key<'a>(
-    files: &'a std::collections::BTreeMap<String, BottleFile>,
-    host: &crate::bottle::HostPlatform,
-) -> Result<&'a str, crate::bottle::SelectionFailure> {
-    crate::bottle::select(files, host)
-}
-
-/// Resolve a brew formula to a bottle URL — the sha256 comes from the
-/// formula JSON, so pinning needs no download.
-pub(crate) fn resolve_brew(
-    context: &crate::FetchContext,
-    formula: &str,
-) -> Result<ResolvedRelease, ResolveError> {
-    let url = format!("https://formulae.brew.sh/api/formula/{formula}.json");
-    let f: Formula = context.json(&url, RequestKind::Metadata)?;
-    let key = bottle_key(&f.bottle.stable.files, context.host_platform())?;
-    let file = &f.bottle.stable.files[key];
-    Ok(ResolvedRelease {
-        version: f.versions.stable,
-        url: file.url.clone(),
-        api_url: None, // brew bottles are CDN downloads, no API path
-        sha256: Some(file.sha256.clone()),
-    })
-}
-
-/// ghcr.io blobs need an anonymous bearer token.
-pub(crate) fn ghcr_token(
-    context: &crate::FetchContext,
-    scope_repo: &str,
-) -> Result<String, ResolveError> {
-    #[derive(Deserialize)]
-    struct Token {
-        token: String,
-    }
-    let url = format!("https://ghcr.io/token?scope=repository:{scope_repo}:pull");
-    let t: Token = context.json(&url, RequestKind::Metadata)?;
-    Ok(t.token)
 }
 
 #[cfg(test)]

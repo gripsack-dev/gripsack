@@ -68,10 +68,7 @@ pub fn consume(
     options: &super::BuildOptions<'_>,
     request: &ConsumerRequest<'_>,
 ) -> Result<ConsumerOutcome, ExecError> {
-    let workspace = ir
-        .workspace_catalog
-        .as_ref()
-        .ok_or_else(|| failure("native consumption requires an executable workspace catalog"))?;
+    let workspace = &ir.workspace;
     let host = admit::NativeContext::new(&ir.host, &ctx.home, options.deadline)?;
     let outputs: BTreeMap<&str, &WorkspaceOutput> = workspace
         .outputs

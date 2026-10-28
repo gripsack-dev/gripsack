@@ -35,12 +35,6 @@ impl SelectedProgram {
         loader: Arc<SelectedGnuLoader>,
         library_path: &OsStr,
     ) -> io::Result<Self> {
-        if !cfg!(target_os = "linux") {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "explicit GNU loader binding requires Linux",
-            ));
-        }
         if self.loader.is_some() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -105,19 +99,12 @@ impl SelectedProgram {
             .flatten()
     }
     pub(crate) fn inherited_images(&self) -> ImageDescriptors {
-        if cfg!(target_os = "linux") {
-            ImageDescriptors {
-                script: self.script.as_ref().map(|image| image.file.as_raw_fd()),
-                loaded_executable: self
-                    .loader
-                    .as_ref()
-                    .map(|_| self.executable.file.as_raw_fd()),
-            }
-        } else {
-            ImageDescriptors {
-                script: None,
-                loaded_executable: None,
-            }
+        ImageDescriptors {
+            script: self.script.as_ref().map(|image| image.file.as_raw_fd()),
+            loaded_executable: self
+                .loader
+                .as_ref()
+                .map(|_| self.executable.file.as_raw_fd()),
         }
     }
 }

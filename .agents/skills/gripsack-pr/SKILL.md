@@ -23,8 +23,8 @@ description: Author gripsack PRs — template and evidence contract
 ## checklist
 - [ ] compose gates green (test, ts-test, e2e)
 - [ ] IR touched? schema + rust + typescript in this PR (gripsack-ir skill)
-      + golden corpus regenerated
-- [ ] new flow? e2e unskipped/added in this PR
+      + golden IR generated directly when corpus replay is excluded
+- [ ] changed flow exercised through the actual program
 - [ ] plan docs updated in this PR
 ```
 
@@ -35,15 +35,15 @@ description: Author gripsack PRs — template and evidence contract
 - **CLI output changes**: paste the before/after terminal text.
 - **Visual/demo-worthy**: extend `demos/demo.tape`; the demo workflow
   re-renders (gripsack-demo-capture skill). Don't commit one-off GIFs.
-- **IR changes**: the JSON diff of emitted IR for the same module,
-  before/after.
+- **IR changes**: show current emitted workspace IR and rejection of retired
+  envelopes; retained storage behavior is a separate lifecycle check.
 
 ## Process
 
 - Branch `<feat|fix|chore>/<slug>`, commits grouped by theme.
 - Title mirrors the dominant commit type (`feat:`, `fix:`, `chore:`,
   `plan:`).
-- `main` is protected: `test` check required. The owner merges with
-  admin override.
+- `main` requires `local-practical-qualification`. The owner may merge with
+  the existing admin exemption; never fabricate a hosted `test` result.
 - Self-review before requesting review: no stray debug output, no
   scratch files, gates actually run (not aspirational checkboxes).

@@ -36,8 +36,6 @@ fn exclusions_are_bounded_literals_or_globs_and_protect_required_sources() {
         "C:/*",
         "env.toml",
         "gripsack.ts",
-        "hosts",
-        "hosts/selected.ts",
         "gripsack.lock",
         "locks",
         "locks/testhost.lock",
@@ -52,7 +50,6 @@ fn exclusions_are_bounded_literals_or_globs_and_protect_required_sources() {
         "a**/b",
         "[ab]/*",
         // Required roots are unreachable by any root-aligned spelling.
-        "hosts/**",
         "**/env.toml",
         "**/locks/**",
         "**/Gripsack.Lock",
@@ -398,9 +395,7 @@ fn glob_matches_on_required_roots_refuse_instead_of_omitting_authority() {
     fs::remove_file(fixture.repo.join("vendor_modules/@gripsack/core")).unwrap();
     fs::create_dir(fixture.repo.join("locks")).unwrap();
     fs::write(fixture.repo.join("locks/testhost.lock"), b"{}").unwrap();
-    fs::create_dir(fixture.repo.join("hosts")).unwrap();
-    fs::write(fixture.repo.join("hosts/selected.ts"), b"export {};\n").unwrap();
-    for spelling in ["**/*.lock", "ho*"] {
+    for spelling in ["**/*.lock", "lo*"] {
         let error = SourceBundle::capture(
             &fixture.repo,
             &fixture.frontend,

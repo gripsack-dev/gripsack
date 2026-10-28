@@ -177,7 +177,7 @@ fn read_bytes(directory: &gripsack_fs::Dir) -> Result<Option<Vec<u8>>, ExecError
 }
 fn failure(output: &str, detail: impl Into<String>) -> ExecError {
     ExecError::Step {
-        module: output.to_owned(),
+        output: output.to_owned(),
         step: WORKSPACE_LOCK.into(),
         detail: detail.into(),
     }

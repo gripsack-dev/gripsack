@@ -10,8 +10,8 @@
 //! world is allowed to move.
 
 use crate::report::ReportKind;
-use gripsack_ir::{Entry, Ownership};
 use gripsack_store as store;
+use gripsack_store::{DeploymentEntry, Ownership};
 use std::path::{Path, PathBuf};
 use store::journal::{Intended, ObjectIdentity};
 
@@ -73,10 +73,6 @@ pub enum OpKind {
     Remove(RemoveTarget),
     /// The live object already matches the intent.
     Satisfied,
-    /// A run/shell step — an opaque effect (0033 R5): the preview
-    /// marks it, apply executes it (outside the op list's journal —
-    /// run steps are declared non-transactional, 0007).
-    RunEffect,
     /// The payload is fetched at apply (0014): the op renders, the
     /// decision pins then. Plan-time only.
     Deferred,
@@ -92,7 +88,7 @@ pub enum OpKind {
 /// planner code.
 #[derive(Debug, Clone)]
 pub struct Op {
-    module: String,
+    output: String,
     /// The canonical physical destination (0030 §P0-1).
     dest: PathBuf,
     /// The declared spelling (provenance for reports).
@@ -113,7 +109,7 @@ pub struct Op {
     /// Satisfied keeps the previous entry, Preserved re-records the
     /// observation).
     produces: Option<ProducedEntry>,
-    /// The preview note for marker ops (Deferred/RunEffect) — why the
+    /// The preview note for deferred ops — why the
     /// decision can't be computed offline.
     note: Option<String>,
 }
@@ -128,7 +124,7 @@ impl Op {
     ///   see [`Op::as_executable`]);
     /// - Remove carries Update authority and no manifest record;
     /// - Satisfied carries no authority;
-    /// - markers (Deferred/RunEffect) carry a note and nothing else.
+    /// - Deferred carries a note and nothing else.
     fn check(&self) {
         match &self.kind {
             OpKind::Link { .. } | OpKind::Write { .. } | OpKind::MergeUpsert { .. } => {
@@ -142,7 +138,7 @@ impl Op {
                 debug_assert!(self.produces.is_none());
             }
             OpKind::Satisfied => debug_assert!(self.authority.is_none()),
-            OpKind::RunEffect | OpKind::Deferred => {
+            OpKind::Deferred => {
                 debug_assert!(self.note.is_some(), "a marker op explains itself");
                 debug_assert!(self.authority.is_none() && self.produces.is_none());
             }
@@ -154,7 +150,7 @@ impl Op {
     /// for the coherence table.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        module: String,
+        output: String,
         dest: PathBuf,
         declared_to: String,
         mode: Ownership,
@@ -166,7 +162,7 @@ impl Op {
         note: Option<String>,
     ) -> Op {
         let op = Op {
-            module,
+            output,
             dest,
             declared_to,
             mode,
@@ -202,7 +198,7 @@ impl Op {
     }
 }
 
-/// An op cleared for execution (0046): marker ops (Deferred/RunEffect)
+/// An op cleared for execution (0046): deferred preview ops
 /// cannot get here — the conversion IS the check, so the executor's
 /// match has no `unreachable!` arm.
 pub(crate) struct ExecutableOp<'a>(pub(crate) &'a Op);
@@ -213,8 +209,8 @@ impl Op {
     /// done at planning's end — an executed deploy always records).
     pub(crate) fn as_executable(&self) -> Result<ExecutableOp<'_>, crate::ctx::ExecError> {
         match &self.kind {
-            OpKind::RunEffect | OpKind::Deferred => Err(crate::ctx::ExecError::Step {
-                module: self.module.clone(),
+            OpKind::Deferred => Err(crate::ctx::ExecError::Step {
+                output: self.output.clone(),
                 step: "deploy".into(),
                 detail: "a preview-only marker op reached execution — a planner bug".into(),
             }),
@@ -222,7 +218,7 @@ impl Op {
                 if self.produces.is_none() =>
             {
                 Err(crate::ctx::ExecError::Step {
-                    module: self.module.clone(),
+                    output: self.output.clone(),
                     step: "deploy".into(),
                     detail: "a deploy op reached execution without its manifest record \
                              — a planner bug"
@@ -237,8 +233,8 @@ impl Op {
 impl Op {
     // --- read accessors (the fields stay private — 0046) ---
 
-    pub fn module(&self) -> &str {
-        &self.module
+    pub fn output(&self) -> &str {
+        &self.output
     }
     /// The canonical physical destination (0030 §P0-1).
     pub fn dest(&self) -> &Path {

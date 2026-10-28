@@ -6,21 +6,20 @@ use super::*;
 /// function apply uses. None when no safe restore exists (the caller
 /// surfaces a Skipped note — 0030 §H8).
 pub(crate) fn plan_restore_op(
-    module: &str,
+    output: &str,
     entry: &store::DeployedEntry,
     store_path: &Path,
     prev: Option<&store::DeployedEntry>,
     home: &Path,
 ) -> Result<Option<Op>, ExecError> {
     let fail = |detail: String| ExecError::Step {
-        module: module.to_string(),
+        output: output.to_string(),
         step: "rollback".into(),
         detail,
     };
-    // the planner speaks IR entries; the manifest record synthesizes
-    // one (the marker is deploy-time only — merge restore upserts
-    // with the default)
-    let ir_entry = Entry {
+    // Restore uses the same deployment input as apply, with the retained
+    // ownership and variables. Managed-block restoration supplies its marker.
+    let deployment = DeploymentEntry {
         from: entry.from.to_string_lossy().into_owned(),
         to: entry.to.clone(),
         mode: entry.ownership.policy().clone(),
@@ -33,8 +32,8 @@ pub(crate) fn plan_restore_op(
         .map_err(|error| fail(format!("cannot inspect {}: {error}", entry.to)))?;
     let source = store_path.join(&entry.from);
     let view = DestView {
-        module,
-        entry: &ir_entry,
+        output,
+        entry: &deployment,
         dest,
         home,
         observed,

@@ -4,9 +4,7 @@ use super::{
     CaptureBudget, SourceBundle, SourceObject,
     inventory::{MAX_DEPTH, invalid},
 };
-use crate::hash::{PayloadHash, canonical_file_hash};
 use std::{
-    collections::BTreeMap,
     io,
     path::{Component, Path, PathBuf},
 };
@@ -145,42 +143,5 @@ impl SourceBundle {
                 Err(invalid("materialization did not resolve a captured alias"))
             }
         }
-    }
-
-    /// Same canonical tree identity as the resolved overlay later staged by the
-    /// executor. Parent directories are synthesized, without materializing data.
-    pub fn overlay_hash(&self, froms: &[String]) -> io::Result<PayloadHash> {
-        let mut entries = BTreeMap::new();
-        let mut budget = CaptureBudget::default();
-        let directory = crate::hash::directory_entry_hash();
-        self.visit_materialized(froms.iter().map(String::as_str), |relative, physical, _| {
-            if !relative.as_os_str().is_empty() {
-                let name = relative
-                    .to_str()
-                    .ok_or_else(|| invalid("source path is not UTF-8"))?;
-                if !entries.contains_key(name) {
-                    budget.entry(name)?;
-                    entries.insert(
-                        name.to_owned(),
-                        String::from(canonical_file_hash(physical)?),
-                    );
-                }
-            }
-            for parent in relative
-                .ancestors()
-                .skip(1)
-                .filter(|path| !path.as_os_str().is_empty())
-            {
-                let name = parent
-                    .to_str()
-                    .ok_or_else(|| invalid("source ancestor is not UTF-8"))?;
-                if !entries.contains_key(name) {
-                    budget.entry(name)?;
-                    entries.insert(name.to_owned(), directory.clone());
-                }
-            }
-            Ok(())
-        })?;
-        Ok(crate::hash::hash_sorted_entries(entries))
     }
 }

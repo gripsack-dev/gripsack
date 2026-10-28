@@ -1,91 +1,118 @@
-//! An admitted workspace must never fall through to an empty legacy
-//! module apply, even through direct executor APIs (not only the CLI).
+//! Direct executor entrypoints reject unsupported profile capabilities and
+//! never invoke inert catalog tasks as a side effect of apply or preview.
 
-use gripsack_exec::{Ctx, ExecError, PlanError, UpdateMode, apply, build_order, update};
+use gripsack_exec::{Ctx, ExecError, apply};
 use gripsack_ir::{HostName, check, codes};
 use serde_json::json;
 
-fn workspace_ir(version: u32) -> String {
-    let layout = if version == 4 {
-        json!("relocatable")
-    } else {
-        json!({"kind": "relocatable"})
+#[test]
+fn unsupported_profile_schedules_reject_before_home_mutation() {
+    let sandbox = tempfile::tempdir().unwrap();
+    let marker = sandbox.path().join("task-must-not-run");
+    let ir = check(
+        &json!({
+            "ir_version": gripsack_ir::IR_VERSION,
+            "host": {"os":"linux","arch":"x86_64"},
+            "workspace": {
+                "span":{"file":"gripsack.ts","line":1},
+                "outputs":[
+                    {"kind":"profile","name":"desktop","span":{"file":"gripsack.ts","line":3},
+                     "schedules":["daily"]},
+                    {"kind":"task","name":"touch","span":{"file":"gripsack.ts","line":5},
+                     "context":{"kind":"host","mutable_paths":[]},
+                     "steps":[{"command":{"kind":"exec","span":{"file":"gripsack.ts","line":6},
+                        "argv":[{"kind":"literal","value":"/usr/bin/touch"},
+                                {"kind":"literal","value":marker}]}}]},
+                    {"kind":"schedule","name":"daily","span":{"file":"gripsack.ts","line":8},
+                     "task":"touch","trigger":{"kind":"daily","time":"09:00"},"scope":"user"}
+                ]
+            }
+        })
+        .to_string(),
+    )
+    .expect("current workspace admitted");
+    let home = sandbox.path().join("not-created");
+    let ctx = Ctx {
+        home: home.clone(),
+        repository: gripsack_exec::Repository::direct(sandbox.path().to_path_buf()),
+        only: vec![],
+        host: HostName::parse("model").unwrap(),
+        on_progress: None,
+        take_over: false,
+        take_over_entries: None,
+        fetch: Default::default(),
+        home_dir: Default::default(),
     };
-    json!({
-        "ir_version": version,
-        "host": {"os": "linux", "arch": "x86_64"},
-        "workspace": {
-            "span": {"file": "gripsack.ts", "line": 1},
-            "outputs": [{
-                "kind": "package", "name": "tool",
-                "span": {"file": "gripsack.ts", "line": 3},
-                "producer": {"kind": "provider", "provider": {
-                    "fetch": {"kind": "file", "path": "tool.bin"},
-                    "span": {"file": "gripsack.ts", "line": 4}
-                }},
-                "commands": {"tool": "bin/tool"},
-                "target": {"os": "linux", "arch": "x86_64"},
-                "layout": layout
-            }]
-        }
-    })
-    .to_string()
+    assert!(matches!(apply(&ir, &ctx), Err(ExecError::Gate(d))
+        if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE));
+    assert!(
+        !home.exists(),
+        "capability rejection must precede home mutation"
+    );
+    let preview = gripsack_exec::ops::preview_ops(
+        &ir,
+        &ctx.repository,
+        None,
+        &Default::default(),
+        Default::default(),
+        &[],
+    );
+    assert!(matches!(preview, Err(ExecError::Gate(d))
+        if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE));
+    assert!(!home.exists());
+    assert!(
+        !marker.exists(),
+        "inert task must not run during apply or preview"
+    );
 }
 
 #[test]
-fn every_direct_executor_entry_rejects_before_home_mutation() {
-    for version in [4, 5] {
-        let ir = check(&workspace_ir(version)).expect("versioned workspace admitted");
-        assert!(ir.has_workspace());
-        let diagnostic = ir
-            .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
-            .expect("workspace E124");
-        assert_eq!(diagnostic.labels[0].span.as_ref().unwrap().line, 3);
-        assert_eq!(diagnostic.labels[1].span.as_ref().unwrap().line, 1);
-        let ordering = build_order(&ir).unwrap_err();
-        assert!(
-            matches!(&ordering, PlanError::WorkspaceUnavailable(d) if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE)
-        );
-
-        let sandbox = tempfile::tempdir().unwrap();
-        let home = sandbox.path().join("not-created");
-        let ctx = Ctx {
-            home: home.clone(),
-            repository: gripsack_exec::Repository::direct(sandbox.path().to_path_buf()),
-            only: vec![],
-            host: HostName::parse("model").unwrap(),
-            on_progress: None,
-            take_over: false,
-            take_over_entries: None,
-            migrate_from: None,
-            jobs: Some(1),
-            fetch: Default::default(),
-            home_dir: Default::default(),
-        };
-        assert!(
-            matches!(&apply(&ir, &ctx), Err(ExecError::Gate(d)) if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE)
-        );
-        assert!(!home.exists(), "apply must not create home for v{version}");
-        assert!(
-            matches!(&update(&ir, &ctx, UpdateMode::Check), Err(ExecError::Gate(d)) if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE)
-        );
-        assert!(!home.exists(), "update must not create home for v{version}");
-        let ops = gripsack_exec::ops::preview_ops(
-            &ir,
-            &ctx.repository,
-            None,
-            &Default::default(),
-            &gripsack_exec::lockfile::Lockfile::default(),
-            Default::default(),
-            &[],
-            None,
-        );
-        assert!(
-            matches!(&ops, Err(ExecError::Gate(d)) if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE)
-        );
-        assert!(
-            !home.exists(),
-            "preview must remain read-only for v{version}"
-        );
+fn selecting_an_inert_task_for_apply_cannot_create_an_empty_generation() {
+    let sandbox = tempfile::tempdir().unwrap();
+    let marker = sandbox.path().join("task-must-not-run");
+    let ir = check(
+        &json!({
+            "ir_version": gripsack_ir::IR_VERSION,
+            "host":{"os":"linux","arch":"x86_64"},
+            "workspace":{
+                "span":{"file":"gripsack.ts","line":1},
+                "outputs":[{"kind":"task","name":"touch","span":{"file":"gripsack.ts","line":3},
+                    "context":{"kind":"host","mutable_paths":[]},
+                    "steps":[{"command":{"kind":"exec","span":{"file":"gripsack.ts","line":4},
+                        "argv":[{"kind":"literal","value":"/usr/bin/touch"},
+                                {"kind":"literal","value":marker}]}}]}]
+            }
+        })
+        .to_string(),
+    )
+    .expect("inert catalog admitted");
+    let home = sandbox.path().join("not-created");
+    let mut ctx = Ctx {
+        home: home.clone(),
+        repository: gripsack_exec::Repository::direct(sandbox.path().to_path_buf()),
+        only: vec![],
+        host: HostName::parse("model").unwrap(),
+        on_progress: None,
+        take_over: false,
+        take_over_entries: None,
+        fetch: Default::default(),
+        home_dir: Default::default(),
+    };
+    for selection in [vec![], vec!["touch".to_owned()]] {
+        ctx.only = selection;
+        assert!(matches!(apply(&ir, &ctx), Err(ExecError::Gate(d))
+            if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE));
+        assert!(!home.exists());
+        assert!(!marker.exists());
     }
+    let preview = gripsack_exec::ops::preview_ops(
+        &ir,
+        &ctx.repository,
+        None,
+        &Default::default(),
+        Default::default(),
+        &ctx.only,
+    );
+    assert!(matches!(preview, Err(ExecError::Gate(_))));
+    assert!(!marker.exists());
 }

@@ -1,7 +1,7 @@
 //! One acquisition context per command/environment phase.
 
 use crate::build_env::BuildProcessEnv;
-use crate::fetch::{archive, brew, file, git, pixi, plugin, tarball};
+use crate::fetch::{archive, file, git, plugin, tarball};
 use crate::limits::AcquisitionGate;
 use crate::{DownloadHash, FetchError, FetchIdentity, FetchLimits, FetchOutcome};
 use gripsack_ir::FetchSpec;
@@ -16,10 +16,6 @@ pub struct FetchContext {
     build_env: BuildProcessEnv,
     acquisitions: AcquisitionGate,
     provisioning: Option<std::sync::Arc<FetchContext>>,
-    /// Platform facts for bottle-tag selection (A0-01): detected once
-    /// here, injected into the pure policy — the policy itself never
-    /// reads the environment.
-    host_platform: crate::bottle::HostPlatform,
 }
 
 impl Default for FetchContext {
@@ -50,20 +46,14 @@ impl FetchContext {
             network,
             build_env,
             provisioning: None,
-            host_platform: crate::bottle::HostPlatform::detect(),
         }
     }
 
-    /// The context for grip's OWN tool downloads (pixi, the BuildKit
-    /// bridge helper): bound to operator env only, never the
-    /// repo-declared build env this context may carry.
+    /// The context for grip's own Deno, BuildKit and Conda helper downloads:
+    /// bound to operator env only, never the repo-declared build env this
+    /// context may carry.
     pub fn provisioning(&self) -> &FetchContext {
         self.provisioning.as_deref().unwrap_or(self)
-    }
-
-    /// The platform facts bottle selection runs on (A0-01).
-    pub fn host_platform(&self) -> &crate::bottle::HostPlatform {
-        &self.host_platform
     }
 
     /// Artifact fetches may use repo-declared proxy/CA/build variables.
@@ -137,13 +127,6 @@ impl FetchContext {
         crate::resolve::resolve_latest(self, repo, pattern, base, version)
     }
 
-    pub fn resolve_brew(
-        &self,
-        formula: &str,
-    ) -> Result<crate::ResolvedRelease, crate::resolve::ResolveError> {
-        crate::resolve::resolve_brew(self, formula)
-    }
-
     pub fn resolve_plugin_release(
         &self,
         repo: &str,
@@ -159,13 +142,6 @@ impl FetchContext {
         dest: &Path,
         locked: Option<&serde_json::Value>,
     ) -> Result<FetchOutcome, FetchError> {
-        // Provisioning can itself acquire an archive. Do not hold a permit
-        // while recursively provisioning pixi, including when the cap is one.
-        let pixi_executable = if matches!(spec, FetchSpec::Pixi { .. }) {
-            Some(pixi::ensure(self.provisioning())?)
-        } else {
-            None
-        };
         let _permit = self.acquisitions.acquire();
         std::fs::create_dir_all(dest)?;
         if !std::fs::symlink_metadata(dest)?.is_dir() {
@@ -187,37 +163,6 @@ impl FetchContext {
                 api_url.as_deref(),
                 dest,
             )?,
-            FetchSpec::Brew {
-                formula,
-                version,
-                sha256,
-            } => brew::fetch(
-                self,
-                formula,
-                version.as_deref(),
-                sha256.as_deref(),
-                dest,
-                locked,
-            )?,
-            FetchSpec::Pixi {
-                package,
-                version,
-                sha256,
-            } => {
-                let pinned_version = locked
-                    .and_then(|pin| pin.get("version"))
-                    .and_then(|v| v.as_str())
-                    .or(version.as_deref());
-                let outcome = pixi::fetch(
-                    self,
-                    pixi_executable.as_deref().expect("pixi prepared"),
-                    package,
-                    pinned_version,
-                    dest,
-                )?;
-                check_hash(package, sha256.as_deref(), &outcome.identity)?;
-                outcome
-            }
             FetchSpec::Git {
                 url,
                 rev: Some(revision),
@@ -361,36 +306,9 @@ impl FetchContext {
                 tarball::payload_hash(self, &crate::expand_platform(url), api_url.as_deref())?,
             ))),
             FetchSpec::File { path } => file::payload_hash(self, path).map(Some),
-            FetchSpec::Brew { formula, .. } => self
-                .resolve_brew(formula)
-                .map_err(FetchError::from)?
-                .sha256
-                .map(|hash| {
-                    DownloadHash::parse(&hash)
-                        .map(FetchIdentity::Download)
-                        .map_err(FetchError::from)
-                })
-                .transpose(),
             _ => Ok(None),
         }
     }
-}
-
-pub(crate) fn check_hash(
-    source: &str,
-    expected: Option<&str>,
-    actual: &FetchIdentity,
-) -> Result<(), FetchError> {
-    if let Some(expected) = expected
-        && expected != actual.as_str()
-    {
-        return Err(FetchError::HashMismatch {
-            url: source.into(),
-            expected: expected.into(),
-            actual: actual.as_str().into(),
-        });
-    }
-    Ok(())
 }
 
 #[cfg(test)]

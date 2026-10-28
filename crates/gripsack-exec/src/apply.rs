@@ -2,37 +2,24 @@
 
 use crate::ctx::Outcome;
 use crate::ctx::{Ctx, ExecError};
-use crate::expand;
 use crate::report::ApplyResult;
 use gripsack_ir::Ir;
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
 use tracing::{info, info_span};
 
-/// Apply the whole graph (or a subset) and activate a new generation.
+/// Apply selected workspace profiles and activate one new generation.
 /// The lifecycle — read current → build → flip — is one
 /// read-modify-write, so the whole run holds `$GRIPSACK_HOME/
 /// locks/apply.flock` (finding A): two concurrent applies serialize,
 /// never lose a manifest update.
 pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
-    if ctx.migrate_from.is_some()
-        && (!ir.has_workspace() || ctx.take_over || ctx.take_over_entries.is_some())
-    {
-        return Err(ExecError::Step {
-            module: "*".into(),
-            step: "migrate".into(),
-            detail: "--migrate-from requires workspace profiles and cannot grant take-over".into(),
-        });
-    }
     if let Some(diagnostic) =
         ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Apply)
     {
         return Err(ExecError::Gate(diagnostic));
     }
-    let (session, prepared_native) = match crate::workspace::prepare_apply(ir, ctx)? {
-        Some((session, profiles)) => (session, Some(profiles)),
-        None => (crate::util::LifecycleSession::acquire(&ctx.home)?, None),
-    };
+    let (session, native) = crate::workspace::prepare_apply(ir, ctx)?;
     // crash recovery (0019): a previous run killed between a deploy
     // mutation and the flip left uncommitted journal entries — the
     // filesystem sits between generations. Restore the priors before
@@ -41,7 +28,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     let mut reports = Vec::new();
     if !recovered.is_empty() {
         reports.push(crate::report::StepReport {
-            module: "*".into(),
+            output: "*".into(),
             summary: format!(
                 "recovered {} destination(s) from an interrupted run",
                 recovered.len()
@@ -52,28 +39,6 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             tracing::warn!("{line}");
         }
     }
-    let mut lock = if ir.has_workspace() {
-        crate::lockfile::Lockfile::default()
-    } else {
-        match crate::lockfile::read(ctx.repository.identity(), &ctx.host) {
-            crate::lockfile::LockRead::Parsed(lock) => lock,
-            crate::lockfile::LockRead::Missing => Default::default(),
-            crate::lockfile::LockRead::Corrupt(why) => {
-                // never silently re-pin from a corrupt lock: the file is
-                // the tamper signal (lockfile.rs header). deleting it is
-                // the user's deliberate re-pin.
-                return Err(ExecError::Step {
-                    module: "*".into(),
-                    step: "lockfile".into(),
-                    detail: format!(
-                        "{} is corrupt ({why}) — delete it to re-pin from scratch",
-                        crate::lockfile::path(ctx.repository.identity(), &ctx.host).display()
-                    ),
-                });
-            }
-        }
-    };
-    let mut lock_dirty = false;
 
     // The previous generation's state, for drift detection — distinct
     // from the manifest being built. Read once: prune and the
@@ -87,7 +52,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // generation's intents — same rule as the journal's quarantine
     let resumed = crate::activate::resume_activation(&session).map_err(|e| {
         ExecError::Step {
-            module: "*".into(),
+            output: "*".into(),
             step: "activate".into(),
             detail: format!(
                 "activation recovery is blocked ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
@@ -106,18 +71,6 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             reports,
         });
     }
-    let native = match prepared_native {
-        Some(profiles) => Some(profiles),
-        None => crate::workspace::NativeProfiles::prepare(
-            ir,
-            &ctx.repository,
-            &ctx.home,
-            &ctx.only,
-            ctx.fetch.limits(),
-            None,
-            ctx.migrate_from,
-        )?,
-    };
     // the allocator is NOT current+1 (0026 §3): after a rollback,
     // current is lower than the highest generation on disk, and
     // reusing a number would rewrite immutable history. Allocate
@@ -132,7 +85,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     let prev_manifest: Option<store::Generation> = match current_gen {
         Some(n) => Some(
             store::generations::admit_manifest(&ctx.home, n).map_err(|e| ExecError::Step {
-                module: "*".into(),
+                output: "*".into(),
                 step: "manifest".into(),
                 detail: format!(
                     "current generation {n}'s manifest is unreadable ({e}) — refusing to apply"
@@ -141,51 +94,23 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         ),
         None => None,
     };
-    let mut migration = native
+    let mut migration = native.migration(&ctx.home, current_gen, prev_manifest.as_ref())?;
+    let prev_deployments: BTreeMap<String, store::DeploymentState> = prev_manifest
         .as_ref()
-        .map(|native| native.migration(&ctx.home, ctx.migrate_from, prev_manifest.as_ref()))
-        .transpose()?
-        .flatten();
-    let prev_modules: BTreeMap<String, store::ModuleState> = prev_manifest
-        .as_ref()
-        .map(|g| g.modules.clone())
+        .map(|g| g.deployments.clone())
         .unwrap_or_default();
     // A subset apply starts from the current generation's manifest and
-    // replaces only the modules it touches (0001 §3.6). A full apply
-    // reconciles: modules absent from the IR are dropped from the
+    // replaces only the profiles it touches. A full apply reconciles:
+    // profiles absent from the workspace are dropped from the
     // manifest — prune_undeclared then removes their destinations.
-    let mut modules: BTreeMap<String, store::ModuleState> = if ctx.only.is_empty() {
+    let mut deployments: BTreeMap<String, store::DeploymentState> = if ctx.only.is_empty() {
         BTreeMap::new()
     } else {
-        prev_modules.clone()
+        prev_deployments.clone()
     };
     if let Some(migration) = &migration {
-        migration.release_entries(&mut modules);
+        migration.release_entries(&mut deployments);
     }
-    // The ready-queue scheduler (0007 §5): modules run as their
-    // dependencies finish, N = cores, resources via flock. The flip
-    // below stays the single barrier.
-    let (order, missing) = if native.is_some() {
-        (Vec::new(), Vec::new())
-    } else {
-        scoped_order(ir, &ctx.only)?
-    };
-    if !missing.is_empty() {
-        // a typo'd or host-gated name must not vanish — an apply that
-        // "succeeded" while ignoring part of the request lies
-        return Err(ExecError::Step {
-            module: "*".into(),
-            step: "scope".into(),
-            detail: format!(
-                "not in this host's graph: {} (the host entrypoint does not declare {} them)",
-                missing.join(", "),
-                if missing.len() == 1 { "it" } else { "all of" },
-            ),
-        });
-    }
-    let steps_by_module = expand::expand_all(&ir.modules)?;
-    // physical destination uniqueness before anything mutates (0030)
-    expand::check_physical_uniqueness(&ir.modules, &steps_by_module)?;
     // declare the generation this run builds BEFORE any mutation:
     // recovery compares the marker against `current` — a crash after
     // the flip but before journal cleanup must read as COMMITTED,
@@ -203,19 +128,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
                 store::journal::directory::bind_existing(&selection, receipt)?;
             }
         }
-        if let Some(native) = &native {
-            native.deploy(ctx, &selection, &prev_modules, migration.as_mut())
-        } else {
-            crate::schedule::run_all(
-                ir,
-                &steps_by_module,
-                &order,
-                ctx,
-                &selection,
-                &prev_modules,
-                &lock,
-            )
-        }
+        native.deploy(ctx, &selection, &prev_deployments, migration.as_mut())
     })();
     let outcome = match execution {
         Ok(outcome) => outcome,
@@ -224,47 +137,23 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             return Err(error);
         }
     };
-    // An empty result set must be a deliberate empty declaration,
-    // never a scheduling artifact — prune can't tell them apart (B).
-    if outcome.modules.is_empty() && !ir.modules.is_empty() && outcome.failed.is_none() {
-        return Err(ExecError::Step {
-            module: "*".into(),
-            step: "schedule".into(),
-            detail: "the scheduler produced zero module states from a non-empty graph".into(),
-        });
-    }
-    if let Some((_name, error, _failed_state)) = outcome.failed {
-        // Run-level rollback through the journal itself (0025 §D):
-        // ONE compensating path — an ordinary failure reconciles
-        // exactly like a kill would, restoring captured priors (which
-        // honors post-crash user state better than replaying the
-        // previous manifest did). No half-applied deployment exists.
-        compensate(ctx);
-        return Err(error);
-    }
     // Recovery reports describe an earlier committed selection. They remain
     // visible, but cannot manufacture a fresh deployment or hook instance.
     let deployment_reports_start = reports.len();
     for (name, module_reports) in outcome.reports {
-        let span = info_span!("module", name = name.as_str());
+        let span = info_span!("profile", name = name.as_str());
         let _entered = span.enter();
         reports.extend(module_reports);
     }
-    for (name, entry) in outcome.lock_entries {
-        if lock.modules.get(&name) != Some(&entry) {
-            lock.modules.insert(name, entry);
-            lock_dirty = true;
-        }
-    }
-    modules.extend(outcome.modules);
+    deployments.extend(outcome.deployments);
     if let Some(prev) = &prev_manifest {
-        inherit_priors(prev, &mut modules);
+        inherit_priors(prev, &mut deployments);
     }
     let next = next_gen;
 
-    // Everything between the scheduler and the flip is recoverable
+    // Everything between profile deployment and the flip is recoverable
     // through ONE compensating path (0025 §D): an ordinary error —
-    // lockfile, prune, manifest, env render — reconciles exactly like
+    // prune, manifest, env render — reconciles exactly like
     // a kill would have. The flip itself is one atomic rename: an
     // error from it means nothing flipped, so it compensates too.
     match pre_flip(
@@ -272,11 +161,10 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         &session,
         &selection,
         &prev_manifest,
-        &modules,
+        &deployments,
         next,
-        lock_dirty.then_some(&lock),
         &reports[deployment_reports_start..],
-        native.as_ref(),
+        &native,
     ) {
         Ok(Some(_generation)) => {}
         // vacuous run: nothing journaled, nothing flipped — the
@@ -299,30 +187,19 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // kill anywhere now leaves either a committed generation with its
     // intents recorded (next run resumes) or a record naming a
     // generation that never committed (next run discards)
-    // build-only deps activate nothing (0039) — collect walks the
-    // deploying order only
-    let build_only = gripsack_ir::dependencies::build_only_modules(&ir.modules);
-    let deploying: Vec<String> = order
-        .iter()
-        .filter(|n| !build_only.contains(*n))
-        .cloned()
-        .collect();
-    let mut intents = crate::activate::collect(&deploying, &steps_by_module);
-    if let Some(native) = &native {
-        intents.extend(native.activation_intents());
-    }
-    // on_remove hooks (0035 F9): a module dropped from the IR fires
+    let mut intents = native.activation_intents();
+    // on_remove hooks: a profile dropped from the workspace fires
     // its removal intents with the new generation — the record is the
     // only durable place the old intents live
     if let Some(prev) = &prev_manifest {
-        for (name, state) in &prev.modules {
-            if modules.contains_key(name) || ir.modules.contains_key(name) {
+        for (name, state) in &prev.deployments {
+            if deployments.contains_key(name) {
                 continue;
             }
             for record in &state.intents {
-                if record.trigger == gripsack_ir::Trigger::OnRemove {
+                if record.trigger == gripsack_store::ActivationTrigger::OnRemove {
                     intents.push(store::activation::PendingIntent {
-                        module: name.clone(),
+                        output: name.clone(),
                         action: record.action.clone(),
                         trigger: record.trigger,
                     });
@@ -354,7 +231,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         // the flip already committed — this is cleanup-pending, not a
         // failed apply (0029 §13); the next run's reconcile finishes it
         reports.push(crate::report::StepReport {
-            module: "*".into(),
+            output: "*".into(),
             summary: format!(
                 "generation {next} active; journal cleanup pending ({e}) — the next apply finishes it"
             ),
@@ -365,7 +242,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         match crate::activate::run(batch, ctx.home_dir()?, &ctx.home) {
             Ok(outcomes) => reports.extend(outcomes),
             Err(error) => reports.push(crate::report::StepReport {
-                module: "*".into(),
+                output: "*".into(),
                 summary: format!("generation {next} active; activation evidence retained ({error}) — inspect hooks before retrying"),
                 kind: crate::report::ReportKind::Warned,
             }),
@@ -378,66 +255,31 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     })
 }
 
-/// DAG order restricted to `only` + their transitive dependencies.
-pub(crate) fn scoped_order(
-    ir: &Ir,
-    only: &[String],
-) -> Result<(Vec<String>, Vec<String>), ExecError> {
-    let order = crate::build_order(ir)?;
-    if only.is_empty() {
-        return Ok((order, Vec::new()));
-    }
-    let mut wanted: BTreeSet<&str> = only.iter().map(String::as_str).collect();
-    let mut frontier: Vec<&str> = only.iter().map(String::as_str).collect();
-    while let Some(name) = frontier.pop() {
-        if let Some(m) = ir.modules.get(name) {
-            for dep in gripsack_ir::dependencies::ordering_dependencies(name, m) {
-                if wanted.insert(dep) {
-                    frontier.push(dep);
-                }
-            }
-        }
-    }
-    // names the caller asked for that this host's graph does not
-    // declare — probe-gated modules and typos used to vanish
-    // silently ("I asked for eight and got seven")
-    let declared: BTreeSet<&str> = ir.modules.keys().map(String::as_str).collect();
-    let missing: Vec<String> = only
-        .iter()
-        .filter(|n| !declared.contains(n.as_str()))
-        .cloned()
-        .collect();
-    Ok((
-        order
-            .into_iter()
-            .filter(|n| wanted.contains(n.as_str()))
-            .collect(),
-        missing,
-    ))
-}
-
 /// Ownership lineage (0029 §1): an origin prior rides the whole
 /// epoch — every generation carries it forward per destination until
 /// a successful restore or prune ends the epoch. Keyed by
-/// DESTINATION (a module rename transfers the origin to the new
-/// module rather than losing it).
+/// DESTINATION (a deployment rename transfers the origin to the new
+/// deployment rather than losing it).
 ///
 /// The inherited origin ALWAYS wins (0030 §H5): a second
 /// `--take-over` captures the drifted bytes for the crash-recovery
 /// journal, but the manifest keeps the epoch's FIRST origin —
 /// undeclare must restore the pre-adoption state, not the last
 /// absorbed drift.
-fn inherit_priors(prev: &store::Generation, modules: &mut BTreeMap<String, store::ModuleState>) {
+fn inherit_priors(
+    prev: &store::Generation,
+    deployments: &mut BTreeMap<String, store::DeploymentState>,
+) {
     let mut by_dest: std::collections::BTreeMap<std::path::PathBuf, &store::Prior> =
         Default::default();
-    for state in prev.modules.values() {
+    for state in prev.deployments.values() {
         for entry in &state.entries {
             if let Some(prior) = &entry.prior {
                 by_dest.entry(entry.key()).or_insert(prior);
             }
         }
     }
-    for state in modules.values_mut() {
+    for state in deployments.values_mut() {
         for entry in &mut state.entries {
             if let Some(prior) = by_dest.get(&entry.key()) {
                 entry.prior = Some((*prior).clone());
@@ -466,8 +308,8 @@ fn compensate(ctx: &Ctx) {
     }
 }
 
-/// Lock write, prune, manifest, and the generation-local env profile —
-/// everything fallible between the scheduler and the flip. Ok(None)
+/// Prune, manifest, and the generation-local environment profile —
+/// everything fallible between deployment and the flip. Ok(None)
 /// is the vacuous (satisfied) run.
 #[allow(clippy::too_many_arguments)]
 fn pre_flip(
@@ -475,31 +317,22 @@ fn pre_flip(
     session: &crate::LifecycleSession,
     journal: &store::journal::JournalRun<'_>,
     prev_manifest: &Option<store::Generation>,
-    modules: &BTreeMap<String, store::ModuleState>,
+    deployments: &BTreeMap<String, store::DeploymentState>,
     next: store::GenerationId,
-    lock: Option<&crate::lockfile::Lockfile>,
     deployment_reports: &[crate::report::StepReport],
-    native: Option<&crate::workspace::NativeProfiles>,
+    native: &crate::workspace::NativeProfiles,
 ) -> Result<Option<store::Generation>, ExecError> {
-    // pins are fetch outcomes — they must land before anything can
-    // short-circuit later (the satisfied early-return used to skip
-    // the write, so a mirror-swap re-fetch never refreshed its pin
-    // and every later apply re-resolved)
-    if let Some(lock) = lock {
-        crate::lockfile::write(ctx.repository.identity(), &ctx.host, lock)?;
-    }
-
     // Prune-on-undeclare (0006 critique): destinations in the previous
     // manifest but gone now are removed — only if the file still matches
     // the recorded hash (user edits are never deleted). Every prune
     // mutation is journaled like a deploy (0025 §B).
     let active_directories = store::journal::directory::receipts(journal)?;
     if let Some(prev) = prev_manifest {
-        prune_undeclared(prev, modules, journal, &active_directories)?;
+        prune_undeclared(prev, deployments, journal, &active_directories)?;
     }
     let mut directory_transitions = Vec::new();
     for receipt in active_directories {
-        let leaves: Vec<_> = modules
+        let leaves: Vec<_> = deployments
             .values()
             .flat_map(|state| &state.entries)
             .filter_map(|entry| {
@@ -521,13 +354,11 @@ fn pre_flip(
             )?);
         }
     }
-    if let Some(native) = native {
-        native.run_pre_flip_checks(ctx, session)?;
-    }
+    native.run_pre_flip_checks(ctx, session)?;
     // test-only kill switch: the prune→flip crash window's e2e (0025)
     crate::util::crash_hook("after-prune");
 
-    // Satisfied = the module states are identical (the generation
+    // Satisfied = the deployment states are identical (the generation
     // number is not part of the comparison — 0008 §3) AND nothing
     // touched the filesystem. A run that repaired a destination —
     // an owned link swapped back to the store after drift, a stale
@@ -542,16 +373,11 @@ fn pre_flip(
             crate::report::ReportKind::Installed | crate::report::ReportKind::Configured
         )
     });
-    let migration_receipt = ctx
-        .migrate_from
-        .map(|predecessor| store::generations::MigrationReceipt { predecessor })
-        .or_else(|| {
-            prev_manifest
-                .as_ref()
-                .and_then(|previous| previous.migration.clone())
-        });
+    let migration_receipt = prev_manifest
+        .as_ref()
+        .and_then(|previous| previous.migration.clone());
     if prev_manifest.as_ref().is_some_and(|previous| {
-        previous.modules == *modules
+        previous.deployments == *deployments
             && previous.directory_transitions == directory_transitions
             && previous.migration == migration_receipt
     }) && !touched_disk
@@ -560,7 +386,7 @@ fn pre_flip(
     }
     let generation = store::Generation {
         number: next,
-        modules: modules.clone(),
+        deployments: deployments.clone(),
         directory_transitions,
         migration: migration_receipt,
     };
@@ -568,7 +394,7 @@ fn pre_flip(
     // profile stage under generations/.staging-<N> and rename into
     // place no-clobber — a failure here leaves nothing visible, let
     // alone activated
-    let profile = crate::env::render_profile(&generation.modules);
+    let profile = crate::env::render_profile(&generation.deployments);
     store::generations::publish_generation(
         ctx.home_dir()?,
         &generation,
@@ -582,30 +408,30 @@ fn pre_flip(
 /// file on disk is still exactly what we deployed.
 fn prune_undeclared(
     prev: &store::Generation,
-    modules: &BTreeMap<String, store::ModuleState>,
+    deployments: &BTreeMap<String, store::DeploymentState>,
     journal: &store::journal::JournalRun<'_>,
     directory_transitions: &[store::journal::directory::DirectoryTransition],
 ) -> Result<(), ExecError> {
     let home_dir = journal.home();
-    let declared: BTreeSet<std::path::PathBuf> = modules
+    let declared: BTreeSet<std::path::PathBuf> = deployments
         .values()
         .flat_map(|m| m.entries.iter().map(|e| e.key()))
         .collect();
-    // merge blocks are owned per (module, dest) — several modules may
-    // hold blocks in one file, and a renamed module must not leave
+    // merge blocks are owned per (deployment, dest) — several deployments may
+    // hold blocks in one file, and a renamed deployment must not leave
     // its block behind as an unowned ghost (0026 §2). Non-merge
     // destinations are unique by E111, so a rename keeps the dest
-    // deployed under the new module without a remove/redeploy churn.
-    let declared_merge: BTreeSet<store::OwnershipKey> = modules
+    // deployed under the new deployment without a remove/redeploy churn.
+    let declared_merge: BTreeSet<store::OwnershipKey> = deployments
         .iter()
         .flat_map(|(name, m)| {
             m.entries
                 .iter()
-                .filter(|e| e.ownership.policy() == gripsack_ir::Ownership::Merge)
+                .filter(|e| e.ownership.policy() == gripsack_store::Ownership::Merge)
                 .map(move |entry| entry.ownership_key(name))
         })
         .collect();
-    for (name, state) in &prev.modules {
+    for (name, state) in &prev.deployments {
         for entry in &state.entries {
             if directory_transitions
                 .iter()
@@ -623,7 +449,8 @@ fn prune_undeclared(
             if entry.preserved_drift {
                 continue;
             }
-            let declared_elsewhere = if entry.ownership.policy() == gripsack_ir::Ownership::Merge {
+            let declared_elsewhere = if entry.ownership.policy() == gripsack_store::Ownership::Merge
+            {
                 declared_merge.contains(&entry.ownership_key(name))
             } else {
                 declared.contains(&entry.key())

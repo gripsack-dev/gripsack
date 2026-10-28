@@ -74,32 +74,6 @@ fn confined_process_reads_granted_paths_but_not_outside_them() {
     let (control, bytes) = invoke(["-c", "cat outside/secret"], root.path(), None);
     assert!(control.success, "{:?}", control.receipt);
     assert_eq!(bytes, b"credential-canary\n");
-    #[cfg(target_os = "macos")]
-    {
-        let original = outside.join("secret").canonicalize().unwrap();
-        let data_volume = Path::new("/System/Volumes/Data");
-        let alias = if original.starts_with(data_volume) {
-            original
-        } else {
-            data_volume.join(original.strip_prefix("/").unwrap())
-        };
-        let arguments = ["-c", "cat \"$1\"", "reader", alias.to_str().unwrap()];
-        let (control, bytes) = invoke(arguments, root.path(), None);
-        assert!(
-            control.success,
-            "the APFS data alias must reach the actual canary"
-        );
-        assert_eq!(bytes, b"credential-canary\n");
-        let (denied, bytes) = invoke(arguments, root.path(), Some(sh_boundary(&inside)));
-        assert!(
-            !denied.success,
-            "a broad /System grant exposed the data volume"
-        );
-        assert!(
-            bytes.is_empty(),
-            "canary escaped through its APFS data alias"
-        );
-    }
     let (allowed, bytes) = invoke(
         ["-c", "cat inside/file"],
         root.path(),

@@ -1,7 +1,7 @@
 //! Frontend runtime + embedded source (0005 §3 step 3, plan/0013
 //! D2/D3): the TypeScript frontend evaluates under a sandboxed deno
-//! subprocess. Only the RUNTIME provisions (deno, exactly like pixi —
-//! pinned, sha256-verified); the frontend SOURCE — the driver and
+//! subprocess. Only the pinned, sha256-verified deno runtime provisions;
+//! the frontend SOURCE — the driver and
 //! @gripsack/core — is embedded in this binary and materialized under
 //! `$GRIPSACK_HOME/frontend/ts-<version>/`, so the DSL version always
 //! matches the core. A repo's own `node_modules/@gripsack/core`
@@ -55,13 +55,11 @@ pub fn ensure_deno(home: &Path, context: &gripsack_fetch::FetchContext) -> io::R
 /// chance — the download error is preserved for the no-fallback case
 /// by the caller re-trying and surfacing it.
 fn pinned_deno(home: &Path, context: &gripsack_fetch::FetchContext) -> io::Result<Option<PathBuf>> {
-    // deno ships glibc + macOS builds only: a downloaded binary on a
-    // musl host (alpine, …) would fail at exec with an opaque loader
-    // error — fail before the network round-trip, with the fix named
+    // The pinned Linux runtime requires glibc. Fail before acquisition
+    // rather than letting the loader produce an opaque execution error.
     if crate::facts::detect().libc.as_deref() == Some("musl") {
         return Err(io::Error::other(
-            "deno ships no musl build — the eval sandbox needs glibc Linux or macOS \
-             (see `grip doctor`)",
+            "the eval sandbox requires glibc Linux x86_64 (see `grip doctor`)",
         ));
     }
     let dir = home
@@ -105,20 +103,6 @@ fn pinned_deno(home: &Path, context: &gripsack_fetch::FetchContext) -> io::Resul
             {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&deno, std::fs::Permissions::from_mode(0o755))?;
-            }
-            #[cfg(target_os = "macos")]
-            {
-                // Gatekeeper marks downloaded archives' contents with
-                // a quarantine xattr; an affected binary can be
-                // killed or translocated at exec. The download is
-                // sha256-verified, so the attribute carries no
-                // security value here — strip it best-effort (the
-                // xattr CLI ships with macOS; absence is harmless).
-                let _ = std::process::Command::new("xattr")
-                    .arg("-d")
-                    .arg("com.apple.quarantine")
-                    .arg(&deno)
-                    .status();
             }
             Ok(Some(deno))
         }

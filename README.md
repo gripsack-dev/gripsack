@@ -1,33 +1,40 @@
 # gripsack
 
-**Your environment, in one workspace.** Describe packages, development
-environments and personal profiles in typed TypeScript. Review inputs, inspect
-the plan, and deploy personal files with generations and rollback.
+**Your user-space environment, in one workspace.** Declare packages, development
+environments, source builds, OCI images and personal profiles in typed TypeScript.
+Use the same named packages for project commands, managed launchers and images.
 
-**Alpha · Linux x86_64 and WSL2 only.** Native Windows, macOS and ARM are
-outside the supported scope.
+**Alpha · Linux x86_64 and WSL2 only.** Native Windows, macOS and ARM are outside
+the supported scope.
+
+## What you can build
+
+- **Packages** from release archives, coherent native Conda environments or an
+  explicitly imported Pixi lock. Pin inputs before using them.
+- **Environments** for `grip run` and `grip shell`, without installing into a
+  global prefix or deploying your personal files.
+- **Source builds** using digest-pinned toolchains and isolated BuildKit workers.
+  Retain the result as a package or export it in an **OCI image archive**.
+- **Profiles** for dotfiles and environment launchers, with explicit ownership,
+  drift protection, generations and rollback.
+- **Tasks and checks** for deliberate actions and validation, not an implicit
+  background scheduler.
+
+Native providers and file-only profiles need no Docker worker. BuildKit source
+builds and OCI exports require Docker; the core provisions its matching helper
+and owned worker when needed.
 
 ## Install
 
-Use the [release downloads](https://github.com/gripsack-dev/gripsack/releases)
-and their manual installation instructions for unsigned builds.
-The existing verified installer and `grip self-update` still require signatures;
-they are not the installation path for these unsigned releases.
+Follow the [installation guide](https://gripsack.dev/docs/install.html) and
+[release downloads](https://github.com/gripsack-dev/gripsack/releases). Use a
+matching core and SDK archive, or the core's embedded frontend. Unsigned releases
+require manual installation: the verified installer and `grip self-update`
+require signatures.
 
-**[0.48.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.48.0)
-is the current unsigned release**, qualified with 17 practical local gates,
-including all 96 persistence partitions. TLC/TLAPS/Verus are not claimed
-qualified; npm/crates.io publication is not implied. Use its matching SDK
-archive or the embedded frontend.
+## Start with one profile
 
-[0.47.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.47.0)
-remains an unverified reviewer prerelease. Capture globs and focused review
-require 0.48. [Release scope](https://gripsack.dev/docs/roadmap.html#release-qualification).
-
-## A workspace
-
-Save this complete example as `gripsack.ts` in a repository, using matching
-core/SDK 0.48 bytes:
+Save this complete example as the required root `gripsack.ts` in a repository:
 
 ```ts
 import {
@@ -50,60 +57,53 @@ grip plan dotfiles
 grip apply dotfiles
 ```
 
-Review source and policy when prompted; inspect the plan before applying.
-`grip generations` lists retained generations; `grip rollback` restores a
-previous managed state. Packages, environments and manual tasks are separate
-workspace outputs: use `grip build NAME`, `grip run --env NAME -- COMMAND`,
-and `grip task run NAME`, respectively. Production does not itself create a
-personal generation.
+Review source and policy when prompted, then inspect the plan before applying.
+`grip generations` lists retained generations; `grip rollback` restores previous
+managed state. To deploy files an application rewrites, choose `trackedCopyTo`:
+local drift is preserved by default rather than silently overwritten.
 
-Profiles deploy files and package environments; tracked copies preserve local
-drift. **Locked mutable overlays are not implemented.** For tools that rewrite
-their installed tree, deploy reviewed repository content with `trackedCopyTo`.
-To retain an update, copy intended changes back from the deployed tree, exclude
-caches, review and approve the new source, then apply. The lockfile pins source
-resolutions, never a live destination. See the
-[SDK migration guide](typescript/README.md#reviewer-migration-delete-plumbing-keep-verification)
-for launchers, captured trees, ownership migration and explicit recovery.
+## Grow the workspace
 
-## Review before applying
+Add named outputs to the same catalog and select what you need:
 
-Approval binds the exact captured source and policy, not a repository path.
-Use `grip trust add` for interactive changed-path review and approval; use
-`grip trust inspect --json` for the complete inventory. Git ignore rules do
-not select captured files. Declare cache exclusions explicitly in `env.toml`.
-See [source approval and migration](typescript/README.md#source-approval-and-migration)
-for exclusions, unattended approval, trust boundaries and recovery.
+```sh
+grip update                         # refresh external source pins; review the lock
+grip build my-package               # produce without personal activation
+grip run --env dev -- my-command    # execute in a selected environment
+grip build my-image                 # export a retained OCI archive
+grip task run my-task               # explicitly invoke an action
+```
+
+These commands name outputs you declare; see the complete
+[runnable workspaces](examples/workspaces/) for packages, environments and images.
+Approval binds the exact captured source and policy. Git ignore rules do not
+select captured files; declare cache exclusions explicitly in `env.toml` when
+needed. Keep backups and recovery state until you have exercised the real tools.
 
 ## Documentation
 
-- [Workspace and SDK reference](typescript/README.md) — typed outputs, profiles,
-  file checks, manual tasks and migration.
-- [Runnable workspaces](examples/workspaces/) — dotfiles through packages and images.
-- [Adopt existing files](https://gripsack.dev/docs/adopting.html) and
-  [workspace migration](https://gripsack.dev/docs/workspace-migration.html).
-- [Safety and recovery](https://gripsack.dev/docs/safety.html) — ownership,
-  drift, interrupted transactions and post-activation failures.
-- [Architecture](https://gripsack.dev/docs/architecture.html),
-  [fetchers](https://gripsack.dev/docs/fetchers.html), and
-  [release scope](https://gripsack.dev/docs/roadmap.html).
-- [Design records](plan/) and [changelog](CHANGELOG.md).
+- [Workspaces](https://gripsack.dev/docs/workspaces.html) and
+  [packages](https://gripsack.dev/docs/packages.html)
+- [Environments and launchers](https://gripsack.dev/docs/environments.html)
+- [BuildKit and OCI images](https://gripsack.dev/docs/builds.html)
+- [Profiles and dotfiles](https://gripsack.dev/docs/adopting.html)
+- [Tasks and checks](https://gripsack.dev/docs/tasks.html)
+- [SDK reference](typescript/README.md) and [runnable examples](examples/workspaces/)
+- [Safety and recovery](https://gripsack.dev/docs/safety.html),
+  [source capture](https://gripsack.dev/docs/settings.html) and
+  [architecture](https://gripsack.dev/docs/architecture.html)
+- [Design records](plan/) and [changelog](CHANGELOG.md)
 
 ## Development
 
-```bash
-docker compose run --build --rm test     # fmt + clippy -D warnings + cargo test
-docker compose run --build --rm ts-test  # typescript frontend tests (deno)
+```sh
+docker compose run --build --rm test
+docker compose run --build --rm ts-test
 docker compose run --build --rm e2e uv run --locked --no-sync pytest --ignore=test_persistence_matrix.py --ignore=test_golden.py
-docker compose run --build --rm model    # finite protocol models and counterexamples
-docker compose run --build --rm tlaps    # transaction induction pilot (amd64)
-docker compose run --build --rm verify   # production Verus kernels and mutants (amd64)
 ```
 
-The [frozen local profile](.ci/pilot.json) requires17 practical release gates,
-including all96 persistence partitions. The formal commands above remain
-separate research; this release does not claim TLC/TLAPS/Verus qualification.
-Hosted CI is manual diagnostics, not duplicate acceptance.
-See [AGENTS.md](AGENTS.md) for working agreements.
+See [AGENTS.md](AGENTS.md) for working agreements and the
+[local qualification profile](.ci/pilot.json) for release checks. Formal research
+commands and their evidence are separate from practical product qualification.
 
 MIT licensed.

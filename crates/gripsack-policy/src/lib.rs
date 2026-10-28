@@ -27,7 +27,6 @@ pub mod process_budget;
 pub mod rate_limit;
 pub mod retention;
 pub mod retry_budget;
-pub mod schedule;
 pub mod selection;
 pub mod semantic;
 pub mod target;

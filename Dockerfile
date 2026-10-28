@@ -44,9 +44,13 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 # Fuzzing shares Cargo.lock with production, including decoder dependencies.
 COPY fuzz ./fuzz
-# schema: the IR v3 JSON schema is include_str!'d by the ir crate's
-# schema-acceptance tests (0042 E) — the test gate needs it in-image.
-COPY schema ./schema
+# The current IR9 schema is embedded by the IR crate's schema-acceptance
+# tests; only the workspace schema is shipped in the source inventory.
+COPY schema/diagnostics.json ./schema/
+COPY schema/source-bundle ./schema/source-bundle
+COPY schema/trust ./schema/trust
+COPY schema/evaluation ./schema/evaluation
+COPY schema/ir/v9.json ./schema/ir/v9.json
 
 # Real upstream LLB conformance is a test prerequisite, not a core/runtime
 # dependency. Ordinary bin/release stages deliberately do not copy this helper.
@@ -84,12 +88,13 @@ RUN python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper
 # Published artifacts and coordinator/journal/GC admission boundaries
 # are checked and mutation-calibrated. Tool/build failures never qualify as
 # successful semantic negatives.
+# The retired module scheduler's Loom check is not a workspace runtime gate.
+# Current task/BuildKit concurrency coverage remains in the Rust and flow suites.
 RUN apk add --no-cache python3 \
     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \
     && python3 scripts/gen_diagnostic_registry.py --check \
     && python3 scripts/gen_diagnostic_registry.py --self-check \
     && python3 scripts/gen_frontend_embed.py --check \
-    && python3 scripts/check_scheduler_loom.py \
     && python3 scripts/check_journal_admission.py \
     && python3 scripts/check_journal_protocol.py \
     && python3 scripts/check_gc_roots.py \
@@ -183,13 +188,16 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY fuzz ./fuzz
-COPY schema ./schema
+COPY schema/diagnostics.json ./schema/
+COPY schema/source-bundle ./schema/source-bundle
+COPY schema/trust ./schema/trust
+COPY schema/evaluation ./schema/evaluation
+COPY schema/ir/v9.json ./schema/ir/v9.json
 COPY scripts/check_verus.sh scripts/check_verus.py scripts/verus_evidence.py scripts/check_collector_verus.py ./scripts/
 RUN sh scripts/check_verus.sh
 
-# TypeScript frontend tests and strict type checking of the four
-# admission-only workspace examples (plan/0052 §5.4). The image tag
-# matches the DENO_RELEASE provisioned by gripsack-fetch/src/host.rs.
+# TypeScript frontend tests and strict type checking of the public workspace
+# examples. The image tag matches DENO_RELEASE in gripsack-fetch/src/host.rs.
 FROM denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d AS ts-test
 WORKDIR /app
 COPY typescript ./typescript

@@ -26,7 +26,7 @@ pub(super) fn prepare(
         store::journal::directory::bind_existing(journal, receipt)?;
     }
     let target_keys: BTreeSet<_> = target
-        .modules
+        .deployments
         .iter()
         .flat_map(|(owner, state)| {
             state
@@ -158,7 +158,7 @@ fn restored_origin(
     let predecessor =
         store::generations::admit_manifest(journal.home_path(), receipt.predecessor_generation)?;
     let (state, entry) = predecessor
-        .modules
+        .deployments
         .values()
         .find_map(|state| {
             state
@@ -169,7 +169,7 @@ fn restored_origin(
         })
         .ok_or_else(|| failure("retained directory origin is unavailable"))?;
     if entry.preserved_drift
-        || entry.ownership.policy() != gripsack_ir::Ownership::Owned
+        || entry.ownership.policy() != gripsack_store::Ownership::Owned
         || state.store_path.join(&entry.from) != receipt.predecessor_target
     {
         return Err(failure(

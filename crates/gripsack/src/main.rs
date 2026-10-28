@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! grip init            scaffold an env repo from the embedded template
-//! grip check           eval + sema + linters; the CI gate for your dotfiles repo
+//! grip check           validate captured workspace outputs and sources
 //! grip apply|plan      fetch, build, deploy — one atomic generation per run
 //! grip rollback|generations|gc|why-owns
 //!                      generations, instant rollback, store hygiene
@@ -36,48 +36,41 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Adopt an existing config path into the env — inspect, recommend
-    /// ownership, generate the module, apply with prior-state capture
-    /// (rollback restores your original files, 0015)
+    /// Adopt an existing config path into a workspace profile.
+    /// Review generated sources, then resume with prior-state capture.
     Adopt {
         /// Path to adopt (e.g. ~/.config/helix or ~/.gitconfig)
         path: String,
-        /// Module name (default: derived from the path)
+        /// Profile name (default: derived from the path)
         #[arg(long)]
         name: Option<String>,
         /// Ownership mode: owned | tracked_copy | merge (default:
         /// recommended from what the path is)
         #[arg(long)]
         mode: Option<String>,
-        /// Host entrypoint (default: this machine's hostname)
+        /// Workspace lock identity (default: configured host or hostname)
         #[arg(long)]
         host: Option<String>,
         /// Apply without the confirmation prompt
         #[arg(long)]
         yes: bool,
-        /// Apply an already-generated, newly approved module without writing repo files
+        /// Apply an already-generated, newly approved profile without writing repo files
         #[arg(long, conflicts_with = "mode")]
         resume: bool,
     },
-    /// Deploy native workspace file profiles or fetch/build/deploy legacy modules
+    /// Deploy workspace profiles as one atomic generation
     Apply {
-        /// Legacy host entrypoint (workspace uses gripsack.ts instead)
+        /// Workspace lock identity (default: configured host or hostname)
         #[arg(long)]
         host: Option<String>,
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
-        /// Restrict to these profiles or modules (default: the whole graph)
-        modules: Vec<String>,
+        /// Restrict to these profiles (default: all profiles)
+        profiles: Vec<String>,
         /// Overwrite foreign/drifted tracked_copy destinations
         #[arg(long)]
         take_over: bool,
-        /// Migrate intact legacy-owned paths from this exact current generation
-        #[arg(long, conflicts_with = "take_over")]
-        migrate_from: Option<gripsack_store::GenerationId>,
-        /// Max concurrent modules (default: cores; env GRIPSACK_JOBS)
-        #[arg(long)]
-        jobs: Option<usize>,
     },
     /// Realize named workspace recipes/packages into the native store.
     /// Linux production is submitted as one checked BuildKit subgraph.
@@ -87,10 +80,10 @@ enum Command {
         #[command(subcommand)]
         command: commands::BuilderCommand,
     },
-    /// Validate a workspace catalog or legacy env without host activation.
+    /// Validate a workspace catalog without host activation.
     /// The provisioned frontend may be prepared; no builder starts.
     Check {
-        /// Legacy host entrypoint (ignored for gripsack.ts workspaces)
+        /// Workspace lock identity (default: configured host or hostname)
         #[arg(long)]
         host: Option<String>,
         /// Env repo path or git URL (default: current directory)
@@ -101,17 +94,14 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Prepare native files or legacy module operations without deployment
+    /// Preview workspace profile operations without deployment
     Plan {
         #[arg(long)]
         host: Option<String>,
-        modules: Vec<String>,
+        profiles: Vec<String>,
         /// Read IR JSON directly (frontend debugging)
         #[arg(long)]
         ir: Option<PathBuf>,
-        /// Preview migration of intact legacy-owned paths from this generation
-        #[arg(long, conflicts_with = "ir")]
-        migrate_from: Option<gripsack_store::GenerationId>,
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
@@ -143,7 +133,7 @@ enum Command {
         /// Resolve without publishing sources or writing the lock; exit 1 on changes
         #[arg(long)]
         check: bool,
-        modules: Vec<String>,
+        outputs: Vec<String>,
     },
     /// List generations and their status
     Generations,
@@ -153,15 +143,15 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Show which module owns a deployed path
+    /// Show which profile owns a deployed path
     WhyOwns { path: String },
-    /// Re-hash every store path and report corruption (0008 §3)
+    /// Re-hash retained deployment and native artifact payloads
     StoreVerify {
         /// Remove corrupt paths (next apply re-fetches)
         #[arg(long)]
         repair: bool,
     },
-    /// Scaffold an env repo (env.toml, hosts, modules, examples)
+    /// Create a workspace repo (gripsack.ts, captured config and editor settings)
     Init {
         /// Directory to initialize (default: current directory)
         dir: Option<PathBuf>,
@@ -253,20 +243,16 @@ fn main() -> ExitCode {
         Command::Apply {
             host,
             repo,
-            modules,
+            profiles,
             take_over,
-            migrate_from,
-            jobs,
         } => match commands::resolve_repo(repo.as_deref()) {
             Ok(repo) => commands::apply(
                 &repo,
                 commands::ApplyOptions {
                     host,
-                    modules,
+                    profiles,
                     take_over,
                     take_over_entries: None,
-                    migrate_from,
-                    jobs,
                 },
                 palette,
             ),
@@ -299,10 +285,10 @@ fn main() -> ExitCode {
         Command::Update {
             host,
             repo,
-            modules,
+            outputs,
             check,
         } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::update(&repo, host, modules, palette, check),
+            Ok(repo) => commands::update(&repo, host, outputs, palette, check),
             Err(code) => {
                 if check {
                     ExitCode::from(2)
@@ -329,18 +315,14 @@ fn main() -> ExitCode {
         Command::Hooks { command } => commands::hooks(command, palette),
         Command::Plan {
             ir: Some(path),
-            modules,
+            profiles,
             ..
-        } => match modules.first() {
-            Some(name) => commands::plan_module(&path, name, palette),
-            None => commands::plan_ir(&path, palette),
-        },
+        } => commands::plan_ir(&path, &profiles, palette),
         Command::Plan {
             ir: None,
             host,
-            modules,
+            profiles,
             repo,
-            migrate_from,
         } => {
             let repo = match commands::resolve_repo(repo.as_deref()) {
                 Ok(r) => r,
@@ -368,41 +350,6 @@ fn main() -> ExitCode {
             ) {
                 return code;
             }
-            {
-                match gripsack_exec::expand::expand_all(&ir.modules).and_then(|plans| {
-                    gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &plans)
-                }) {
-                    Ok(()) => {}
-                    Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
-                        sink.report(&[d]);
-                        return ExitCode::FAILURE;
-                    }
-                    Err(e) => {
-                        eprintln!("grip: {e}");
-                        return ExitCode::FAILURE;
-                    }
-                }
-            }
-            if !ir.has_workspace() {
-                match gripsack_exec::inspect_known_layouts(
-                    &ir,
-                    &repository,
-                    &outcome.host,
-                    outcome.fetch.limits(),
-                ) {
-                    Ok(layouts) => {
-                        for (module, evidence) in layouts {
-                            if let Some(summary) = evidence.summary() {
-                                println!("  {module}: {summary}");
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        eprintln!("grip: {error}");
-                        return ExitCode::FAILURE;
-                    }
-                }
-            }
             // host-inputs header (0013 D6): the facts that went in and
             // the probes the core bound — what keeps hardware-reactive
             // plans from reading as nondeterminism.
@@ -410,54 +357,67 @@ fn main() -> ExitCode {
                 "{}",
                 palette.dim(&commands::render_host_inputs(&outcome.host_inputs))
             );
-            let waves = gripsack_exec::waves(&ir).unwrap_or_default();
-            if modules.is_empty() || ir.has_workspace() || migrate_from.is_some() {
-                match render::diff_section(
-                    &ir,
-                    &repository,
-                    &outcome.host,
-                    &Default::default(),
-                    palette,
-                    &modules,
-                    outcome.fetch.limits(),
-                    migrate_from,
-                ) {
-                    Ok(section) => println!("{section}"),
-                    Err(gripsack_exec::ExecError::Gate(diagnostic)) => {
-                        sink.report(&[diagnostic]);
-                        return ExitCode::FAILURE;
-                    }
-                    Err(error) => {
-                        eprintln!("grip: cannot compute the preview: {error}");
-                        return ExitCode::FAILURE;
-                    }
+            match render::diff_section(
+                &ir,
+                &repository,
+                &Default::default(),
+                palette,
+                &profiles,
+                outcome.fetch.limits(),
+            ) {
+                Ok(section) => println!("{section}"),
+                Err(gripsack_exec::ExecError::Gate(diagnostic)) => {
+                    sink.report(&[diagnostic]);
+                    return ExitCode::FAILURE;
+                }
+                Err(error) => {
+                    eprintln!("grip: cannot compute the preview: {error}");
+                    return ExitCode::FAILURE;
                 }
             }
-            if ir.has_workspace() {
-                let selected = ir.workspace_outputs().filter(|output| {
-                    modules.is_empty() || modules.iter().any(|name| name == output.name)
-                });
-                for output in selected {
-                    println!("  {:?} ({})", output.name, output.kind);
-                }
-            } else {
-                match modules.first() {
-                    Some(name) => {
-                        println!("{}", render::render_module(&ir, name, &waves, palette))
-                    }
-                    None => {
-                        println!("{} {} modules", palette.good("plan:"), ir.modules.len());
-                        for (i, wave) in waves.iter().enumerate() {
-                            println!(
-                                "  {} {}",
-                                palette.badge(&format!("wave {i}")),
-                                wave.join(", ")
-                            );
-                        }
-                    }
-                }
+            let selected = ir.workspace_outputs().filter(|output| {
+                profiles.is_empty() || profiles.iter().any(|name| name == output.name)
+            });
+            for output in selected {
+                println!("  {:?} ({})", output.name, output.kind);
             }
             ExitCode::SUCCESS
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_selects_profiles_and_keeps_host_as_lock_identity() {
+        let cli = Cli::try_parse_from(["grip", "apply", "--host", "work", "desktop"]).unwrap();
+        match cli.command {
+            Command::Apply { host, profiles, .. } => {
+                assert_eq!(host.as_deref(), Some("work"));
+                assert_eq!(profiles, ["desktop"]);
+            }
+            _ => panic!("expected apply"),
+        }
+    }
+
+    #[test]
+    fn removed_execution_flags_are_not_accepted() {
+        for args in [
+            vec!["grip", "apply", "--migrate-from", "1"],
+            vec!["grip", "plan", "--migrate-from", "1"],
+            vec!["grip", "apply", "--jobs", "2"],
+            vec![
+                "grip",
+                "adopt",
+                "~/.gitconfig",
+                "--resume",
+                "--mode",
+                "owned",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
         }
     }
 }

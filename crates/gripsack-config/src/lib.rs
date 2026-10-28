@@ -1,4 +1,4 @@
-//! Tool configuration as data (plan/0005 §2): parsed before any module
+//! Tool configuration as data: parsed before any workspace
 //! code runs — config can never depend on eval results.
 //!
 //! ```text
@@ -29,11 +29,6 @@ pub struct EnvConfig {
     pub eval: EvalSection,
     pub capture: CaptureSection,
     pub fetchers: BTreeMap<String, FetcherSection>,
-    /// Linter registry (0011 §7): name → plugin-store ref
-    /// (`owner/repo@tag`, provisioned and receipted) or an explicit
-    /// executable path. The core parses it and feeds `package`
-    /// entries to provisioning.
-    pub linters: BTreeMap<String, LinterSection>,
     /// Rate limits per throttle domain, e.g. `"api.github.com" = "2/s"`
     /// (0007 §throttling). The core attaches primitives to domains.
     #[serde(default)]
@@ -54,17 +49,7 @@ pub struct UserConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct EnvSection {
     pub name: Option<String>,
-    /// Parsed only so `frontend = "python"` can fail with a migration
-    /// hint instead of a bare unknown-key error: the python frontend
-    /// was removed (plan/0013 D1) and TypeScript is the only frontend
-    /// — declared by nothing, the repo's `hosts/*.ts`/`modules/*.ts`
-    /// ARE it. `frontend = "typescript"` parses as a no-op.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub frontend: Option<String>,
-    /// The host entrypoint when no --host is given and the machine's
-    /// hostname matches nothing in hosts/ — for role-named host files
-    /// on ephemeral containers with random hostnames (enterprise
-    /// review finding).
+    /// Workspace lock identity when no --host is given; never an entrypoint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_host: Option<String>,
 }
@@ -100,21 +85,8 @@ pub struct FetcherSection {
     /// the plugin store (0012 §move-2). Mutually exclusive with plugin.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
-    /// Explicit executable path — the offline/air-gapped route, and the
-    /// registry-symmetric name for `plugin` (linters use `path`).
+    /// Explicit executable path for offline or air-gapped acquisition.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
-}
-/// A named linter (0010 §3, 0011 §7): provisioned from the plugin
-/// store by ref, or an explicit executable path for development.
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct LinterSection {
-    /// Plugin-store ref `owner/repo@tag` — downloaded, sha256-verified,
-    /// receipted (the pip-wheel form died with the python frontend,
-    /// plan/0013 D1).
-    pub package: Option<String>,
-    /// Explicit executable path — wins over `package`, for development.
     pub path: Option<String>,
 }
 
@@ -122,7 +94,7 @@ pub struct LinterSection {
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub keep_generations: Option<u32>,
-    /// Artifact acquisition limits, independent of module worker count.
+    /// Artifact acquisition limits, independent of builder scheduling.
     pub acquisition_jobs: Option<std::num::NonZeroUsize>,
     pub download_limit_bytes: Option<std::num::NonZeroU64>,
     pub expanded_limit_bytes: Option<std::num::NonZeroU64>,
@@ -192,39 +164,6 @@ pub fn load_user(path: &std::path::Path) -> Result<UserConfig, Vec<Diagnostic>> 
 
 fn parse_env_as(source: &str, file: &str) -> Result<EnvConfig, Vec<Diagnostic>> {
     let env: EnvConfig = parse_as(source, file)?;
-    // TypeScript is the only frontend and needs no declaration; the
-    // key parses solely so a stale `frontend = "python"` fails with a
-    // migration hint instead of an unknown-key error (plan/0013 D1).
-    if let Some(frontend) = env.env.frontend.as_deref()
-        && frontend != "typescript"
-    {
-        let (line, col) = source
-            .find("frontend")
-            .map(|offset| line_col(source, offset))
-            .unwrap_or((1, 1));
-        let message = if frontend == "python" {
-            "the python frontend was removed (plan/0013 D1)".to_string()
-        } else {
-            format!("unknown frontend {frontend:?}")
-        };
-        return Err(vec![
-            Diagnostic::error(
-                codes::CONFIG,
-                format!("{message} — TypeScript is the only frontend"),
-            )
-            .with_label(
-                Some(Span {
-                    file: file.to_string(),
-                    line,
-                    col: Some(col),
-                }),
-                "`frontend` declared here",
-            )
-            .with_help(
-                "delete the frontend line — hosts/*.ts and modules/*.ts already are the frontend",
-            ),
-        ]);
-    }
     // Repo-owned build env may not redefine operator runtime policy or
     // credential routing. The same boundary applies before any command
     // constructs a fetch client or launches a build step.
@@ -280,7 +219,7 @@ fn parse_as<T: serde::de::DeserializeOwned>(
 }
 
 /// Map a toml error's byte span to a line:col span and render it as our
-/// diagnostic — the same shape modules get (0009 §3).
+/// diagnostic — the same shape workspace outputs get.
 fn toml_diagnostic(source: &str, file: &str, e: &toml::de::Error) -> Diagnostic {
     let span = e.span().map(|range| {
         let (line, col) = line_col(source, range.start);
@@ -456,34 +395,10 @@ keep_generations = 20
     }
 
     #[test]
-    fn python_frontend_is_a_migration_error() {
-        let err = parse_env("[env]\nname = \"x\"\nfrontend = \"python\"\n").unwrap_err();
-        let d = &err[0];
-        assert_eq!(d.code, gripsack_ir::codes::CONFIG);
-        assert!(
-            d.message.contains("python frontend was removed"),
-            "message names the removal: {}",
-            d.message
-        );
-        let span = d.labels[0].span.as_ref().unwrap();
-        assert_eq!(span.line, 3, "span points at the frontend line");
-        assert!(
-            d.help
-                .as_deref()
-                .is_some_and(|h| h.contains("delete the frontend line")),
-            "help carries the migration step"
-        );
-    }
-
-    #[test]
-    fn unknown_frontend_value_errors_the_same_way() {
-        let err = parse_env("[env]\nfrontend = \"wasm\"\n").unwrap_err();
-        assert!(err[0].message.contains("unknown frontend \"wasm\""));
-    }
-
-    #[test]
-    fn typescript_frontend_declaration_is_tolerated() {
-        parse_env("[env]\nfrontend = \"typescript\"\n").unwrap();
+    fn removed_frontend_declarations_are_rejected() {
+        for frontend in ["python", "typescript", "wasm"] {
+            assert!(parse_env(&format!("[env]\nfrontend = {frontend:?}\n")).is_err());
+        }
     }
 
     #[test]
@@ -522,7 +437,7 @@ keep_generations = 20
     #[test]
     fn defaults_are_sane() {
         let env = parse_env("").unwrap();
-        assert_eq!(env.env.frontend, None);
+        assert_eq!(env.env.default_host, None);
         assert!(env.eval.env.is_empty());
         assert!(env.fetchers.is_empty());
     }
@@ -558,5 +473,13 @@ keep_generations = 10
             merge(Some(&user), &repo).settings.keep_generations,
             Some(10)
         );
+    }
+
+    #[test]
+    fn module_linter_registry_is_not_workspace_configuration() {
+        let diagnostics =
+            parse_env("[linters.demo]\npath = '/usr/bin/griplint-demo'\n").unwrap_err();
+        assert_eq!(diagnostics[0].code, codes::CONFIG);
+        assert!(diagnostics[0].message.contains("linters"));
     }
 }

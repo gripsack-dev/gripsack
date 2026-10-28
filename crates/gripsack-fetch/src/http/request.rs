@@ -8,16 +8,11 @@ use crate::FetchError;
 use std::io::{self, Read};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// Secret-bearing registry authorization is deliberately not Debug/Serialize.
 #[derive(Clone, Copy)]
 pub(crate) enum RequestKind<'a> {
     GithubMetadata,
-    Metadata,
     Artifact {
         api_url: Option<&'a str>,
-    },
-    RegistryArtifact {
-        authorization: &'a str,
     },
     /// Trusted bootstrap bytes: no host-bound credentials, HTTPS-only redirects.
     Tool {
@@ -28,8 +23,7 @@ impl RequestKind<'_> {
     fn label(self) -> &'static str {
         match self {
             Self::GithubMetadata => "github-metadata",
-            Self::Metadata => "metadata",
-            Self::Artifact { .. } | Self::RegistryArtifact { .. } => "artifact",
+            Self::Artifact { .. } => "artifact",
             Self::Tool { .. } => "tool",
         }
     }
@@ -166,10 +160,7 @@ impl Client {
         // would silently fetch the browser URL without the intended auth.
         // Parse the selected route once; retry attempts reuse its header.
         let route_for = |value| {
-            if matches!(
-                kind,
-                RequestKind::RegistryArtifact { .. } | RequestKind::Tool { .. }
-            ) {
+            if matches!(kind, RequestKind::Tool { .. }) {
                 CredentialRoute::Unbound
             } else {
                 self.policy.route(value)
@@ -192,7 +183,6 @@ impl Client {
         };
         let mut transfer = TransferBudget::new(limit);
         let authentication = || match kind {
-            RequestKind::RegistryArtifact { .. } => AuthenticationDisposition::OtherBound,
             RequestKind::Tool { .. } => AuthenticationDisposition::Absent,
             _ => self.policy.authentication(selected),
         };
@@ -210,13 +200,9 @@ impl Client {
         };
         // Refuse the entire operation rather than silently dropping a bound
         // credential and falling back to a cleartext API/browser URL.
-        let registry_auth = matches!(
-            kind,
-            RequestKind::RegistryArtifact { .. } | RequestKind::Tool { .. }
-        );
-        let insecure_registry =
-            registry_auth && !url::Url::parse(selected).is_ok_and(|url| url.scheme() == "https");
-        if matches!(credential, CredentialRoute::Insecure) || insecure_registry {
+        let insecure_tool = matches!(kind, RequestKind::Tool { .. })
+            && !url::Url::parse(selected).is_ok_and(|url| url.scheme() == "https");
+        if matches!(credential, CredentialRoute::Insecure) || insecure_tool {
             budget.stop(gripsack_policy::retry_budget::RetryRefusal::NonRetryable);
             return Err(failure(
                 HttpFailureKind::InsecureCredential,
@@ -268,12 +254,9 @@ impl Client {
                 .begin(Instant::now())
                 .map_err(|stop| admission_failure(&budget, stop))?;
             request = request.timeout(remaining);
-            let authorization = match kind {
-                RequestKind::RegistryArtifact { authorization } => Some(authorization),
-                _ => match credential {
-                    CredentialRoute::Https(header) => Some(header),
-                    CredentialRoute::Unbound | CredentialRoute::Insecure => None,
-                },
+            let authorization = match credential {
+                CredentialRoute::Https(header) => Some(header),
+                CredentialRoute::Unbound | CredentialRoute::Insecure => None,
             };
             if let Some(header) = authorization {
                 request = request.set("Authorization", header);
@@ -521,15 +504,16 @@ mod tests {
             let end = Instant::now() + Duration::from_millis(500);
             let started = end - super::super::retry::OPERATION_TIMEOUT;
             let consumed = Cell::new(false);
-            let result = client.consume_at(&url, RequestKind::Metadata, 8, started, |reader| {
-                let mut body = String::new();
-                reader.read_to_string(&mut body)?;
-                consumed.set(true);
-                std::thread::sleep(
-                    end.saturating_duration_since(Instant::now()) + Duration::from_millis(20),
-                );
-                Ok(body)
-            });
+            let result =
+                client.consume_at(&url, RequestKind::GithubMetadata, 8, started, |reader| {
+                    let mut body = String::new();
+                    reader.read_to_string(&mut body)?;
+                    consumed.set(true);
+                    std::thread::sleep(
+                        end.saturating_duration_since(Instant::now()) + Duration::from_millis(20),
+                    );
+                    Ok(body)
+                });
             server.join().unwrap();
             assert!(
                 consumed.get(),
@@ -554,7 +538,7 @@ mod tests {
                 let started = end - super::super::retry::OPERATION_TIMEOUT;
                 let result = shared.consume_at(
                     "http://127.0.0.1:9/never-requested",
-                    RequestKind::Metadata,
+                    RequestKind::GithubMetadata,
                     8,
                     started,
                     |_| Ok(()),

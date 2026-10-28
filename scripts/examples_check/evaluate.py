@@ -7,10 +7,10 @@ harness honest.
   captured-source approval or runtime receipt guarantees. @gripsack/core
   resolves to the installed package, exercising its public export surface.
 
-  core level — the real `grip check` (embedded frontend, sandboxed
-  deno, two-stage probe binding) must accept the same repo; the
-  installed package wins there too (pin resolution + the sandbox's
-  resolved-pin read grant)."""
+  core level — the real `grip check` (embedded frontend and sandboxed
+  Deno) must accept the same root workspace; the installed package
+  wins there too (pin resolution + the sandbox's resolved-pin read grant).
+  Admission is not a claim that external packages or builds were executed."""
 
 from __future__ import annotations
 
@@ -18,11 +18,10 @@ import json
 import os
 import platform
 import re
-import shutil
 import subprocess
 
 from .extract import Block, CheckFailure
-from .fixtures import scaffold, fresh_home, write_executable, write_fixture
+from .fixtures import scaffold, fresh_home
 
 def host_facts() -> dict:
     os_name = {"Linux": "linux", "Darwin": "darwin"}.get(platform.system())
@@ -75,10 +74,9 @@ def frontend_eval(sdk_src, deno, repo, inputs: dict, home) -> dict:
         raise CheckFailure(f"frontend eval printed no envelope: {e}\n{res.stdout[:500]}")
 
 
-def core_check(grip, deno, repo, host: str | None, home,
-               path: str | None = None, expect_outputs: dict | None = None) -> int:
-    """Run real `grip check`; validate workspace names/kinds or return module count."""
-    env = minimal_env(home, deno_dir=False, path=path)
+def core_check(grip, deno, repo, home, expect_outputs: dict) -> int:
+    """Run real `grip check` and validate the complete output catalog."""
+    env = minimal_env(home, deno_dir=False)
     env.update({
         "GRIPSACK_HOME": str(home / ".local/share/gripsack"),
         "GRIPSACK_DENO": str(deno),
@@ -97,11 +95,7 @@ def core_check(grip, deno, repo, host: str | None, home,
     )
     if approved.returncode:
         raise CheckFailure(f"fixture source approval failed:\n{approved.stderr[-2000:]}")
-    cmd = [str(grip), "check"]
-    if host is not None:
-        cmd += ["--host", host]
-    if expect_outputs is not None:
-        cmd.append("--json")
+    cmd = [str(grip), "check", "--json"]
     res = subprocess.run(
         cmd, cwd=repo, env=env,
         capture_output=True, text=True,
@@ -111,17 +105,12 @@ def core_check(grip, deno, repo, host: str | None, home,
             f"grip check failed (exit {res.returncode}):\n"
             f"{res.stdout.strip()[-800:]}\n{res.stderr.strip()[-2000:]}"
         )
-    if expect_outputs is not None:
-        try:
-            report = json.loads(res.stdout)
-        except json.JSONDecodeError as e:
-            raise CheckFailure(f"grip check printed no JSON report: {e}")
-        assert_outputs(report.get("outputs"), expect_outputs, "grip check")
-        return len(report["outputs"])
-    m = re.search(r"check: ok (\d+) modules", res.stdout)
-    if not m:
-        raise CheckFailure(f"no module count in check output: {res.stdout[-500:]}")
-    return int(m.group(1))
+    try:
+        report = json.loads(res.stdout)
+    except json.JSONDecodeError as e:
+        raise CheckFailure(f"grip check printed no JSON report: {e}")
+    assert_outputs(report.get("outputs"), expect_outputs, "grip check")
+    return len(report["outputs"])
 
 
 # --------------------------------------------------------------------------
@@ -142,25 +131,12 @@ def dig(obj, path: str):
     return obj
 
 
-def resolve_expect(names, facts: dict) -> list[str]:
-    out = []
-    for n in names:
-        if isinstance(n, tuple):
-            name, os_gate = n
-            if facts["os"] != os_gate:
-                continue
-            out.append(name)
-        else:
-            out.append(n)
-    return out
 
 
 def check_ir_point(ir: dict, point: tuple, where: str) -> None:
     kind, mod, path, expected = point
     if kind == "output":
         nodes = {node["name"]: node for node in ir["workspace"]["outputs"]}
-    elif kind == "module":
-        nodes = ir["modules"]
     else:
         raise CheckFailure(f"{where}: unknown IR point kind {kind!r}")
     if mod not in nodes:
@@ -201,31 +177,18 @@ def assert_outputs(outputs, expect: dict, where: str) -> None:
         raise CheckFailure(f"{where}: named outputs {got}, want {want}")
 
 
-def assert_envelope(env: dict, expect: list[str], where: str,
-                    expect_outputs: dict | None = None) -> None:
+def assert_envelope(env: dict, expect_outputs: dict, where: str) -> None:
     if env.get("diagnostics"):
         raise CheckFailure(f"{where}: frontend diagnostics: {env['diagnostics']}")
-    if expect_outputs is not None:
-        ir = env.get("ir")
-        if not isinstance(ir, dict) or "modules" in ir:
-            raise CheckFailure(f"{where}: expected workspace IR, got {ir!r}")
-        workspace = ir.get("workspace")
-        if not isinstance(workspace, dict):
-            raise CheckFailure(f"{where}: no workspace in IR")
-        assert_outputs(workspace.get("outputs"), expect_outputs, where)
-        return
-    got = sorted(env["ir"]["modules"])
-    want = sorted(expect)
-    if got != want:
-        dropped = sorted(set(want) - set(got))
-        hint = (
-            " — modules vanished after eval: falsy entries drop silently "
-            "by design, which is exactly what a factory that forgot "
-            "`return module(...)` produces"
-            if dropped
-            else ""
-        )
-        raise CheckFailure(f"{where}: IR modules {got}, want {want}{hint}")
+    ir = env.get("ir")
+    if not isinstance(ir, dict) or set(ir) != {"ir_version", "host", "workspace"}:
+        raise CheckFailure(f"{where}: expected workspace-only IR, got {ir!r}")
+    if ir["ir_version"] != 9:
+        raise CheckFailure(f"{where}: expected IR9, got {ir['ir_version']!r}")
+    workspace = ir["workspace"]
+    if not isinstance(workspace, dict):
+        raise CheckFailure(f"{where}: no workspace in IR")
+    assert_outputs(workspace.get("outputs"), expect_outputs, where)
 
 
 # --------------------------------------------------------------------------
@@ -233,91 +196,42 @@ def assert_envelope(env: dict, expect: list[str], where: str,
 # --------------------------------------------------------------------------
 
 def run_example(entry: dict, block: Block, ctx) -> list[str]:
-    """Full positive pipeline for one runnable example."""
+    """Evaluate the actual published root entrypoint, then admit it in core."""
     failures: list[str] = []
-    facts = ctx["facts"]
-    expect = resolve_expect(entry.get("expect_modules", []), facts)
-    expect_outputs = entry.get("expect_outputs") if entry["kind"] == "workspace" else None
-    if entry["kind"] == "workspace" and not expect_outputs:
-        raise CheckFailure(f"{entry['id']}: workspace needs explicit named-output expectations")
-    stages: list[tuple[str, dict]] = [("default", {})]
-
-    # extra tag stages: per-file conditional selection must actually
-    # flip the chosen source in the emitted IR
-    for extra in entry.get("tag_stages", []):
-        stages.append((f"tags={extra['tags']}", {"tags": extra["tags"]}))
-
-    for stage_name, overrides in stages:
-        repo = scaffold(entry, block, ctx["base"], ctx["sdk_pkg"])
-        home = fresh_home(ctx["base"], f"{entry['id']}-{stage_name}".replace("/", "_"))
-        inputs = {"version": 1, "host": "", "facts": facts, "tags": [],
-                  "probes": {}, "settings": {}}
-        inputs.update(overrides)
-        # The inputs protocol requires a nonempty host even though root
-        # workspaces do not select hosts/<host>.ts.
-        inputs["host"] = entry["host"] if entry["kind"] == "host" else "example"
-        where = f"{entry['id']} [{stage_name}] frontend"
-        try:
-            envelope = frontend_eval(ctx["sdk_src"], ctx["deno"], repo, inputs, home)
-            assert_envelope(envelope, expect, where, expect_outputs)
-            if "probe_requests" in entry and stage_name == "default":
-                got = [[p["kind"], p["name"]] for p in envelope.get("probe_requests", [])]
-                if got != entry["probe_requests"]:
-                    raise CheckFailure(f"{where}: probe requests {got}, want {entry['probe_requests']}")
-            for point in entry.get("ir", []):
-                check_ir_point(envelope["ir"], point, where)
-            for extra in entry.get("tag_stages", []):
-                if f"tags={extra['tags']}" == stage_name:
-                    check_ir_point(envelope["ir"], extra["point"], where)
-        except CheckFailure as e:
-            failures.append(str(e))
-
-    # bound-probe stage (frontend fixpoint: requests answered, none re-asked)
-    if "expect_modules_bound" in entry:
-        repo = scaffold(entry, block, ctx["base"], ctx["sdk_pkg"])
-        home = fresh_home(ctx["base"], f"{entry['id']}-bound")
-        inputs = {"version": 1, "host": entry["host"], "facts": facts,
-                  "tags": [], "settings": {},
-                  "probes": {"executable:nvidia-smi": True}}
-        where = f"{entry['id']} [bound-probe] frontend"
-        try:
-            envelope = frontend_eval(ctx["sdk_src"], ctx["deno"], repo, inputs, home)
-            assert_envelope(envelope, resolve_expect(entry["expect_modules_bound"], facts), where)
-            if envelope.get("probe_requests"):
+    expect = entry["expect_outputs"]
+    repo = scaffold(entry, block, ctx["base"], ctx["sdk_pkg"])
+    home = fresh_home(ctx["base"], f"{entry['id']}-frontend")
+    inputs = {"version": 1, "host": "example", "facts": ctx["facts"],
+              "tags": [], "probes": {}, "settings": {}}
+    where = f"{entry['id']} frontend"
+    try:
+        envelope = frontend_eval(ctx["sdk_src"], ctx["deno"], repo, inputs, home)
+        assert_envelope(envelope, expect, where)
+        for point in entry.get("ir", []):
+            check_ir_point(envelope["ir"], point, where)
+        for node in envelope["ir"]["workspace"]["outputs"]:
+            span = node.get("span", {})
+            line = span.get("line")
+            if (not str(span.get("file", "")).endswith("/gripsack.ts")
+                    or not isinstance(line, int)
+                    or not 1 <= line <= len(block.code.splitlines())
+                    or not isinstance(span.get("col"), int) or span["col"] < 1):
+                raise CheckFailure(f"{where}: invalid source span for {node['name']}: {span}")
+            declaration = re.compile(
+                rf'\b(?:pkg|recipe|environment|profile|image|task|check|hook)\("{re.escape(node["name"])}"'
+            )
+            expected_lines = [i for i, text in enumerate(block.code.splitlines(), 1)
+                              if declaration.search(text)]
+            if expected_lines != [line]:
                 raise CheckFailure(
-                    f"{where}: bound probes re-requested {envelope['probe_requests']}"
+                    f"{where}: {node['name']} span line {line} does not identify "
+                    f"its published declaration (lines {expected_lines})"
                 )
-        except CheckFailure as e:
-            failures.append(str(e))
-
-    # core level: the real grip check on the same scaffolded repo
-    host = (entry["host"] if entry["kind"] == "host"
-            else None if entry["kind"] == "workspace" else "example")
-    for label, path_env in (("core", None), ("core-bound", ctx["fake_probe_path"])):
-        if label == "core-bound" and "expect_modules_bound" not in entry:
-            continue
-        repo = scaffold(entry, block, ctx["base"], ctx["sdk_pkg"])
-        home = fresh_home(ctx["base"], f"{entry['id']}-{label}")
-        if label == "core-bound":
-            want = resolve_expect(entry["expect_modules_bound"], facts)
-        else:
-            # the probe binds against the REAL PATH the run gets — if
-            # the checker host genuinely has nvidia-smi, cuda belongs
-            # in the expectation (CI runners do not)
-            want = list(expect)
-            if "expect_modules_bound" in entry and ctx["clean_has_probe"]:
-                want += [n for n in resolve_expect(entry["expect_modules_bound"], facts)
-                         if n not in want]
-        try:
-            count = core_check(ctx["grip"], ctx["deno"], repo, host, home,
-                               path=path_env or ctx["clean_path"],
-                               expect_outputs=expect_outputs)
-            want_count = len(expect_outputs) if expect_outputs is not None else len(want)
-            if count != want_count:
-                raise CheckFailure(
-                    f"{entry['id']} [{label}]: grip check accepted {count} "
-                    f"entries, want {want_count}"
-                )
-        except CheckFailure as e:
-            failures.append(str(e))
+    except CheckFailure as e:
+        failures.append(str(e))
+    try:
+        core_check(ctx["grip"], ctx["deno"], repo,
+                   fresh_home(ctx["base"], f"{entry['id']}-core"), expect)
+    except CheckFailure as e:
+        failures.append(str(e))
     return failures

@@ -4,7 +4,6 @@
 
 mod links;
 mod paths;
-mod pour;
 mod tar;
 #[cfg(test)]
 mod tests;
@@ -12,7 +11,6 @@ mod tree;
 mod zip;
 
 use crate::{FetchError, FetchLimits};
-pub(crate) use pour::pour;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 pub(crate) use tree::copy_tree_filtered;

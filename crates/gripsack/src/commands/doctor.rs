@@ -51,7 +51,7 @@ pub fn doctor(palette: Palette) -> ExitCode {
             if reason.contains("musl") {
                 println!(
                     "      {} the grip binary itself is musl-static and keeps working — \
-                     only the eval sandbox needs a glibc/macOS host",
+                     only the eval sandbox needs a Linux/WSL x86_64 glibc host",
                     palette.warn("hint:")
                 );
             } else {
@@ -102,13 +102,50 @@ pub fn doctor(palette: Palette) -> ExitCode {
     // Eval only considers the repo-root install (typescript/src/pin.ts).
     // A declaration is not evidence that the installed frontend was upgraded.
     let repo = std::env::current_dir().unwrap_or_else(|_| ".".into());
+    if repo.join("gripsack.ts").is_file() {
+        println!(
+            "{}  workspace: gripsack.ts — run `grip check` to list named outputs",
+            mark(true)
+        );
+    } else {
+        println!(
+            "      workspace: no gripsack.ts in this directory — run `grip init` to create one"
+        );
+    }
+    let editor_only = if repo.join("env.toml").is_file() {
+        match gripsack_config::load_env(&repo.join("env.toml")) {
+            Ok(config) => match gripsack_store::source_bundle::SourceCapturePolicy::new(
+                config.capture.exclude,
+            ) {
+                Ok(policy) => policy.excludes(std::path::Path::new("node_modules/@gripsack/core")),
+                Err(error) => {
+                    println!("{}  capture policy: {error}", mark(false));
+                    ok = false;
+                    false
+                }
+            },
+            Err(diagnostics) => {
+                eprintln!(
+                    "{}",
+                    crate::render::render_diagnostics_bounded(&diagnostics, palette, &repo)
+                );
+                ok = false;
+                false
+            }
+        }
+    } else {
+        false
+    };
     let embedded = env!("CARGO_PKG_VERSION");
-    let minor_line = embedded.rsplit_once('.').map_or(embedded, |(line, _)| line);
-    match installed_core(&repo) {
+    match if editor_only {
+        Ok(None)
+    } else {
+        installed_core(&repo)
+    } {
         Ok(Some(version)) if pin_is_behind(&version, embedded) => {
             println!(
                 "{}  repo frontend: installed @gripsack/core {version} shadows embedded {embedded}; \
-                 update it (npm i -D @gripsack/core@^{minor_line}.0), or remove \
+                 update it (npm i -D https://github.com/gripsack-dev/gripsack/releases/download/core-v{embedded}/gripsack-core-{embedded}.tgz), or remove \
                  node_modules/@gripsack/core to use the embedded frontend",
                 mark(false)
             );
@@ -126,12 +163,18 @@ pub fn doctor(palette: Palette) -> ExitCode {
             ok = false;
         }
         Ok(None) => {
+            if editor_only {
+                println!(
+                    "{}  repo frontend: editor dependencies excluded from capture; eval uses embedded {embedded}",
+                    mark(true)
+                );
+            }
             if let Some(pin) = core_pin(&repo) {
                 if pin_is_behind(&pin, embedded) {
                     println!(
                         "{}  repo pin: package.json declares @gripsack/core {pin}, no installed copy; \
                          eval uses embedded {embedded} — update the declaration \
-                         (npm i -D @gripsack/core@^{minor_line}.0) or remove the pin",
+                         (npm i -D https://github.com/gripsack-dev/gripsack/releases/download/core-v{embedded}/gripsack-core-{embedded}.tgz) or remove the pin",
                         palette.warn("warn")
                     );
                 } else {

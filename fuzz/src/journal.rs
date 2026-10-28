@@ -50,7 +50,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
             s.cap(),
             &gripsack_store::Generation {
                 number: gripsack_store::GenerationId::new(n),
-                modules: Default::default(),
+                deployments: Default::default(),
                 directory_transitions: Vec::new(),
                 migration: None,
             },

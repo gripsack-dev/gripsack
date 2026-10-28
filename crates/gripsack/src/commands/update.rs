@@ -10,7 +10,7 @@ use std::process::ExitCode;
 pub fn update(
     repo: &Path,
     host: Option<String>,
-    modules: Vec<String>,
+    outputs: Vec<String>,
     palette: Palette,
     check: bool,
 ) -> ExitCode {
@@ -44,13 +44,11 @@ pub fn update(
             std::sync::Arc::clone(&outcome.sources),
             outcome.receipt,
         ),
-        only: modules,
+        only: outputs,
         host: outcome.host.clone(),
         on_progress: None,
         take_over: false,
         take_over_entries: None,
-        migrate_from: None,
-        jobs: None,
         fetch: std::sync::Arc::clone(&outcome.fetch),
     };
     let mode = if check {
@@ -68,7 +66,7 @@ pub fn update(
         }
     };
     if survey.reports().is_empty() {
-        println!("nothing to resolve — no selected modules");
+        println!("nothing to resolve — no selected outputs");
     }
     for report in survey.reports() {
         let status = match &report.status {
@@ -87,9 +85,9 @@ pub fn update(
                 UpdateStatus::Bumped { .. } => palette.warn(&status),
                 _ => palette.dim(&status),
             };
-            println!("  {} {status}", report.module.cyan());
+            println!("  {} {status}", report.output.cyan());
         } else {
-            println!("  {} {status}", report.module);
+            println!("  {} {status}", report.output);
         }
         if let Some(layout) = report.layout.summary() {
             println!("    {layout}");
@@ -117,13 +115,9 @@ pub fn update(
         }
     } else {
         if summary.publishes_lock(mode) {
-            if ir.workspace_catalog.is_some() {
-                println!(
-                    "workspace lock updated — select an output with `grip build` or its native consumer"
-                );
-            } else {
-                println!("lockfile updated — run `grip apply` to deploy");
-            }
+            println!(
+                "workspace lock updated — select an output with `grip build` or its native consumer"
+            );
         }
         ExitCode::SUCCESS
     }

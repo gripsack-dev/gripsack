@@ -25,12 +25,3 @@ impl InstallPrefix {
                 .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
     }
 }
-
-/// Prefix-bound results have a separate materialization identity;
-/// they cannot be treated as relocatable by a consumer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum PackageLayout {
-    Relocatable,
-    FixedPrefix { prefix: InstallPrefix },
-}

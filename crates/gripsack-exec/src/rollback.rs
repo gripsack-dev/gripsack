@@ -41,7 +41,7 @@ pub fn rollback_generation(
     // same fail-closed rule as apply (0035 F5)
     let resumed = crate::activate::resume_activation(session).map_err(|e| {
         ExecError::Step {
-            module: "*".into(),
+            output: "*".into(),
             step: "activate".into(),
             detail: format!(
                 "activation recovery is blocked ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
@@ -54,7 +54,7 @@ pub fn rollback_generation(
         } else {
             store::journal::NoteSeverity::Info
         },
-        message: format!("{}: {}", r.module, r.summary),
+        message: format!("{}: {}", r.output, r.summary),
     }));
     let selection = store::journal::begin_run(
         &home,
@@ -69,7 +69,7 @@ pub fn rollback_generation(
         notes.append(&mut planned_notes);
         // The env profile renders INTO the generation before the flip
         // (0025 §C): activation and profile become one indivisible step.
-        crate::env::render_env_file(home_path, target.number, &target.modules)?;
+        crate::env::render_env_file(home_path, target.number, &target.deployments)?;
         // the pending record lands BEFORE the flip (0032's shape,
         // 0037): a failure here compensates like any other; a crash
         // after the flip leaves the record for the next run's resume
@@ -107,7 +107,7 @@ pub fn rollback_generation(
                                 } else {
                                     store::journal::NoteSeverity::Info
                                 },
-                                message: format!("{}: {}", report.module, report.summary),
+                                message: format!("{}: {}", report.output, report.summary),
                             });
                         }
                     }
@@ -144,7 +144,7 @@ type DestMap<'m> = BTreeMap<store::OwnershipKey, (&'m str, &'m store::DeployedEn
 
 fn by_destination(generation: &store::Generation) -> DestMap<'_> {
     let mut map = DestMap::new();
-    for (name, state) in &generation.modules {
+    for (name, state) in &generation.deployments {
         for entry in &state.entries {
             map.insert(
                 entry.ownership_key(name),
@@ -164,14 +164,14 @@ fn rollback_intents(
 ) -> Vec<store::activation::PendingIntent> {
     let mut intents = crate::activate::collect_from_manifest(target);
     if let Some(current) = current {
-        for (name, state) in &current.modules {
-            if target.modules.contains_key(name) {
+        for (name, state) in &current.deployments {
+            if target.deployments.contains_key(name) {
                 continue;
             }
             for record in &state.intents {
-                if record.trigger == gripsack_ir::Trigger::OnRemove {
+                if record.trigger == gripsack_store::ActivationTrigger::OnRemove {
                     intents.push(store::activation::PendingIntent {
-                        module: name.clone(),
+                        output: name.clone(),
                         action: record.action.clone(),
                         trigger: record.trigger,
                     });
@@ -213,7 +213,7 @@ fn restore_destinations(
     for transition in current_directories {
         let predecessor = &predecessors[&transition.predecessor_generation];
         let (name, state, entry) = predecessor
-            .modules
+            .deployments
             .iter()
             .find_map(|(name, state)| {
                 state
@@ -227,7 +227,7 @@ fn restore_destinations(
             })?;
         if state.store_path.join(&entry.from) != transition.predecessor_target
             || entry.preserved_drift
-            || entry.ownership.policy() != gripsack_ir::Ownership::Owned
+            || entry.ownership.policy() != gripsack_store::Ownership::Owned
         {
             return Err(std::io::Error::other(
                 "directory predecessor lineage no longer matches receipt",
@@ -362,14 +362,14 @@ fn restore_destinations(
 /// 0026 §9: never discover an incomplete target mid-mutation — every
 /// store path and entry source must resolve before the first write.
 fn preflight(target: &store::Generation) -> Result<(), ExecError> {
-    for (name, state) in &target.modules {
+    for (name, state) in &target.deployments {
         if let Some(expected) = &state.tree256 {
             // content-addressed means the path NAMES the content —
             // prove it, don't trust it (0029 §8): a corrupted store
             // tree must never become the bytes rollback deploys
             let actual =
                 store::canonical_tree_hash(&state.store_path).map_err(|e| ExecError::Step {
-                    module: name.clone(),
+                    output: name.clone(),
                     step: "rollback".into(),
                     detail: format!(
                         "cannot verify generation {}'s store tree for {name}: {e}",
@@ -378,7 +378,7 @@ fn preflight(target: &store::Generation) -> Result<(), ExecError> {
                 })?;
             if actual.as_str() != expected.as_str() {
                 return Err(ExecError::Step {
-                    module: name.clone(),
+                    output: name.clone(),
                     step: "rollback".into(),
                     detail: format!(
                         "store tree for {name} no longer matches generation {}'s recorded \
@@ -390,7 +390,7 @@ fn preflight(target: &store::Generation) -> Result<(), ExecError> {
         }
         if !state.store_path.is_dir() {
             return Err(ExecError::Step {
-                module: name.clone(),
+                output: name.clone(),
                 step: "rollback".into(),
                 detail: format!(
                     "generation {} is incomplete: {} is missing (corrupt or gc'd store) — \
@@ -404,7 +404,7 @@ fn preflight(target: &store::Generation) -> Result<(), ExecError> {
             let src = state.store_path.join(&entry.from);
             if !src.exists() {
                 return Err(ExecError::Step {
-                    module: name.clone(),
+                    output: name.clone(),
                     step: "rollback".into(),
                     detail: format!(
                         "generation {} is incomplete: {} is missing — refusing to roll back",

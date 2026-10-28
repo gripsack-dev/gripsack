@@ -1,6 +1,4 @@
-//! Shared admitted instance identity and resource observations. Docker and Lima
-//! effects use the same durable manager/lease contract without compiling the
-//! other platform's process adapter.
+//! Admitted container identity and resource observations for the owned worker.
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, num::NonZeroU16};
 

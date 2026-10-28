@@ -5,25 +5,25 @@ use crate::ctx::ExecError;
 use crate::ops::{
     DestView, ModeInput, Op, OpKind, WritePermissions, plan_entry_op, plan_remove_op,
 };
-use gripsack_ir::Ownership;
 use gripsack_store as store;
+use gripsack_store::Ownership;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 pub(super) struct DeferredFile {
-    entry: gripsack_ir::Entry,
+    entry: store::DeploymentEntry,
     block: Option<store::ManagedBlockId>,
     tree: bool,
     output: String,
 }
 impl DeferredFile {
-    pub fn destination(&self) -> &str {
-        &self.entry.to
+    pub fn migration_destination(&self) -> (&str, &Ownership) {
+        (&self.entry.to, &self.entry.mode)
     }
 
     pub fn launcher(path: String, span: gripsack_ir::Span, environment: String) -> Self {
         Self {
-            entry: gripsack_ir::Entry {
+            entry: store::DeploymentEntry {
                 from: String::new(),
                 to: path,
                 mode: Ownership::TrackedCopy,
@@ -54,7 +54,7 @@ impl DeferredFile {
             _ => return Err(file_failure(&file.span, "deferred file has no producer")),
         };
         Ok(Self {
-            entry: gripsack_ir::Entry {
+            entry: store::DeploymentEntry {
                 from: String::new(),
                 to: path.clone(),
                 mode,
@@ -90,7 +90,7 @@ impl DeferredFile {
 
 fn deferred(view: &DestView<'_>, note: String) -> Op {
     Op::new(
-        view.module.to_owned(),
+        view.output.to_owned(),
         view.dest.clone(),
         view.entry.to.clone(),
         view.entry.mode.clone(),
@@ -112,8 +112,8 @@ impl NativeProfiles {
         migration: Option<&crate::deploy::Migration>,
     ) -> Result<Vec<Op>, ExecError> {
         let empty = BTreeMap::new();
-        let modules = previous.map_or(&empty, |generation| &generation.modules);
-        let lineage = crate::schedule::previous_ownership(modules);
+        let deployments = previous.map_or(&empty, |generation| &generation.deployments);
+        let lineage = crate::deploy::previous_ownership(deployments);
         let mut operations = Vec::new();
         let mut declared_paths = BTreeSet::new();
         let mut declared_blocks = BTreeSet::new();
@@ -218,7 +218,7 @@ impl NativeProfiles {
                     }
                 }
                 let view = DestView {
-                    module: owner,
+                    output: owner,
                     entry,
                     dest: dest.clone(),
                     home,
@@ -258,7 +258,7 @@ impl NativeProfiles {
                 }
                 let source = profile.stage.join(&entry.from);
                 let view = DestView {
-                    module: owner,
+                    output: owner,
                     entry,
                     dest: dest.clone(),
                     home,
@@ -344,7 +344,7 @@ impl NativeProfiles {
         }
         if let Some(previous) = previous {
             let home_cap = gripsack_fs::open(home)?;
-            for (owner, state) in &previous.modules {
+            for (owner, state) in &previous.deployments {
                 if self.partial && !self.profiles.contains_key(owner) {
                     continue;
                 }

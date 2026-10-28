@@ -1,6 +1,5 @@
-//! Private executable materialization. Linux seals a memfd and executes its
-//! retained descriptor; macOS uses a private read-only copy and reports the
-//! weaker pathname tier explicitly. Neither binds dynamic libraries or native
+//! Sealed executable materialization. Linux seals a memfd and executes its
+//! retained descriptor. This does not bind dynamic libraries or native
 //! subprocesses selected by the launched program.
 mod loader;
 use super::{ByteBinding, OperatorEnvironment, Sha256Digest};
@@ -24,8 +23,6 @@ pub(crate) struct Image {
     pub(crate) binding: ByteBinding,
     pub(crate) path: PathBuf,
     pub(crate) file: File,
-    #[cfg(target_os = "macos")]
-    _directory: tempfile::TempDir,
 }
 
 impl Image {
@@ -80,22 +77,6 @@ impl Image {
                 PathBuf::from(format!("/proc/self/fd/{fd}")),
                 ByteBinding::ExecutableHandle,
             )
-        };
-        #[cfg(target_os = "macos")]
-        let directory = tempfile::Builder::new()
-            .prefix("gripsack-native-")
-            .permissions(std::fs::Permissions::from_mode(0o700))
-            .tempdir()?;
-        #[cfg(target_os = "macos")]
-        let (mut output, path, binding) = {
-            let path = directory.path().join("image");
-            let file = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .mode(0o500)
-                .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
-                .open(&path)?;
-            (file, path, ByteBinding::PrivateCopyPath)
         };
         let mut hasher = Sha256::new();
         let mut buffer = [0; 32 * 1024];
@@ -153,24 +134,11 @@ impl Image {
                 return Err(io::Error::last_os_error());
             }
         }
-        #[cfg(target_os = "macos")]
-        let output = {
-            output.sync_all()?;
-            drop(output); // an open writer would cause ETXTBSY at exec
-            std::fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-                .open(&path)?
-        };
-        #[cfg(target_os = "macos")]
-        let output = super::descriptors::retain_above_stdio(output)?;
         Ok(Self {
             digest,
             binding,
             path,
             file: output,
-            #[cfg(target_os = "macos")]
-            _directory: directory,
         })
     }
 
@@ -213,7 +181,6 @@ pub struct SelectedProgram {
     pub(crate) interpreter_argument: Option<OsString>,
     pub(crate) argument_zero: OsString,
     loader: Option<loader::GnuLoader>,
-    pub(crate) macho_libraries: Option<OsString>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -241,7 +208,6 @@ impl SelectedProgram {
                 interpreter_argument: None,
                 argument_zero: name.as_os_str().to_owned(),
                 loader: None,
-                macho_libraries: None,
             });
         };
         let executable = Image::copy(
@@ -261,55 +227,12 @@ impl SelectedProgram {
             interpreter_argument: argument,
             argument_zero: interpreter.into_os_string(),
             loader: None,
-            macho_libraries: None,
         })
     }
 
     /// True when the runtime is a `#!` script executed through an interpreter.
     pub fn is_script(&self) -> bool {
         self.script.is_some()
-    }
-
-    /// Bind a caller-validated dyld translation without modifying the selected
-    /// signed bytes. Only non-restricted Mach-O images may use this plan; the
-    /// workspace admission layer checks signing modes and lookup equivalence.
-    pub fn with_macho_libraries(mut self, directories: &[PathBuf]) -> io::Result<Self> {
-        if !cfg!(target_os = "macos") {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "Mach-O loader binding requires macOS",
-            ));
-        }
-        if self.loader.is_some() || self.macho_libraries.is_some() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "a native loader plan is already bound",
-            ));
-        }
-        let mut reader = self.executable.file.try_clone()?;
-        reader.rewind()?;
-        let metadata = crate::executable::classify(&mut reader)
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        if metadata.format != Some(crate::executable::ExecutableFormat::MachO) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "dyld plan requires a selected Mach-O image",
-            ));
-        }
-        if directories.iter().any(|path| !path.is_absolute()) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "dyld directories must be absolute",
-            ));
-        }
-        // An empty DYLD segment must never grant the working directory.
-        self.macho_libraries = Some(if directories.is_empty() {
-            OsString::from("/dev/null")
-        } else {
-            std::env::join_paths(directories)
-                .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?
-        });
-        Ok(self)
     }
 
     pub fn identity(&self) -> ProgramIdentity {

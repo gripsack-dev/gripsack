@@ -5,8 +5,7 @@ use gripsack_ir::HostName;
 use std::io;
 use std::path::PathBuf;
 
-/// A progress callback: `(module, verb)` events during execution.
-/// Send + Sync — the scheduler (0007 §5) fires these from N workers.
+/// Thread-safe workspace output progress events.
 pub type ProgressCallback = Box<dyn Fn(&str, &str) + Send + Sync>;
 
 /// What an apply run needs beyond the IR.
@@ -15,12 +14,11 @@ pub struct Ctx {
     pub home: PathBuf,
     /// Repository publication identity and selected content are separate roles.
     pub repository: crate::Repository,
-    /// Subset apply: only these modules plus their dependencies (0001
-    /// §3.6). Empty = the whole graph.
+    /// Selected workspace outputs. Empty selects the operation's default outputs.
     pub only: Vec<String>,
-    /// Host name — selects the lockfile (`locks/<host>.lock`).
+    /// Host identity used for workspace lock and profile selection.
     pub host: HostName,
-    /// Progress events `(module, verb)` — the CLI renders spinners.
+    /// Progress events `(output, verb)` — the CLI renders spinners.
     pub on_progress: Option<ProgressCallback>,
     /// Overwrite foreign/drifted tracked_copy destinations (explicit
     /// user intent — 0009 critique finding 3).
@@ -29,11 +27,6 @@ pub struct Ctx {
     /// absorbed — `grip adopt` passes exactly what it generated, so an
     /// adopt apply can never clobber unrelated drift.
     pub take_over_entries: Option<std::collections::BTreeSet<String>>,
-    /// Explicit legacy ownership migration, bound to this exact predecessor.
-    pub migrate_from: Option<gripsack_store::GenerationId>,
-    /// Max concurrent modules in the scheduler (0007 §5). None = cores.
-    /// `--jobs` on the CLI; GRIPSACK_JOBS for CI.
-    pub jobs: Option<usize>,
 
     /// Command-owned acquisition policy, clients and independent concurrency.
     pub fetch: std::sync::Arc<gripsack_fetch::FetchContext>,
@@ -84,23 +77,19 @@ pub enum ExecError {
     Io(#[from] io::Error),
     #[error("fetch failed: {0}")]
     Fetch(#[from] FetchError),
-    #[error("step resolve failed in {module}: {error}")]
+    #[error("step resolve failed in {output}: {error}")]
     Resolve {
-        module: String,
+        output: String,
         #[source]
         error: Box<gripsack_fetch::resolve::ResolveError>,
     },
-    #[error("verify failed for {module}: {detail}")]
-    Verify { module: String, detail: String },
-    #[error("step {step} failed in {module}: {detail}")]
+    #[error("step {step} failed in {output}: {detail}")]
     Step {
-        module: String,
+        output: String,
         step: String,
         detail: String,
     },
-    #[error("worker panicked while executing {module}; the apply was not committed")]
-    WorkerPanicked { module: String },
-    #[error("scheduling: {0}")]
+    #[error("planning: {0}")]
     Plan(#[from] crate::PlanError),
     /// A pre-mutation validity gate failed (physical destination
     /// uniqueness, 0030 §P0-1): the run aborts before touching

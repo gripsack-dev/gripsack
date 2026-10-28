@@ -3,17 +3,20 @@
 import json
 import subprocess
 import pytest
-from conftest import GRIP, grip, make_env_repo, make_tarball, refresh_host, remove_module, start_grip
+from conftest import native_target, GRIP, grip, make_workspace_repo, make_tarball, refresh_workspace, remove_output, start_grip
 
 
 @pytest.mark.parametrize("tamper", ["hash", "mode", "blob-symlink"])
 def test_invalid_prior_never_restores_unadmitted_bytes(sandbox, tamper):
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "prior-env",
-        'import { module, trackedCopy } from "@gripsack/core";\n'
-        'export default module("demo", {\n'
-        '  config: { "config.txt": trackedCopy("~/.prior-target") },\n'
-        '});\n',
+        """
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
+
+export default profile("demo", { files: [
+    file({ source: repoFile("config.txt"), content: identity(), destination: trackedCopyTo("~/.prior-target") })
+  ] });
+""",
     )
     (repo / "config.txt").write_text("managed\\n")
     destination = sandbox / ".prior-target"
@@ -37,7 +40,8 @@ def test_invalid_prior_never_restores_unadmitted_bytes(sandbox, tamper):
         blob.unlink()
         blob.symlink_to(outside)
     manifest_file.write_text(json.dumps(manifest))
-    remove_module(repo, "hello")
+    make_workspace_repo(repo, {"keep": 'import { profile } from "@gripsack/core"; export default profile("keep", {});'})
+    remove_output(repo, "hello")
     result = grip("apply", "--host", "testhost", cwd=repo)
     assert result.returncode != 0, "an invalid prior must not authorize restoration"
     assert destination.read_text() == "managed\\n"
@@ -50,14 +54,14 @@ def test_current_link_must_resolve_under_home(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -78,15 +82,15 @@ def test_concurrent_applies_serialize_and_lose_nothing(sandbox):
         confdir = repo / "configs" / name
         confdir.mkdir(parents=True)
         (confdir / f"{name}.conf").write_text(f"{name}\n")
-    make_env_repo(
+    make_workspace_repo(
         repo,
         {
             name: f"""
-import {{ module, trackedCopy }} from "@gripsack/core";
+import {{ file, identity, profile, repoFile, trackedCopyTo }} from "@gripsack/core";
 
-export default module("{name}", {{
-  config: {{ "configs/{name}/{name}.conf": trackedCopy("~/.out/{name}.conf") }},
-}});
+export default profile("{name}", {{ files: [
+    file({{ source: repoFile("configs/{name}/{name}.conf"), content: identity(), destination: trackedCopyTo("~/.out/{name}.conf") }})
+  ] }});
 """
             for name in ("amod", "bmod")
         },
@@ -120,17 +124,17 @@ export default module("{name}", {{
 
 def test_rollback_restores_previous_generation(sandbox):
     payload = make_tarball(
-        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+        sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
     )
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default module("hello", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
-}});
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("hello", {{ files: [
+    file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
+  ] }})];
 """,
     )
     first = grip("apply", "--host", "testhost", cwd=repo)
@@ -143,17 +147,17 @@ export default module("hello", {{
     assert not (sandbox / ".local/share/gripsack/generations/2").exists()
 
     # a changed module produces generation 2; rollback restores 1
-    (repo / "modules" / "extra.ts").write_text(
+    (repo / "outputs" / "extra.ts").write_text(
         f"""
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default module("extra", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/hello": symlink("~/.local/bin/extra") }},
-}});
+export default [pkg("extra-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("extra", {{ files: [
+    file({{ source: artifactFile("extra-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/extra") }})
+  ] }})];
 """
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
 
     third = grip("apply", "--host", "testhost", cwd=repo)
     assert third.returncode == 0, third.stderr
@@ -174,14 +178,14 @@ def test_rollback_preserves_tracked_copy_drift(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("gen1\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -208,14 +212,14 @@ def test_generation_numbers_are_never_reused(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("one\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """,
     )
     grip("apply", "--host", "testhost", cwd=repo)
@@ -247,15 +251,15 @@ def test_rollback_never_rewrites_historical_generations(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("one\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
-        """
-import { module, trackedCopy } from "@gripsack/core";
+        f"""
+import {{ environment, file, identity, lit, profile, repoFile, trackedCopyTo }} from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-  env: { EDITOR: "demo" },
-});
+export default [environment("demo-environment", {{ packages: [], target: {native_target()}, env: {{ EDITOR: lit("demo") }} }}),
+profile("demo", {{ files: [
+    file({{ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") }})
+  ], environment: "demo-environment" }})];
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -289,17 +293,17 @@ def test_a_repaired_destination_cuts_a_generation(sandbox):
     work — the run must cut a generation so rollback can undo it,
     not summarize 'already satisfied' over a modified machine."""
     payload = make_tarball(
-        sandbox / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
+        sandbox / "myenv" / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
     )
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default module("m", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/tool": symlink("~/.local/bin/tool") }},
-}});
+export default [pkg("m-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("m", {{ files: [
+    file({{ source: artifactFile("m-payload", "bin/tool"), content: identity(), destination: symlinkTo("~/.local/bin/tool") }})
+  ] }})];
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)

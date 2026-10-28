@@ -8,7 +8,7 @@ pub(super) fn plan_merge(
     block_id: Option<&store::ManagedBlockId>,
 ) -> Result<Op, ExecError> {
     let fail = |detail: String| ExecError::Step {
-        module: view.module.to_string(),
+        output: view.output.to_string(),
         step: "deploy".into(),
         detail: format!("{}: {detail}", view.entry.to),
     };
@@ -22,7 +22,7 @@ pub(super) fn plan_merge(
             ));
         }
     };
-    let owner = block_id.map_or(view.module, store::ManagedBlockId::as_str);
+    let owner = block_id.map_or(view.output, store::ManagedBlockId::as_str);
     let blocks = crate::managed_blocks::ManagedBlockSet::parse(existing, owner)
         .map_err(|e| fail(e.to_string()))?;
     let mode = permissions.resolve(view);

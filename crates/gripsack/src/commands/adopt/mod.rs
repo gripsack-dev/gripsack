@@ -10,10 +10,9 @@ mod generate;
 mod inspect;
 mod prompt;
 
-use crate::commands::{default_host, eval_repo, expand_home};
+use crate::commands::expand_home;
 use crate::render::{self, Palette};
 
-use gripsack_ir::HostName;
 use gripsack_store as store;
 use std::io::IsTerminal as _;
 use std::path::{Path, PathBuf};
@@ -29,45 +28,18 @@ pub fn adopt(
     palette: Palette,
 ) -> ExitCode {
     let repo = std::env::current_dir().unwrap_or_else(|_| ".".into());
-    if repo.join("gripsack.ts").is_file() {
-        let diagnostic = gripsack_ir::Diagnostic::error(
-            gripsack_ir::codes::WORKSPACE_EXEC_UNAVAILABLE,
-            "grip adopt cannot modify a workspace profile yet",
-        )
-        .with_help("declare profile files in gripsack.ts and use grip apply --take-over for reversible adoption; automatic workspace authoring edits are not available");
+    if !repo.join("gripsack.ts").is_file() || !repo.join("env.toml").is_file() {
         eprintln!(
-            "{}",
-            render::render_diagnostics_bounded(&[diagnostic], palette, &repo)
-        );
-        return ExitCode::FAILURE;
-    }
-    if !repo.join("env.toml").is_file() {
-        eprintln!(
-            "grip: {} is not an env repo (no env.toml) — run `grip init` first",
+            "grip: {} is not a workspace repo (requires gripsack.ts and env.toml) — run `grip init` first",
             repo.display()
         );
         return ExitCode::FAILURE;
     }
-    // Adopt writes files before its later eval. Admit the selected host
-    // now so neither a generated path nor the host-file lookup can be
-    // redirected outside the repo by an explicit --host value.
-    let host_name = match HostName::parse(host.map(str::to_owned).unwrap_or_else(default_host)) {
-        Ok(host_name) => host_name,
-        Err(diagnostic) => {
-            eprintln!(
-                "{}",
-                render::render_diagnostics_bounded(&[diagnostic], palette, &repo)
-            );
-            return ExitCode::FAILURE;
-        }
-    };
-    // Refuse an untrusted repo before inspecting the target or reading
-    // managed state, and before generating any payload, module or host
-    // source. --yes bypasses confirmation, not trust admission.
+    // --yes bypasses confirmation, not source-bound approval.
     let mut sink = crate::render::DiagnosticSink::terminal(palette, &repo);
     let prepared = match super::prepared::PreparedEvaluation::capture(
         &repo,
-        Some(host_name.as_str().to_owned()),
+        host.map(str::to_owned),
         &mut sink,
     ) {
         Ok(prepared) => prepared,
@@ -105,12 +77,20 @@ pub fn adopt(
     {
         Some(n) => n,
         None => {
-            eprintln!("grip: cannot derive a module name from {target} — pass --name");
+            eprintln!("grip: cannot derive a profile name from {target} — pass --name");
             return ExitCode::FAILURE;
         }
     };
+    if name.is_empty()
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        eprintln!("grip: profile name must contain only ASCII letters, digits, '-' or '_'");
+        return ExitCode::FAILURE;
+    }
     if let Some(owner) = managed_by(&dest) {
-        eprintln!("grip: {target} is already managed by module \"{owner}\" — nothing to adopt");
+        eprintln!("grip: {target} is already managed by profile \"{owner}\" — nothing to adopt");
         return ExitCode::FAILURE;
     }
     if resume {
@@ -124,7 +104,7 @@ pub fn adopt(
     drop(sink);
     // §7 S4: the repo gets the same never-clobber rule as $HOME
     for artifact in [
-        repo.join("modules").join(format!("{name}.ts")),
+        repo.join("profiles").join(format!("{name}.ts")),
         repo.join("configs").join(&name),
     ] {
         if artifact.symlink_metadata().is_ok() {
@@ -188,10 +168,10 @@ pub fn adopt(
     let rel_files: Vec<String> = inv.files.iter().map(|f| f.rel.clone()).collect();
     let written = [
         format!("configs/{name}/"),
-        format!("modules/{name}.ts"),
-        format!("hosts/{host_name}.ts"),
+        format!("profiles/{name}.ts"),
+        "gripsack.ts".to_owned(),
     ];
-    let host_rel = &written[2];
+    let workspace_rel = &written[2];
     let revert = |why: &str| {
         eprintln!("grip: {why}");
         eprintln!(
@@ -205,53 +185,48 @@ pub fn adopt(
         return revert(&format!("cannot write payload: {e}"));
     }
     let to = generate::tilde(&dest);
-    let module_ts = generate::module_source(
-        &name,
-        &to,
-        rel_files.first().map(String::as_str).unwrap_or("config"),
-        &mode,
-        is_dir,
-    );
-    if let Err(e) = std::fs::write(repo.join("modules").join(format!("{name}.ts")), &module_ts) {
-        return revert(&format!("cannot write modules/{name}.ts: {e}"));
+    let profile_ts = generate::profile_source(&name, &to, &rel_files, &mode, is_dir);
+    if let Err(error) = std::fs::create_dir_all(repo.join("profiles")).and_then(|()| {
+        std::fs::write(
+            repo.join("profiles").join(format!("{name}.ts")),
+            &profile_ts,
+        )
+    }) {
+        return revert(&format!("cannot write profiles/{name}.ts: {error}"));
     }
-    let host_path = repo.join(host_rel.as_str());
-    if !host_path.is_file() {
-        eprintln!("grip: no {host_rel} — create it (or run `grip init`) and add:\n");
-        eprintln!("{}", generate::host_snippet(&name));
-        return ExitCode::FAILURE;
-    }
-    let host_src = std::fs::read_to_string(&host_path).unwrap_or_default();
-    match generate::update_host(&host_src, &name) {
+    let workspace_path = repo.join(workspace_rel);
+    let workspace_src = match std::fs::read_to_string(&workspace_path) {
+        Ok(source) => source,
+        Err(error) => return revert(&format!("cannot read {workspace_rel}: {error}")),
+    };
+    match generate::update_workspace(&workspace_src, &name) {
         Some(updated) => {
-            if let Err(e) = std::fs::write(&host_path, updated) {
-                return revert(&format!("cannot update {host_rel}: {e}"));
+            if let Err(error) = std::fs::write(&workspace_path, updated) {
+                return revert(&format!("cannot update {workspace_rel}: {error}"));
             }
         }
         None => {
-            eprintln!(
-                "grip: {host_rel} doesn't match the expected defineEnv shape — add this yourself:\n"
-            );
-            eprintln!("{}", generate::host_snippet(&name));
-            return ExitCode::FAILURE;
+            eprintln!("grip: add the generated profile to {workspace_rel} manually:\n");
+            eprintln!("{}", generate::workspace_snippet(&name));
         }
     }
     println!(
-        "  {} configs/{name}/ · modules/{name}.ts · {host_rel}",
+        "  {} configs/{name}/ · profiles/{name}.ts · {workspace_rel}",
         palette.good("wrote")
     );
 
-    let mut sink = crate::render::DiagnosticSink::terminal(palette, &repo);
-    let outcome = match eval_repo(&repo, Some(host_name.into_string()), &mut sink) {
-        Ok(o) => o,
-        Err(code) => {
-            let _ = revert(
-                "inspect and approve the generated snapshot, then rerun with --resume (omit --mode)",
-            );
-            return code;
-        }
-    };
-    finish_adoption(outcome, &dest, is_dir, &name, yes, palette)
+    eprintln!(
+        "grip: review the generated files, approve the changed snapshot with `grip trust add .`, then resume:"
+    );
+    eprintln!(
+        "  grip adopt {} --name {} --resume{}",
+        serde_json::to_string(target).expect("string"),
+        name,
+        host.map(|host| format!(" --host {host}"))
+            .unwrap_or_default(),
+    );
+    // No newly generated source is evaluated or deployed before explicit review.
+    ExitCode::FAILURE
 }
 
 fn finish_adoption(
@@ -269,16 +244,14 @@ fn finish_adoption(
         Ok(ir) => ir,
         Err(code) => return code,
     };
-    let Some(module) = ir.modules.get(name) else {
-        eprintln!("grip: no module {name:?} in the approved host entrypoint");
-        return ExitCode::FAILURE;
-    };
-    let module = match gripsack_ir::prepared::PreparedModule::new(module) {
-        Ok(module) => module,
-        Err(diagnostic) => {
-            sink.report(&[diagnostic]);
-            return ExitCode::FAILURE;
+    let Some(profile) = ir.workspace.outputs.iter().find_map(|output| match output {
+        gripsack_ir::workspace_model::WorkspaceOutput::Profile(profile) if profile.name == name => {
+            Some(profile)
         }
+        _ => None,
+    }) else {
+        eprintln!("grip: no profile {name:?} in the approved workspace");
+        return ExitCode::FAILURE;
     };
     let target = match store::canonical_dest(&generate::tilde(dest)) {
         Ok(target) => target,
@@ -292,8 +265,14 @@ fn finish_adoption(
     // doubled it, so the set never matched and the origin was never
     // captured when the content already matched)
     let mut adopting = std::collections::BTreeSet::new();
-    for entry in module.entries() {
-        let destination = match store::canonical_dest(&entry.to) {
+    for file in &profile.files {
+        use gripsack_ir::workspace::WorkspaceDestination;
+        let path = match &file.destination {
+            WorkspaceDestination::Symlink { path }
+            | WorkspaceDestination::TrackedCopy { path }
+            | WorkspaceDestination::ManagedBlock { path, .. } => path,
+        };
+        let destination = match store::canonical_dest(path) {
             Ok(destination) => destination,
             Err(error) => {
                 eprintln!("grip: cannot resolve adoption destination: {error}");
@@ -307,14 +286,14 @@ fn finish_adoption(
         };
         if !inside {
             eprintln!(
-                "grip: module {name:?} declares a destination outside the requested adoption target"
+                "grip: profile {name:?} declares a destination outside the requested adoption target"
             );
             return ExitCode::FAILURE;
         }
-        adopting.insert(entry.to.clone());
+        adopting.insert(path.clone());
     }
     if adopting.is_empty() {
-        eprintln!("grip: module {name:?} has no destinations to adopt");
+        eprintln!("grip: profile {name:?} has no destinations to adopt");
         return ExitCode::FAILURE;
     }
     let repository = gripsack_exec::Repository::evaluated(
@@ -324,12 +303,10 @@ fn finish_adoption(
     match render::diff_section(
         &ir,
         &repository,
-        &outcome.host,
         &adopting,
         palette,
-        &[],
+        &[name.to_owned()],
         outcome.fetch.limits(),
-        None,
     ) {
         Ok(section) => println!("{section}"),
         Err(error) => {
@@ -368,7 +345,7 @@ fn finish_adoption(
                 &cap,
                 &store::Generation {
                     number: store::GenerationId::new(0),
-                    modules: Default::default(),
+                    deployments: Default::default(),
                     directory_transitions: Vec::new(),
                     migration: None,
                 },
@@ -378,17 +355,17 @@ fn finish_adoption(
         eprintln!("grip: cannot record the baseline generation: {e}");
         return ExitCode::FAILURE;
     }
-    crate::commands::apply_scoped(outcome, adopting, None, palette)
+    crate::commands::apply_scoped(outcome, name.to_owned(), adopting, palette)
 }
 
-/// Which module already manages a destination under this path.
+/// Which retained profile already manages a destination under this path.
 fn managed_by(dest: &Path) -> Option<String> {
     let home = store::gripsack_home();
     // display path: an unreadable current reads as unmanaged rather
     // than erroring an interactive prompt; mutation paths fail closed
     let n = store::current_generation(&home).ok()??;
     let manifest = store::read_manifest(&home, n).ok()?;
-    for (name, state) in &manifest.modules {
+    for (name, state) in &manifest.deployments {
         for entry in &state.entries {
             let deployed = expand_home(&entry.to);
             if deployed == *dest || deployed.starts_with(dest) {

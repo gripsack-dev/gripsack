@@ -1,9 +1,5 @@
-//! E111 — two workspace profile files may not declare the same
-//! destination (case-insensitively). The module grammar rejects the
-//! same race for module entries: two owners for one path deploy twice
-//! into one journal key and race each other. Profile files lower to
-//! the same owned destinations, so the same rule applies; the check
-//! runs before any executor exists to observe the conflict.
+//! E111 — profile files cannot race over one case-folded destination.
+//! Admission runs before realization and uses the same ownership boundary.
 //!
 //! Managed blocks are the one composition: blocks are per-marker
 //! ownership units inside one shared host file (Epic A §3.3), so two
@@ -14,27 +10,8 @@
 
 use crate::diagnostic::{Diagnostic, codes};
 use crate::span::Span;
-use crate::workspace::{Workspace, WorkspaceDestination, WorkspaceOutput};
+use crate::workspace::WorkspaceDestination;
 use std::collections::BTreeMap;
-
-pub(super) fn check(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
-    check_declarations(
-        workspace
-            .outputs
-            .iter()
-            .filter_map(|output| match output {
-                WorkspaceOutput::Profile(profile) => Some(profile),
-                _ => None,
-            })
-            .flat_map(|profile| {
-                profile
-                    .files
-                    .iter()
-                    .map(|file| (&file.span, &file.destination))
-            }),
-        diagnostics,
-    );
-}
 
 pub(in crate::sema) fn check_declarations<'a>(
     declarations: impl IntoIterator<Item = (&'a Span, &'a WorkspaceDestination)>,

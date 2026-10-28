@@ -17,15 +17,17 @@ import tempfile
 import tomllib
 import xml.etree.ElementTree as ET
 
-from examples_check.fixtures import install_sdk, prepare_sdk
+from examples_check.fixtures import prepare_sdk
 from examples_check.extract import CheckFailure
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET = "x86_64-unknown-linux-musl"
-EXTERNAL = {
-    "site": ("https://github.com/gripsack-dev/gripsack-dev.github.io", "14d9b1453ef0975d151ce2e74007c9436cafa79b"),
-    "example": ("https://github.com/gripsack-dev/example-env-typescript", "dc0e5140b422d2fb9d37971615051556d70f7bed"),
-}
+
+
+def external_repositories() -> dict[str, tuple[str, str]]:
+    """The frozen profile is the sole external source-pin authority."""
+    repositories = json.loads((ROOT / ".ci/pilot.json").read_text())["external_inputs"]["repositories"]
+    return {name: (pin["url"].removesuffix(".git"), pin["commit"]) for name, pin in repositories.items()}
 
 
 def sha(path: Path) -> str:
@@ -138,13 +140,13 @@ class Consumer:
         for relative in ("Cargo.toml", "Cargo.lock", "typescript/package.json", "typescript/package-lock.json",
                          "tools/conda-helper/Cargo.toml", "tools/conda-helper/Cargo.lock",
                          "crates/gripsack-fetch/src/conda_pins.rs", "crates/gripsack-fetch/src/bridge_pins.rs",
-                         "scripts/local_artifact_consumers.py", "scripts/local_ci_conda_consumer.py"):
+                         "scripts/local_artifact_consumers.py", "scripts/local_ci_conda_consumer.py", ".ci/pilot.json"):
             self.receipt["source"]["contracts"][relative] = sha(ROOT / relative)
         for tool in ("python3", "node", "npm", "deno", "rustc", "git", "readelf", "zstd"):
             self.run([tool, "--version"])
         self.env["GRIPSACK_DENO"] = str(Path(shutil.which("deno", path=self.env["PATH"])).resolve())
         self.receipt["external_inputs"] = {}
-        for name, (url, expected) in EXTERNAL.items():
+        for name, (url, expected) in external_repositories().items():
             source = getattr(self.args, name).resolve()
             git = ["git", "-c", f"safe.directory={source}"]
             actual = self.run([*git, "rev-parse", "HEAD"], cwd=source).strip()
@@ -162,7 +164,7 @@ class Consumer:
         # Rust evaluates its own pin constants; no regex interpretation of Rust source.
         projection = self.work / "pins.rs"
         projection.write_text(
-            '#![allow(dead_code)]\nmod host { #[derive(Debug)] pub enum AssetTarget { LinuxX86_64Musl, LinuxAarch64Musl, MacosAarch64, MacosX86_64 } }\n'
+            '#![allow(dead_code)]\nmod host { #[derive(Debug)] pub enum AssetTarget { LinuxX86_64Musl } }\n'
             + f'#[path={json.dumps(str(ROOT / "crates/gripsack-fetch/src/conda_pins.rs"))}] mod conda;\n'
             + f'#[path={json.dumps(str(ROOT / "crates/gripsack-fetch/src/bridge_pins.rs"))}] mod bridge;\n'
             + 'fn main() { println!("{:?}", conda::CONDA_VERSION); println!("{:?}", bridge::BRIDGE_VERSION); '
@@ -264,8 +266,8 @@ class Consumer:
                 == {name: value["sha256"] for name, value in snapshot(self.sdk).items()},
                 "npm installed SDK differs from packaged bytes")
         self.run(["node", "--input-type=module", "-e",
-                  "import {defineWorkspace,workspace,pkg,pixiFromLock} from '@gripsack/core';"
-                  "if (![defineWorkspace,workspace,pkg,pixiFromLock].every(x=>typeof x==='function')) process.exit(1);"],
+                  "import {defineWorkspace,workspace,pkg,pixi} from '@gripsack/core';"
+                  "if (![defineWorkspace,workspace,pkg,pixi.fromLock].every(x=>typeof x==='function')) process.exit(1);"],
                  cwd=npm_project)
         self.sdk = installed
         self.receipt["components"] = {"core": version, "helper": helper_version, "sdk": sdk_version,
@@ -282,7 +284,8 @@ class Consumer:
                  "test_workspace_captured_files.py", "test_workspace_archive_roots.py",
                  "test_workspace_managed_launchers.py", "test_workspace_file_checks.py",
                  "test_workspace_migration.py", "test_workspace_directory_evolution.py",
-                 "test_task_graphs.py", "test_workspace_gnu_loader.py"]
+                 "test_task_graphs.py", "test_workspace_gnu_loader.py",
+                 "test_store_hygiene.py", "test_plan_operations.py"]
         # Fault-control tests remain mandatory in the debug flow gate; the
         # installed release intentionally does not contain those controls.
         self.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
@@ -302,10 +305,27 @@ class Consumer:
         repo = self.work / "example"
         shutil.copytree(self.args.example, repo, ignore=shutil.ignore_patterns(".git"))
         before = snapshot(repo)
-        install_sdk(repo, self.sdk)
+        # artifacts() seeded the exact SDK tarball in this private npm cache.
+        # Fetch only the other locked archives, then forbid network fallback
+        # while npm reconstructs the complete tree captured by gripsack.lock.
+        packages = json.loads((repo / "package-lock.json").read_text())["packages"]
+        for name, package in sorted(packages.items()):
+            if name in ("", "node_modules/@gripsack/core"):
+                continue
+            require(package.get("resolved") and package.get("integrity"),
+                    f"npm dependency {name} is not frozen to an archive identity")
+            self.run(["npm", "cache", "add", "--ignore-scripts", package["resolved"]], cwd=repo)
+        self.run(["npm", "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=repo)
+        require(all(sha(repo / name) == before[name]["sha256"]
+                    for name in ("package.json", "package-lock.json", "gripsack.lock")),
+                "frozen npm preparation changed a source manifest or lock")
+        installed = repo / "node_modules/@gripsack/core"
+        require({name: value["sha256"] for name, value in snapshot(installed).items()}
+                == {name: value["sha256"] for name, value in snapshot(self.sdk).items()},
+                "frozen workspace SDK differs from candidate bytes")
         # Frozen root caller: no automatic lock migration or mutable GitHub release install.
         self.approve(repo)
-        self.run([self.grip, "check", "--host", "laptop"], cwd=repo)
+        self.run([self.grip, "check"], cwd=repo)
         # This published lock was captured against the embedded frontend.
         # Installing a repository SDK would deliberately change its import pins.
         conda = self.work / "example-conda"
@@ -337,10 +357,10 @@ class Consumer:
                 "frozen external Conda source/lock changed")
         after = snapshot(repo)
         require(all(after.get(path) == content for path, content in before.items()), "original external source/locks changed")
-        self.receipt["external_consumer"] = {"root": "check with candidate installed SDK; mutable plugin apply not run",
+        self.receipt["external_consumer"] = {"root": "root workspace check with candidate installed SDK",
             "conda": "embedded-frontend frozen build/run/task/apply/apply; unavailable-helper retained build/gc/shell",
             "frozen_lock_sha256": sha(lock), "retained_prefixes": retained,
-            "network": "initial exact lock-pinned public archives fetched by core; retained reuse is not a network-namespace isolation claim"}
+            "network": "npm dependency archives and Conda archives are lock-pinned; the candidate SDK install is offline; retained reuse is not a network-namespace isolation claim"}
 
     def execute(self):
         self.source_identity()

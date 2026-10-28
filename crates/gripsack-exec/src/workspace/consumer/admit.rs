@@ -1,4 +1,4 @@
-//! Native consumer admission: host target compatibility, executable layout
+//! Linux x86_64 native admission: host target compatibility, executable layout
 //! verification and environment composition. Everything in this module runs
 //! before any process launches; unsupported shapes fail with named reasons
 //! and both declaration spans where two declarations collide.
@@ -6,7 +6,6 @@ pub(super) mod bytecode;
 mod command;
 pub(super) use command::admit_command;
 mod elf;
-mod macho;
 mod native;
 mod platform;
 pub(in crate::workspace) use native::NativeContext;
@@ -49,7 +48,6 @@ impl HostTarget {
     pub fn from_facts(facts: &gripsack_ir::HostFacts) -> Result<Self, ExecError> {
         let os = match facts.os.as_str() {
             "linux" => TargetOs::Linux,
-            "macos" | "darwin" => TargetOs::Macos,
             other => {
                 return Err(failure(&format!(
                     "native consumer admission does not support host os {other:?}"
@@ -58,7 +56,6 @@ impl HostTarget {
         };
         let arch = match facts.arch.as_str() {
             "x86_64" => TargetArch::X86_64,
-            "aarch64" => TargetArch::Aarch64,
             other => {
                 return Err(failure(&format!(
                     "native consumer admission does not support host architecture {other:?}"
@@ -68,7 +65,7 @@ impl HostTarget {
         let abi = match facts.libc.as_deref() {
             None => None,
             Some("musl") => Some(BinaryAbi::Musl),
-            Some("darwin") => Some(BinaryAbi::Darwin),
+            Some("darwin") => return Err(failure("Darwin ABI is not supported on Linux x86_64")),
             Some(libc) if libc.starts_with("glibc") => Some(BinaryAbi::Gnu),
             Some(_) => None,
         };
@@ -93,13 +90,7 @@ fn platform_loader(os: TargetOs, arch: TargetArch, abi: BinaryAbi) -> Option<&'s
         (TargetOs::Linux, TargetArch::X86_64, BinaryAbi::Gnu) => {
             Some("/lib64/ld-linux-x86-64.so.2")
         }
-        (TargetOs::Linux, TargetArch::Aarch64, BinaryAbi::Gnu) => {
-            Some("/lib/ld-linux-aarch64.so.1")
-        }
         (TargetOs::Linux, TargetArch::X86_64, BinaryAbi::Musl) => Some("/lib/ld-musl-x86_64.so.1"),
-        (TargetOs::Linux, TargetArch::Aarch64, BinaryAbi::Musl) => {
-            Some("/lib/ld-musl-aarch64.so.1")
-        }
         _ => None,
     }
 }
@@ -165,7 +156,6 @@ pub(in crate::workspace) struct AdmittedCommand {
     /// paths. A changed dependency selection during translation is refused.
     pub library_dirs: Vec<PathBuf>,
     pub gnu_loader: Option<std::sync::Arc<gripsack_process::SelectedGnuLoader>>,
-    pub macho_library_dirs: Option<Vec<PathBuf>>,
     pub interpreter: Option<PinnedInterpreter>,
     pub bytecode: Option<BytecodePolicy>,
 }
@@ -241,9 +231,6 @@ impl EnvironmentPlan {
         let mut entries = Vec::new();
         let mut declared_path = Vec::new();
         let mut declared_library_path = Vec::new();
-        let macho = commands
-            .values()
-            .any(|command| command.macho_library_dirs.is_some());
         let gnu_loader = commands
             .values()
             .find_map(|command| command.gnu_loader.as_ref());
@@ -276,12 +263,6 @@ impl EnvironmentPlan {
                 loader
                     .check_environment_key(std::ffi::OsStr::new(key))
                     .map_err(|error| gate(&declaration.span, error.to_string()))?;
-            }
-            if macho && key.starts_with("DYLD_") {
-                return Err(gate(
-                    &declaration.span,
-                    "declared DYLD environment conflicts with the admitted Mach-O runtime lookup policy",
-                ));
             }
             let value = environment_value(argument, declaration, realization)?;
             match key.as_str() {
@@ -342,7 +323,7 @@ impl EnvironmentPlan {
             variables.push(EnvironmentContribution::Structured(
                 StructuredEnvironment::Literal {
                     name: name.into(),
-                    op: gripsack_ir::EnvOp::Prepend,
+                    op: gripsack_store::EnvironmentOperation::Prepend,
                     value,
                 },
             ));
@@ -351,7 +332,7 @@ impl EnvironmentPlan {
             variables.push(EnvironmentContribution::Structured(
                 StructuredEnvironment::StorePath {
                     name: "PATH".into(),
-                    op: gripsack_ir::EnvOp::Prepend,
+                    op: gripsack_store::EnvironmentOperation::Prepend,
                     path: "commands".into(),
                 },
             ));
@@ -366,7 +347,7 @@ impl EnvironmentPlan {
             variables.push(EnvironmentContribution::Structured(
                 StructuredEnvironment::Literal {
                     name: name.to_owned(),
-                    op: gripsack_ir::EnvOp::Set,
+                    op: gripsack_store::EnvironmentOperation::Set,
                     value: value
                         .to_str()
                         .ok_or_else(|| failure("profile variable value is not UTF-8"))?
@@ -451,19 +432,6 @@ impl EnvironmentPlan {
             writeln!(file, "#!/bin/sh").map_err(operational)?;
             if let Some(BytecodePolicy::Suppress) = command.bytecode {
                 writeln!(file, "export PYTHONDONTWRITEBYTECODE=1").map_err(operational)?;
-            }
-            if let Some(directories) = &command.macho_library_dirs {
-                let value = if directories.is_empty() {
-                    OsString::from("/dev/null")
-                } else {
-                    std::env::join_paths(directories).map_err(operational)?
-                };
-                let value = value
-                    .to_str()
-                    .ok_or_else(|| failure("Mach-O library search path is not UTF-8"))?;
-                writeln!(file,"unset DYLD_INSERT_LIBRARIES DYLD_VERSIONED_LIBRARY_PATH DYLD_VERSIONED_FRAMEWORK_PATH DYLD_ROOT_PATH DYLD_IMAGE_SUFFIX DYLD_FORCE_FLAT_NAMESPACE").map_err(operational)?;
-                writeln!(file,"export DYLD_LIBRARY_PATH={} DYLD_FALLBACK_LIBRARY_PATH=/dev/null DYLD_FRAMEWORK_PATH=/dev/null DYLD_FALLBACK_FRAMEWORK_PATH=/dev/null",
-                    crate::env::ShellLiteral(value)).map_err(operational)?;
             }
             if !libraries.is_empty() {
                 write!(
@@ -657,7 +625,7 @@ pub(super) fn gate(span: &Span, detail: impl Into<String>) -> ExecError {
 
 pub(super) fn failure(detail: &str) -> ExecError {
     ExecError::Step {
-        module: "workspace".into(),
+        output: "workspace".into(),
         step: "consumer".into(),
         detail: detail.into(),
     }

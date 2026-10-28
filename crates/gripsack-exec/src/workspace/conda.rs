@@ -86,7 +86,7 @@ pub(super) struct CondaMaterialization {
 
 fn failure(output: &str, detail: impl Into<String>) -> ExecError {
     ExecError::Step {
-        module: output.into(),
+        output: output.into(),
         step: "conda".into(),
         detail: detail.into(),
     }
@@ -153,7 +153,7 @@ fn materialization_key(locked: &LockedCondaEnvironment, context: &[&str]) -> Str
     gripsack_process::Sha256Digest::from_bytes(hasher.finalize().into()).to_string()
 }
 
-fn native_location(
+pub(super) fn native_location(
     output: &str,
     home: &Path,
     locked: &LockedCondaEnvironment,
@@ -377,8 +377,7 @@ fn helper(ctx: &Ctx, output: &str) -> Result<CondaHelper, ExecError> {
         .map_err(|error| failure(output, format!("Conda helper selection: {error}")))
 }
 
-/// The conda subdir for a target platform. Conda linux binaries are
-/// glibc-linked; a musl target is an explicit refusal, never a guess.
+/// Conda execution supports only Linux x86_64 with glibc.
 fn subdir(output: &str, platform: &WorkspacePlatform) -> Result<&'static str, ExecError> {
     use gripsack_ir::workspace::{PlatformAbi, PlatformArch, PlatformOs};
     match (platform.os, platform.arch) {
@@ -387,17 +386,13 @@ fn subdir(output: &str, platform: &WorkspacePlatform) -> Result<&'static str, Ex
                 output,
                 "conda linux-64 binaries require a glibc target, not musl",
             )),
-            _ => Ok("linux-64"),
+            None | Some(PlatformAbi::Gnu) => Ok("linux-64"),
+            _ => Err(failure(output, "conda linux-64 requires a glibc target")),
         },
-        (PlatformOs::Linux, PlatformArch::Aarch64) => match platform.abi {
-            Some(PlatformAbi::Musl) => Err(failure(
-                output,
-                "conda linux-aarch64 binaries require a glibc target, not musl",
-            )),
-            _ => Ok("linux-aarch64"),
-        },
-        (PlatformOs::Macos, PlatformArch::X86_64) => Ok("osx-64"),
-        (PlatformOs::Macos, PlatformArch::Aarch64) => Ok("osx-arm64"),
+        _ => Err(failure(
+            output,
+            "conda execution supports only Linux x86_64",
+        )),
     }
 }
 
@@ -410,14 +405,12 @@ fn host_virtual_packages(
     use gripsack_ir::workspace::{PlatformArch, PlatformOs};
     let host_os = match std::env::consts::OS {
         "linux" => PlatformOs::Linux,
-        "macos" => PlatformOs::Macos,
         other => {
             return Err(failure(output, format!("unsupported conda host {other}")));
         }
     };
     let host_arch = match std::env::consts::ARCH {
         "x86_64" => PlatformArch::X86_64,
-        "aarch64" => PlatformArch::Aarch64,
         other => {
             return Err(failure(
                 output,
@@ -439,29 +432,17 @@ fn host_virtual_packages(
     let mut facts = vec![fact("__unix", "0".into(), "0")];
     let release = crate::facts::platform_release()
         .map_err(|error| failure(output, format!("measuring native OS release: {error}")))?;
-    match platform.os {
-        PlatformOs::Linux => {
-            facts.push(fact("__linux", release.version.clone(), "0"));
-            if let Some(glibc) = crate::facts::detect()
-                .libc
-                .as_deref()
-                .and_then(|value| value.strip_prefix("glibc-"))
-            {
-                facts.push(fact("__glibc", glibc.into(), "0"));
-            }
-        }
-        PlatformOs::Macos => facts.push(fact("__osx", release.version.clone(), "0")),
+    facts.push(fact("__linux", release.version.clone(), "0"));
+    if let Some(glibc) = crate::facts::detect()
+        .libc
+        .as_deref()
+        .and_then(|value| value.strip_prefix("glibc-"))
+    {
+        facts.push(fact("__glibc", glibc.into(), "0"));
     }
     // Solving uses a portable architecture baseline. Native admission measures
     // the physical CPU separately; a solve's assumptions are not capabilities.
-    facts.push(fact(
-        "__archspec",
-        "1".into(),
-        match platform.arch {
-            PlatformArch::X86_64 => "x86_64",
-            PlatformArch::Aarch64 => "aarch64",
-        },
-    ));
+    facts.push(fact("__archspec", "1".into(), "x86_64"));
     Ok(facts)
 }
 

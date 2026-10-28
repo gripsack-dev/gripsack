@@ -1,13 +1,18 @@
-//! Explicit, generation-bound transitions from retained owned links. Directory
-//! transitions keep logical child paths separate from predecessor payload paths.
+//! Generation-bound profile transitions from retained ownership. Ordinary files
+//! use the shared planner; directory transitions preserve exact link authority.
+//! A regular payload below an inode-owned directory is a native leaf, even when
+//! its stored ownership is `Legacy(Owned)`. Its evolution into a directory belongs
+//! to the native journal path: the ordinary removal planner must admit the leaf
+//! before the journal publishes its new directory shape.
 use crate::ExecError;
-use gripsack_ir::Ownership;
 use gripsack_store as store;
+use gripsack_store::Ownership;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
 pub struct Migration {
     entries: BTreeMap<PathBuf, MigrationEntry>,
+    released: BTreeSet<PathBuf>,
     directories: BTreeMap<PathBuf, DirectoryMigration>,
     logical_roots: BTreeMap<PathBuf, PathBuf>,
     receipts: Vec<store::journal::directory::DirectoryTransition>,
@@ -30,11 +35,11 @@ impl Migration {
         expected: store::GenerationId,
         current: Option<store::GenerationId>,
         previous: &store::Generation,
-        destinations: impl IntoIterator<Item = &'a str>,
+        destinations: impl IntoIterator<Item = (&'a str, &'a Ownership)>,
     ) -> Result<Self, ExecError> {
         if current != Some(expected) || previous.number != expected {
             return Err(failure(format!(
-                "--migrate-from {expected} requires that exact current generation; current is {current:?}"
+                "profile transition requires generation {expected}; current is {current:?}"
             )));
         }
         if store::generations::admit_manifest(home, expected)? != *previous {
@@ -43,7 +48,7 @@ impl Migration {
         let mut predecessors = BTreeMap::new();
         let mut declared = BTreeMap::new();
         let mut retained_roots = BTreeSet::new();
-        for state in previous.modules.values() {
+        for state in previous.deployments.values() {
             retained_roots.insert(state.store_path.as_path());
             for old in &state.entries {
                 declared.insert(logical(&old.to)?, old.key());
@@ -51,10 +56,11 @@ impl Migration {
             }
         }
         let mut entries = BTreeMap::new();
+        let mut released = BTreeSet::new();
         let mut directories: BTreeMap<PathBuf, DirectoryMigration> = BTreeMap::new();
         let mut logical_roots = BTreeMap::new();
         let mut verified_stores = BTreeSet::new();
-        for destination in destinations {
+        for (destination, mode) in destinations {
             let expanded = logical(destination)?;
             let mut ancestor = expanded
                 .ancestors()
@@ -80,6 +86,18 @@ impl Migration {
                     ));
                 }
                 let (state, old) = predecessors[&key];
+                if previous.directory_transitions.iter().any(|receipt| {
+                    key != receipt.destination && key.starts_with(&receipt.destination)
+                }) && std::fs::symlink_metadata(state.store_path.join(&old.from))?.is_file()
+                {
+                    // Projection is not removal authority. Keep children below
+                    // their recorded leaf instead of resolving a live owned link
+                    // into the store. Native preview inspects the receipt without
+                    // following that link; apply admits its ordinary removal and
+                    // journals the directory birth before writing children.
+                    logical_roots.insert(declared_parent.to_owned(), key);
+                    continue;
+                }
                 let target = authorize(state, old, &key, &mut verified_stores)?;
                 if !std::fs::symlink_metadata(&target)?.is_dir() {
                     return Err(failure(format!(
@@ -109,26 +127,19 @@ impl Migration {
                 )));
             }
             let Some(&(state, old)) = predecessors.get(&key) else {
-                match std::fs::symlink_metadata(&key) {
-                    Ok(_) => {
-                        return Err(failure(format!(
-                            "{destination}: foreign destination is not authorized by --migrate-from"
-                        )));
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => return Err(error.into()),
-                }
+                // New and foreign destinations remain the ordinary ownership
+                // planner's responsibility, including explicit adoption.
                 continue;
             };
-            if old.preserved_drift {
-                return Err(failure(format!(
-                    "{destination}: predecessor records preserved drift"
-                )));
+            if old.ownership.policy() != Ownership::Merge {
+                released.insert(key.clone());
             }
-            if !matches!(
-                old.ownership,
-                store::StoredOwnership::Legacy(Ownership::Owned)
-            ) {
+            if *mode == Ownership::Owned
+                || !matches!(
+                    old.ownership,
+                    store::StoredOwnership::Legacy(Ownership::Owned)
+                )
+            {
                 continue;
             }
             let target = authorize(state, old, &key, &mut verified_stores)?;
@@ -164,13 +175,9 @@ impl Migration {
                 ));
             }
         }
-        if entries.is_empty() && directories.is_empty() {
-            return Err(failure(
-                "--migrate-from selects no overlapping legacy-owned destinations",
-            ));
-        }
         Ok(Self {
             entries,
+            released,
             directories,
             logical_roots,
             receipts: Vec::new(),
@@ -212,7 +219,7 @@ impl Migration {
         destination: &str,
     ) -> std::io::Result<PathBuf> {
         let expanded = logical(destination)?;
-        for state in previous.modules.values() {
+        for state in previous.deployments.values() {
             for entry in &state.entries {
                 if matches!(
                     entry.ownership,
@@ -232,7 +239,7 @@ impl Migration {
                 )
             })?)?;
             if previous
-                .modules
+                .deployments
                 .values()
                 .flat_map(|state| &state.entries)
                 .any(|entry| {
@@ -269,10 +276,14 @@ impl Migration {
         &self.receipts
     }
 
-    pub(crate) fn release_entries(&self, modules: &mut BTreeMap<String, store::ModuleState>) {
-        for state in modules.values_mut() {
+    pub(crate) fn release_entries(
+        &self,
+        deployments: &mut BTreeMap<String, store::DeploymentState>,
+    ) {
+        for state in deployments.values_mut() {
             state.entries.retain(|entry| {
-                !self.entries.contains_key(&entry.key())
+                (entry.ownership.policy() == Ownership::Merge
+                    || !self.released.contains(&entry.key()))
                     && !self.directories.contains_key(&entry.key())
             });
         }
@@ -280,7 +291,7 @@ impl Migration {
 }
 
 fn authorize<'a>(
-    state: &'a store::ModuleState,
+    state: &'a store::DeploymentState,
     old: &store::DeployedEntry,
     key: &Path,
     verified_stores: &mut BTreeSet<&'a Path>,
@@ -350,7 +361,7 @@ impl MigrationEntry {
 
 fn failure(detail: impl Into<String>) -> ExecError {
     ExecError::Step {
-        module: "*".into(),
+        output: "*".into(),
         step: "migrate".into(),
         detail: detail.into(),
     }

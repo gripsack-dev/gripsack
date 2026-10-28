@@ -1,5 +1,5 @@
 use crate::sandbox::Sandbox;
-use gripsack_store::{Generation, GenerationId, ModuleState};
+use gripsack_store::{DeploymentState, Generation, GenerationId};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -17,7 +17,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         s.write(rel, b"bounded payload");
     }
     for (number, object) in [(1, "store/a"), (2, "store/b"), (3, "store/c")] {
-        let state = ModuleState {
+        let state = DeploymentState {
             store_path: s.fixed(object),
             build_only: true,
             entries: vec![],
@@ -35,7 +35,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
             s.cap(),
             &Generation {
                 number: GenerationId::new(number),
-                modules: BTreeMap::from([("m".to_owned(), state)]),
+                deployments: BTreeMap::from([("m".to_owned(), state)]),
                 directory_transitions: Vec::new(),
                 migration: None,
             },

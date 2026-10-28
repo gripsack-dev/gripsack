@@ -1,6 +1,4 @@
-//! Native OS capability, measured once without invoking a shell or reading a
-//! repository override. Linux uses the kernel release; macOS uses the product
-//! version rather than its unrelated Darwin ABI version.
+//! Native Linux kernel capability, measured once without shell or repo overrides.
 use gripsack_policy::target::OsRelease;
 use std::{ffi::CStr, io, sync::LazyLock};
 
@@ -33,33 +31,7 @@ fn measure() -> io::Result<PlatformRelease> {
             .unwrap_or(release.len());
         parse(&release[..end])
     }
-    #[cfg(target_os = "macos")]
-    {
-        let mut bytes = [0u8; 64];
-        let mut length = bytes.len();
-        // SAFETY: bounded output and size pointer remain valid for the query.
-        if unsafe {
-            libc::sysctlbyname(
-                c"kern.osproductversion".as_ptr(),
-                bytes.as_mut_ptr().cast(),
-                &mut length,
-                std::ptr::null_mut(),
-                0,
-            )
-        } != 0
-        {
-            return Err(io::Error::last_os_error());
-        }
-        let bytes = bytes
-            .get(..length)
-            .ok_or_else(|| io::Error::other("macOS product version exceeds its response bound"))?;
-        let version = CStr::from_bytes_until_nul(bytes)
-            .map_err(io::Error::other)?
-            .to_str()
-            .map_err(io::Error::other)?;
-        parse(version)
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(not(target_os = "linux"))]
     {
         Err(io::Error::other(
             "native OS version measurement is unsupported on this platform",

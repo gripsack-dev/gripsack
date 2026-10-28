@@ -17,9 +17,7 @@ TARGETS = {
     ("Linux", "x86_64"): "x86_64-unknown-linux-musl",
 }
 SLOTS = {"x86_64-unknown-linux-musl": "LinuxX86_64Musl"}
-# Parse historical tables without granting their retired/unqualified slots.
-PIN_VARIANTS = ("LinuxX86_64Musl", "LinuxAarch64Musl", "MacosAarch64", "MacosX86_64")
-# REL-X64-FIRST-0460-2026-10-08: exact current-release platform inventory.
+PIN_VARIANTS = tuple(SLOTS.values())
 REQUIRED = set(SLOTS.values())
 
 

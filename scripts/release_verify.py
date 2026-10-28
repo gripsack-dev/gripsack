@@ -25,7 +25,7 @@ import release_consumer as consumer
 import release_evidence as evidence
 import release_manifest as schema
 import release_publish as publish
-from local_artifact_consumers import EXTERNAL, snapshot
+from local_artifact_consumers import external_repositories, snapshot
 from examples_check.fixtures import install_sdk
 
 require = schema.require
@@ -365,7 +365,7 @@ class Verification:
 
     def example(self):
         source = self.args.example.resolve()
-        require(schema.git(source, "rev-parse", "HEAD") == EXTERNAL["example"][1], "external recipe is not frozen qualified revision")
+        require(schema.git(source, "rev-parse", "HEAD") == external_repositories()["example"][1], "external recipe is not frozen qualified revision")
         require(not schema.git(source, "status", "--porcelain", "--untracked-files=all", "--ignored"), "external recipe is dirty")
         return source
 
@@ -388,13 +388,13 @@ class Verification:
                 "installed npm SDK differs from packed bytes")
         self.sdk_root = installed
         self.approve(surface, "sdk", project)
-        output = self.runner.run(surface, "sdk_check", [self.installed, "check", "--host", "laptop", "--json"], cwd=project)
-        evidence.check_output(output, legacy=True)
+        output = self.runner.run(surface, "sdk_check", [self.installed, "check", "--json"], cwd=project)
+        evidence.check_output(output)
         surface["data"] = {"tarball": evidence.reference(self.root, packed),
                            "package_root": str(installed.relative_to(self.root)),
                            "installed_files": {str(p.relative_to(installed)): evidence.reference(self.root, p)
                                                for p in installed.rglob("*") if p.is_file()},
-                           "recipe": evidence.reference(self.root, project / "hosts/laptop.ts"),
+                           "recipe": evidence.reference(self.root, project / "gripsack.ts"),
                            "source_proof": retain_source(self.root, self.root / "example-proof", self.example(), None)}
 
     def default_helpers(self, surface):

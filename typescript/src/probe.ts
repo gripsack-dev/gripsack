@@ -5,8 +5,8 @@
  *  Two-stage eval: stage 1 requests, the core evaluates the closed
  *  probe enum, stage 2 re-runs with `inputs.probes` populated. */
 
-import { callerSpan } from "./module.ts";
-import type { Span } from "./module.ts";
+import { callerSpan } from "./span.ts"
+import type { Span } from "./span.ts"
 
 export type ProbeKind = "executable" | "file_exists";
 
@@ -18,13 +18,11 @@ export interface ProbeRequest {
   span?: Span;
 }
 
-/** What `defineEnv` receives via `ctx.probe`.
+/** What `defineWorkspace` receives via `ctx.probe`.
  *
- * Probe a STABLE reference, never the tool's own installed presence:
- * `!probe.executable("node") && nodeModule` oscillates — installing
- * the tool makes the next eval drop the module. Probe the specific
- * system path you must not overwrite instead
- * (`probe.file_exists("/opt/vendor/bin/node")`). */
+ * Probe a stable system reference, never a tool installed by this workspace:
+ * using its presence to select that same output would oscillate on each apply.
+ * Prefer an explicit vendor path such as `/opt/vendor/bin/node`. */
 export interface ProbeBuilder {
   /** Is `<name>` an executable on PATH? */
   executable(name: string): boolean;

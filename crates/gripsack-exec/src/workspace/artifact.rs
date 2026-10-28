@@ -4,6 +4,7 @@
 use crate::{Ctx, ExecError, LifecycleSession};
 mod archive_root;
 pub(super) mod hook;
+pub(super) mod integrity;
 use gripsack_ir::{
     workspace::{RecipeOutputKind, WorkspacePlatform},
     workspace_model::{
@@ -577,7 +578,7 @@ pub(super) fn write_receipt(
 }
 fn failure(detail: impl Into<String>) -> ExecError {
     ExecError::Step {
-        module: "workspace".into(),
+        output: "workspace".into(),
         step: "artifact".into(),
         detail: detail.into(),
     }

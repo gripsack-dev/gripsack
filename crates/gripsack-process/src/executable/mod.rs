@@ -1,10 +1,10 @@
 //! Bounded executable metadata classification shared by native consumer
 //! admission and image-runtime inventory. This reader is pure metadata: no
 //! host path resolution, no platform policy and no layout admission decision
-//! lives here. Every read region and index is bounded and checked; malformed
-//! or truncated input fails closed with a typed error, never a panic.
+//! lives here. ELF read regions and indices are bounded and checked; malformed
+//! or truncated ELF fails closed with a typed error, never a panic. Foreign
+//! Mach-O magic is identified only so admission can reject it.
 mod elf;
-mod macho;
 mod shebang;
 
 use std::io::{self, Read, Seek};
@@ -12,7 +12,6 @@ use std::io::{self, Read, Seek};
 pub(super) const HEADER_BYTES: u64 = 4096;
 pub(super) const MAX_PROGRAM_HEADERS: u64 = 1024;
 pub(super) const MAX_DYNAMIC_BYTES: u64 = 64 * 1024;
-pub(super) const MAX_LOAD_COMMANDS: u32 = 4096;
 pub(super) const MAX_STRING_BYTES: u64 = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +30,8 @@ pub enum ExecutableArch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutableFormat {
     Elf,
+    /// Foreign magic only, retained so Linux inventory rejects these images.
+    /// No Mach-O execution metadata or loader plan is supported.
     MachO,
     /// A text executable opened through a `#!` interpreter line.
     Script,
@@ -58,7 +59,7 @@ pub enum ObjectKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Interpreter {
-    /// ELF PT_INTERP / Mach-O LC_LOAD_DYLINKER — the absolute platform loader.
+    /// ELF PT_INTERP — the absolute platform loader.
     Loader(OsString),
     /// A `#!` line: program plus its optional single argument.
     Shebang {
@@ -81,15 +82,15 @@ pub struct ExecutableMetadata {
     pub format: Option<ExecutableFormat>,
     pub class: Option<WordClass>,
     pub arch: Option<ExecutableArch>,
-    /// ELF/Mach-O byte order; `None` for scripts.
+    /// ELF byte order; `None` for scripts and foreign formats.
     pub endianness: Option<Endianness>,
-    /// ELF e_type / Mach-O filetype classification; `None` for scripts.
+    /// ELF e_type classification; `None` for scripts and foreign formats.
     pub object: Option<ObjectKind>,
-    /// The object carries a program entry point (ELF e_entry != 0; Mach-O
-    /// MH_EXECUTE). A shared object without one is a dependency only.
+    /// The ELF object carries a program entry point (e_entry != 0).
+    /// A shared object without one is a dependency only.
     pub has_entry_point: bool,
     pub interpreter: Option<Interpreter>,
-    /// ELF DT_NEEDED / Mach-O LC_LOAD_DYLIB install names, in link order.
+    /// ELF DT_NEEDED names, in link order.
     pub needed_libraries: Vec<OsString>,
     pub rpaths: Vec<OsString>,
     pub runpaths: Vec<OsString>,
@@ -130,8 +131,22 @@ pub fn classify(source: &mut (impl Read + Seek)) -> Result<ExecutableMetadata, L
     if header.starts_with(b"\x7fELF") {
         return elf::elf(source, header);
     }
-    if macho::is_macho(header) {
-        return macho::macho(source, header);
+    // Recognize foreign magic without parsing retired load commands. Keeping
+    // the format marker lets Linux image admission reject executable Mach-O
+    // files rather than treating them as unrelated unclassified data.
+    if [
+        [0xfe, 0xed, 0xfa, 0xce],
+        [0xfe, 0xed, 0xfa, 0xcf],
+        [0xce, 0xfa, 0xed, 0xfe],
+        [0xcf, 0xfa, 0xed, 0xfe],
+    ]
+    .iter()
+    .any(|magic| header.starts_with(magic))
+    {
+        return Ok(ExecutableMetadata {
+            format: Some(ExecutableFormat::MachO),
+            ..ExecutableMetadata::default()
+        });
     }
     Err(LayoutError::UnsupportedFormat)
 }

@@ -1,7 +1,7 @@
 //! Image consumers reuse frozen producers; Conda archives are independently
 //! materialized for image prefixes. BuildKit composes, native storage retains.
 mod contents;
-mod materialize;
+pub(super) mod materialize;
 mod plan;
 mod runtime;
 
@@ -34,6 +34,22 @@ struct ImageReceipt {
     archive_tree: gripsack_store::hash::PayloadHash,
     manifest: BlobDigest,
     external_runtime_requirements: Vec<String>,
+}
+
+pub(super) fn integrity(
+    root: &Path,
+    expected: &mut crate::workspace::integrity::Expectations<'_>,
+) -> Result<(), ExecError> {
+    use crate::workspace::integrity::{bind_digest, failure};
+    let receipt: ImageReceipt = artifact::read_receipt_readonly(expected.home, root, RECEIPT)?
+        .ok_or_else(|| failure("retained image object is missing"))?;
+    if receipt.version != 2 {
+        return Err(failure(
+            "retained image receipt version is unsupported; preserving its bytes",
+        ));
+    }
+    bind_digest(root, "workspace-image", receipt.identity.bytes())?;
+    expected.tree(root, &root.join("payload"), receipt.archive_tree)
 }
 
 pub(super) fn export(

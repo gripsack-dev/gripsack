@@ -25,7 +25,7 @@ pub fn validate_output_tree(
     limits: gripsack_fetch::FetchLimits,
 ) -> Result<ValidatedTree, ExecError> {
     let failure = |detail: String| ExecError::Step {
-        module: name.into(),
+        output: name.into(),
         step: "staging".into(),
         detail,
     };

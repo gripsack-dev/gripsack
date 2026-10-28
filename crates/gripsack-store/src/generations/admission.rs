@@ -65,24 +65,24 @@ pub(super) fn validate(
         }
     }
     let mut destinations: BTreeMap<String, DestinationClaim<'_>> = BTreeMap::new();
-    for (name, state) in &manifest.modules {
+    for (name, state) in &manifest.deployments {
         if state.build_only
             && (!state.entries.is_empty() || !state.intents.is_empty() || !state.env.is_empty())
         {
             return Err(invalid(format!(
-                "module {name:?}: build-only state contains deployment effects"
+                "deployment {name:?}: build-only state contains deployment effects"
             )));
         }
         if state.env.iter().any(|value| !value.valid_structured()) {
             return Err(invalid(format!(
-                "module {name:?}: invalid structured environment contribution"
+                "deployment {name:?}: invalid structured environment contribution"
             )));
         }
         crate::paths::validate_store_root(home, &state.store_path)
-            .map_err(|error| invalid(format!("module {name:?}: {error}")))?;
+            .map_err(|error| invalid(format!("deployment {name:?}: {error}")))?;
         for path in &state.build_closure {
             crate::paths::validate_store_root(home, path)
-                .map_err(|error| invalid(format!("module {name:?} build closure: {error}")))?;
+                .map_err(|error| invalid(format!("deployment {name:?} build closure: {error}")))?;
         }
         for intent in &state.intents {
             if let crate::activation::ActivationAction::WorkspaceHook { context, .. } =
@@ -91,7 +91,7 @@ pub(super) fn validate(
                     || context.file_name().is_none())
             {
                 return Err(invalid(format!(
-                    "module {name:?}: workspace hook context is outside its retained profile"
+                    "deployment {name:?}: workspace hook context is outside its retained profile"
                 )));
             }
         }
@@ -102,7 +102,7 @@ pub(super) fn validate(
                 .any(|component| !matches!(component, std::path::Component::Normal(_)))
             {
                 return Err(invalid(format!(
-                    "module {name:?}: source {:?} is not a plain relative path",
+                    "deployment {name:?}: source {:?} is not a plain relative path",
                     entry.from
                 )));
             }
@@ -115,7 +115,7 @@ pub(super) fn validate(
                 .transpose()
                 .map_err(|error| {
                     invalid(format!(
-                        "module {name:?}: destination {:?}: {error}",
+                        "deployment {name:?}: destination {:?}: {error}",
                         entry.to
                     ))
                 })?;
@@ -123,7 +123,7 @@ pub(super) fn validate(
                 .map(|_| {
                     mode.ok_or_else(|| {
                         invalid(format!(
-                            "module {name:?}: managed block at {:?} has no hosting-file mode",
+                            "deployment {name:?}: managed block at {:?} has no hosting-file mode",
                             entry.to
                         ))
                     })
@@ -164,7 +164,7 @@ pub(super) fn validate(
                     .all(|byte| byte.is_ascii_hexdigit())
             {
                 return Err(invalid(format!(
-                    "module {name:?}: destination {:?} has a malformed content hash",
+                    "deployment {name:?}: destination {:?} has a malformed content hash",
                     entry.to
                 )));
             }

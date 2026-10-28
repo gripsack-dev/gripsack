@@ -2,7 +2,7 @@
  * The source includes Cargo.lock and its vendored dependency/configuration tree.
  * No helper step resolves dependencies, downloads tools, or invokes a shell. */
 import type { Fetch } from "../fetch.ts";
-import type { Span } from "../module.ts";
+import type { Span } from "../span.ts"
 import type { PackageNode, RecipeNode, WorkspaceArg, WorkspaceOutput, WorkspacePlatform, WorkspaceStepValue } from "./ir.ts";
 import { rejectUnknownFields } from "../fields.ts";
 import { exec, lit, outputPath, sourcePath } from "./commands.ts";

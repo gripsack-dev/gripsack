@@ -112,7 +112,7 @@ impl From<scanner::ScanFailure<MergeParseError>> for MergeParseError {
             },
             scanner::ScanFailure::DifferentModule { line } => Self {
                 line,
-                reason: "closing marker names a different module",
+                reason: "closing marker names a different owner",
             },
             scanner::ScanFailure::MissingClosing { line } => Self {
                 line,

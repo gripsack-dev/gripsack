@@ -7,12 +7,17 @@ import signal
 import subprocess
 from pathlib import Path
 import pytest
-from conftest import GRIP, grip, make_env_repo
+from conftest import GRIP, grip, make_workspace_repo
 
 
 def setup(sandbox):
-    repo = make_env_repo(sandbox / 'env', '''import { module, symlink } from '@gripsack/core';
-export default module('demo', { install: { payload: symlink('~/.owned') } });''')
+    repo = make_workspace_repo(sandbox / 'env', '''
+import { file, identity, profile, repoFile, symlinkTo } from "@gripsack/core";
+
+export default profile('demo', { files: [
+    file({ source: repoFile("payload"), content: identity(), destination: symlinkTo('~/.owned') })
+  ] });
+''')
     for content in ['one', 'two']:
         (repo / 'payload').write_text(content)
         out = grip('apply', '--host', 'testhost', cwd=repo)
@@ -272,7 +277,7 @@ def test_generation_prune_sync_failure_preserves_payloads_on_retry(sandbox, faul
             assert failed.returncode == -signal.SIGKILL
         assert not generation.exists()
         assert (retirement / "manifest.json").is_file()
-        assert (payload / "payload").read_text() == "one"
+        assert (payload / manifest["modules"]["demo"]["entries"][0]["from"]).read_text() == "one"
         assert (home / "current").readlink() == previous
         assert (sandbox / ".owned").read_text() == "two"
 
@@ -296,9 +301,12 @@ def test_generation_prune_sync_failure_preserves_payloads_on_retry(sandbox, faul
 
 
 def legacy_allocation_history(sandbox, high_water):
-    repo = make_env_repo(sandbox / "legacy-env", '''
-import { module, symlink } from "@gripsack/core";
-export default module("demo", {config: {source: symlink("~/.legacy-allocation")}});
+    repo = make_workspace_repo(sandbox / "legacy-env", '''
+import { file, identity, profile, repoFile, symlinkTo } from "@gripsack/core";
+
+export default profile("demo", { files: [
+    file({ source: repoFile("source"), content: identity(), destination: symlinkTo("~/.legacy-allocation") })
+  ] });
 ''')
     (repo / "source").write_text("new generation\n")
     (repo / "env.toml").write_text('[env]\nname="fixture"\n[settings]\nkeep_generations=0\n')

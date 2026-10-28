@@ -1,10 +1,6 @@
-//! Shared named-output catalog (0052 §2.1, v6-design §§2.1–2.3): the
-//! workspace envelope entry, the nine output types, plus inputs,
-//! mutation locks and the v6 execution/toolchain variants. Layout,
-//! target, calendar and fetch types are SHARED with the frozen v5
-//! module (`crate::workspace`), never duplicated. `outputs` names form
-//! the single declaration namespace; `inputs` are a second namespace —
-//! a collision in either reports both declaration spans (sema E125).
+//! Named workspace outputs, captured inputs and mutation locks. Output names
+//! form one declaration namespace; input names form another. Duplicate names
+//! report both source spans before any execution.
 
 use super::command::{TaskContext, WorkspaceArg, WorkspaceCommand, WorkspaceStep};
 use super::file::WorkspaceFile;
@@ -17,12 +13,11 @@ use crate::workspace::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Shared v6/v7 workspace entry: one catalog of named outputs, plus the
-/// input and mutation-lock declarations.
+/// One workspace catalog of named outputs, inputs and mutation locks.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceCatalog {
-    /// Where the workspace itself was declared. Mandatory in v6.
+    /// Where the workspace itself was declared.
     pub span: Span,
     /// Optional display name; never a producer or worktree identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -37,37 +32,6 @@ pub struct WorkspaceCatalog {
     /// them by (scope, key) (sema E126/E130).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mutation_locks: Vec<WorkspaceMutationLock>,
-}
-
-impl WorkspaceCatalog {
-    /// Shared catalog representation retains v6 execution, but new authority
-    /// may only be serialized or executed from an explicitly v7 envelope.
-    pub fn requires_v7(&self) -> bool {
-        self.outputs.iter().any(|output| match output {
-            WorkspaceOutput::Recipe(recipe) => recipe.source.requires_v7(),
-            WorkspaceOutput::Package(package) => {
-                package.host_runtime.is_some()
-                    || matches!(&package.producer, WorkspaceProducer::Provider { provider }
-                        if provider.requires_v7())
-            }
-            _ => false,
-        })
-    }
-
-    /// Authority introduced in v8 must never enter retained v7/v6 envelopes.
-    pub fn requires_v8(&self) -> bool {
-        self.outputs.iter().any(|output| match output {
-            WorkspaceOutput::Package(package) => package.archive_root.is_some(),
-            WorkspaceOutput::Profile(profile) => {
-                profile.launchers.is_some()
-                    || profile.files.iter().any(|file| {
-                        matches!(file.source, Some(super::WorkspaceSource::RepoTree { .. }))
-                            || matches!(file.content, super::WorkspaceContent::TemplateFile { .. })
-                    })
-            }
-            _ => false,
-        })
-    }
 }
 
 /// One declared workspace input (v6-design §2.1).
@@ -174,8 +138,7 @@ pub struct RecipeOutput {
     pub checks: Vec<String>,
 }
 
-/// The v6 execution boundary [RESPELL: v5 `isolated_linux{worker}` is
-/// superseded — v6 carries the platform and toolchain reference].
+/// A recipe declares its host or isolated Linux execution boundary.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RecipeExecution {

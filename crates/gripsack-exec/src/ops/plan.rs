@@ -24,8 +24,8 @@ use write::{plan_migration_write, plan_write};
 /// (A struct, not nine positional arguments: each field is named at
 /// the call site.)
 pub struct DestView<'a> {
-    pub module: &'a str,
-    pub entry: &'a Entry,
+    pub output: &'a str,
+    pub entry: &'a DeploymentEntry,
     /// The canonical physical destination (0030 §P0-1).
     pub dest: PathBuf,
     /// The home the store lives under (link "ours" is target-under-home).
@@ -50,7 +50,7 @@ impl DestView<'_> {
 
     fn base(&self, kind: OpKind, authority: Option<Authority>, intended: Intended) -> Op {
         Op::new(
-            self.module.to_string(),
+            self.output.to_string(),
             self.dest.clone(),
             self.entry.to.clone(),
             self.entry.mode.clone(),

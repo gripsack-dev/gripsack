@@ -1,9 +1,28 @@
 use super::*;
+use crate::workspace::conda::subdir;
 use gripsack_ir::workspace_model::lock::LockedCondaPackage;
 use serde_json::json;
 use std::fs;
 use std::io::Cursor;
 use std::os::unix::fs::{PermissionsExt, symlink};
+
+#[test]
+fn conda_subdir_admission_is_linux_x86_64_glibc_only() {
+    for (os, arch, abi, accepted) in [
+        ("linux", "x86_64", "gnu", true),
+        ("linux", "x86_64", "musl", false),
+        ("linux", "aarch64", "gnu", false),
+        ("macos", "x86_64", "darwin", false),
+        ("macos", "aarch64", "darwin", false),
+    ] {
+        let platform = serde_json::from_value(json!({"os":os,"arch":arch,"abi":abi})).unwrap();
+        assert_eq!(
+            subdir("test", &platform).is_ok(),
+            accepted,
+            "{os}/{arch}/{abi}"
+        );
+    }
+}
 
 #[derive(Clone)]
 struct Member {
@@ -361,53 +380,6 @@ fn published_modes_follow_shared_sealing_and_never_admit_restored_write_bits() {
 }
 
 #[test]
-fn mach_runtime_receipt_records_absolute_host_needs_not_relative_install_names() {
-    let mut commands = Vec::new();
-    for (kind, offset, name) in [
-        (0xcu32, 24usize, "/usr/lib/libSystem.B.dylib"),
-        (0xcu32, 24usize, "@rpath/libprivate.dylib"),
-        (0xeu32, 12usize, "/usr/lib/dyld"),
-    ] {
-        let size = (offset + name.len() + 1).next_multiple_of(8);
-        let mut command = vec![0; size];
-        command[..4].copy_from_slice(&kind.to_le_bytes());
-        command[4..8].copy_from_slice(&(size as u32).to_le_bytes());
-        command[8..12].copy_from_slice(&(offset as u32).to_le_bytes());
-        command[offset..offset + name.len()].copy_from_slice(name.as_bytes());
-        commands.extend(command);
-    }
-    let mut binary = Vec::new();
-    for word in [
-        0xfeedfacfu32,
-        0x01000007,
-        3,
-        2,
-        3,
-        commands.len() as u32,
-        0,
-        0,
-    ] {
-        binary.extend(word.to_le_bytes());
-    }
-    binary.extend(commands);
-    let mut fixture = Fixture::new(vec![Member::file("bin/mach", &binary)], true, false);
-    fixture.locked.platform = "osx-64".into();
-    let record = &mut fixture.locked.packages[0];
-    record.subdir = "osx-64".into();
-    record.url = record.url.replace("/linux-64/", "/osx-64/");
-    gripsack_conda::receipt::write(
-        fs::File::create(fixture.tree.join("conda-meta/fixture-1.0-0.json")).unwrap(),
-        record,
-        &BTreeSet::from(["bin/mach"]),
-        "/final prefix",
-    )
-    .unwrap();
-    let validated = fixture.validate().unwrap();
-    assert_eq!(validated.system.libraries, ["/usr/lib/libSystem.B.dylib"]);
-    assert_eq!(validated.system.loaders, ["/usr/lib/dyld"]);
-}
-
-#[test]
 fn lifecycle_admission_rejects_all_policy_paths_in_both_formats() {
     for conda in [false, true] {
         for path in [
@@ -579,8 +551,6 @@ fn cold_frozen_lifecycle_refusal_precedes_native_and_image_staging() {
             on_progress: None,
             take_over: false,
             take_over_entries: None,
-            migrate_from: None,
-            jobs: Some(1),
             fetch: Default::default(),
             home_dir: Default::default(),
         };
@@ -633,8 +603,6 @@ fn both_update_modes_require_archive_admission_and_accept_independent_clean_cont
                     on_progress: None,
                     take_over: false,
                     take_over_entries: None,
-                    migrate_from: None,
-                    jobs: Some(1),
                     fetch: Default::default(),
                     home_dir: Default::default(),
                 };

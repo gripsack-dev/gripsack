@@ -205,8 +205,6 @@ fn inner(
         host: outcome.host,
         take_over: false,
         take_over_entries: None,
-        migrate_from: None,
-        jobs: None,
         fetch: outcome.fetch,
         on_progress: None,
     };

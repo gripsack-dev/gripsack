@@ -3,8 +3,8 @@
 import { rejectUnknownFields } from "../fields.ts";
 import { DiagnosticError, diagnosticCodes } from "../diagnostic.ts";
 import type { Fetch } from "../fetch.ts";
-import { callerSpan } from "../module.ts";
-import type { Span } from "../module.ts";
+import { callerSpan } from "../span.ts"
+import type { Span } from "../span.ts"
 import type {
   CondaSystemRequirements,
   HostRuntimeRequirements,
@@ -433,8 +433,8 @@ export function asProducer(v: unknown, where: string): WorkspaceProducer {
 
 export function asFetch(v: unknown, where: string): Fetch {
   const rec = asRecord(v, where);
-  if (typeof rec.kind !== "string" || rec.kind === "") {
-    throw new Error(`${where} must be a fetch spec (githubRelease()/tarball()/…)`);
+  if (!["github_release", "tarball", "git", "file", "plugin"].includes(rec.kind as string)) {
+    throw new Error(`${where} must be a supported fetch spec (githubRelease()/tarball()/git()/fileFetch()/pluginFetch())`);
   }
   return v as Fetch;
 }
@@ -484,18 +484,12 @@ export function asHostRuntime(v: unknown, where: string): HostRuntimeRequirement
 }
 
 /** An acquisition source — the tagged union behind `RecipeNode.source`
- *  and the provider branch of {@link WorkspaceProducer}. The legacy bare
- *  `{fetch,span}` shape and the brew/pixi fetch kinds are rejected. */
+ * and the provider branch of {@link WorkspaceProducer}. */
 export function asAcquisitionSource(v: unknown, where: string): AcquisitionSource {
   const rec = asRecord(v, where);
   if (rec.kind === "fetch") {
     rejectUnknownFields(where, rec, ["kind", "fetch", "span"]);
-    const fetch = asFetch(rec.fetch, `${where}.fetch`);
-    if (fetch.kind === "brew" || fetch.kind === "pixi") {
-      throw new Error(
-        `${where}.fetch: "${fetch.kind}" fetches are superseded by conda_environment/pixi_lock sources in v6`,
-      );
-    }
+    asFetch(rec.fetch, `${where}.fetch`);
     asSpan(rec.span, where);
     return v as AcquisitionSource;
   }

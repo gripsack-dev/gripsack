@@ -13,7 +13,7 @@ impl NativeProfiles {
         &self,
         _ctx: &Ctx,
         journal: &store::journal::JournalRun<'_>,
-        previous: &BTreeMap<String, store::ModuleState>,
+        previous: &BTreeMap<String, store::DeploymentState>,
     ) -> Result<(), ExecError> {
         let mut destinations = self
             .profiles
@@ -43,7 +43,8 @@ impl NativeProfiles {
             })
             .collect();
         let mut released = BTreeSet::new();
-        for plan in plans {
+        let mut removals = Vec::new();
+        for plan in &plans {
             for blocker in plan.blockers() {
                 let mut authorized = store::journal::directory::is_directory(journal, blocker)?;
                 for (key, owner, entry, source) in &entries {
@@ -65,13 +66,25 @@ impl NativeProfiles {
                                 "foreign file blocks a new directory ancestor; no directory takeover is granted",
                             ));
                         }
-                        crate::ops::execute_op(journal, operation.as_executable()?)?;
+                        if !matches!(operation.intended(), store::journal::Intended::Removed) {
+                            return Err(failure(
+                                "retained content prevents removal of a new directory ancestor",
+                            ));
+                        }
+                        removals.push(operation);
                     }
                 }
                 if !authorized {
                     return Err(failure("foreign object blocks a new directory ancestor"));
                 }
             }
+        }
+        // Admit every blocker before changing any destination. Restoring a
+        // prior leaves its path occupied and cannot authorize a directory birth.
+        for operation in removals {
+            crate::ops::execute_op(journal, operation.as_executable()?)?;
+        }
+        for plan in plans {
             crate::util::crash_hook("directory-evolve-before-publish");
             plan.publish(journal)?;
             crate::util::crash_hook("directory-evolve-after-publish");
@@ -108,7 +121,7 @@ pub(super) fn preview_observation(
                 store::journal::directory::ParentInspection::Missing => return Ok(None),
                 store::journal::directory::ParentInspection::Blocked(blocker) => {
                     let cap = gripsack_fs::open(home)?;
-                    for (owner, state) in &previous.modules {
+                    for (owner, state) in &previous.deployments {
                         if let Some(entry) =
                             state.entries.iter().find(|entry| entry.key() == blocker)
                         {
@@ -144,7 +157,7 @@ fn admit_directory_replacement(
     home: &Path,
 ) -> Result<(), ExecError> {
     let mut entries = BTreeMap::new();
-    for (owner, state) in &previous.modules {
+    for (owner, state) in &previous.deployments {
         for entry in &state.entries {
             let key = entry.key();
             if !key.starts_with(destination) {
@@ -199,7 +212,7 @@ fn admit_directory_replacement(
 
 fn failure(message: &str) -> ExecError {
     ExecError::Step {
-        module: "*".into(),
+        output: "*".into(),
         step: "directory".into(),
         detail: message.into(),
     }

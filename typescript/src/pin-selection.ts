@@ -1,5 +1,5 @@
-/** Driver-owned package selection. Both public and compiler APIs come from
- * the same approved package; a historical pin keeps its original root ABI. */
+/** Driver-owned package selection. Public and compiler APIs must come from
+ * the same approved workspace SDK package. */
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -31,7 +31,10 @@ function selectEntries(): { authoring: string; compiler: string } {
   const pkg: PackageEntries = JSON.parse(readFileSync(manifest, "utf8"));
   const authoring = resolveEntry(directory, pkg.exports?.["."], [pkg.main, pkg.types, "index.js"]);
   const advanced = pkg.exports?.["./advanced"];
-  return { authoring, compiler: advanced === undefined ? authoring : resolveEntry(directory, advanced, []) };
+  if (advanced === undefined) {
+    throw new Error("pinned @gripsack/core must export ./advanced for the workspace compiler");
+  }
+  return { authoring, compiler: resolveEntry(directory, advanced, []) };
 }
 const entries = selectEntries();
 export const coreUrl = entries.authoring;

@@ -40,7 +40,7 @@ pub use gc::gc;
 pub use generations::generations;
 pub use hooks::{HooksCommand, hooks};
 pub use init::init;
-pub use plan::{plan_ir, plan_module};
+pub use plan::plan_ir;
 pub use repo::resolve as resolve_repo;
 pub use rollback::rollback;
 pub use run::{
@@ -52,8 +52,7 @@ pub use update::update;
 pub use why_owns::why_owns;
 
 /// The machine's hostname — $HOSTNAME, else the `hostname` command.
-/// init and eval MUST agree on this (a mismatch means init writes
-/// hosts/<cmd-hostname> and eval looks for hosts/<env-hostname>).
+/// Used only as the default workspace lock identity.
 pub fn hostname() -> String {
     std::env::var("HOSTNAME")
         .ok()
@@ -69,12 +68,7 @@ pub fn hostname() -> String {
         .unwrap_or_else(|| "default".into())
 }
 
-/// A valid host FILE name: ASCII alnum, dash, underscore — everything
-/// else (macOS hostnames carry dots) becomes a dash. The single
-/// sanitization for BOTH the file `grip init` writes and the default
-/// host every command resolves: init wrote `foo-bar.ts` while eval
-/// looked up raw `foo.bar` — `init && check` failed on every Mac
-/// whose hostname has a dot (macOS CI round).
+/// Normalize an ambient hostname into a safe workspace lock identity.
 pub fn sanitize_hostname(raw: &str) -> String {
     let clean: String = raw
         .chars()
@@ -93,8 +87,7 @@ pub fn sanitize_hostname(raw: &str) -> String {
     }
 }
 
-/// The sanitized hostname — the default host everywhere (the file
-/// name and the lookup agree by construction).
+/// Default workspace lock identity; never selects a source entrypoint.
 pub fn default_host() -> String {
     sanitize_hostname(&hostname())
 }

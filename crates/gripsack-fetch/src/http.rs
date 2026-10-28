@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn bound_credentials_require_tls_and_registry_artifact_refuses_cleartext() {
+    fn bound_credentials_require_tls_and_tool_artifact_refuses_cleartext() {
         let policy = policy();
         for (url, expected) in [
             ("http://api.github.com/repos/a", "Bearer public"),
@@ -301,9 +301,9 @@ mod tests {
         let client = Client::from_env(&Default::default());
         let error = client
             .text(
-                "http://127.0.0.1:9/registry",
-                RequestKind::RegistryArtifact {
-                    authorization: "Bearer dummy-registry-token",
+                "http://127.0.0.1:9/tool",
+                RequestKind::Tool {
+                    deadline: std::time::Instant::now() + std::time::Duration::from_secs(1),
                 },
             )
             .unwrap_err();

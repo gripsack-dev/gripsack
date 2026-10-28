@@ -2,8 +2,8 @@
 //! drift guards the ops planner relies on — the rollback restore path
 //! lives in ops::plan (0034).
 
-use gripsack_ir::Ownership;
 use gripsack_store as store;
+use gripsack_store::Ownership;
 use std::path::Path;
 
 /// Capture a destination's current state for a take-over (0015

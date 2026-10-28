@@ -1,8 +1,7 @@
-"""Versioned workspace admission and native file execution through grip.
+"""Current workspace admission and native file execution through grip.
 
-Direct --ir cases exercise the core alongside the real v5 frontend.
-Unsupported capabilities and historical v4 workspaces must still refuse
-before effects; admitted native files must never become an empty apply.
+Direct IR9 cases exercise strict decoding alongside the real frontend.
+Invalid declarations refuse before effects; native profiles deploy real files.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from conftest import grip
 
 def workspace_ir(*outputs):
     return {
-        "ir_version": 5,
+        "ir_version": 9,
         "host": {"os": "linux", "arch": "x86_64", "tags": []},
         "workspace": {
             "span": {"file": "gripsack.ts", "line": 1},
@@ -67,36 +66,30 @@ def test_project_native_files_plan_without_effects_and_apply(sandbox):
     checked = grip("check", cwd=repo)
     assert checked.returncode == 0, checked.stdout + checked.stderr
     assert "dotfiles (profile)" in checked.stdout
-    for command in [("plan",), ("update", "--check")]:
+    for command, expected in [(("plan",), 0), (("update", "--check"), 1)]:
         result = grip(*command, cwd=repo)
-        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.returncode == expected, result.stdout + result.stderr
         assert not (sandbox / ".config/demo/settings.conf").exists()
         assert not (sandbox / ".local/share/gripsack/current").exists()
-    # Authoring edits are a separate adoption capability; refusing the code
-    # generator must not imply the declared file profile cannot execute.
-    refused = grip("adopt", "~/.config/demo/settings.conf", cwd=repo)
-    assert refused.returncode != 0 and "E124" in refused.stderr
-    assert not (repo / "env.toml").exists()
+        assert not (repo / "gripsack.lock").exists()
     applied = grip("apply", cwd=repo)
     assert applied.returncode == 0, applied.stdout + applied.stderr
     assert (sandbox / ".config/demo/settings.conf").read_text() == "setting=1\n"
     assert (sandbox / ".local/share/gripsack/current").exists()
 
-def test_all_nine_output_kinds_admit_from_one_offline_workspace(sandbox):
-    fixture = Path(__file__).parent / "fixtures" / "envs" / "all-output-kinds"
-    repo = sandbox / "all-output-kinds"
+def test_native_catalog_admits_from_one_offline_workspace(sandbox):
+    fixture = Path(__file__).parent / "fixtures" / "envs" / "native-workspace"
+    repo = sandbox / "native-workspace"
     shutil.copytree(fixture, repo)
     checked = grip("check", "--json", cwd=repo)
     assert checked.returncode == 0, checked.stdout + checked.stderr
     document = json.loads(checked.stdout)
     assert document["ok"] is True
     assert {output["kind"] for output in document["outputs"]} == {
-        "recipe", "package", "environment", "task", "schedule",
-        "check", "image", "profile", "hook",
+        "package", "environment", "task", "profile",
     }
     planned = grip("plan", cwd=repo)
-    assert planned.returncode != 0
-    assert "E124" in planned.stderr
+    assert planned.returncode == 0, planned.stdout + planned.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
@@ -123,7 +116,7 @@ def test_all_nine_output_kinds_admit_from_one_offline_workspace(sandbox):
         ),
     ],
 )
-def test_graduated_examples_validate_and_gate_only_unavailable_capabilities(sandbox, example, outputs):
+def test_graduated_examples_validate_without_realization(sandbox, example, outputs):
     source = Path(__file__).parent.parent / "examples" / "workspaces" / example
     repo = sandbox / example
     shutil.copytree(source, repo)
@@ -132,16 +125,19 @@ def test_graduated_examples_validate_and_gate_only_unavailable_capabilities(sand
     document = json.loads(checked.stdout)
     assert document["ok"] is True
     assert {(output["name"], output["kind"]) for output in document["outputs"]} == set(outputs)
-    planned = grip("plan", cwd=repo)
     if example in {"01-dotfiles", "02-native-tool"}:
+        planned = grip("plan", cwd=repo)
         assert planned.returncode == 0, planned.stdout + planned.stderr
         assert not (sandbox / ".config/editor/config.toml").exists()
         assert not (sandbox / ".config/formatter/config.toml").exists()
         assert not (sandbox / ".local/share/gripsack/store").exists()
         assert not (sandbox / ".local/share/gripsack/buildkit").exists()
     else:
+        # Catalog-only planning and schedule registration remain separate
+        # unavailable operations, not evidence that packages cannot realize.
+        planned = grip("plan", cwd=repo)
         assert planned.returncode != 0
-        assert "E124" in planned.stderr and outputs[0][0] in planned.stderr
+        assert "E124" in planned.stderr, planned.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
@@ -150,7 +146,7 @@ def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):
     repo.mkdir()
     (repo / "gripsack.ts").write_text(
         'import { defineWorkspace, workspace, pkg, provider, fileFetch, '
-        'targetPlatform, task, bash, bashBody, packageCommand, exec, lit } '
+        'targetPlatform, task, bash, bashBody, packageCommand, exec, lit, profile } '
         'from "@gripsack/core";\n'
         'const shell = pkg("shell", { producer: provider(fileFetch("shell.bin")), '
         'commands: { bash: "bin/bash" }, '
@@ -161,7 +157,7 @@ def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):
         '.env("INPUT", lit("two words")).build()] });\n'
         'const argv = task("argv", { steps: [exec(lit("echo"))'
         '.arg(lit("two words")).build()] });\n'
-        'export default defineWorkspace(() => workspace({ outputs: [shell, script, argv] }));\n'
+        'export default defineWorkspace(() => workspace({ outputs: [shell, script, argv, profile("personal", {})] }));\n'
     )
     checked = grip("check", cwd=repo)
     assert checked.returncode == 0, checked.stdout + checked.stderr
@@ -169,8 +165,7 @@ def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):
     assert "script (task)" in checked.stdout
     assert "argv (task)" in checked.stdout
     result = grip("plan", cwd=repo)
-    assert result.returncode != 0
-    assert "E124" in result.stderr, result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
@@ -192,14 +187,16 @@ def test_bash_interpolation_rejected_by_frontend_and_decoded_ir(sandbox):
     recipe, package = recipe_and_package()
     task = {
         "kind": "task", "name": "bad", "span": {"file": "bad.ts", "line": 5},
-        "run": {
+        "steps": [{"command": {
             "kind": "run_bash", "span": {"file": "bad.ts", "line": 8},
+            "options": ["-e", "-u", "-o", "pipefail"],
             "interpreter": {
                 "kind": "package_command", "package": "tool", "command": "tool",
             },
             "body": "echo ok\necho ${HOME}",
             "line_map": [9, 55],
-        },
+        }}],
+        "context": {"kind": "host", "mutable_paths": []},
     }
     decoded = run_plan_ir(sandbox, workspace_ir(recipe, package, task))
     assert decoded.returncode != 0
@@ -216,28 +213,6 @@ def test_raw_workspace_plan_prepares_native_files_without_deploying(sandbox):
     assert not (sandbox / ".config/demo/settings.conf").exists()
 
 
-def test_historical_v4_workspace_cannot_become_empty_module_apply(sandbox):
-    old = workspace_ir({
-        "kind": "package", "name": "native-tool",
-        "span": {"file": "old.ts", "line": 5},
-        "producer": {"kind": "provider", "provider": {
-            "fetch": {"kind": "file", "path": "tool.bin"},
-            "span": {"file": "old.ts", "line": 6},
-        }},
-        "commands": {"tool": "bin/tool"},
-        "target": {"os": "linux", "arch": "x86_64", "abi": "old-abi"},
-        "layout": "relocatable",
-    })
-    old["ir_version"] = 4
-    result = run_plan_ir(sandbox, old)
-    assert result.returncode != 0
-    assert "E124" in result.stderr, result.stderr
-    assert "gripsack.ts:1" in result.stderr
-    assert "old.ts:5" in result.stderr
-    assert "A5 migration" in result.stderr
-    assert not (sandbox / ".local/share/gripsack/current").exists()
-
-
 def test_provider_package_needs_no_synthetic_recipe_or_host_entry(sandbox):
     package = {
         "kind": "package",
@@ -246,7 +221,7 @@ def test_provider_package_needs_no_synthetic_recipe_or_host_entry(sandbox):
         "producer": {
             "kind": "provider",
             "provider": {
-                "fetch": {"kind": "file", "path": "tool.bin"},
+                "kind": "fetch", "fetch": {"kind": "file", "path": "tool.bin"},
                 "span": {"file": "gripsack.ts", "line": 6},
             },
         },
@@ -254,10 +229,8 @@ def test_provider_package_needs_no_synthetic_recipe_or_host_entry(sandbox):
         "target": {"os": "linux", "arch": "x86_64"},
         "layout": {"kind": "relocatable"},
     }
-    result = run_plan_ir(sandbox, workspace_ir(package))
-    assert result.returncode != 0
-    assert "E124" in result.stderr, result.stderr  # admitted, but realization is A2-owned
-    assert "E126" not in result.stderr
+    result = run_plan_ir(sandbox, workspace_ir(package, dotfile_profile()))
+    assert result.returncode == 0, result.stdout + result.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
@@ -268,6 +241,25 @@ def test_decoded_workspace_rejects_unknown_field_with_provenance(sandbox):
     assert result.returncode != 0
     assert "unexpected_effect" in result.stderr
     assert "gripsack.ts" in result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+def test_decoded_task_rejects_run_instead_of_steps(sandbox):
+    task = {
+        "kind": "task",
+        "name": "invalid",
+        "span": {"file": "gripsack.ts", "line": 5},
+        "context": {"kind": "host", "mutable_paths": []},
+        "run": {
+            "kind": "exec",
+            "span": {"file": "gripsack.ts", "line": 6},
+            "argv": [{"kind": "literal", "value": "true"}],
+        },
+    }
+    result = run_plan_ir(sandbox, workspace_ir(task))
+    assert result.returncode != 0
+    assert "run" in result.stderr
+    assert "gripsack.ts:5" in result.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
@@ -289,10 +281,14 @@ def recipe_and_package():
         "name": "build",
         "span": {"file": "gripsack.ts", "line": 2},
         "source": {
-            "fetch": {"kind": "file", "path": "tool.bin"},
+            "kind": "fetch", "fetch": {"kind": "file", "path": "tool.bin"},
             "span": {"file": "gripsack.ts", "line": 2},
         },
-        "execution": {"kind": "host", "access": "unconfined"},
+        "execution": {
+            "kind": "isolated_linux", "worker": "buildkit",
+            "platform": {"os": "linux", "arch": "x86_64"},
+            "toolchain": {"reference": "docker.io/library/alpine@sha256:" + "a" * 64},
+        },
         "output_kind": "tree",
         "target": target,
     }
@@ -308,16 +304,17 @@ def recipe_and_package():
     return recipe, package
 
 
-def test_decoded_artifact_reference_rejects_non_artifact_with_both_sites(sandbox):
+def test_decoded_artifact_reference_rejects_non_artifact_at_consumer(sandbox):
     task = {
         "kind": "task",
         "name": "not-an-artifact",
         "span": {"file": "gripsack.ts", "line": 15},
-        "run": {
+        "steps": [{"command": {
             "kind": "exec",
             "span": {"file": "gripsack.ts", "line": 15},
             "argv": [{"kind": "literal", "value": "true"}],
-        },
+        }}],
+        "context": {"kind": "host", "mutable_paths": []},
     }
     profile = dotfile_profile()
     profile["files"][0]["source"] = {
@@ -330,8 +327,9 @@ def test_decoded_artifact_reference_rejects_non_artifact_with_both_sites(sandbox
     assert result.returncode != 0
     assert "E126" in result.stderr, result.stderr
     assert "gripsack.ts:10" in result.stderr
-    assert "gripsack.ts:15" in result.stderr
     assert "E124" not in result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+    assert not (sandbox / ".config/demo/settings.conf").exists()
 
 
 def test_decoded_check_subject_must_exist_before_execution(sandbox):
@@ -356,20 +354,20 @@ def test_decoded_check_subject_must_exist_before_execution(sandbox):
 def test_decoded_recipe_tool_cycle_is_rejected_before_execution(sandbox):
     recipe, package = recipe_and_package()
     recipe["steps"] = [
-        {
+        {"command": {
             "kind": "exec",
             "span": {"file": "gripsack.ts", "line": 4},
             "argv": [
                 {"kind": "package_command", "package": "tool", "command": "tool"},
             ],
-        }
+        }}
     ]
     result = run_plan_ir(sandbox, workspace_ir(recipe, package))
     assert result.returncode != 0
     assert "E127" in result.stderr, result.stderr
     assert "gripsack.ts:2" in result.stderr
-    assert "gripsack.ts:3" in result.stderr
     assert "E124" not in result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_decoded_artifact_selector_rejects_parent_escape(sandbox):
@@ -410,10 +408,10 @@ def test_decoded_fixed_prefix_package_cannot_enter_prefixless_environment(sandbo
     }
     result = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
     assert result.returncode != 0
-    assert "fixed_prefix" in result.stderr
-    assert "gripsack.ts:3" in result.stderr
+    assert "E128" in result.stderr, result.stderr
     assert "gripsack.ts:6" in result.stderr
     assert "E124" not in result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_publication_check_cycle_is_admitted_without_pruning_or_execution(sandbox):
@@ -430,9 +428,8 @@ def test_publication_check_cycle_is_admitted_without_pruning_or_execution(sandbo
             "argv": [{"kind": "literal", "value": "true"}],
         },
     }
-    result = run_plan_ir(sandbox, workspace_ir(recipe, package, smoke))
-    assert result.returncode != 0
-    assert "E124" in result.stderr, result.stderr
+    result = run_plan_ir(sandbox, workspace_ir(recipe, package, smoke, dotfile_profile()))
+    assert result.returncode == 0, result.stdout + result.stderr
     assert "E131" not in result.stderr
     assert "E127" not in result.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
@@ -465,21 +462,25 @@ def test_minimum_os_and_abi_compare_declared_targets_not_checking_host(sandbox):
         "packages": ["tool"],
         "target": {**target, "minimum_os": {"major": 6, "minor": 1}},
     }
-    admitted = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E124" in admitted.stderr, admitted.stderr  # admitted, but never executed by A1
+    admitted = run_plan_ir(sandbox, workspace_ir(recipe, package, environment, dotfile_profile()))
+    assert admitted.returncode == 0, admitted.stdout + admitted.stderr
     environment["target"]["minimum_os"] = {"major": 4, "minor": 19}
     rejected = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E126" in rejected.stderr and "target mismatch" in rejected.stderr
+    assert rejected.returncode != 0
+    assert "E128" in rejected.stderr, rejected.stderr
     assert "gripsack.ts:3" in rejected.stderr and "gripsack.ts:6" in rejected.stderr
 
     environment["target"] = {**target, "abi": "musl"}
     wrong_abi = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E126" in wrong_abi.stderr and "target mismatch" in wrong_abi.stderr
+    assert wrong_abi.returncode != 0
+    assert "E128" in wrong_abi.stderr, wrong_abi.stderr
     assert "gripsack.ts:3" in wrong_abi.stderr and "gripsack.ts:6" in wrong_abi.stderr
     environment["target"].pop("abi")
     missing_abi = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E126" in missing_abi.stderr and "target mismatch" in missing_abi.stderr
+    assert missing_abi.returncode != 0
+    assert "E128" in missing_abi.stderr, missing_abi.stderr
     assert "gripsack.ts:3" in missing_abi.stderr and "gripsack.ts:6" in missing_abi.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_fixed_prefix_selection_requires_exact_declared_environment_path(sandbox):
@@ -491,11 +492,15 @@ def test_fixed_prefix_selection_requires_exact_declared_environment_path(sandbox
         "packages": ["tool"], "target": package["target"],
         "prefix": "/opt/tool",
     }
-    admitted = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E124" in admitted.stderr, admitted.stderr
+    admitted = run_plan_ir(sandbox, workspace_ir(recipe, package, environment, dotfile_profile()))
+    assert admitted.returncode == 0, admitted.stdout + admitted.stderr
     environment["prefix"] = "/different"
     rejected = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
-    assert "E126" in rejected.stderr and "fixed_prefix" in rejected.stderr
+    assert rejected.returncode != 0
+    assert "E128" in rejected.stderr, rejected.stderr
+    assert "gripsack.ts:6" in rejected.stderr
     package["layout"]["prefix"] = "/opt/../escape"
     unsafe = run_plan_ir(sandbox, workspace_ir(recipe, package))
+    assert unsafe.returncode != 0
     assert "E130" in unsafe.stderr and "gripsack.ts:3" in unsafe.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()

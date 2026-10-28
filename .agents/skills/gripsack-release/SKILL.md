@@ -26,12 +26,11 @@ does not request an Actions product build.
    provisioning from the public assets. Build/run a frozen consumer without an
    operator helper override. Checksums are transport integrity, not signatures.
 
-0.48 is a public, locally qualified **unsigned** release. The owner explicitly
-removed Actions signing and registry publication as prerequisites. Use its
-manual installation instructions; do not weaken the signed installer/updater
-or synthesize a signed completion record. 0.47 remains an explicitly unverified
-prerelease; its exceptional authorization is not a standing waiver for later
-releases. Released tags and assets never change during documentation cleanup.
+The owner selected manual unsigned publication after practical local
+qualification, without Actions signing or registry publication prerequisites.
+Keep the verified installer/updater's signature policy intact. Release notes
+lead with product changes and link detailed technical evidence; checksums are
+not signatures. Existing release tags and artifacts remain immutable.
 
 ## TypeScript (frontend package)
 
@@ -47,10 +46,10 @@ unsigned release path; the website is independent of those formats.
 
 ## Checklist
 
-- [ ] Coordinated versions and actual helper pins; documented IR/lock migration.
+- [ ] Coordinated versions, measured helper pins and the current IR contract.
 - [ ] Required exact-source local gates, including the complete persistence union.
 - [ ] Actual installed consumers, failed-path coverage and public asset readback.
-- [ ] Honest release notes, source identity, checksums and verification exclusions.
+- [ ] Short product-focused notes, source identity, checksums and linked evidence.
 - [ ] No overwritten public tag, asset or historical qualification receipt.
 - [ ] Current README, SDK guidance and executable examples.
 - [ ] Website rendered locally from the selected core Git commit in the separate

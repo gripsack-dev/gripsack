@@ -43,7 +43,7 @@ Deno.test("archive root selection rejects incompatible producer and layout polic
   const base = { producer: api.provider(api.tarball("https://example.invalid/tool.tar.gz")), commands: { tool: "bin/tool" }, target, layout };
   assert.throws(() => api.pkg("bad", { ...base, archiveRoot: { kind: "other" } as never }));
   assert.throws(() => api.pkg("bad", { ...base, archiveRoot, layout: { kind: "fixed_prefix", prefix: "/opt/tools" } }));
-  const condaSource = api.condaEnvironment({ channels: ["conda-forge"], packages: { python: "*" }, platforms: [target] });
+  const condaSource = api.conda.environment({ channels: ["conda-forge"], packages: { python: "*" }, platforms: [target] });
   assert.throws(() => api.pkg("bad", { ...base, producer: api.provider(condaSource), archiveRoot }));
   const recipe = api.recipe("source", { source: condaSource, execution: { kind: "host", access: "unconfined" }, output_kind: "tree", target });
   assert.throws(() => emit(recipe, api.pkg("bad", { ...base, producer: "source", archiveRoot })));
@@ -63,3 +63,4 @@ Deno.test("managed launchers require an explicit unique command selection and en
   assert.throws(() => emit(tool(), environment, api.profile("bad", { environment: "editor", launchers: { ...launchers, commands: ["missing"] } })));
   assert.throws(() => emit(tool(), tool("other"), api.environment("editor", { packages: ["tools", "other"], target }), profile));
 });
+

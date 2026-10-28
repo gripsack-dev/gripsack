@@ -1,0 +1,141 @@
+{
+  "diagnostics": [],
+  "ir": {
+    "host": {
+      "arch": "x86_64",
+      "libc": "glibc-2.36",
+      "os": "linux",
+      "tags": []
+    },
+    "ir_version": 9,
+    "workspace": {
+      "outputs": [
+        {
+          "env": {
+            "MODE": {
+              "kind": "literal",
+              "value": "offline"
+            }
+          },
+          "kind": "environment",
+          "name": "dev",
+          "packages": [
+            "tools"
+          ],
+          "span": {
+            "col": 13,
+            "file": "gripsack.ts",
+            "line": 12
+          },
+          "target": {
+            "arch": "x86_64",
+            "os": "linux"
+          }
+        },
+        {
+          "context": {
+            "kind": "host",
+            "mutable_paths": []
+          },
+          "environment": "dev",
+          "kind": "task",
+          "name": "invoke",
+          "span": {
+            "col": 16,
+            "file": "gripsack.ts",
+            "line": 15
+          },
+          "steps": [
+            {
+              "command": {
+                "argv": [
+                  {
+                    "kind": "literal",
+                    "value": "/usr/bin/true"
+                  }
+                ],
+                "env": {
+                  "INPUT": {
+                    "kind": "literal",
+                    "value": "from a typed environment value"
+                  }
+                },
+                "kind": "exec",
+                "span": {
+                  "col": 11,
+                  "file": "gripsack.ts",
+                  "line": 17
+                }
+              }
+            }
+          ]
+        },
+        {
+          "environment": "dev",
+          "files": [
+            {
+              "content": {
+                "kind": "literal",
+                "text": "setting=1\n"
+              },
+              "destination": {
+                "kind": "tracked_copy",
+                "path": "~/.config/demo/settings.conf"
+              },
+              "span": {
+                "col": 11,
+                "file": "gripsack.ts",
+                "line": 22
+              }
+            }
+          ],
+          "kind": "profile",
+          "name": "personal",
+          "span": {
+            "col": 18,
+            "file": "gripsack.ts",
+            "line": 20
+          }
+        },
+        {
+          "commands": {},
+          "kind": "package",
+          "layout": {
+            "kind": "relocatable"
+          },
+          "name": "tools",
+          "producer": {
+            "kind": "provider",
+            "provider": {
+              "fetch": {
+                "kind": "file",
+                "path": "tool.bin"
+              },
+              "kind": "fetch",
+              "span": {
+                "col": 13,
+                "file": "gripsack.ts",
+                "line": 8
+              }
+            }
+          },
+          "span": {
+            "col": 15,
+            "file": "gripsack.ts",
+            "line": 7
+          },
+          "target": {
+            "arch": "x86_64",
+            "os": "linux"
+          }
+        }
+      ],
+      "span": {
+        "col": 38,
+        "file": "gripsack.ts",
+        "line": 28
+      }
+    }
+  },
+  "probe_requests": []
+}

@@ -1,10 +1,10 @@
 //! Generated release identity: replace this table only with hashes measured
 //! from tools/conda-helper/dist.sh output before building the core release.
 use crate::host::AssetTarget;
-pub const CONDA_VERSION: &str = "0.48.0";
+pub const CONDA_VERSION: &str = "0.50.0";
 // PLATFORM-LINUX-X64-2026-10-09: only Linux/WSL x86_64 is supported.
-// Unpublished candidate measured in two independent native release builds.
+// Measured in two independent native release builds from source c591f37.
 pub const CONDA_SHA256: &[(AssetTarget, &str)] = &[(
     AssetTarget::LinuxX86_64Musl,
-    "5dbc60fc4c45906326db88104a8a0c736e32e6d23fbdaa5c19274415c84165d9",
+    "1026d2f1c7761c072beae615e78d0f9c7fea983979855431c942ec1ce6044e89",
 )];

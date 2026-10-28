@@ -12,7 +12,7 @@ use std::{
 pub(super) fn captured_definitions(repository: &Repository) -> Result<DefinitionPins, ExecError> {
     let Repository::Evaluated { sources, .. } = repository else {
         return Err(ExecError::Step {
-            module: "workspace".into(),
+            output: "workspace".into(),
             step: "definition-pins".into(),
             detail: "workspace production requires an approved captured frontend/import bundle"
                 .into(),
@@ -92,7 +92,7 @@ fn subtree(entries: &[SourceEntry], root: &str) -> Result<DefinitionDigest, Exec
         let index = entries
             .binary_search_by(|entry| entry.path.as_str().cmp(prefix))
             .map_err(|_| ExecError::Step {
-                module: "workspace".into(),
+                output: "workspace".into(),
                 step: "definition-pins".into(),
                 detail: format!("captured definition root {prefix:?} is absent"),
             })?;

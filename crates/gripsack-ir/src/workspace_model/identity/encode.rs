@@ -121,26 +121,6 @@ impl Encoder {
                 self.text(name);
                 self.json(args);
             }
-            FetchSpec::Brew {
-                formula,
-                version,
-                sha256,
-            } => {
-                self.field(b"brew");
-                self.text(formula);
-                self.optional(version);
-                self.optional(sha256);
-            }
-            FetchSpec::Pixi {
-                package,
-                version,
-                sha256,
-            } => {
-                self.field(b"pixi");
-                self.text(package);
-                self.optional(version);
-                self.optional(sha256);
-            }
         }
     }
     fn json(&mut self, value: &serde_json::Value) {

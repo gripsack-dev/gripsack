@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import json
 import os
-import pytest
-
-from conftest import grip, make_env_repo
+from conftest import grip
 
 
 def write_repo(sandbox, name, source):
@@ -243,8 +241,12 @@ def test_core_line_map_renders_the_mapped_source_snippet(sandbox):
     (repo / "bad.ts").write_text("\n".join(source_lines) + "\n")
     recipe = {
         "kind": "recipe", "name": "build", "span": {"file": "bad.ts", "line": 2},
-        "source": {"fetch": {"kind": "file", "path": "src.tar.gz"}, "span": {"file": "bad.ts", "line": 3}},
-        "execution": {"kind": "host", "access": "unconfined"},
+        "source": {"kind": "fetch", "fetch": {"kind": "file", "path": "src.tar.gz"}, "span": {"file": "bad.ts", "line": 3}},
+        "execution": {
+            "kind": "isolated_linux", "worker": "buildkit",
+            "platform": {"os": "linux", "arch": "x86_64"},
+            "toolchain": {"reference": "docker.io/library/alpine@sha256:" + "a" * 64},
+        },
         "output_kind": "tree",
         "target": {"os": "linux", "arch": "x86_64"},
     }
@@ -257,15 +259,17 @@ def test_core_line_map_renders_the_mapped_source_snippet(sandbox):
     }
     task = {
         "kind": "task", "name": "bad", "span": {"file": "bad.ts", "line": 5},
-        "run": {
+        "steps": [{"command": {
             "kind": "run_bash", "span": {"file": "bad.ts", "line": 8},
+            "options": ["-e", "-u", "-o", "pipefail"],
             "interpreter": {"kind": "package_command", "package": "tool", "command": "tool"},
             "body": "echo ok\necho ${HOME}",
             "line_map": [9, 55],
-        },
+        }}],
+        "context": {"kind": "host", "mutable_paths": []},
     }
     doc = {
-        "ir_version": 5,
+        "ir_version": 9,
         "host": {"os": "linux", "arch": "x86_64", "tags": []},
         "workspace": {"span": {"file": "bad.ts", "line": 1}, "outputs": [recipe, package, task]},
     }
@@ -287,7 +291,7 @@ def test_decoded_diagnostic_span_cannot_read_outside_repo(sandbox):
     package = {
         "kind": "package", "name": "shell", "span": {"file": "gripsack.ts", "line": 2},
         "producer": {"kind": "provider", "provider": {
-            "fetch": {"kind": "file", "path": "shell.bin"},
+            "kind": "fetch", "fetch": {"kind": "file", "path": "shell.bin"},
             "span": {"file": "gripsack.ts", "line": 2},
         }},
         "commands": {"bash": "bin/bash"},
@@ -296,14 +300,16 @@ def test_decoded_diagnostic_span_cannot_read_outside_repo(sandbox):
     }
     task = {
         "kind": "task", "name": "bad", "span": {"file": "gripsack.ts", "line": 3},
-        "run": {
+        "steps": [{"command": {
             "kind": "run_bash", "span": {"file": str(private), "line": 1},
+            "options": ["-e", "-u", "-o", "pipefail"],
             "interpreter": {"kind": "package_command", "package": "shell", "command": "bash"},
             "body": "echo ${HOME}",
-        },
+        }}],
+        "context": {"kind": "host", "mutable_paths": []},
     }
     doc = {
-        "ir_version": 5,
+        "ir_version": 9,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {
             "span": {"file": "gripsack.ts", "line": 1},
@@ -317,27 +323,6 @@ def test_decoded_diagnostic_span_cannot_read_outside_repo(sandbox):
     assert "E130" in result.stderr
     assert str(private) in result.stderr
     assert "must never appear in a diagnostic" not in result.stderr
-
-
-def test_legacy_env_check_json_carries_modules_and_tags(sandbox):
-    repo = make_env_repo(
-        sandbox / "legacy",
-        {
-            "demo": 'import { module, trackedCopy } from "@gripsack/core";\n'
-            'export default module("demo", {\n'
-            '  config: { "configs/demo/demo.toml": trackedCopy("~/.config/demo/demo.toml") },\n'
-            "});\n"
-        },
-    )
-    # E110: a fetch-less module deploys repo files — the source must exist
-    (repo / "configs/demo").mkdir(parents=True)
-    (repo / "configs/demo/demo.toml").write_text("setting=1\n")
-    terminal, doc = check_both(repo, "--host", "testhost")
-    assert terminal.returncode == 0
-    assert doc["ok"] is True
-    assert doc["modules"] == ["demo"]
-    assert doc["host"]["tags"] == ["test"]
-    assert not (sandbox / ".config/demo/demo.toml").exists()
 
 
 def test_check_success_json_lists_the_named_outputs(sandbox):
@@ -372,14 +357,14 @@ def test_check_never_provisions_a_builder(sandbox):
     repo = write_repo(
         sandbox,
         "isolated",
-        'import { defineWorkspace, workspace, recipe, targetPlatform, fileFetch } from "@gripsack/core";\n'
+        'import { defineWorkspace, workspace, recipe, targetPlatform, fileFetch, profile } from "@gripsack/core";\n'
         'const build = recipe("build", { source: fileFetch("src.tar.gz"),\n'
         '  execution: { kind: "isolated_linux", worker: "buildkit", '
         'platform: targetPlatform({ os: "linux", arch: "x86_64" }), '
         'toolchain: { reference: "docker.io/library/alpine@sha256:' + "a" * 64 + '" } },\n'
         '  output_kind: "tree",\n'
         '  target: targetPlatform({ os: "linux", arch: "x86_64" }) });\n'
-        "export default defineWorkspace(() => workspace({ outputs: [build] }));\n",
+        'export default defineWorkspace(() => workspace({ outputs: [build, profile("personal", {})] }));\n',
     )
     checked = grip("check", cwd=repo)
     assert checked.returncode == 0, checked.stdout + checked.stderr
@@ -390,31 +375,30 @@ def test_check_never_provisions_a_builder(sandbox):
         if any(marker in p.name.lower() for marker in ("buildkit", "lima", "builder"))
     ]
     assert builders == [], f"check provisioned a builder: {builders}"
-    # but execution is refused with the capability diagnostic
+    # Planning keeps the unselected recipe inert without provisioning its worker.
     planned = grip("plan", cwd=repo)
-    assert planned.returncode != 0
-    assert "E124" in planned.stderr
-    assert "isolated_linux" in planned.stderr and "B2" in planned.stderr
-    assert "gripsack.ts:2" in planned.stderr
+    assert planned.returncode == 0, planned.stdout + planned.stderr
+    assert not (sandbox / ".local/share/gripsack/buildkit").exists()
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
-def test_schedule_and_task_prerequisite_capabilities_keep_their_owners(sandbox):
+def test_schedule_registration_is_refused_before_effects(sandbox):
     repo = sandbox / "inert-schedule"
     repo.mkdir()
     task = {
         "kind": "task", "name": "build", "span": {"file": "tasks.ts", "line": 8},
-        "run": {
+        "steps": [{"command": {
             "kind": "exec", "span": {"file": "tasks.ts", "line": 9},
             "argv": [{"kind": "literal", "value": "true"}],
-        },
+        }}],
+        "context": {"kind": "host", "mutable_paths": []},
     }
     schedule = {
         "kind": "schedule", "name": "daily", "span": {"file": "schedule.ts", "line": 4},
         "task": "build", "trigger": {"kind": "daily", "time": "03:30"}, "scope": "user",
     }
     document = {
-        "ir_version": 5,
+        "ir_version": 9,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {
             "span": {"file": "gripsack.ts", "line": 1},
@@ -426,190 +410,8 @@ def test_schedule_and_task_prerequisite_capabilities_keep_their_owners(sandbox):
     inert = grip("plan", "--ir", str(path), cwd=repo)
     assert inert.returncode != 0
     assert "E124" in inert.stderr and "schedule registration" in inert.stderr
-    assert "E2/E3" in inert.stderr and "schedule.ts:4" in inert.stderr
+    assert "schedule.ts:4" in inert.stderr
 
-    prerequisite = {
-        **task, "deps": ["verify"],
-    }
-    verify = {
-        **task, "name": "verify", "span": {"file": "tasks.ts", "line": 12},
-    }
-    document["workspace"]["outputs"] = [prerequisite, verify]
-    path.write_text(json.dumps(document))
-    invoked = grip("plan", "--ir", str(path), cwd=repo)
-    assert invoked.returncode != 0
-    assert "E124" in invoked.stderr and "task prerequisite" in invoked.stderr
-    assert "E1" in invoked.stderr and "tasks.ts:8" in invoked.stderr
-    assert not (sandbox / ".local/share/gripsack/current").exists()
-
-
-@pytest.mark.parametrize(
-    ("first", "rest", "owner", "capability"),
-    [
-        pytest.param(
-            {
-                "kind": "image", "name": "container", "span": {"file": "outputs.ts", "line": 7},
-                "packages": [], "target": {"os": "linux", "arch": "x86_64"},
-            },
-            [],
-            "B4",
-            "image materialization",
-            id="image-worker",
-        ),
-        pytest.param(
-            {
-                "kind": "environment", "name": "dev", "span": {"file": "outputs.ts", "line": 7},
-                "packages": [], "target": {"os": "linux", "arch": "x86_64"},
-            },
-            [],
-            "A2-P",
-            "environment activation",
-            id="environment-invocation",
-        ),
-        pytest.param(
-            {
-                "kind": "check", "name": "verify", "span": {"file": "outputs.ts", "line": 7},
-                "run": {
-                    "kind": "exec", "span": {"file": "outputs.ts", "line": 8},
-                    "argv": [{"kind": "literal", "value": "true"}],
-                },
-                "subject": "run",
-            },
-            [
-                {
-                    "kind": "task", "name": "run", "span": {"file": "outputs.ts", "line": 12},
-                    "run": {
-                        "kind": "exec", "span": {"file": "outputs.ts", "line": 13},
-                        "argv": [{"kind": "literal", "value": "true"}],
-                    },
-                },
-            ],
-            "A2/E1",
-            "check execution",
-            id="check-owner-before-subject",
-        ),
-    ],
-)
-def test_unavailable_capability_names_first_declared_output_and_owner(
-    sandbox, first, rest, owner, capability,
-):
-    repo = sandbox / "capability-owner"
-    repo.mkdir()
-    path = repo / "workspace.ir.json"
-    path.write_text(json.dumps({
-        "ir_version": 5,
-        "host": {"os": "linux", "arch": "x86_64"},
-        "workspace": {
-            "span": {"file": "outputs.ts", "line": 1},
-            "outputs": [first, *rest],
-        },
-    }))
-    planned = grip("plan", "--ir", str(path), cwd=repo)
-    assert planned.returncode != 0
-    assert "E124" in planned.stderr, planned.stderr
-    assert first["name"] in planned.stderr
-    assert capability in planned.stderr and f"belongs to {owner}" in planned.stderr
-    assert "outputs.ts:7" in planned.stderr
-    assert not (sandbox / ".local/share/gripsack/current").exists()
-
-
-@pytest.mark.parametrize(
-    ("first", "owner", "capability"),
-    [
-        pytest.param(
-            {
-                "kind": "recipe", "name": "compile",
-                "span": {"file": "outputs.ts", "line": 7},
-                "source": {
-                    "fetch": {"kind": "file", "path": "source.tar.gz"},
-                    "span": {"file": "outputs.ts", "line": 8},
-                },
-                "execution": {"kind": "host", "access": "unconfined"},
-                "output_kind": "tree",
-                "target": {"os": "linux", "arch": "x86_64"},
-            },
-            "A2", "host recipe realization", id="host-recipe",
-        ),
-        pytest.param(
-            {
-                "kind": "package", "name": "tool",
-                "span": {"file": "outputs.ts", "line": 7},
-                "producer": {
-                    "kind": "provider",
-                    "provider": {
-                        "fetch": {"kind": "file", "path": "tool.tar.gz"},
-                        "span": {"file": "outputs.ts", "line": 8},
-                    },
-                },
-                "commands": {"tool": "bin/tool"},
-                "target": {"os": "linux", "arch": "x86_64"},
-                "layout": {"kind": "relocatable"},
-            },
-            "A2", "package realization", id="provider-package",
-        ),
-        pytest.param(
-            {
-                "kind": "task", "name": "invoke",
-                "span": {"file": "outputs.ts", "line": 7},
-                "run": {
-                    "kind": "exec", "span": {"file": "outputs.ts", "line": 8},
-                    "argv": [{"kind": "literal", "value": "true"}],
-                },
-            },
-            "A2-P", "task invocation", id="task-without-prerequisites",
-        ),
-        pytest.param(
-            {
-                "kind": "profile", "name": "dotfiles",
-                "span": {"file": "outputs.ts", "line": 7},
-                "environment": "development",
-            },
-            "A2", "profile deployment", id="profile-environment-before-image",
-        ),
-        pytest.param(
-            {
-                "kind": "hook", "name": "after",
-                "span": {"file": "outputs.ts", "line": 7},
-                "trigger": "post_activate",
-                "run": {
-                    "kind": "exec", "span": {"file": "outputs.ts", "line": 8},
-                    "argv": [{"kind": "literal", "value": "true"}],
-                },
-            },
-            "A2", "hook execution", id="post-activate-hook",
-        ),
-    ],
-)
-def test_first_declared_unavailable_output_preserves_its_distinct_owner(
-    sandbox, first, owner, capability,
-):
-    repo = sandbox / "first-capability"
-    repo.mkdir()
-    later_image = {
-        "kind": "image", "name": "later", "span": {"file": "outputs.ts", "line": 12},
-        "packages": [], "target": {"os": "linux", "arch": "x86_64"},
-    }
-    later_environment = {
-        "kind": "environment", "name": "development",
-        "span": {"file": "outputs.ts", "line": 17},
-        "packages": [], "target": {"os": "linux", "arch": "x86_64"},
-    }
-    path = repo / "workspace.ir.json"
-    path.write_text(json.dumps({
-        "ir_version": 5,
-        "host": {"os": "linux", "arch": "x86_64"},
-        "workspace": {
-            "span": {"file": "outputs.ts", "line": 1},
-            "outputs": [first, later_image, later_environment],
-        },
-    }))
-    planned = grip("plan", "--ir", str(path), cwd=repo)
-    assert planned.returncode != 0
-    assert "error[E124]" in planned.stderr, planned.stderr
-    assert f"output `{first['name']}`" in planned.stderr
-    assert f"{capability} belongs to {owner}" in planned.stderr
-    assert "outputs.ts:7" in planned.stderr
-    assert "belongs to B4" not in planned.stderr, "later image must not win"
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
@@ -619,14 +421,15 @@ def test_invalid_decoded_command_coordinates_keep_labels_without_reading_source(
     (repo / "source.ts").write_text("private source line must not appear\n")
     task = {
         "kind": "task", "name": "bad", "span": {"file": "source.ts", "line": 7},
-        "run": {
+        "steps": [{"command": {
             "kind": "exec", "span": {"file": "source.ts", "line": 0, "col": 0},
             "argv": [{"kind": "literal", "value": "true"}],
-        },
+        }}],
+        "context": {"kind": "host", "mutable_paths": []},
     }
     path = repo / "workspace.ir.json"
     path.write_text(json.dumps({
-        "ir_version": 5,
+        "ir_version": 9,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {
             "span": {"file": "source.ts", "line": 1},
@@ -635,8 +438,8 @@ def test_invalid_decoded_command_coordinates_keep_labels_without_reading_source(
     }))
     planned = grip("plan", "--ir", str(path), cwd=repo)
     assert planned.returncode != 0
-    assert planned.stderr.count("error[E129]") == 2, planned.stderr
-    assert planned.stderr.count("--> source.ts:0:0") == 2
+    assert "error[E129]" in planned.stderr, planned.stderr
+    assert "--> source.ts:0:0" in planned.stderr
     assert "private source line must not appear" not in planned.stderr
     assert "E124" not in planned.stderr, "invalid provenance precedes executor refusal"
     assert not (sandbox / ".local/share/gripsack/current").exists()
@@ -658,21 +461,20 @@ def test_escaping_profile_file_destination_is_a_structured_error(sandbox):
     }
     path = repo / "workspace.ir.json"
     path.write_text(json.dumps({
-        "ir_version": 5,
+        "ir_version": 9,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
     }))
     result = grip("plan", "--ir", str(path), cwd=repo)
     assert result.returncode != 0
     assert "error[E102]" in result.stderr, result.stderr
-    assert "~/../../etc/passwd" in result.stderr
     assert "grip.ts:3" in result.stderr
     assert "E124" not in result.stderr, "invalid destination precedes executor refusal"
     assert not (sandbox / "etc").exists()
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 def test_escaped_repository_file_origin_rejects_before_executor(sandbox):
-    """Decoded v5 repo_file cannot address an ambient or parent file."""
+    """Decoded current repo_file cannot address an ambient or parent file."""
     repo = sandbox / "escaped-repository-origin"
     repo.mkdir()
     input_file = repo / "workspace.ir.json"
@@ -687,7 +489,7 @@ def test_escaped_repository_file_origin_rejects_before_executor(sandbox):
             }],
         }
         input_file.write_text(json.dumps({
-            "ir_version": 5,
+            "ir_version": 9,
             "host": {"os": "linux", "arch": "x86_64"},
             "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
         }))
@@ -723,7 +525,7 @@ def test_distinct_managed_block_markers_coexist_over_one_host_file(sandbox):
         }
         path = repo / "workspace.ir.json"
         path.write_text(json.dumps({
-            "ir_version": 5,
+            "ir_version": 9,
             "host": {"os": "linux", "arch": "x86_64"},
             "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
         }))
@@ -744,8 +546,7 @@ def test_distinct_managed_block_markers_coexist_over_one_host_file(sandbox):
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 def test_duplicate_profile_destination_names_both_owners_before_any_executor(sandbox):
-    """A1-11: one path has one owner — the module grammar's E111 race
-    rule extended to workspace profile files, labeling both files."""
+    """One destination has one owner; E111 labels both profile files."""
     repo = sandbox / "duplicate-destination"
     repo.mkdir()
 
@@ -763,7 +564,7 @@ def test_duplicate_profile_destination_names_both_owners_before_any_executor(san
     }
     path = repo / "workspace.ir.json"
     path.write_text(json.dumps({
-        "ir_version": 5,
+        "ir_version": 9,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
     }))

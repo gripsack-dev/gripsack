@@ -28,22 +28,20 @@ pub(crate) fn execute_op(
     let op = op.0;
     let home_dir = run.home();
     let fail = |detail: String| ExecError::Step {
-        module: op.module().to_string(),
+        output: op.output().to_string(),
         step: "deploy".into(),
         detail,
     };
     match op.kind() {
         // the ExecutableOp conversion already refused markers
         // (0046) — this arm is a classified error, never a panic
-        OpKind::RunEffect | OpKind::Deferred => {
-            Err(fail("a preview-only marker op reached the executor".into()))
-        }
+        OpKind::Deferred => Err(fail("a preview-only marker op reached the executor".into())),
         OpKind::Satisfied => Ok((
             OpReport {
                 // the mode's voice (0.21.1): a satisfied merge block
                 // is not an unchanged file
                 summary: match op.mode {
-                    gripsack_ir::Ownership::Merge => {
+                    gripsack_store::Ownership::Merge => {
                         format!("{} block unchanged", op.declared_to())
                     }
                     _ => format!("{} unchanged", op.declared_to()),
@@ -84,7 +82,7 @@ pub(crate) fn execute_op(
                 .execute(|directory, name| gripsack_fs::symlink_replace(directory, name, target))?;
             Ok((
                 OpReport {
-                    summary: format!("linked {} → {}", op.module(), op.declared_to()),
+                    summary: format!("linked {} → {}", op.output(), op.declared_to()),
                     kind: ReportKind::Installed,
                 },
                 prior,
@@ -121,7 +119,7 @@ pub(crate) fn execute_op(
             };
             Ok((
                 OpReport {
-                    summary: format!("{} {} → {}", verb, op.module(), op.declared_to()),
+                    summary: format!("{} {} → {}", verb, op.output(), op.declared_to()),
                     kind: ReportKind::Configured,
                 },
                 prior,
@@ -135,7 +133,7 @@ pub(crate) fn execute_op(
         } => {
             let owner = block_id
                 .as_ref()
-                .map_or(op.module(), store::ManagedBlockId::as_str);
+                .map_or(op.output(), store::ManagedBlockId::as_str);
             let (dest_dir, dest_name) = dest_capability(run, op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
             let captured =
@@ -167,7 +165,7 @@ pub(crate) fn execute_op(
             let note = op.note.as_deref().unwrap_or("");
             Ok((
                 OpReport {
-                    summary: format!("merged {} → {}{}", op.module(), op.declared_to(), note),
+                    summary: format!("merged {} → {}{}", op.output(), op.declared_to(), note),
                     kind: ReportKind::Configured,
                 },
                 None,
@@ -185,7 +183,7 @@ pub(crate) fn execute_op(
                     dest_dir,
                     dest_name,
                     &target.entry,
-                    op.module(),
+                    op.output(),
                     home_dir,
                     &target.store_path,
                 )

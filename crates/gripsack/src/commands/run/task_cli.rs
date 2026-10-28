@@ -172,9 +172,9 @@ pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
                 }
             } else {
                 let mut tasks: Vec<_> = ir
-                    .workspace_catalog
+                    .workspace
+                    .outputs
                     .iter()
-                    .flat_map(|workspace| &workspace.outputs)
                     .filter_map(|output| match output {
                         gripsack_ir::workspace_model::WorkspaceOutput::Task(task) => {
                             Some(&task.name)

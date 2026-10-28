@@ -2,16 +2,14 @@ use super::frontend::Frontend;
 use super::prepared::{PreparedEvaluation, operational};
 use super::probe::InputsFile;
 use crate::render::DiagnosticSink;
-use gripsack_ir::{HostName, Ir, Severity};
+use gripsack_ir::{HostName, Ir};
 use gripsack_store::trust::evaluation::{EvaluationId, EvaluationOutcome, EvaluationSession};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::ExitCode;
 
-/// The eval wire protocol (0011 §5, 0013 D6): the frontend emits the
-/// IR plus any diagnostics (lint results, frontend-side validation)
-/// and its symbolic probe requests — the sandbox cannot run probes,
-/// so `ctx.probe.*` can only ever record a request here.
+/// The frontend emits IR, diagnostics and symbolic probe requests.
+/// The sandbox cannot run probes; the core binds each requested result.
 #[derive(serde::Deserialize)]
 pub(super) struct EvalEnvelope {
     pub(super) ir: serde_json::Value,
@@ -48,20 +46,14 @@ pub fn render_host_inputs(inputs: &HostInputs) -> String {
     out
 }
 
-/// What a successful eval hands back: the IR JSON, the env config,
-/// and the host inputs it ran with.
+/// Evaluated IR, captured sources, acquisition policy and bound host inputs.
 pub struct EvalOutcome {
     pub ir_json: String,
-    pub env: gripsack_config::EnvConfig,
     /// Post-injection artifact clients; provisioning uses a separate context.
     pub fetch: std::sync::Arc<gripsack_fetch::FetchContext>,
     pub host_inputs: HostInputs,
-    /// The host entrypoint actually evaluated — the same resolution
-    /// (--host > env.toml default_host > detected hostname) every
-    /// post-eval command must key its lockfile and generations by.
-    /// Commands used to re-derive it with drifting rules (`update`
-    /// read $HOSTNAME, a bash-ism POSIX sh does not export) and pick
-    /// a different lockfile than the eval that preceded them.
+    /// Workspace lock identity: --host, configured default_host, then hostname.
+    /// This never selects a source entrypoint.
     pub host: HostName,
     /// Keeps every captured source alive through downstream materialization.
     pub sources: std::sync::Arc<gripsack_store::source_bundle::SourceBundle>,
@@ -115,11 +107,7 @@ pub(super) fn eval_prepared(
             &prepared.env.throttle,
             Some(prepared.home().join("throttle.json")),
         );
-        provision_plugins(
-            &prepared.config.fetchers,
-            &prepared.env.linters,
-            &prepared.provisioning,
-        )?;
+        provision_plugins(&prepared.config.fetchers, &prepared.provisioning)?;
         let fetch = std::sync::Arc::new(gripsack_fetch::FetchContext::artifacts(
             acquisition_limits(&prepared.config.settings),
             std::sync::Arc::clone(&prepared.provisioning),
@@ -157,7 +145,6 @@ pub(super) fn eval_prepared(
     let sources = std::sync::Arc::clone(prepared.sources());
     Ok(EvalOutcome {
         ir_json,
-        env: prepared.env,
         fetch,
         host_inputs,
         host: prepared.host,
@@ -166,38 +153,10 @@ pub(super) fn eval_prepared(
     })
 }
 
-/// Linter configuration and source reads belong to the evaluated snapshot.
-pub fn run_lints(
-    ir: &Ir,
-    outcome: &EvalOutcome,
-    sink: &mut DiagnosticSink,
-) -> Result<(), ExitCode> {
-    let mut diagnostics = gripsack_lint::run(
-        ir,
-        &outcome.env.linters,
-        outcome.sources.repository(),
-        &outcome.host,
-    );
-    super::prepared::map_diagnostics(&outcome.sources, &mut diagnostics);
-    if diagnostics.is_empty() {
-        return Ok(());
-    }
-    let failed = diagnostics.iter().any(|d| d.severity == Severity::Error);
-    sink.report(&diagnostics);
-    if failed {
-        return Err(ExitCode::FAILURE);
-    }
-    Ok(())
-}
-
-/// The post-eval validation pipeline every content command runs:
-/// IR sema → module source validation → linters (0011 §9). One
-/// implementation — check and apply used to carry identical
-/// and_then chains that could drift.
+/// Every content command validates IR semantics and captured workspace sources.
 pub fn validated_ir(outcome: &EvalOutcome, sink: &mut DiagnosticSink) -> Result<Ir, ExitCode> {
     let ir = check_ir(&outcome.ir_json, sink)?;
     crate::commands::validate_sources(&ir, outcome.sources.repository(), sink)?;
-    run_lints(&ir, outcome, sink)?;
     Ok(ir)
 }
 
@@ -212,8 +171,7 @@ pub fn check_ir(json: &str, sink: &mut DiagnosticSink) -> Result<Ir, ExitCode> {
     })
 }
 
-/// Native file profiles execute; unsupported catalog capabilities must never
-/// fall through to an empty legacy apply or an alternate fallback executor.
+/// Reject workspace capabilities that the selected operation cannot execute.
 pub fn reject_workspace_execution(
     ir: &Ir,
     operation: gripsack_ir::workspace::WorkspaceOperation,
@@ -226,31 +184,32 @@ pub fn reject_workspace_execution(
     Err(ExitCode::FAILURE)
 }
 
-/// E110: entries sourced only from the repo must exist at check time.
-/// Fetches and producer recipes supply a staged payload instead; a fetch-less
-/// shell/run build may legitimately create files that do not exist yet.
+/// Repository file origins must exist in the approved captured source tree.
 pub fn validate_sources(ir: &Ir, repo: &Path, sink: &mut DiagnosticSink) -> Result<(), ExitCode> {
+    use gripsack_ir::workspace_model::{WorkspaceOutput, WorkspaceSource};
     let mut diagnostics = Vec::new();
-    for (name, module) in &ir.modules {
-        let prepared = match gripsack_ir::prepared::PreparedModule::new(module) {
-            Ok(prepared) => prepared,
-            Err(diagnostic) => {
-                diagnostics.push(diagnostic);
-                continue;
-            }
-        };
-        if prepared.fetch().is_some() || prepared.has_recipe() {
+    for output in &ir.workspace.outputs {
+        let WorkspaceOutput::Profile(profile) = output else {
             continue;
-        }
-        for entry in prepared.entries() {
-            if !repo.join(&entry.from).exists() {
+        };
+        for file in &profile.files {
+            let path = match &file.source {
+                Some(
+                    WorkspaceSource::RepoFile { path } | WorkspaceSource::RepoTree { path, .. },
+                ) => path,
+                _ => continue,
+            };
+            if !repo.join(path).exists() {
                 diagnostics.push(
                     gripsack_ir::Diagnostic::error(
                         gripsack_ir::codes::MISSING_SOURCE,
-                        format!("module {name:?}: no payload or repo file at {}", entry.from),
+                        format!(
+                            "profile {:?}: no captured repository source at {path}",
+                            profile.name
+                        ),
                     )
-                    .with_label(entry.span.clone().or_else(|| module.span.clone()), "source declared here")
-                    .with_help("fix the repository path, or declare the producer that supplies this payload"),
+                    .with_label(Some(file.span.clone()), "source declared here")
+                    .with_help("fix the repository path or the capture exclusions"),
                 );
             }
         }
@@ -285,13 +244,9 @@ pub(super) fn acquisition_limits(
     }
 }
 
-/// Stage: declared plugins (0012 §move-2). `package = "owner/repo@tag"`
-/// on a [fetchers.x] or [linters.x] entry provisions the binary into
-/// the plugin store — declarative, sha256-verified, receipted.
-/// Fetchers and linters both resolve from the store downstream.
+/// Provision declared fetcher plugins into the verified plugin store.
 fn provision_plugins(
     fetchers: &BTreeMap<String, gripsack_config::FetcherSectionView>,
-    linters: &BTreeMap<String, gripsack_config::LinterSection>,
     fetch: &gripsack_fetch::FetchContext,
 ) -> Result<(), ExitCode> {
     let store = gripsack_fetch::plugins::PluginStore::new(&gripsack_store::gripsack_home());
@@ -318,13 +273,6 @@ fn provision_plugins(
                 return Err(ExitCode::FAILURE);
             }
             provision(&store, fetch, name, package, "gripfetch")?;
-        }
-    }
-    for (name, section) in linters {
-        if let Some(package) = &section.package
-            && gripsack_fetch::plugins::parse_ref(package).is_some()
-        {
-            provision(&store, fetch, name, package, "griplint")?;
         }
     }
     Ok(())

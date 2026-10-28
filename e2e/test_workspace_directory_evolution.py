@@ -10,9 +10,9 @@ from test_workspace_migration import directory_predecessor, directory_replacemen
 
 
 def migrated(sandbox):
-    destination, old_target, previous = directory_predecessor(sandbox)
+    destination, old_target, _ = directory_predecessor(sandbox)
     repo = directory_replacement(sandbox)
-    run(repo, "apply", "--migrate-from", str(previous["number"]))
+    run(repo, "apply")
     return repo, destination, old_target
 
 
@@ -165,3 +165,36 @@ def test_leaf_to_directory_plan_and_rollback_preserve_the_old_file(sandbox):
     assert (destination / "data/child").read_text() == "expanded leaf\n"
     run(repo, "rollback", str(previous["number"]))
     assert (destination / "data").read_text() == "new tree data\n"
+
+
+def test_leaf_with_prior_refuses_directory_growth_before_mutation(sandbox):
+    repo, destination, _ = migrated(sandbox)
+    leaf = destination / "z-adopted"
+    leaf.write_bytes(b"private original\n")
+    leaf.chmod(0o600)
+    source = repo / "tree/z-adopted"
+    source.write_bytes(b"managed replacement\n")
+    run(repo, "apply", "--take-over")
+    previous = manifest(sandbox)
+    entry = next(entry for entry in previous["modules"]["personal"]["entries"]
+                 if entry["key"] == str(leaf))
+    assert entry["prior"]["kind"] == "file"
+    for source in (repo / "tree/data", source):
+        source.unlink()
+        source.mkdir()
+        (source / "child").write_bytes(b"new child\n")
+
+    # Keep both inodes alive: rejecting the later prior-carrying leaf must not
+    # mutate even an earlier, otherwise removable blocker.
+    ordinary = destination / "data"
+    with leaf.open("rb") as held, ordinary.open("rb") as ordinary_held:
+        identities = {path: (path.stat().st_ino, path.stat().st_mode, path.read_bytes())
+                      for path in (ordinary, leaf)}
+        for command in ("plan", "apply"):
+            refused = grip(command, cwd=repo)
+            assert refused.returncode != 0
+            assert {path: (path.stat().st_ino, path.stat().st_mode, path.read_bytes())
+                    for path in (ordinary, leaf)} == identities
+            assert manifest(sandbox) == previous
+        assert held.read() == b"managed replacement\n"
+        assert ordinary_held.read() == b"new tree data\n"

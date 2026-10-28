@@ -42,6 +42,98 @@ fn tree(
     Ok(prepared)
 }
 
+#[cfg(unix)]
+#[test]
+fn evaluated_file_aliases_use_captured_bytes_and_mode_for_identity_and_templates() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::sync::Arc;
+    use store::source_bundle::{SourceBundle, SourceCapturePolicy};
+    use store::trust::evaluation::EvaluationId;
+
+    for absolute in [false, true] {
+        let temporary = tempfile::tempdir().unwrap();
+        let repo = temporary.path().join("repo");
+        let frontend = temporary.path().join("frontend");
+        let home = temporary.path().join("home");
+        for directory in [&repo, &frontend, &home] {
+            std::fs::create_dir(directory).unwrap();
+        }
+        std::fs::write(repo.join("gripsack.ts"), "// captured workspace\n").unwrap();
+        std::fs::write(frontend.join("driver.ts"), "// captured frontend\n").unwrap();
+        let target = repo.join("target");
+        std::fs::write(&target, "value={{ value }}\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let alias = repo.join("alias");
+        symlink(
+            if absolute {
+                target.as_path()
+            } else {
+                Path::new("target")
+            },
+            &alias,
+        )
+        .unwrap();
+        let sources = SourceBundle::capture(
+            &repo,
+            &frontend,
+            None,
+            &home,
+            SourceCapturePolicy::default(),
+        )
+        .unwrap();
+        let repository = crate::Repository::evaluated(
+            Arc::new(sources),
+            EvaluationId::parse(&"a".repeat(64)).unwrap(),
+        );
+        let mut direct = Capture::new(&repo, Default::default()).unwrap();
+        assert!(direct.file("alias").is_err());
+
+        // Approval freezes both alias selection and the selected target.
+        std::fs::remove_file(&alias).unwrap();
+        std::fs::write(repo.join("replacement"), "live replacement\n").unwrap();
+        symlink("replacement", &alias).unwrap();
+        std::fs::write(&target, "live changed target\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let mut capture = Capture::from_repository(&repository, Default::default()).unwrap();
+        let source = capture.file("alias").unwrap();
+        assert_eq!(std::fs::read(&source.path).unwrap(), b"value={{ value }}\n");
+        assert!(source.executable);
+        let output = stage(&capture, "render");
+        let span = span();
+        let destination = WorkspaceDestination::TrackedCopy {
+            path: "~/.script".into(),
+        };
+        let variables = BTreeMap::from([("value".into(), "approved".into())]);
+        let file = File {
+            span: &span,
+            source: Some(Source::RepoFile {
+                path: "alias".into(),
+            }),
+            content: Content::Identity,
+            destination: &destination,
+            checks: &[],
+        };
+        let identity = prepare_file(&mut capture, &file, &output).unwrap();
+        assert_eq!(
+            std::fs::read(output.join(&identity.entry.from)).unwrap(),
+            b"value={{ value }}\n"
+        );
+        let template = File {
+            content: Content::TemplateFile {
+                variables: &variables,
+                result_digest: None,
+            },
+            ..file
+        };
+        let rendered = prepare_file(&mut capture, &template, &output).unwrap();
+        assert_eq!(
+            std::fs::read(output.join(&rendered.entry.from)).unwrap(),
+            b"value=approved\n"
+        );
+    }
+}
+
 #[test]
 fn template_file_reads_captured_body_and_binds_source_variables_and_digest() {
     let repo = tempfile::tempdir().unwrap();

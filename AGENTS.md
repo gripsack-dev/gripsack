@@ -3,7 +3,7 @@
 Your whole environment in one bag: packages from any source plus dotfiles,
 described once in typed TypeScript, deployed by a Rust core into a
 hash-addressed store with generations and rollback. The frontend
-evaluates modules to IR (JSON) inside a sandboxed, provisioned Deno —
+evaluates a workspace to IR (JSON) inside a sandboxed, provisioned Deno —
 facts are core-injected, effects are explicit probes — and the core
 only ever consumes IR (`plan/0001`, `plan/0013`). Sourcing splits into
 core-side resolution and exec-time transports, with `gripfetch-*`
@@ -51,7 +51,7 @@ archived.
 | Path | Contents |
 |---|---|
 | `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the landed/deferred/rejected ledger — update it in the same PR |
-| `schema/ir/v8.json` | Current emitted workspace or legacy-modules contract. Strict v7/v6 retain their executing semantics, v5 native file profiles remain executable, v4 workspaces stay read-only, and v3 module maps remain readable; old versions never acquire v8 declaration authority |
+| `schema/ir/v9.json` | The sole current workspace contract. Authoring compatibility readers are removed; retained generation, ownership and recovery formats remain separate storage contracts |
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
 | `crates/gripsack-store` | store paths, generations, GC |
 | `crates/gripsack-exec` | Native workflows, consumers and whole-subgraph production coordination |
@@ -60,7 +60,7 @@ archived.
 | `crates/gripsack-conda` | Coherent Conda lock/protocol admission and helper client |
 | `tools/conda-helper` | Separately locked, pinned Rattler/Pixi installer and release packaging |
 | `crates/gripsack` | the `grip` CLI |
-| `typescript/` | the typed module DSL (npm `@gripsack/core`); also embedded in the binary |
+| `typescript/` | The typed workspace SDK (`@gripsack/core`); also embedded in the binary |
 | `e2e/` | pytest flow tests against the real binary + golden IR corpus |
 | `demos/` | VHS tapes |
 | `specs/` | the TLA+ transaction spec + TLC cfgs (plan/0028) |
@@ -69,6 +69,9 @@ archived.
 | `crates/gripsack-trace` | run tracing: JSONL logs with causal spans |
 
 ## Contracts to read before changing behavior
+
+- `plan/0055-workspace-only-product.md` — current workspace-only API and
+  clean alpha cutover; supersedes historical module and old-reader contracts.
 
 - `plan/0001-architecture.md` — modules, store, generations, ownership
   modes, activation, invariants (§9 holds or nothing does).
@@ -90,8 +93,7 @@ archived.
 - **Provenance is mandatory** — every semantic IR declaration carries
   its emitting source location (`span: {file, line, col?}` on the
   current wire); nested field values inherit their declaring node's
-  location. Legacy v3 optional spans remain readable, never a reason
-  to omit v4/v5/v6/v7/v8 provenance.
+  location. Provenance is required throughout the workspace contract.
 - The core never evaluates code and never sees credentials. The
   frontend runs sandboxed (no env vars, no network, no subprocesses);
   host facts arrive via the inputs envelope, effects as probes. The
@@ -114,13 +116,12 @@ the baseline, not permission to bypass plan 0048's stronger gates.
 
 ## Workflow
 
-- Exact-source practical local qualification is the0.48 release acceptance
-  authority (`LOCAL-PRACTICAL-QUALIFICATION-2026-10-27`, plan0054). The owner
-  explicitly selected all17 runtime/security/consumer/reproducibility/packaging
-  gates and all96 persistence partitions. TLC, TLAPS and Verus remain separate
-  research and are not claimed qualified (`REL-FORMAL-048-2026-10-27`).
-  This does not close original formal handover obligations. Fuzz/corpus replay
-  remains excluded.
+- Exact-source practical local qualification is the release acceptance
+  authority (`LOCAL-PRACTICAL-QUALIFICATION-2026-10-27`, plans0054/0055).
+  The 0.50 owner decision keeps all 17 runtime/security/consumer/reproducibility/
+  packaging gates and all 96 persistence partitions. Formal tools remain a
+  separate programme, not a fabricated passing release result
+  (`REL-PRACTICAL-050-2026-10-27`). Fuzz/corpus replay remains excluded.
 - `ci`, `examples`, `repro` and `demo` are explicit manual diagnostics or
   maintenance only, not automatic acceptance. Do not dispatch them for release
   qualification. Pin-update proposals never dispatch hosted builds.
@@ -128,7 +129,7 @@ the baseline, not permission to bypass plan 0048's stronger gates.
   retired hosted `test` context. Status descriptions and evidence must identify
   their actual source and check scope; a status alone is not release authority.
 - Releases use immutable `core-vX.Y.Z` and coordinated locally prepared
-  core/SDK/helper assets. The owner chose unsigned, Actions-free0.48 publication
+  core/SDK/helper assets. The owner chose unsigned, Actions-free publication
   after practical local qualification; no signer or registry publication is
   required. Existing verified installer/updater checks are not bypassed.
 - The website has no signature requirement. Build static pages locally from a

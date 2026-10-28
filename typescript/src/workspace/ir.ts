@@ -1,13 +1,13 @@
-/** v8 workspace wire types; the core retains strict historical readers. */
+/** The current workspace wire types; the core admits exactly this contract. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
 import type { Fetch } from "../fetch.ts";
-import type { Span } from "../module.ts";
+import type { Span } from "../span.ts"
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v8.json $defs)
+// shared wire fragments (schema/ir/v9.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -92,9 +92,7 @@ export interface CondaSystemRequirements {
 // Current acquisition sources (schema/ir/v8.json; retained in-memory V6 family)
 // ---------------------------------------------------------------------------
 
-/** Existing archive/git/github/file/plugin acquisition, wrapped with its
- *  provenance span. The legacy brew/pixi fetch kinds are rejected in v6 —
- *  superseded by conda_environment/pixi_lock sources. */
+/** Archive/git/github/file/plugin acquisition with declaration provenance. */
 export interface FetchSource { kind: "fetch"; fetch: Fetch; span: Span }
 /** A coherent binary Conda environment solved through Rattler. `platforms`
  *  omitted means resolved per requesting consumer platform. */
@@ -368,7 +366,7 @@ export interface WorkspaceValue {
 export interface RecipeSpec {
   /** A `Fetch` (wrapped as `{"kind":"fetch",…}`), a plain
    *  {@link CondaEnvironmentSpec}/{@link PixiLockSpec}, or a pre-built
-   *  `condaEnvironment(...)`/`pixiFromLock(...)` source value. */
+   *  `conda.environment(...)`/`pixi.fromLock(...)` source value. */
   source: Fetch | CondaEnvironmentSpec | PixiLockSpec | AcquisitionSource;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
@@ -380,7 +378,7 @@ export interface RecipeSpec {
 }
 
 /** Authoring spec for a Conda environment source — see
- *  `condaEnvironment(...)`. Channels are names/URLs in priority order;
+ *  `conda.environment(...)`. Channels are names/URLs in priority order;
  *  packages map a lowercase name to a version MatchSpec (`"*"` allowed). */
 export interface CondaEnvironmentSpec {
   channels: string[];
@@ -390,7 +388,7 @@ export interface CondaEnvironmentSpec {
 }
 
 /** Authoring spec for an explicit Pixi lock import — see
- *  `pixiFromLock(...)`. `manifest`/`lock` are workspace input names. */
+ *  `pixi.fromLock(...)`. `manifest`/`lock` are workspace input names. */
 export interface PixiLockSpec {
   manifest: string;
   lock: string;

@@ -13,7 +13,7 @@ import tempfile
 import release_consumer as consumer
 import release_manifest as schema
 import release_publish as publish
-from local_artifact_consumers import EXTERNAL
+from local_artifact_consumers import external_repositories
 
 FORMAT = "gripsack.release-completion.v2"
 SURFACE_FORMAT = "gripsack.release-observation.v1"
@@ -198,11 +198,11 @@ def approval(commands, prefix, executable, repo):
                     value["bundle_digest"], "--policy", value["policy_digest"]])
 
 
-def check_output(output, legacy=False):
+def check_output(output):
     value = schema.decode_json(output.encode())
     require(value.get("ok") is True and value.get("host", {}).get("arch") == "x86_64"
             and value.get("host", {}).get("os") == "linux"
-            and bool(value.get("modules" if legacy else "outputs")), "consumer did not evaluate real source outputs")
+            and bool(value.get("outputs")), "consumer did not evaluate real workspace outputs")
 
 
 class ReplayRegistry(publish.Registry):
@@ -408,8 +408,8 @@ def verify_completion(path, expected_digest, record, run):
     sdk_steps = steps(root, sdk, {"npm_install", "sdk_inspect", "sdk_approve", "sdk_check"})
     argv(sdk_steps["npm_install"][0], ["npm", "install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund",
                                       "--package-lock=false", "--save-exact", str(tarball)])
-    argv(sdk_steps["sdk_check"][0], [str(installed), "check", "--host", "laptop", "--json"])
-    check_output(sdk_steps["sdk_check"][1], legacy=True)
+    argv(sdk_steps["sdk_check"][0], [str(installed), "check", "--json"])
+    check_output(sdk_steps["sdk_check"][1])
     approval(sdk_steps, "sdk", installed, root / "sdk-consumer")
     package_root = root / schema.safe_path(sdk["data"]["package_root"])
     with tempfile.TemporaryDirectory(prefix="gripsack-evidence-sdk-") as temporary:
@@ -421,8 +421,8 @@ def verify_completion(path, expected_digest, record, run):
         file = resolve(root, ref)
         require(file == package_root / schema.safe_path(relative) and schema.digest(file) == expected[relative],
                 "installed SDK bytes differ from packed package")
-    _, external = source_proof(root, sdk["data"]["source_proof"], EXTERNAL["example"][1], None)
-    require(schema.digest(resolve(root, sdk["data"]["recipe"])) == schema.digest(external["hosts/laptop.ts"]),
+    _, external = source_proof(root, sdk["data"]["source_proof"], external_repositories()["example"][1], None)
+    require(schema.digest(resolve(root, sdk["data"]["recipe"])) == schema.digest(external["gripsack.ts"]),
             "SDK recipe is not qualified frozen representative consumer")
     # npm may update package.json; every executable source and frozen lock is
     # still compared with the qualified external revision, not an ad-hoc echo.

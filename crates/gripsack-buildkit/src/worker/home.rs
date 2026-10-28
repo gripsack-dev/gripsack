@@ -100,6 +100,11 @@ impl InstanceRecord {
         if self.image.is_empty() {
             return Err(WorkerError::Corrupt("worker image binding is empty"));
         }
+        // Retired provider records are evidence, not a missing Docker instance.
+        // Keep them intact rather than replacing or cleaning up their resources.
+        if self.image.starts_with("lima-") {
+            return Err(WorkerError::Foreign(self.image.clone()));
+        }
         match (self.cpus, self.memory) {
             (Some(_), Some(memory)) if memory >= MINIMUM_MEMORY_BYTES => {}
             (None, None) => {}
@@ -146,6 +151,15 @@ impl WorkerHome {
         let root = home.join("buildkit").join(profile.as_str());
         let parent = private_child(&home_dir, Path::new("buildkit"))?;
         let dir = private_child(&parent, Path::new(profile.as_str()))?;
+        // Refuse retired provider state even if its manager record is absent.
+        // These paths are inspected without following aliases and never removed.
+        for name in ["lima-instance.json", "lima-previous.json", "lima-assets"] {
+            match dir.symlink_metadata(name) {
+                Ok(_) => return Err(WorkerError::Foreign(name.to_owned())),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
         let identity = WorkerHomeId::of(root.as_os_str().as_encoded_bytes());
         let resource_name = format!("gripsack-worker-{identity}");
         // A short private runtime namespace keeps long/spaced homes below the
@@ -153,13 +167,6 @@ impl WorkerHome {
         // ~100 bytes against the 108-byte sun_path limit). Its durable owner
         // marker binds the namespace to this record's owner incarnation.
         let runtime_identity = identity.to_string();
-        // Lima's own control sockets also fit Darwin's 104-byte sockaddr limit.
-        // The full home identity and random incarnation remain in durable records.
-        let runtime_identity = if cfg!(target_os = "macos") {
-            &runtime_identity[..32]
-        } else {
-            &runtime_identity
-        };
         let run = Path::new("/tmp")
             .canonicalize()?
             .join(format!("gripsack-bk-{runtime_identity}"));
@@ -453,7 +460,6 @@ impl WorkerHome {
     pub(super) fn socket(&self) -> PathBuf {
         self.run_dir().join(SOCKET_NAME)
     }
-    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     pub(super) fn cache_volume(&self) -> String {
         format!("{}-cache", self.resource_name)
     }
@@ -558,6 +564,44 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.home.run);
             let _ = std::fs::remove_dir_all(self.staging_path());
+        }
+    }
+
+    #[test]
+    fn retired_provider_records_are_refused_without_rewriting() {
+        let mut fixture = Fixture::new();
+        fixture.record.image = "lima-vz-aarch64:retained-image".to_owned();
+        let bytes = serde_json::to_vec(&fixture.record).unwrap();
+        for name in [RECORD, PREVIOUS_RECORD] {
+            gripsack_fs::atomic_write(&fixture.home.dir, Path::new(name), &bytes).unwrap();
+            assert!(matches!(
+                fixture.home.load_record(name),
+                Err(WorkerError::Foreign(_))
+            ));
+            assert_eq!(std::fs::read(fixture.home.root.join(name)).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn retired_provider_artifacts_are_retained_without_adoption() {
+        for name in ["lima-instance.json", "lima-previous.json", "lima-assets"] {
+            let fixture = Fixture::new();
+            let path = fixture.home.root.join(name);
+            // Even a dangling alias is foreign evidence, not an absent input.
+            std::os::unix::fs::symlink("absent-retired-state", &path).unwrap();
+            assert!(matches!(
+                WorkerHome::open(
+                    &fixture._root.path().join("home"),
+                    WorkerProfile::parse("default").unwrap()
+                ),
+                Err(WorkerError::Foreign(_))
+            ));
+            assert_eq!(
+                std::fs::read_link(path).unwrap(),
+                Path::new("absent-retired-state")
+            );
+            assert!(!fixture.home.root.join("docker-config").join(name).exists());
+            assert!(!fixture.home.root.join(RECORD).exists());
         }
     }
 

@@ -8,7 +8,7 @@ use std::{
 
 /// Configuration, lock authority and entrypoints no exclusion may omit, in
 /// any ASCII spelling a case-insensitive capture filesystem could hide.
-const REQUIRED_ROOTS: [&str; 5] = ["env.toml", "gripsack.ts", "hosts", "gripsack.lock", "locks"];
+const REQUIRED_ROOTS: [&str; 4] = ["env.toml", "gripsack.ts", "gripsack.lock", "locks"];
 
 /// Validated repository-relative exclusions: sorted non-overlapping literal
 /// subtrees plus explicit bounded glob patterns, every spelling recorded
@@ -133,7 +133,7 @@ fn components_descend(pattern: &[String], path: &[&str]) -> bool {
 /// pattern with any number of leading `**` components dropped — literally
 /// names one, ignoring ASCII case. Wildcard heads are admitted here and
 /// refused per walked path instead, so `**/__pycache__` stays usable while
-/// `hosts/**` and `**/env.toml` never parse.
+/// `locks/**` and `**/env.toml` never parse.
 fn names_required_root(components: &[&str]) -> bool {
     let mut start = 0;
     loop {

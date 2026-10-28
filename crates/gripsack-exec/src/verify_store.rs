@@ -1,15 +1,14 @@
-//! `grip store verify [--repair]` (0008 §3, corrected by 0014 §1a):
-//! re-hash every store path and report corruption. Per-entry manifest
-//! hashes cover every module kind; content-addressed modules also
-//! carry `tree256` in the manifest, so whole-tree verification needs
-//! no lockfile lookup (and never depends on the ambient hostname).
+//! `grip store-verify [--repair]`: audit retained deployment and native payload
+//! identities without evaluating a workspace or consulting a host lockfile.
+//! Historical deployment receipts retain their original hash domains.
 
 use crate::ctx::ExecError;
 use crate::report::ReportKind;
+use crate::workspace::integrity::{self, Finding, RootAuthority};
+use std::{collections::BTreeMap, path::PathBuf};
 
-/// Every store path, re-hashed against the lockfile's recorded pins.
-/// Corrupt paths are reported; with `repair` they're removed (the next
-/// apply re-fetches — publish_dir's refusal becomes a republish).
+/// Audit generation-carried hashes and native artifact receipts. Repair removes
+/// corrupt objects for reconstruction on the next ordinary apply/build.
 /// Requires a [`LifecycleSession`] (0045 F4): repair deletes store
 /// paths, so it runs under the same serialization as apply/gc —
 /// expressed in the signature, not left to the caller.
@@ -20,6 +19,11 @@ pub fn verify_store(
     let mut out = Vec::new();
     let home = session.home();
     let current = gripsack_store::current_generation(home)?;
+    let mut native_roots: BTreeMap<PathBuf, RootAuthority> =
+        crate::workspace::roots::inventory(&gripsack_fs::open(home)?, home)?
+            .into_iter()
+            .map(|root| (PathBuf::from(root), RootAuthority::Workspace))
+            .collect();
     // enumeration errors are real (0027 §2) — verify must not read
     // "cannot list generations" as "nothing to verify"
     for n in gripsack_store::list_generations(home)? {
@@ -36,7 +40,12 @@ pub fn verify_store(
                 continue;
             }
         };
-        for (name, state) in &manifest.modules {
+        for (name, state) in &manifest.deployments {
+            for root in &state.build_closure {
+                if !native_roots.contains_key(root) {
+                    native_roots.insert(root.clone(), RootAuthority::Unclassified);
+                }
+            }
             let path = &state.store_path;
             if !path.exists() {
                 out.push((
@@ -46,9 +55,7 @@ pub fn verify_store(
                 ));
                 continue;
             }
-            // per-entry first: the manifest records every payload file's
-            // hash at deploy — tampering with any file shows here, for
-            // every module kind (config-only modules have no lock pin).
+            // Per-entry hashes retain each deployment's recorded hash domain.
             // The recorded hash is what DEPLOY produced: merge entries
             // record the trimmed block's bytes hash, templates the
             // rendered output's — recomputing the same value keeps the
@@ -62,7 +69,7 @@ pub fn verify_store(
                     && let Some(expected) = entry.file_mode
                     && matches!(
                         entry.ownership.policy(),
-                        gripsack_ir::Ownership::Template | gripsack_ir::Ownership::Merge
+                        gripsack_store::Ownership::Template | gripsack_store::Ownership::Merge
                     )
                     && let Ok(Some(crate::deploy::Observation::File { mode, .. })) =
                         crate::deploy::observe_readonly(&entry.key())
@@ -100,7 +107,7 @@ pub fn verify_store(
                 };
                 let source_exec_changed = matches!(
                     entry.ownership.policy(),
-                    gripsack_ir::Ownership::TrackedCopy | gripsack_ir::Ownership::Template
+                    gripsack_store::Ownership::TrackedCopy | gripsack_store::Ownership::Template
                 ) && entry
                     .source_executable
                     .is_some_and(|expected| expected != source_exec);
@@ -109,7 +116,7 @@ pub fn verify_store(
                 // include permissions. Historical receipts retain their domain.
                 // owned links record the payload's store identity
                 let actual = match entry.ownership.policy() {
-                    gripsack_ir::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
+                    gripsack_store::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
                         let text = String::from_utf8_lossy(&b);
                         let legacy = gripsack_store::canonical_bytes_hash(
                             text.trim_end_matches('\n').as_bytes(),
@@ -120,7 +127,7 @@ pub fn verify_store(
                             crate::managed_blocks::content_hash(&text).to_string()
                         }
                     }),
-                    gripsack_ir::Ownership::Template => std::fs::read(&src)
+                    gripsack_store::Ownership::Template => std::fs::read(&src)
                         .ok()
                         .and_then(|b| {
                             crate::template::render_template(
@@ -144,19 +151,21 @@ pub fn verify_store(
                                     .to_string()
                             }
                         }),
-                    gripsack_ir::Ownership::Owned => gripsack_store::canonical_file_hash(&src)
+                    gripsack_store::Ownership::Owned => gripsack_store::canonical_file_hash(&src)
                         .ok()
                         .map(|h| h.to_string()),
-                    gripsack_ir::Ownership::TrackedCopy => std::fs::read(&src).ok().map(|bytes| {
-                        // Pre-0041 copy receipts hashed the nominal source mode,
-                        // even for private takeovers. The new source field marks
-                        // receipts whose hash includes the actual landed mode.
-                        let mode = entry
-                            .source_executable
-                            .and(entry.file_mode)
-                            .unwrap_or(if source_exec { 0o755 } else { 0o644 });
-                        gripsack_store::canonical_bytes_identity(&bytes, mode).to_string()
-                    }),
+                    gripsack_store::Ownership::TrackedCopy => {
+                        std::fs::read(&src).ok().map(|bytes| {
+                            // Pre-0041 copy receipts hashed the nominal source mode,
+                            // even for private takeovers. The new source field marks
+                            // receipts whose hash includes the actual landed mode.
+                            let mode = entry
+                                .source_executable
+                                .and(entry.file_mode)
+                                .unwrap_or(if source_exec { 0o755 } else { 0o644 });
+                            gripsack_store::canonical_bytes_identity(&bytes, mode).to_string()
+                        })
+                    }
                 };
                 if let Some(h) = &actual
                     && (source_exec_changed || h.as_str() != entry.hash.as_str())
@@ -179,9 +188,7 @@ pub fn verify_store(
             if handled {
                 continue; // removed (or reported) — nothing more to hash
             }
-            // whole-tree: content-addressed modules (0014) record their
-            // tree256 in the manifest — the expectation travels with
-            // the generation, not with any host's lockfile
+            // Whole-tree expectations travel with the generation.
             if let Some(expected) = &state.tree256 {
                 let actual = gripsack_store::canonical_tree_hash(path)?;
                 if actual.as_str() != expected.as_str() {
@@ -192,13 +199,46 @@ pub fn verify_store(
                         path,
                         name,
                         &format!(
-                            "corrupt: {} hashes {} but the manifest records {} — `grip store verify --repair` removes it",
+                            "corrupt: {} hashes {} but the manifest records {} — `grip store-verify --repair` removes it",
                             path.display(),
                             hex_head(actual.as_str()),
                             hex_head(expected)
                         ),
                     )?;
                 }
+            }
+        }
+    }
+    let findings = integrity::inspect(home, &native_roots)?;
+    let native_repair = repair
+        && !findings
+            .iter()
+            .any(|finding| matches!(finding, Finding::Unverifiable { .. }));
+    if repair && !native_repair {
+        out.push((
+            "workspace".into(),
+            ReportKind::Warned,
+            "native repair refused: retained receipt or payload evidence is incomplete".into(),
+        ));
+    }
+    for finding in findings {
+        match finding {
+            Finding::Corrupt { root, detail } => {
+                return_corrupt(
+                    &mut out,
+                    native_repair,
+                    home,
+                    &root,
+                    "workspace",
+                    &format!("corrupt: {}: {detail}", root.display()),
+                )?;
+            }
+            Finding::Unverifiable { root, detail } => {
+                out.push((
+                    "workspace".into(),
+                    ReportKind::Warned,
+                    format!("cannot verify {}: {detail}", root.display()),
+                ));
             }
         }
     }
@@ -218,13 +258,7 @@ fn return_corrupt(
     summary: &str,
 ) -> Result<(), ExecError> {
     if repair {
-        let contained = home
-            .join(gripsack_store::STORE_DIR)
-            .canonicalize()
-            .ok()
-            .and_then(|root| path.canonicalize().ok().map(|p| p.starts_with(&root)))
-            .unwrap_or(false);
-        if !contained {
+        if gripsack_store::paths::validate_store_root(home, path).is_err() {
             out.push((
                 name.to_string(),
                 ReportKind::Warned,
@@ -236,7 +270,22 @@ fn return_corrupt(
             ));
             return Ok(());
         }
-        std::fs::remove_dir_all(path)?;
+        let home = gripsack_fs::open(home)?;
+        let store =
+            gripsack_fs::open_dir_nofollow(&home, std::path::Path::new(gripsack_store::STORE_DIR))?;
+        let object = std::path::Path::new(path.file_name().expect("admitted direct store child"));
+        if !store.symlink_metadata(object)?.is_dir() {
+            out.push((
+                name.to_owned(),
+                ReportKind::Warned,
+                format!(
+                    "refusing to repair {}: store object is not a real directory",
+                    path.display()
+                ),
+            ));
+            return Ok(());
+        }
+        store.remove_dir_all(object)?;
         out.push((
             name.to_string(),
             ReportKind::Configured,

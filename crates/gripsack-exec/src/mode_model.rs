@@ -7,8 +7,9 @@ use crate::ops::{
     DestView, ModeInput, Op, OpKind, WritePermissions, execute_op, plan_entry_op, plan_remove_op,
     plan_restore_op,
 };
-use gripsack_ir::{Entry, HostName, Ownership};
+use gripsack_ir::HostName;
 use gripsack_store as store;
+use gripsack_store::{DeploymentEntry, Ownership};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -23,15 +24,13 @@ fn context(home: &Path) -> Ctx {
         on_progress: None,
         take_over: false,
         take_over_entries: None,
-        migrate_from: None,
-        jobs: Some(1),
         home_dir: Default::default(),
         fetch: Default::default(),
     }
 }
 
-fn entry(home: &Path, mode: Ownership) -> Entry {
-    Entry {
+fn entry(home: &Path, mode: Ownership) -> DeploymentEntry {
+    DeploymentEntry {
         from: "payload".into(),
         to: home.join("dest").display().to_string(),
         mode,
@@ -51,7 +50,7 @@ fn chmod(dest: &Path, mode: u32) {
 
 fn plan(
     ctx: &Ctx,
-    entry: &Entry,
+    entry: &DeploymentEntry,
     prev: Option<&store::DeployedEntry>,
     content: &[u8],
     policy: WritePermissions,
@@ -73,7 +72,7 @@ fn plan(
     };
     plan_entry_op(
         &DestView {
-            module: "m",
+            output: "m",
             entry,
             dest: dest.into(),
             home: &ctx.home,
@@ -330,7 +329,7 @@ fn links_carry_the_payload_mode_without_normalizing_it() {
         chmod(&source, mode);
         let op = plan_entry_op(
             &DestView {
-                module: "m",
+                output: "m",
                 entry: &entry,
                 dest: Path::new(&entry.to).into(),
                 home: &ctx.home,

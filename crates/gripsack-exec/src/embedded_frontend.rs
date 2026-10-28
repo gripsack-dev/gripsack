@@ -7,13 +7,11 @@
 #[rustfmt::skip]
 pub static FRONTEND_FILES: &[(&str, &str)] = &[
     ("src/advanced.ts", r#"/** Explicit compiler SDK. Ordinary authoring imports @gripsack/core instead. */
-export { emitIr, IR_VERSION, mergeTags } from "./graph.ts";
-export { emitWorkspaceIr } from "./workspace/emit.ts";
+export { emitWorkspaceIr, IR_VERSION } from "./workspace/emit.ts";
 export { parseInputs } from "./inputs.ts";
 export type { Inputs } from "./inputs.ts";
 export { createProbeBuilder } from "./probe.ts";
 export type { ProbeRequest } from "./probe.ts";
-export type { IrEntry, IrModule } from "./module.ts";
 export type {
   CheckNode,
   EnvironmentNode,
@@ -31,20 +29,19 @@ export type {
  *
  * Runs inside the core's sandbox (no env, no network, no subprocesses,
  * read-only within captured source roots + one immutable input file).
- * Imports the repo's host entrypoint, calls its `defineEnv` function
- * with the core-injected context, and prints the eval envelope on
+ * Imports the repository's gripsack.ts workspace with the core-injected
+ * context, and prints the eval envelope on
  * stdout: {"ir": …, "diagnostics": [], "probe_requests": […]}.
  * Error diagnostics exit 1: source-aware authoring failures cross as
  * structured envelope diagnostics (A1-06, diagnostic.ts); real defects
  * stay tracebacks — the core passes stderr through untouched (0005 §4).
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { asDiagnostic, authoringDiagnostic } from "./diagnostic.ts";
 import { core, coreUrl } from "./pin-selection.ts";
-import type { Env } from "./graph.ts";
 
 function die(msg: string): never {
   console.error(`gripsack: ${msg}`);
@@ -55,11 +52,11 @@ async function main(): Promise<void> {
   if (
     typeof core.parseInputs !== "function" ||
     typeof core.createProbeBuilder !== "function" ||
-    typeof core.emitIr !== "function"
+    typeof core.emitWorkspaceIr !== "function" || core.IR_VERSION !== 9
   ) {
     die(
-      `the pinned @gripsack/core at ${coreUrl} predates the defineEnv frontend ` +
-        `(0013) — update or remove the repo's node_modules/@gripsack/core pin`,
+      `the pinned @gripsack/core at ${coreUrl} must support the IR9 workspace frontend — ` +
+        `update or remove the repo's node_modules/@gripsack/core pin`,
     );
   }
 
@@ -73,18 +70,9 @@ async function main(): Promise<void> {
 
   const inputs = core.parseInputs(readFileSync(inputsPath, "utf8"), inputsPath);
 
-  // workspace entry (0052 A1): a root gripsack.ts wins when present —
-  // a project needs no fake hosts/<name>.ts to declare outputs; the
-  // core-injected facts (not a hostname selection) feed the eval.
-  // Otherwise the existing hosts/<host>.ts path runs unchanged.
+  // The root workspace is the sole evaluated authoring entrypoint.
   const workspaceFile = join(repo, "gripsack.ts");
   if (existsSync(workspaceFile)) {
-    if (typeof core.emitWorkspaceIr !== "function") {
-      die(
-        `the pinned @gripsack/core at ${coreUrl} predates the workspace frontend ` +
-          `(0052 A1) — update or remove the repo's node_modules/@gripsack/core pin`,
-      );
-    }
     // Source-aware authoring failures cross as envelope diagnostics the
     // core renders like its own (terminal and --json carry the same
     // facts). Outputs are constructed at module top level, so the
@@ -127,67 +115,7 @@ async function main(): Promise<void> {
     }
     return;
   }
-
-  // host entrypoint: selected by the core (hostname / [env]
-  // default_host / --host), named in the inputs envelope
-  const hostFile = join(repo, "hosts", `${inputs.host}.ts`);
-  // existence is checked up front — deno's failure messages differ
-  // across versions, so an import error must ALWAYS mean a real
-  // defect in the host file (broken import, syntax error) and pass
-  // through as a traceback, never masquerade as a missing host
-  if (!existsSync(hostFile)) {
-    // a hosts/ dir with no match must not silently yield an empty env
-    // — every when(tags=[…]) module would silently drop (same rule as
-    // the python frontend had, enterprise review)
-    let existing: string[] = [];
-    try {
-      existing = readdirSync(join(repo, "hosts")).filter((f) => f.endsWith(".ts"));
-    } catch {
-      // no hosts dir at all
-    }
-    const have = existing.map((f) => f.replace(/\.ts$/, "")).join(", ");
-    die(
-      existing.length > 0
-        ? `no hosts/${inputs.host}.ts (have: ${have}) — add the file or change the host selection`
-        : `no hosts/${inputs.host}.ts and no hosts/ directory in ${repo} — add hosts/${inputs.host}.ts`,
-    );
-  }
-  // plugin loading: the host file is runtime-selected by the repo —
-  // a static import cannot exist here
-  const hostMod = (await import(pathToFileURL(hostFile).href)) as { default?: unknown };
-
-  const envFn = hostMod.default;
-  if (typeof envFn !== "function") {
-    die(
-      `hosts/${inputs.host}.ts must default-export defineEnv((ctx) => ({ tags, modules })) ` +
-        "(0013 D5)",
-    );
-  }
-
-  const { probe, requests } = core.createProbeBuilder(inputs.probes);
-  const env = (envFn as (ctx: unknown) => unknown)({
-    facts: inputs.facts,
-    tags: inputs.tags,
-    probe,
-    settings: inputs.settings,
-  }) as Env;
-  if (
-    typeof env !== "object" || env === null || !Array.isArray(env.modules) ||
-    (env.tags !== undefined && !Array.isArray(env.tags))
-  ) {
-    die(
-      `hosts/${inputs.host}.ts must synchronously return { tags?, modules: [...] } ` +
-        `(got ${env instanceof Promise ? "a promise — return the env directly" : typeof env})`,
-    );
-  }
-
-  const tags = core.mergeTags(env.tags, inputs.tags);
-  const payload = {
-    ir: JSON.parse(core.emitIr(env, inputs.facts, tags)),
-    diagnostics: [],
-    probe_requests: requests,
-  };
-  process.stdout.write(JSON.stringify(payload) + "\n");
+  die(`no gripsack.ts in ${repo} — add a workspace entrypoint`);
 }
 
 main().catch((e: unknown) => {
@@ -199,7 +127,7 @@ main().catch((e: unknown) => {
 "#),
     ("src/conditions.ts", r#"/** Conditional logic over core-injected facts (0001 §5, 0013 D4).
  *  Pure functions: they take the fact view as an argument instead of
- *  reading a global — `when(cond, ctx)` inside a `defineEnv`
+ *  reading a global — `when(cond, ctx)` inside a `defineWorkspace`
  *  function, where ctx is handed in. */
 
 import type { HostFacts } from "./facts.ts";
@@ -221,9 +149,8 @@ export interface Condition {
   notTags?: string[];
 }
 
-/** Build a condition over host facts — evaluate directly:
- *  `when({ os: "linux" }, ctx) && module(...)`, or gate a whole entry
- *  on it. Falsy-drop in `defineEnv`'s modules array does the rest. */
+/** Evaluate a condition over injected facts. A false value can omit an
+ *  output from `workspace({ outputs: [when(cond, ctx) && profile] })`. */
 export function when(cond: Condition, view: FactView): boolean {
   const f = view.facts;
   if (cond.os !== undefined && f.os !== cond.os) return false;
@@ -239,38 +166,6 @@ export function hasTag(tag: string, view: FactView): boolean {
   return view.tags.includes(tag);
 }
 "#),
-    ("src/deps.ts", r#"/** Dependency purposes (0039): the DSL and IR v2 use the same `for` field. */
-import { callerSpan, type Span } from "./module.ts";
-
-export type Edge = "runtime" | "build";
-
-export interface DepOptions {
-  for?: Edge;
-}
-
-export interface Dependency {
-  module: string;
-  for: Edge;
-  span?: Span;
-}
-
-/** Build-only dependencies supply PATH and GRIP_DEP_* to build steps, not HOME. */
-export function dep(module: string, opts: DepOptions = {}): Dependency {
-  if (typeof opts !== "object" || opts === null || Array.isArray(opts)) {
-    throw new Error(`dep(${JSON.stringify(module)}): expected an options object { for: "build" | "runtime" }`);
-  }
-  for (const key of Object.keys(opts)) {
-    if (key !== "for") {
-      throw new Error(`dep(${JSON.stringify(module)}): unknown option ${JSON.stringify(key)} (known: for)`);
-    }
-  }
-  // The typed core validates values, including JS/cast inputs, with E122 and
-  // this source span. Do not turn an invalid purpose into a runtime edge.
-  const edge = opts.for === undefined ? "runtime" : opts.for;
-  const span = callerSpan();
-  return { module, for: edge, ...(span ? { span } : {}) };
-}
-"#),
     ("src/diagnostic.ts", r#"/** Structured source-aware diagnostics (A1-06) — the frontend half of
  *  the core's compiler-style Diagnostic (crates/gripsack-ir/src/
  *  diagnostic.rs). The eval envelope carries these to the core, which
@@ -280,7 +175,7 @@ export function dep(module: string, opts: DepOptions = {}): Dependency {
  * Codes are generated from schema/diagnostics.json for core and
  * frontend together, never allocated in this module. */
 
-import type { Span } from "./module.ts";
+import type { Span } from "./span.ts"
 import { diagnosticCodes, frontendDiagnosticCodeRegistry } from "./diagnostic_codes.ts";
 
 export { diagnosticCodes };
@@ -386,7 +281,7 @@ export function asDiagnostic(error: unknown): FrontendDiagnostic | undefined {
 /** Frames of the frontend package itself (embedded copy or a repo's
  *  pinned @gripsack/core, src or dist) are internal; the first frame
  *  outside them is the user's declaration site. Same frame rule as
- *  module.ts's callerSpan, applied to a caught error's stack. */
+ *  span.ts's callerSpan, applied to a caught error's stack. */
 function isPackageFrame(path: string, selfDir: string): boolean {
   return path.startsWith(selfDir) || path.includes("/node_modules/@gripsack/core/");
 }
@@ -445,40 +340,6 @@ export const frontendDiagnosticCodeRegistry = {
   E130: true,
 } as const satisfies Record<string, true>;
 "#),
-    ("src/entries.ts", r#"/** Deployment destinations with ownership modes (0001 §3.7).
- * Source keys accept `{version}` (raw locked tag), `{version.bare}` (one
- * leading lowercase v removed), and the core's platform placeholders. */
-
-export type Ownership = "owned" | "tracked_copy" | "merge" | "template";
-
-export interface Dest {
-  to: string;
-  mode: Ownership;
-  /** Template variables (mode "template" only) — `{{ name }}` in the
-      payload is substituted at deploy time. */
-  vars?: Record<string, string>;
-  /** Comment prefix for the managed block (mode "merge" only);
-      undefined infers it from the destination extension. */
-  marker?: string;
-}
-
-/** Store-owned, read-only; edits go through the module. */
-export const symlink = (to: string): Dest => ({ to, mode: "owned" });
-/** Copied from the store; drift detected on next apply. */
-export const trackedCopy = (to: string): Dest => ({ to, mode: "tracked_copy" });
-/** Managed block merged into a file other tools also write. */
-export const merge = (to: string, marker?: string): Dest => ({
-  to,
-  mode: "merge",
-  ...(marker !== undefined ? { marker } : {}),
-});
-/** Rendered at deploy time from `{{ name }}` placeholders. */
-export const template = (to: string, vars?: Record<string, string>): Dest => ({
-  to,
-  mode: "template",
-  ...(vars ? { vars } : {}),
-});
-"#),
     ("src/facts.ts", r#"/** Host facts — core-injected, pure data (0013 D4).
  *
  * The frontend never detects anything: one detector (the Rust core,
@@ -502,9 +363,7 @@ export type Fetch =
   | { kind: "tarball"; url: string; sha256?: string }
   | { kind: "git"; url: string; rev?: string }
   | { kind: "file"; path: string }
-  | { kind: "plugin"; name: string; args?: Record<string, unknown> }
-  | { kind: "brew"; formula: string; version?: string; sha256?: string }
-  | { kind: "pixi"; package: string; version?: string; sha256?: string };
+  | { kind: "plugin"; name: string; args?: Record<string, unknown> };
 
 /**
  * GitHub release fetcher. `{version.bare}` strips exactly one leading lowercase
@@ -550,15 +409,6 @@ export function pluginFetch(name: string, args?: Record<string, unknown>): Fetch
   return args === undefined
     ? { kind: "plugin", name }
     : { kind: "plugin", name, args };
-}
-
-/** A Homebrew bottle — resolved from the formula JSON, so the pin
- *  needs no download at update time. `version` is a tripwire: a
- * mismatch fails at resolve (`grip update` to move), never a range. */
-export function brew(formula: string, version?: string): Fetch {
-  return version === undefined
-    ? { kind: "brew", formula }
-    : { kind: "brew", formula, version };
 }
 
 "#),
@@ -609,155 +459,14 @@ export function rejectUnknownFields(
   }
 }
 "#),
-    ("src/graph.ts", r#"/** The environment contract (0013 D5): `Inputs → Environment` as a
- *  function. No global registry, no import-order magic — the host
- *  entrypoint RETURNS its modules, the driver turns that value into
- *  IR (JSON). */
-
-import type { HostFacts } from "./facts.ts";
-import type { FactView } from "./conditions.ts";
-import type { IrModule, ModuleValue } from "./module.ts";
-import type { ProbeBuilder } from "./probe.ts";
-import { declaredResources } from "./resources.ts";
-
-/** One current frontend version (0052 §1): workspace and legacy
- *  module entrypoints both emit v8. Strict historical documents keep
- *  their versioned core readers; only v8 is written by this frontend. */
-export const IR_VERSION = 8;
-
-/** The context a `defineEnv` function receives (0013 D5/D6): every
- *  host observation arrives here — facts and tags core-injected,
- *  probes symbolic, settings reserved. */
-export interface EnvContext extends FactView {
-  facts: HostFacts;
-  tags: string[];
-  probe: ProbeBuilder;
-  settings: Record<string, unknown>;
-}
-
-/** A host environment: the entrypoint's tags plus its module values.
- *  Falsy `modules` entries drop out — `ctx.facts.os === "linux" &&
- *  steam` is the conditional style. */
-export interface Env {
-  tags?: string[];
-  modules: ReadonlyArray<ModuleValue | false | null | undefined>;
-}
-
-export type EnvFn = (ctx: EnvContext) => Env;
-
-/**
- * Declare a host entrypoint:
- *
- * ```ts
- * // hosts/laptop.ts
- * import { defineEnv } from "@gripsack/core";
- * import { helix } from "../modules/helix.js";
- *
- * export default defineEnv((ctx) => ({
- *   tags: ["gui", "work"],
- *   modules: [
- *     helix,
- *     ctx.facts.os === "linux" && steam,
- *     ctx.probe.executable("nvidia-smi") && cuda,
- *   ],
- * }));
- * ```
- *
- * The function runs inside the sandboxed eval with the core-injected
- * context and must return the environment synchronously. Identity —
- * the marker the driver checks for; the API anchor is the function
- * itself.
- */
-export function defineEnv(fn: EnvFn): EnvFn {
-  return fn;
-}
-
-/** Entrypoint tags ∪ CLI tags, order-preserving, deduplicated. The
- *  result is what lands in `ir.host.tags` and what a re-run's
- *  `ctx.tags` will contain (the core feeds the union back). */
-export function mergeTags(envTags: string[] | undefined, cliTags: string[]): string[] {
-  return [...(envTags ?? []), ...cliTags].filter((t, i, all) => all.indexOf(t) === i);
-}
-
-/** Serialize a returned environment as the v8 legacy-modules IR
- *  envelope (`{ir_version: 8, host, modules[, resources]}` — never a
- *  `workspace` key; the schema admits exactly one of the two). This
- *  is the bounded compatibility path for `hosts/<name>.ts`
- *  entrypoints (0052 §2.1); new workspaces use `emitWorkspaceIr`.
- *  Duplicate module names throw with both declaration sites; stray
- *  objects throw with what they are. Key order is part of the
- *  contract (golden corpus): `ir_version, host, modules
- *  [, resources]`, host keys `os, arch, tags[, libc]` — hostname
- *  never crosses into the IR. */
-export function emitIr(env: Env, facts: HostFacts, tags: string[]): string {
-  const resources = declaredResources();
-  const modules: Record<string, IrModule> = {};
-  for (const m of env.modules ?? []) {
-    if (!m) continue;
-    if (typeof m !== "object" || m.__gripsack !== "module") {
-      throw new Error(
-        `env.modules entries must be module() values — got ${JSON.stringify(
-          Array.isArray(m) ? "an array" : typeof m,
-        )}`,
-      );
-    }
-    const prev = modules[m.name];
-    if (prev) {
-      const where = prev.span ? ` (first declared at ${prev.span.file}:${prev.span.line})` : "";
-      throw new Error(`duplicate module '${m.name}'${where}`);
-    }
-    modules[m.name] = m.ir;
-  }
-  const ir: Record<string, unknown> = {
-    ir_version: IR_VERSION,
-    host: {
-      os: facts.os,
-      arch: facts.arch,
-      tags,
-      ...(facts.libc !== null ? { libc: facts.libc } : {}),
-    },
-    modules,
-  };
-  if (resources.length > 0) ir.resources = resources;
-  return JSON.stringify(ir, null, 2);
-}
-"#),
-    ("src/index.ts", r#"/**
- * gripsack typescript frontend — typed module DSL, emits IR.
- *
- * A host is a function (0013 D5): `hosts/<name>.ts` default-exports
- * `defineEnv((ctx) => ({ tags?, modules }))`, evaluated inside a
- * sandboxed, provisioned Deno with every host observation injected
- * through the inputs envelope. The core never executes this code; it
- * only reads the IR.
- *
- * Spans (0004 §2): `module()` captures the caller's file:line:col from
- * the V8 stack so core errors point back at the user's source.
- */
-
-export { dep } from "./deps.ts";
-export type { Dependency, Edge } from "./deps.ts";
-export { merge, symlink, template, trackedCopy } from "./entries.ts";
-export type { Dest, Ownership } from "./entries.ts";
+    ("src/index.ts", r#"/** Workspace authoring API. Evaluated from the repository's gripsack.ts. */
 export type { HostFacts } from "./facts.ts";
-export { brew, fileFetch, git, githubRelease, pluginFetch, tarball } from "./fetch.ts";
+export { fileFetch, git, githubRelease, pluginFetch, tarball } from "./fetch.ts";
 export type { Fetch } from "./fetch.ts";
 export { hasTag, when } from "./conditions.ts";
 export type { Condition, FactView } from "./conditions.ts";
-export { defineEnv } from "./graph.ts";
-export type { Env, EnvContext, EnvFn } from "./graph.ts";
-export { tree } from "./tree.ts";
-export { module } from "./module.ts";
-export type { ModuleSpec, ModuleValue, Span } from "./module.ts";
-export { customHook, desktopEntry, fonts, service } from "./intents.ts";
-export type { Intent, Trigger } from "./intents.ts";
+export type { Span } from "./span.ts";
 export type { ProbeBuilder, ProbeKind } from "./probe.ts";
-export { resource } from "./resources.ts";
-export type { Resource } from "./resources.ts";
-export { buildStep, configStep, fetchStep, installStep, runStep, shellStep, step } from "./steps.ts";
-export type { Build, Phase, Step, StepAction, StepOpts } from "./steps.ts";
-export { verifyBinary, verifyDeployed, verifyFile, verifyShell } from "./verify.ts";
-export type { Verify } from "./verify.ts";
 export {
   artifact,
   artifactFile,
@@ -772,7 +481,6 @@ export {
   cargoPackage,
   check,
   conda,
-  condaEnvironment,
   daily,
   defineWorkspace,
   environment,
@@ -790,7 +498,6 @@ export {
   outputPath,
   pkg,
   pixi,
-  pixiFromLock,
   profile,
   provider,
   recipe,
@@ -887,11 +594,10 @@ import type { HostFacts } from "./facts.ts";
 
 /** The eval inputs, version 1. */
 export interface Inputs {
-  /** Host entrypoint name — selects `hosts/<host>.ts`. */
+  /** Admitted host identity for workspace settings and lock selection. */
   host: string;
   facts: HostFacts;
-  /** CLI `--tags` merged with whatever the core already knows; the
-   *  entrypoint's own tags are unioned in at emit (`mergeTags`). */
+  /** Tags injected by the core, available to ordinary workspace composition. */
   tags: string[];
   /** Bound probe results, keyed `"<kind>:<arg>"`; empty in stage 1. */
   probes: Record<string, boolean>;
@@ -971,217 +677,15 @@ export function parseInputs(text: string, source = "inputs"): Inputs {
   };
 }
 "#),
-    ("src/intents.ts", r#"/** Activation intents — declared, translated by adapters (0001 §3.8). */
-
-export type Trigger = "post_link" | "post_activate" | "on_remove";
-
-export type Intent =
-  | { kind: "service"; trigger: Trigger; name: string; user: boolean }
-  | { kind: "fonts"; trigger: Trigger }
-  | { kind: "desktop_entry"; trigger: Trigger }
-  | { kind: "custom_shell"; trigger: Trigger; script: string };
-
-export const service = (
-  name: string,
-  user = true,
-  trigger: Trigger = "post_activate",
-): Intent => ({ kind: "service", trigger, name, user });
-
-export const fonts = (trigger: Trigger = "post_link"): Intent => ({
-  kind: "fonts",
-  trigger,
-});
-
-export const desktopEntry = (trigger: Trigger = "post_link"): Intent => ({
-  kind: "desktop_entry",
-  trigger,
-});
-
-/** Escape hatch — flagged, shown by `plan`.
- *
- * Activation intents are durable (plan/0032): a crash around the flip
- * re-runs them on the next `apply`. Write hooks IDEMPOTENT — they may
- * run more than once across a crash, and they are never silently
- * skipped. */
-export const customHook = (script: string, trigger: Trigger = "post_activate"): Intent => ({
-  kind: "custom_shell",
-  trigger,
-  script,
-});
-"#),
-    ("src/module.ts", r#"/** Module declaration and span capture (0004 §2). `module()` is a
- * pure constructor (0013 D5): it builds and returns a
- * {@link ModuleValue}; nothing is registered anywhere. The host
- * entrypoint returns the values from `defineEnv`, and the driver
- * turns that environment into IR. */
-
-import type { Dependency } from "./deps.ts";
-import { rejectUnknownFields } from "./fields.ts";
-import type { Dest, Ownership } from "./entries.ts";
-import type { Fetch } from "./fetch.ts";
-import type { Intent } from "./intents.ts";
-import type { Build, Step } from "./steps.ts";
-import type { Verify } from "./verify.ts";
-
-export interface Span {
-  file: string;
-  line: number;
-  col?: number;
-}
-
-export interface ModuleSpec {
-  /** Optional for dotfiles-only modules (0006 §2 level 1). Mutually
-   *  exclusive with `steps` (0007 §1). */
-  fetch?: Fetch;
-  build?: Build;
-  install?: Record<string, Dest>;
-  config?: Record<string, Dest>;
-  depends?: Dependency[];
-  activate?: Intent[];
-  /** Explicit pipeline control (0007). */
-  steps?: Step[];
-  /** Module-level smoke contract, run pre-flip (0007 §verify). */
-  verify?: Verify;
-  /** Registered linter for this module's config payloads (0011) —
-      the core drives it (0012). */
-  lint?: string;
-  /** Environment contributions exported to the shell profile at
-      activation (0001 §3.10) — `{"VAR": "value", "PATH+": "{store}/bin"}`;
-      a trailing `+` prepends to a list var. */
-  env?: Record<string, string>;
-}
-
-export interface IrEntry {
-  from: string;
-  to: string;
-  mode: Ownership;
-  vars?: Record<string, string>;
-  marker?: string;
-}
-
-export interface IrEnvVar {
-  name: string;
-  op: "set" | "prepend";
-  value: string;
-}
-
-export interface IrModule {
-  fetch?: Fetch;
-  build?: Build;
-  install?: IrEntry[];
-  config?: IrEntry[];
-  depends?: Dependency[];
-  activate?: Intent[];
-  steps?: Step[];
-  verify?: Verify;
-  lint?: string;
-  env?: IrEnvVar[];
-  span?: Span;
-}
-
-/** A constructed module — the value `module()` returns and
- * `defineEnv` environments carry. The brand distinguishes real
- * module values from stray objects in `env.modules` (a plain field,
- * deliberately: a repo's own pinned `@gripsack/core` install and the
- * embedded copy must agree on it). */
-export interface ModuleValue {
-  /** @internal */
-  readonly __gripsack: "module";
-  name: string;
-  ir: IrModule;
-}
-/**
- * Declare a module from declarative fields (data style) and return
- * it — the host entrypoint puts the value into `defineEnv`'s
- * `modules` array; falsy entries (a condition that didn't hold)
- * simply drop out.
- *
- * For reuse, prefer a factory function over any framework — values
- * compose:
- *
- * @example
- * ```ts
- * function langServer(name: string, repo: string) {
- *   return module(name, {
- *     fetch: githubRelease({ repo, asset: `${name}-{version}.tar.gz` }),
- *     install: { [`bin/${name}`]: symlink(`~/.local/bin/${name}`) },
- *   });
- * }
- * ```
- */
-export function module(name: string, spec: ModuleSpec): ModuleValue {
-  // strict authoring boundary (0035 F3): the CLI runs this without a
-  // type-checker — a typo'd field must not silently lower to an empty
-  // desired state (a `confg:` became a prune). Runtime rejection is
-  // the backstop for JS callers, casts, and generated objects.
-  rejectUnknownFields(`module("${name}")`, spec, [
-    "fetch", "build", "install", "config", "depends", "activate",
-    "steps", "verify", "lint", "env",
-  ]);
-  const ir: IrModule = {};
-  if (spec.fetch) ir.fetch = spec.fetch;
-  if (spec.build) ir.build = spec.build;
-  const entries = (rec?: Record<string, Dest>): IrEntry[] | undefined =>
-    rec && Object.keys(rec).length > 0
-      ? Object.entries(rec).map(([from, d]) => ({
-          from,
-          to: d.to,
-          mode: d.mode,
-          ...(d.vars ? { vars: d.vars } : {}),
-          ...(d.marker !== undefined ? { marker: d.marker } : {}),
-        }))
-      : undefined;
-  const install = entries(spec.install);
-  if (install) ir.install = install;
-  const config = entries(spec.config);
-  if (config) ir.config = config;
-  if (spec.depends?.length) ir.depends = spec.depends;
-  if (spec.activate?.length) ir.activate = spec.activate;
-  if (spec.steps?.length) ir.steps = spec.steps;
-  if (spec.verify) ir.verify = spec.verify;
-  if (spec.lint !== undefined) ir.lint = spec.lint;
-  if (spec.env !== undefined) {
-    ir.env = Object.entries(spec.env).map(([name, value]) =>
-      name.endsWith("+")
-        ? { name: name.slice(0, -1), op: "prepend" as const, value }
-        : { name, op: "set" as const, value },
-    );
-  }
-  const span = callerSpan();
-  if (span) ir.span = span;
-  return { __gripsack: "module", name, ir };
-}
-
-/** @internal Capture the first stack frame outside the package (V8:
- *  file:line:col) — a helper wrapper in user code must never steal
- *  the span. Shared with the probe builder (0013 D6). */
-export function callerSpan(): Span | undefined {
-  const pkgDir = new URL(".", import.meta.url).pathname;
-  const stack = new Error().stack;
-  if (!stack) return undefined;
-  for (const line of stack.split("\n").slice(1)) {
-    const m = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
-    if (m && m[1] && !m[1].replace(/^file:\/\//, "").startsWith(pkgDir)) {
-      const file = m[1].replace(/^file:\/\//, "");
-      return { file, line: Number(m[2]), col: Number(m[3]) };
-    }
-  }
-  return undefined;
-}
-"#),
     ("src/pin-advanced.ts", r#"/** Explicit advanced import-map target, bound to the same pin as authoring. */
 import { compiler } from "./pin-selection.ts";
-export const emitIr = compiler.emitIr;
 export const emitWorkspaceIr = compiler.emitWorkspaceIr;
 export const IR_VERSION = compiler.IR_VERSION;
-export const mergeTags = compiler.mergeTags;
 export const parseInputs = compiler.parseInputs;
 export const createProbeBuilder = compiler.createProbeBuilder;
 export type {
   Inputs,
   ProbeRequest,
-  IrEntry,
-  IrModule,
   CheckNode,
   EnvironmentNode,
   HookNode,
@@ -1194,8 +698,8 @@ export type {
   WorkspaceOutputNode,
 } from "./advanced.ts";
 "#),
-    ("src/pin-selection.ts", r#"/** Driver-owned package selection. Both public and compiler APIs come from
- * the same approved package; a historical pin keeps its original root ABI. */
+    ("src/pin-selection.ts", r#"/** Driver-owned package selection. Public and compiler APIs must come from
+ * the same approved workspace SDK package. */
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1227,7 +731,10 @@ function selectEntries(): { authoring: string; compiler: string } {
   const pkg: PackageEntries = JSON.parse(readFileSync(manifest, "utf8"));
   const authoring = resolveEntry(directory, pkg.exports?.["."], [pkg.main, pkg.types, "index.js"]);
   const advanced = pkg.exports?.["./advanced"];
-  return { authoring, compiler: advanced === undefined ? authoring : resolveEntry(directory, advanced, []) };
+  if (advanced === undefined) {
+    throw new Error("pinned @gripsack/core must export ./advanced for the workspace compiler");
+  }
+  return { authoring, compiler: resolveEntry(directory, advanced, []) };
 }
 const entries = selectEntries();
 export const coreUrl = entries.authoring;
@@ -1243,12 +750,6 @@ export const core = { ...authoring, ...compiler };
  * package. Compiler entry points are separate, including for embedded eval. */
 import { authoring as api } from "./pin-selection.ts";
 
-export const dep = api.dep;
-export const merge = api.merge;
-export const symlink = api.symlink;
-export const template = api.template;
-export const trackedCopy = api.trackedCopy;
-export const brew = api.brew;
 export const fileFetch = api.fileFetch;
 export const git = api.git;
 export const githubRelease = api.githubRelease;
@@ -1257,25 +758,6 @@ export const pluginFetch = api.pluginFetch;
 export const tarball = api.tarball;
 export const hasTag = api.hasTag;
 export const when = api.when;
-export const defineEnv = api.defineEnv;
-export const tree = api.tree;
-export const module = api.module;
-export const customHook = api.customHook;
-export const desktopEntry = api.desktopEntry;
-export const fonts = api.fonts;
-export const service = api.service;
-export const resource = api.resource;
-export const buildStep = api.buildStep;
-export const configStep = api.configStep;
-export const fetchStep = api.fetchStep;
-export const installStep = api.installStep;
-export const runStep = api.runStep;
-export const shellStep = api.shellStep;
-export const step = api.step;
-export const verifyBinary = api.verifyBinary;
-export const verifyDeployed = api.verifyDeployed;
-export const verifyFile = api.verifyFile;
-export const verifyShell = api.verifyShell;
 export const artifact = api.artifact;
 export const artifactFile = api.artifactFile;
 export const artifactTree = api.artifactTree;
@@ -1289,7 +771,6 @@ export const bashBody = api.bashBody;
 export const cargoPackage = api.cargoPackage;
 export const check = api.check;
 export const conda = api.conda;
-export const condaEnvironment = api.condaEnvironment;
 export const daily = api.daily;
 export const defineWorkspace = api.defineWorkspace;
 export const environment = api.environment;
@@ -1306,7 +787,6 @@ export const packageCommand = api.packageCommand;
 export const sourcePath = api.sourcePath;
 export const outputPath = api.outputPath;
 export const pkg = api.pkg;
-export const pixiFromLock = api.pixiFromLock;
 export const profile = api.profile;
 export const provider = api.provider;
 export const recipe = api.recipe;
@@ -1335,12 +815,6 @@ export type {
   HostRuntimeSpec,
   HostRuntimeRequirements,
   Condition,
-  Dependency,
-  Dest,
-  Edge,
-  Env,
-  EnvContext,
-  EnvFn,
   EnvironmentSpec,
   ExecBuilder,
   ExecSpec,
@@ -1353,13 +827,8 @@ export type {
   ImageDestination,
   ImageOwner,
   ImageSpec,
-  Intent,
-  ModuleSpec,
-  ModuleValue,
-  Ownership,
   PackageLayout,
   PackageSpec,
-  Phase,
   PixiLockSource,
   PixiLockSpec,
   ProbeBuilder,
@@ -1367,13 +836,9 @@ export type {
   ProfileSpec,
   RecipeExecution,
   RecipeSpec,
-  Resource,
   RunBashSpec,
   ScheduleSpec,
   Span,
-  Step,
-  StepAction,
-  StepOpts,
   TaskSpec,
   TaskContext,
   WorkspaceAction,
@@ -1386,8 +851,6 @@ export type {
   ArchiveRootPolicy,
   ProfileLaunchers,
   RepoTreeSelection,
-  Trigger,
-  Verify,
   WorkspaceAbi,
   WorkspaceArg,
   WorkspaceArtifactRef,
@@ -1425,8 +888,8 @@ export type {
  *  Two-stage eval: stage 1 requests, the core evaluates the closed
  *  probe enum, stage 2 re-runs with `inputs.probes` populated. */
 
-import { callerSpan } from "./module.ts";
-import type { Span } from "./module.ts";
+import { callerSpan } from "./span.ts"
+import type { Span } from "./span.ts"
 
 export type ProbeKind = "executable" | "file_exists";
 
@@ -1438,13 +901,11 @@ export interface ProbeRequest {
   span?: Span;
 }
 
-/** What `defineEnv` receives via `ctx.probe`.
+/** What `defineWorkspace` receives via `ctx.probe`.
  *
- * Probe a STABLE reference, never the tool's own installed presence:
- * `!probe.executable("node") && nodeModule` oscillates — installing
- * the tool makes the next eval drop the module. Probe the specific
- * system path you must not overwrite instead
- * (`probe.file_exists("/opt/vendor/bin/node")`). */
+ * Probe a stable system reference, never a tool installed by this workspace:
+ * using its presence to select that same output would oscillate on each apply.
+ * Prefer an explicit vendor path such as `/opt/vendor/bin/node`. */
 export interface ProbeBuilder {
   /** Is `<name>` an executable on PATH? */
   executable(name: string): boolean;
@@ -1480,326 +941,26 @@ export function createProbeBuilder(
   };
 }
 "#),
-    ("src/resources.ts", r#"/**
- * Declared resources — closing the namespace so typos are errors (0007 §4).
- *
- * Resources are named, host-global mutexes (or pools) that steps acquire
- * before running. The core has built-ins for known contention domains
- * (`network`, `pixi-lock`, `cargo-lock`); anything else must be declared
- * in your env repo.
- *
- * @example
- * ```ts
- * import { resource, step } from "@gripsack/core";
- *
- * const PIXI = resource("pixi.lock");
- * step("sync", { kind: "custom_shell", script: "pixi install" },
- *      { resources: ["pixi.lock"] });
- *
- * // typos throw at eval time, before the core ever sees your IR:
- * step("bad", { kind: "custom_shell", script: "true" },
- *      { resources: ["cargo.lokc"] }); // Error: unknown resource 'cargo.lokc'
- * ```
- */
-
-/** Built-in contention domains the core knows how to serialize or
- *  throttle. Mirrors `KNOWN_RESOURCES` in `crates/gripsack-ir` — keep
- *  the two in sync (IR changes touch all sides). */
-export const CORE_RESOURCES: ReadonlySet<string> = new Set([
-  "network",
-  "pixi-lock",
-  "cargo-lock",
-]);
-
-/** A declared resource marker. Create with {@link resource}. */
-export interface Resource {
-  name: string;
+    ("src/span.ts", r#"/** Source provenance shared by workspace declarations and host probes. */
+export interface Span {
+  file: string;
+  line: number;
+  col?: number;
 }
 
-const REGISTRY = new Map<string, Resource>();
-
-/** Declare a resource and return its marker. */
-export function resource(name: string): Resource {
-  if (!name) throw new Error("resource name must not be empty");
-  const r: Resource = { name };
-  REGISTRY.set(name, r);
-  return r;
-}
-
-/** All resources declared so far in this eval, sorted by name. */
-export function declaredResources(): Resource[] {
-  return [...REGISTRY.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/** Drop all declared resources (test isolation). */
-export function clearResources(): void {
-  REGISTRY.clear();
-}
-
-/** @internal Throw if any ref is neither declared nor built-in. */
-export function validateResourceRefs(refs: string[], owner: string): void {
-  for (const ref of refs) {
-    if (!REGISTRY.has(ref) && !CORE_RESOURCES.has(ref)) {
-      const known = [...REGISTRY.keys(), ...CORE_RESOURCES].sort().join(", ");
-      throw new Error(
-        `unknown resource '${ref}' in ${owner} — declare it first with resource('${ref}'). Known: ${known}`,
-      );
+/** Capture the first V8 frame outside this package. */
+export function callerSpan(): Span | undefined {
+  const pkgDir = new URL(".", import.meta.url).pathname;
+  const stack = new Error().stack;
+  if (!stack) return undefined;
+  for (const line of stack.split("\n").slice(1)) {
+    const m = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
+    if (m && m[1] && !m[1].replace(/^file:\/\//, "").startsWith(pkgDir)) {
+      const file = m[1].replace(/^file:\/\//, "");
+      return { file, line: Number(m[2]), col: Number(m[3]) };
     }
   }
-}
-"#),
-    ("src/steps.ts", r#"/**
- * Steps — the phase building blocks inside a module (0007).
- *
- * Most modules never write steps: the declarative fields are expanded
- * into the conventional pipeline by the core. Declare steps explicitly
- * for control — ordering, resource locks, or a custom action.
- * `steps` and the declarative fields are mutually exclusive per module
- * (E103).
- */
-
-import type { Dest } from "./entries.ts";
-import type { IrEntry } from "./module.ts";
-import type { Fetch } from "./fetch.ts";
-import { validateResourceRefs } from "./resources.ts";
-import type { Verify } from "./verify.ts";
-
-export type Phase = "fetch" | "build" | "install" | "config" | "verify" | "activate" | "custom";
-
-/** Build recipes — the closed two-variant contract (schema/ir/v3
- * `build`): `none`, or a flagged custom shell script. */
-export type Build = { kind: "none" } | { kind: "custom_shell"; script: string };
-
-export type StepAction =
-  | { kind: "fetch"; fetch: Fetch }
-  | { kind: "build"; spec: Build }
-  | { kind: "install"; entries: IrEntry[] }
-  | { kind: "config_deploy"; entries: IrEntry[] }
-  | { kind: "run"; argv: string[]; env?: Record<string, string>; cwd?: string; outputs?: string[] }
-  | { kind: "custom_shell"; script: string; outputs?: string[] };
-
-export interface Step {
-  id: string;
-  action: StepAction;
-  needs?: string[];
-  resources?: string[];
-  phase?: Phase;
-  verify?: Verify;
-}
-
-export interface StepOpts {
-  needs?: string[];
-  resources?: string[];
-  phase?: Phase;
-  verify?: Verify;
-}
-
-export function step(id: string, action: StepAction, opts?: StepOpts): Step {
-  validateResourceRefs(opts?.resources ?? [], `step '${id}'`);
-  return { id, action, ...opts };
-}
-
-/** Primitives auto-declare their contention domain in the core
- *  (pixi → `pixi-lock`, …) — `resources` is for your own shared
- *  state (0007 §4). Retries are not part of the IR v3 contract. */
-export function fetchStep(fetch: Fetch, id = "fetch", opts?: StepOpts): Step {
-  // runtime shape guard: an argument-order slip here would otherwise
-  // surface as a byte-offset E000 from the core's deserializer, with
-  // no module named — catch it at the call site instead (the eval
-  // stack names file:line)
-  if (typeof fetch !== "object" || fetch === null || typeof fetch.kind !== "string") {
-    throw new TypeError(
-      `fetchStep(fetch, id?) — the first argument must be a fetch spec from ` +
-        `githubRelease()/tarball()/fileFetch()/git()/brew()/pluginFetch(); ` +
-        `got ${describe(fetch)} (arguments swapped?)`,
-    );
-  }
-  validateResourceRefs(opts?.resources ?? [], `step '${id}'`);
-  return { id, action: { kind: "fetch", fetch }, phase: "fetch", ...opts };
-}
-
-/** A one-phrase description of what actually arrived, for guard
- * messages — the type name is enough to spot a swapped argument. */
-function describe(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "string") return `the string ${JSON.stringify(value)}`;
-  if (Array.isArray(value)) return "an array";
-  if (typeof value === "object") return "an object";
-  return `a ${typeof value}`;
-}
-
-export function installStep(
-  entries: Record<string, Dest>,
-  id = "install",
-  opts?: StepOpts,
-): Step {
-  if (typeof entries !== "object" || entries === null || Array.isArray(entries)) {
-    throw new TypeError(
-      `installStep(entries, id?) — the first argument must be the entries object ` +
-        `{ "payload/path": symlink(…) }; got ${describe(entries)} (arguments swapped?)`,
-    );
-  }
-  return {
-    id,
-    action: {
-      kind: "install",
-      entries: Object.entries(entries).map(([from, d]) => ({
-        from,
-        to: d.to,
-        mode: d.mode,
-        ...(d.vars ? { vars: d.vars } : {}),
-        ...(d.marker !== undefined ? { marker: d.marker } : {}),
-      })),
-    } as StepAction,
-    phase: "install",
-    ...opts,
-  };
-}
-
-export function buildStep(
-  spec: Build,
-  id = "build",
-  opts?: StepOpts,
-): Step {
-  return { id, action: { kind: "build", spec }, phase: "build", ...opts };
-}
-
-/** Deploy config files per their ownership modes (0001 §3.7). */
-export function configStep(
-  entries: Record<string, Dest>,
-  id = "config",
-  opts?: StepOpts,
-): Step {
-  if (typeof entries !== "object" || entries === null || Array.isArray(entries)) {
-    throw new TypeError(
-      `configStep(entries, id?) — the first argument must be the entries object ` +
-        `{ "repo/path": trackedCopy(…) }; got ${describe(entries)} (arguments swapped?)`,
-    );
-  }
-  return {
-    id,
-    action: {
-      kind: "config_deploy",
-      entries: Object.entries(entries).map(([from, d]) => ({
-        from,
-        to: d.to,
-        mode: d.mode,
-        ...(d.vars ? { vars: d.vars } : {}),
-        ...(d.marker !== undefined ? { marker: d.marker } : {}),
-      })),
-    } as StepAction,
-    phase: "config",
-    ...opts,
-  };
-}
-
-/** A structured action — the rung between primitives and shell
- *  (0007 §3): argv/env/cwd as data, no shell interpretation, declared
- *  `outputs` are enforced postconditions of the cached recipe (0041). */
-export function runStep(
-  argv: string[],
-  id = "run",
-  opts?: StepOpts & {
-    env?: Record<string, string>;
-    cwd?: string;
-    outputs?: string[];
-  },
-): Step {
-  const { env, cwd, outputs, ...rest } = opts ?? {};
-  const action: StepAction = {
-    kind: "run",
-    argv,
-    ...(env !== undefined ? { env } : {}),
-    ...(cwd !== undefined ? { cwd } : {}),
-    ...(outputs !== undefined ? { outputs } : {}),
-  };
-  return { id, action, phase: "custom", ...rest };
-}
-
-/** The last rung, not the default (0007 §3): declared, flagged in
- *  `plan`. Successful artifact recipes cache; declared outputs are
- *  enforced postconditions. Per-activation effects belong in hooks. */
-export function shellStep(
-  script: string,
-  id: string,
-  opts?: StepOpts & { outputs?: string[] },
-): Step {
-  validateResourceRefs(opts?.resources ?? [], `step '${id}'`);
-  const { outputs, ...rest } = opts ?? {};
-  return {
-    id,
-    action: {
-      kind: "custom_shell",
-      script,
-      ...(outputs !== undefined ? { outputs } : {}),
-    },
-    phase: rest.phase ?? "custom",
-    ...rest,
-  };
-}
-"#),
-    ("src/tree.ts", r#"/** Tree entries — directory-shaped config deploys via eval-time
- *  expansion (the IR stays per-file). Adding or removing files in the
- *  directory is picked up at the next eval; files dropped from the
- *  tree are pruned at apply.
- *
- *  ```ts
- *  module("zed", { config: { ...tree("configs/zed", "~/.config/zed") } });
- *  ```
- */
-
-import { readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
-import type { Dest, Ownership } from "./entries.ts";
-
-export function tree(
-  src: string,
-  to: string,
-  mode: Ownership = "tracked_copy",
-): Record<string, Dest> {
-  const entries: Record<string, Dest> = {};
-  const walk = (dir: string): void => {
-    for (const name of readdirSync(dir).sort()) {
-      const path = join(dir, name);
-      if (statSync(path).isDirectory()) {
-        walk(path);
-      } else if (statSync(path).isFile()) {
-        const rel = relative(src, path).split("\\").join("/");
-        entries[`${src}/${rel}`] = { to: `${to}/${rel}`, mode };
-      }
-    }
-  };
-  walk(src);
-  return entries;
-}
-"#),
-    ("src/verify.ts", r#"/** Verify checks — smoke contracts, not a test framework (0007 §verify). */
-
-export type Verify =
-  | { kind: "binary_runs"; path: string; args?: string[] }
-  | { kind: "file_exists"; path: string }
-  | { kind: "shell"; script: string }
-  | { kind: "file_deployed"; path: string };
-
-/** A built binary runs (default sanity: `--version`-style). */
-export function verifyBinary(path: string, args?: string[]): Verify {
-  return args === undefined
-    ? { kind: "binary_runs", path }
-    : { kind: "binary_runs", path, args };
-}
-
-export function verifyFile(path: string): Verify {
-  return { kind: "file_exists", path };
-}
-
-export function verifyShell(script: string): Verify {
-  return { kind: "shell", script };
-}
-
-/** Check a deployed *destination* — for config-only modules, where
- *  payload-relative verifies don't apply. */
-export function verifyDeployed(path: string): Verify {
-  return { kind: "file_deployed", path };
+  return undefined;
 }
 "#),
     ("src/workspace/bindings.ts", r#"/** Pure declarations: no registry, import-time effect or implicit ownership. */
@@ -1878,7 +1039,7 @@ export function lockKey(value: WorkspaceMutationLock): string { return `${value.
  * The source includes Cargo.lock and its vendored dependency/configuration tree.
  * No helper step resolves dependencies, downloads tools, or invokes a shell. */
 import type { Fetch } from "../fetch.ts";
-import type { Span } from "../module.ts";
+import type { Span } from "../span.ts"
 import type { PackageNode, RecipeNode, WorkspaceArg, WorkspaceOutput, WorkspacePlatform, WorkspaceStepValue } from "./ir.ts";
 import { rejectUnknownFields } from "../fields.ts";
 import { exec, lit, outputPath, sourcePath } from "./commands.ts";
@@ -1956,7 +1117,7 @@ export function cargoPackage(
 
 import { rejectUnknownFields } from "../fields.ts";
 import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
-import type { Span } from "../module.ts";
+import type { Span } from "../span.ts"
 import type {
   BashBody,
   ExecSpec,
@@ -2253,11 +1414,11 @@ export function bash(interpreter: WorkspacePackageCommand): BashBuilder {
   });
 }
 "#),
-    ("src/workspace/emit.ts", r#"/** v5 workspace emission: named references, role admission and cycles. */
+    ("src/workspace/emit.ts", r#"/** Current workspace emission: named references, role admission and cycles. */
 
 import type { HostFacts } from "../facts.ts";
-import { IR_VERSION } from "../graph.ts";
-import type { Span } from "../module.ts";
+export const IR_VERSION = 9;
+import type { Span } from "../span.ts"
 import type {
   PackageNode,
   WorkspaceArg,
@@ -2456,9 +1617,8 @@ function orList(kinds: readonly string[]): string {
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the v8 workspace IR envelope —
- *  `{ir_version: 8, host, workspace}`, never `modules` (the schema
- *  admits exactly one of the two). Admission mirrors the decoded core:
+/** Serialize a workspace value as the IR9 envelope —
+ *  `{ir_version: 9, host, workspace}`. Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
  *  paths, environment values are data only, producer/consumer OS,
@@ -2953,16 +2113,16 @@ export function checkImageSelection(image: ImageNode, catalog: Map<string, Works
   }
 }
 "#),
-    ("src/workspace/ir.ts", r#"/** v8 workspace wire types; the core retains strict historical readers. */
+    ("src/workspace/ir.ts", r#"/** The current workspace wire types; the core admits exactly this contract. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
 import type { Fetch } from "../fetch.ts";
-import type { Span } from "../module.ts";
+import type { Span } from "../span.ts"
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v8.json $defs)
+// shared wire fragments (schema/ir/v9.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -3047,9 +2207,7 @@ export interface CondaSystemRequirements {
 // Current acquisition sources (schema/ir/v8.json; retained in-memory V6 family)
 // ---------------------------------------------------------------------------
 
-/** Existing archive/git/github/file/plugin acquisition, wrapped with its
- *  provenance span. The legacy brew/pixi fetch kinds are rejected in v6 —
- *  superseded by conda_environment/pixi_lock sources. */
+/** Archive/git/github/file/plugin acquisition with declaration provenance. */
 export interface FetchSource { kind: "fetch"; fetch: Fetch; span: Span }
 /** A coherent binary Conda environment solved through Rattler. `platforms`
  *  omitted means resolved per requesting consumer platform. */
@@ -3323,7 +2481,7 @@ export interface WorkspaceValue {
 export interface RecipeSpec {
   /** A `Fetch` (wrapped as `{"kind":"fetch",…}`), a plain
    *  {@link CondaEnvironmentSpec}/{@link PixiLockSpec}, or a pre-built
-   *  `condaEnvironment(...)`/`pixiFromLock(...)` source value. */
+   *  `conda.environment(...)`/`pixi.fromLock(...)` source value. */
   source: Fetch | CondaEnvironmentSpec | PixiLockSpec | AcquisitionSource;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
@@ -3335,7 +2493,7 @@ export interface RecipeSpec {
 }
 
 /** Authoring spec for a Conda environment source — see
- *  `condaEnvironment(...)`. Channels are names/URLs in priority order;
+ *  `conda.environment(...)`. Channels are names/URLs in priority order;
  *  packages map a lowercase name to a version MatchSpec (`"*"` allowed). */
 export interface CondaEnvironmentSpec {
   channels: string[];
@@ -3345,7 +2503,7 @@ export interface CondaEnvironmentSpec {
 }
 
 /** Authoring spec for an explicit Pixi lock import — see
- *  `pixiFromLock(...)`. `manifest`/`lock` are workspace input names. */
+ *  `pixi.fromLock(...)`. `manifest`/`lock` are workspace input names. */
 export interface PixiLockSpec {
   manifest: string;
   lock: string;
@@ -3498,8 +2656,8 @@ export type WorkspaceFn = (ctx: WorkspaceContext) => WorkspaceValue;
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
-import { callerSpan } from "../module.ts";
-import type { Span } from "../module.ts";
+import { callerSpan } from "../span.ts"
+import type { Span } from "../span.ts"
 import type {
   CheckNode,
   CheckSpec,
@@ -3564,7 +2722,7 @@ export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
 
 /** Lower an authoring source — a bare `Fetch`, a plain
  *  CondaEnvironmentSpec/PixiLockSpec, or a pre-built
- *  `condaEnvironment(...)`/`pixiFromLock(...)` value — to the current tagged
+ *  `conda.environment(...)`/`pixi.fromLock(...)` value — to the current tagged
  *  wire shape, stamping `span` on freshly wrapped variants. */
 function asSourceValue(source: unknown, span: Span, where: string): AcquisitionSource {
   const rec = asRecord(source, where);
@@ -3572,7 +2730,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
     return asAcquisitionSource(source, where);
   }
   if (typeof rec.kind === "string" && rec.kind !== "") {
-    // a bare Fetch spec — the v6 fetch wrapper carries the provenance span
+    // A bare Fetch spec gains the acquisition wrapper's provenance span.
     return asAcquisitionSource({ kind: "fetch", fetch: source, span }, where);
   }
   if (rec.channels !== undefined || rec.packages !== undefined) {
@@ -3606,12 +2764,12 @@ export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSo
   const span = callerSpan();
   if (!span) {
     throw new Error(
-      "condaEnvironment(...): could not capture a source span — construct the source explicitly",
+      "conda.environment(...): could not capture a source span — construct the source explicitly",
     );
   }
-  const rec = asRecord(spec, "condaEnvironment(...)");
-  rejectUnknownFields("condaEnvironment(...)", rec, ["channels", "packages", "platforms", "systemRequirements"]);
-  return freezeDeep(asSourceValue(spec, span, "condaEnvironment(...)") as CondaEnvironmentSource);
+  const rec = asRecord(spec, "conda.environment(...)");
+  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements"]);
+  return freezeDeep(asSourceValue(spec, span, "conda.environment(...)") as CondaEnvironmentSource);
 }
 
 /** An explicit Pixi lock import: `manifest`/`lock` are workspace input
@@ -3620,18 +2778,18 @@ export function pixiFromLock(spec: PixiLockSpec): PixiLockSource {
   const span = callerSpan();
   if (!span) {
     throw new Error(
-      "pixiFromLock(...): could not capture a source span — construct the source explicitly",
+      "pixi.fromLock(...): could not capture a source span — construct the source explicitly",
     );
   }
-  const rec = asRecord(spec, "pixiFromLock(...)");
-  rejectUnknownFields("pixiFromLock(...)", rec, ["manifest", "lock", "environment"]);
-  return freezeDeep(asSourceValue(spec, span, "pixiFromLock(...)") as PixiLockSource);
+  const rec = asRecord(spec, "pixi.fromLock(...)");
+  rejectUnknownFields("pixi.fromLock(...)", rec, ["manifest", "lock", "environment"]);
+  return freezeDeep(asSourceValue(spec, span, "pixi.fromLock(...)") as PixiLockSource);
 }
 
 /** A direct provider-backed acquisition for `pkg({ producer })` —
  *  the package resolves through the declared provider with its own
  *  provenance, no synthetic recipe output. Accepts a `Fetch` (wrapped as
- *  `{"kind":"fetch",…}`) or a `condaEnvironment(...)`/`pixiFromLock(...)`
+ *  `{"kind":"fetch",…}`) or a `conda.environment(...)`/`pixi.fromLock(...)`
  *  source value. */
 export function provider(source: Fetch | AcquisitionSource): WorkspaceProducer {
   const span = callerSpan();
@@ -3930,10 +3088,9 @@ export function hook(name: string, spec: HookSpec): WorkspaceOutput<HookNode> {
   return makeOutput(node);
 }
 
-/** Collect returned outputs into a workspace value. Falsy entries
- *  drop out — `ctx.facts.os === "linux" && steam` is the conditional
- *  style, same as `defineEnv` modules. Duplicate names are an
- *  authoring error naming BOTH declaration spans (A1-06). */
+/** Collect returned outputs into a workspace value. Falsy entries drop out,
+ *  so ordinary TypeScript conditions compose outputs. Duplicate names report
+ *  both declaration spans. */
 export function workspace(spec: WorkspaceSpec): WorkspaceValue {
   const what = "workspace(...)";
   asRecord(spec, what);
@@ -4208,8 +3365,8 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
 import { rejectUnknownFields } from "../fields.ts";
 import { DiagnosticError, diagnosticCodes } from "../diagnostic.ts";
 import type { Fetch } from "../fetch.ts";
-import { callerSpan } from "../module.ts";
-import type { Span } from "../module.ts";
+import { callerSpan } from "../span.ts"
+import type { Span } from "../span.ts"
 import type {
   CondaSystemRequirements,
   HostRuntimeRequirements,
@@ -4638,8 +3795,8 @@ export function asProducer(v: unknown, where: string): WorkspaceProducer {
 
 export function asFetch(v: unknown, where: string): Fetch {
   const rec = asRecord(v, where);
-  if (typeof rec.kind !== "string" || rec.kind === "") {
-    throw new Error(`${where} must be a fetch spec (githubRelease()/tarball()/…)`);
+  if (!["github_release", "tarball", "git", "file", "plugin"].includes(rec.kind as string)) {
+    throw new Error(`${where} must be a supported fetch spec (githubRelease()/tarball()/git()/fileFetch()/pluginFetch())`);
   }
   return v as Fetch;
 }
@@ -4689,18 +3846,12 @@ export function asHostRuntime(v: unknown, where: string): HostRuntimeRequirement
 }
 
 /** An acquisition source — the tagged union behind `RecipeNode.source`
- *  and the provider branch of {@link WorkspaceProducer}. The legacy bare
- *  `{fetch,span}` shape and the brew/pixi fetch kinds are rejected. */
+ * and the provider branch of {@link WorkspaceProducer}. */
 export function asAcquisitionSource(v: unknown, where: string): AcquisitionSource {
   const rec = asRecord(v, where);
   if (rec.kind === "fetch") {
     rejectUnknownFields(where, rec, ["kind", "fetch", "span"]);
-    const fetch = asFetch(rec.fetch, `${where}.fetch`);
-    if (fetch.kind === "brew" || fetch.kind === "pixi") {
-      throw new Error(
-        `${where}.fetch: "${fetch.kind}" fetches are superseded by conda_environment/pixi_lock sources in v6`,
-      );
-    }
+    asFetch(rec.fetch, `${where}.fetch`);
     asSpan(rec.span, where);
     return v as AcquisitionSource;
   }
@@ -4781,29 +3932,16 @@ export function duplicateError(name: string, first: Span, again: Span): Diagnost
   });
 }
 "#),
-    ("src/workspace.ts", r#"/** Workspace declarations (0052 A1): the supported surface for the
- *  v8 workspace frontend — pure value constructors for nine typed
- *  output variants plus the shared command/file grammar and current
- *  emitter. No global registry or import-order magic — the
- *  root `gripsack.ts` entrypoint RETURNS a {@link WorkspaceValue}
- *  built by {@link workspace}, and the driver turns that value into
- *  IR (JSON) via {@link emitWorkspaceIr}.
+    ("src/workspace.ts", r#"/** Pure workspace constructors for named outputs, commands and profile files.
  *
- *  Wire shape is exactly `schema/ir/v8.json`: every node carries a
- *  mandatory provenance span, all structs reject unknown fields at
- *  construction time (JS callers and casts get the same boundary as
- *  the type-checker), and returned values are deeply frozen — an
- *  authoring value never changes after construction. Execution is
- *  declared, never performed here: unavailable capabilities
- *  (`isolated_linux` before B2, schedule registration before E3) are
- *  emitted explicitly and rejected by the core's admission, never
- *  silently reinterpreted by the frontend.
+ * Root `gripsack.ts` returns a {@link WorkspaceValue}; the explicit compiler
+ * entrypoint emits the strict current schema (`schema/ir/v9.json`).
+ * Declarations carry provenance, reject unknown fields and stay deeply frozen.
+ * Construction declares work; only the core admits and performs effects.
  *
- *  Implementation is split into cohesive modules under ./workspace/
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), target.ts (execution/target/layout
- *  admission), commands.ts, files.ts, outputs.ts and emit.ts.
- *  This file is the supported re-export surface. */
+ * Implementations live under ./workspace/ by responsibility: wire types,
+ * value/target admission, commands, files, outputs and emission.
+ */
 
 export { artifact, bash, bashBody, exec, hostPath, lit, packageCommand, runBash, sourcePath, outputPath } from "./workspace/commands.ts";
 export type { BashBuilder, BashCommandBuilder, ExecBuilder } from "./workspace/commands.ts";
@@ -4892,14 +4030,12 @@ export type {
 } from "./workspace/ir.ts";
 export {
   check,
-  condaEnvironment,
   daily,
   defineWorkspace,
   environment,
   hook,
   image,
   pkg,
-  pixiFromLock,
   profile,
   provider,
   recipe,
@@ -4911,26 +4047,11 @@ export {
 } from "./workspace/outputs.ts";
 
 import { condaEnvironment as condaEnvironmentImpl, pixiFromLock as pixiFromLockImpl } from "./workspace/outputs.ts";
-import { DiagnosticError, diagnosticCodes } from "./diagnostic.ts";
-import { callerSpan } from "./module.ts";
 
 /** Conda acquisition namespace: `conda.environment({ channels, packages, platforms? })`. */
 export const conda = { environment: condaEnvironmentImpl };
-/** Pixi acquisition namespace: `pixi.fromLock({ manifest, lock, environment })`.
- * The public type is deliberately not callable. The runtime call trap only
- * diagnoses retired JavaScript/pre-typecheck callers; it never emits a fetch. */
-export const pixi: { fromLock: typeof pixiFromLockImpl } = Object.assign(
-  function removedPixiConstructor(): never {
-    throw new DiagnosticError({
-      code: diagnosticCodes.invalidWorkspaceValue,
-      severity: "error",
-      message: "pixi(package) was removed in 0.44; a coherent environment belongs in a gripsack.ts workspace",
-      labels: [{ span: callerSpan() ?? null, note: "removed single-package constructor called here" }],
-      help: "Use conda.environment(...) or pixi.fromLock(...). Migration guide: https://gripsack.dev/docs/workspace-migration.html",
-    });
-  },
-  { fromLock: pixiFromLockImpl },
-);
+/** Explicit import of an existing Pixi lockfile. */
+export const pixi = { fromLock: pixiFromLockImpl };
 "#),
     ("deno.json", r#"{
   "imports": {
@@ -4944,8 +4065,8 @@ export const pixi: { fromLock: typeof pixiFromLockImpl } = Object.assign(
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.48.0",
-  "description": "gripsack typescript frontend — typed module DSL, emits IR",
+  "version": "0.50.0",
+  "description": "gripsack TypeScript workspace SDK — typed declarations, emits IR9",
   "license": "MIT",
   "type": "module",
   "main": "./dist/src/index.js",

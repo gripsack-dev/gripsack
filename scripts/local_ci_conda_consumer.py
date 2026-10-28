@@ -119,12 +119,12 @@ def consume_archives(consumer):
             (repo / "pixi.toml").write_text(manifest)
             (repo / "pixi.lock").write_text(pixi_lock)
             (repo / "gripsack.ts").write_text('''import {
-  defineWorkspace, workspace, pkg, provider, pixiFromLock, inputFile,
+  defineWorkspace, workspace, pkg, provider, pixi, inputFile,
 } from "@gripsack/core";
 export default defineWorkspace(() => workspace({
   inputs: [inputFile("manifest", "pixi.toml"), inputFile("lock", "pixi.lock")],
   outputs: [pkg("data", {
-    producer: provider(pixiFromLock({manifest:"manifest",lock:"lock",environment:"default"})),
+    producer: provider(pixi.fromLock({manifest:"manifest",lock:"lock",environment:"default"})),
     commands: {}, target:{os:"linux",arch:"x86_64",abi:"gnu"},
     layout:{kind:"prefix_materialized"},
   })],

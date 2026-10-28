@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import GRIP, grip, make_env_repo, run_grip
+from conftest import native_target, GRIP, grip, make_workspace_repo, run_grip
 
 
 def snapshot(home):
@@ -27,11 +27,14 @@ def snapshot(home):
     return data, mode, generation, hooks
 
 
-def module(version, installed):
-    config = '{ payload: trackedCopy("~/.matrix") }' if installed else '{}'
-    return f'''import {{ module, trackedCopy, customHook }} from '@gripsack/core';
-export default module('demo', {{ config: {config}, env: {{ MATRIX: '{version}' }},
-  activate: [customHook('touch "$HOME/hook-{version}"')] }});'''
+def workspace_outputs(version, installed):
+    files = 'file({ source: repoFile("payload"), content: identity(), destination: trackedCopyTo("~/.matrix") })' if installed else ''
+    return f'''import {{ environment, file, hook, identity, lit, profile, repoFile, exec, trackedCopyTo }} from "@gripsack/core";
+export default [
+  environment("matrix-environment", {{ packages: [], target: {native_target()}, env: {{ MATRIX: lit("{version}") }} }}),
+  hook("matrix-hook", {{ trigger: "post_activate", run: exec({{ argv: [lit("/bin/sh"), lit("-c"), lit('touch "$HOME/hook-{version}"')] }}) }}),
+  profile("demo", {{ files: [{files}], environment: "matrix-environment", hooks: ["matrix-hook"] }}),
+];'''
 
 
 def command(repo, args, env):
@@ -65,21 +68,21 @@ def test_every_reachable_persistence_boundary(sandbox, scenario, fault):
     env = dict(os.environ, HOME=str(home), GRIPSACK_HOME=str(home / '.local/share/gripsack'))
     (home / '.matrix').write_text('origin')
     (home / '.matrix').chmod(0o600)
-    repo = make_env_repo(sandbox / 'env', module('one', scenario != 'rollback-prune'))
+    repo = make_workspace_repo(sandbox / 'env', workspace_outputs('one', scenario != 'rollback-prune'))
     (repo / 'payload').write_text('one')
-    base = ['apply', '--host', 'testhost', '--jobs', '1', '--take-over']
+    base = ['apply', '--host', 'testhost', '--take-over']
     out = command(repo, base, env)
     assert out.returncode == 0, out.stderr
     if scenario.startswith('rollback'):
-        (repo / 'modules/hello.ts').write_text(module('two', True))
+        (repo / 'outputs/hello.ts').write_text(workspace_outputs('two', True))
         (repo / 'payload').write_text('two')
         out = command(repo, base, env)
         assert out.returncode == 0, out.stderr
         operation = ['rollback', '1']
     else:
-        (repo / 'modules/hello.ts').write_text(module('two', 'deploy' in scenario))
+        (repo / 'outputs/hello.ts').write_text(workspace_outputs('two', 'deploy' in scenario))
         (repo / 'payload').write_text('two')
-        operation = ['apply', '--host', 'testhost', '--jobs', '1']
+        operation = ['apply', '--host', 'testhost']
     # Hook effects are idempotent markers; only this transition may create them.
     for marker in home.glob('hook-*'):
         marker.unlink()

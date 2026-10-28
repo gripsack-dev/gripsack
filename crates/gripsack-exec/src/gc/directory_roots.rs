@@ -124,7 +124,7 @@ fn retirement_error(
     error: std::io::Error,
 ) -> ExecError {
     ExecError::Step {
-        module: "*".into(),
+        output: "*".into(),
         step: "gc directory retirement".into(),
         detail: format!(
             "generations/.retiring-{number}{}: {error}; pending retirement/cleanup will be retried by GC",
@@ -144,7 +144,7 @@ mod tests {
             home,
             &store::Generation {
                 number: store::GenerationId::new(number),
-                modules: BTreeMap::new(),
+                deployments: BTreeMap::new(),
                 directory_transitions: Vec::new(),
                 migration: predecessor.map(|number| store::generations::MigrationReceipt {
                     predecessor: store::GenerationId::new(number),
@@ -214,7 +214,7 @@ mod tests {
             &home,
             &store::Generation {
                 number: store::GenerationId::new(1),
-                modules: BTreeMap::new(),
+                deployments: BTreeMap::new(),
                 directory_transitions: vec![receipt.clone()],
                 migration: None,
             },
@@ -292,7 +292,7 @@ mod tests {
             &home,
             &store::Generation {
                 number: store::GenerationId::new(3),
-                modules: BTreeMap::new(),
+                deployments: BTreeMap::new(),
                 directory_transitions: vec![receipt.clone()],
                 migration: None,
             },
@@ -430,7 +430,7 @@ mod tests {
             &home,
             &store::Generation {
                 number: store::GenerationId::new(3),
-                modules: BTreeMap::new(),
+                deployments: BTreeMap::new(),
                 directory_transitions: vec![root_only],
                 migration: None,
             },

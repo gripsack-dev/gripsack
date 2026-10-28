@@ -1,5 +1,7 @@
 //! Capture each declared repository source once; render candidates independently
-//! of their destination policy. Only immutable candidates enter the store.
+//! of their destination policy. Evaluated file aliases resolve only within the
+//! approved source bundle; direct inputs retain their no-follow boundary.
+//! Only immutable candidates enter the store.
 mod repository;
 mod selection;
 #[cfg(test)]
@@ -8,8 +10,8 @@ mod tree;
 use super::declarations::{Content, File, Source};
 use crate::ctx::ExecError;
 use gripsack_ir::workspace::WorkspaceDestination;
-use gripsack_ir::{Entry, Ownership};
 use gripsack_store as store;
+use gripsack_store::{DeploymentEntry, Ownership};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::io::{self, Write};
@@ -24,6 +26,10 @@ struct CapturedFile {
 pub(super) struct Capture {
     pub temporary: tempfile::TempDir,
     repository: gripsack_fs::Dir,
+    captured_sources: Option<(
+        std::sync::Arc<store::source_bundle::SourceBundle>,
+        gripsack_fs::Dir,
+    )>,
     sources: BTreeMap<String, CapturedFile>,
     maximum_bytes: u64,
     maximum_tree_bytes: u64,
@@ -38,12 +44,30 @@ impl Capture {
                 .prefix("grip-workspace-")
                 .tempdir()?,
             repository: gripsack_fs::open(repo)?,
+            captured_sources: None,
             sources: BTreeMap::new(),
             maximum_bytes: limits.download_bytes.get(),
             maximum_tree_bytes: limits.expanded_bytes.get(),
             maximum_entries: limits.archive_entries.get(),
             maximum_metadata: limits.decoder_bytes.get(),
         })
+    }
+
+    pub fn from_repository(
+        repository: &crate::Repository,
+        limits: gripsack_fetch::FetchLimits,
+    ) -> Result<Self, ExecError> {
+        let mut capture = Self::new(repository.contents(), limits)?;
+        if let crate::Repository::Evaluated { sources, .. } = repository {
+            let root = sources.repository().parent().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "captured repository has no root",
+                )
+            })?;
+            capture.captured_sources = Some((sources.clone(), gripsack_fs::open(root)?));
+        }
+        Ok(capture)
     }
 
     fn file(&mut self, path: &str) -> Result<&CapturedFile, ExecError> {
@@ -58,7 +82,26 @@ impl Capture {
                     use gripsack_fs::cap_std::fs::OpenOptionsExt;
                     options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
                 }
-                let source = self.repository.open_with(path, &options)?;
+                let source = match &self.captured_sources {
+                    Some((sources, root)) => {
+                        let resolved = sources.materialization_path(Path::new(path))?;
+                        let relative = resolved
+                            .strip_prefix(sources.repository().parent().ok_or_else(|| {
+                                io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    "captured repository has no root",
+                                )
+                            })?)
+                            .map_err(|_| {
+                                io::Error::new(
+                                    io::ErrorKind::PermissionDenied,
+                                    "resolved file escaped captured roots",
+                                )
+                            })?;
+                        root.open_with(relative, &options)?
+                    }
+                    None => self.repository.open_with(path, &options)?,
+                };
                 let metadata = source.metadata()?;
                 if !metadata.is_file() {
                     return Err(io::Error::new(io::ErrorKind::InvalidData, "a repository file must be regular, not a link, directory or special object").into());
@@ -159,7 +202,7 @@ impl Capture {
 }
 
 pub(super) struct PreparedFile {
-    pub entry: Entry,
+    pub entry: DeploymentEntry,
     pub block_id: Option<store::ManagedBlockId>,
 }
 
@@ -285,7 +328,7 @@ fn prepare_file(
         }
     };
     Ok(PreparedFile {
-        entry: Entry {
+        entry: DeploymentEntry {
             from: format!("{identity}/output"),
             to: destination.clone(),
             mode,

@@ -2,8 +2,8 @@
 //! exact-target guards (0030 §15).
 
 use super::restore::restore_prior;
-use gripsack_ir::Ownership;
 use gripsack_store as store;
+use gripsack_store::Ownership;
 use std::path::Path;
 
 /// Remove a destination we deployed, with drift guards (0001 §3.5):
@@ -16,7 +16,7 @@ pub fn remove_entry_deployed(
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
     entry: &store::DeployedEntry,
-    module: &str,
+    output: &str,
     store_path: &Path,
 ) -> std::io::Result<bool> {
     if entry.preserved_drift {
@@ -45,7 +45,7 @@ pub fn remove_entry_deployed(
             let existing = String::from_utf8(bytes)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             let blocks =
-                crate::managed_blocks::ManagedBlockSet::parse(&existing, entry.merge_owner(module))
+                crate::managed_blocks::ManagedBlockSet::parse(&existing, entry.merge_owner(output))
                     .map_err(std::io::Error::other)?;
             if blocks.intact(entry, mode) {
                 let new = blocks
@@ -97,7 +97,7 @@ pub fn remove_or_restore_prior(
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
     entry: &store::DeployedEntry,
-    module: &str,
+    output: &str,
     home: &gripsack_fs::Dir,
     store_path: &Path,
 ) -> std::io::Result<bool> {
@@ -105,5 +105,5 @@ pub fn remove_or_restore_prior(
         restore_prior(dest_dir, dest_name, prior, home)?;
         return Ok(true);
     }
-    remove_entry_deployed(dest_dir, dest_name, entry, module, store_path)
+    remove_entry_deployed(dest_dir, dest_name, entry, output, store_path)
 }

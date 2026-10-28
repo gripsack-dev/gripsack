@@ -11,7 +11,7 @@ use crate::{
     report::{SurveyReports, UpdateReport, UpdateStatus, UpdateSurvey},
 };
 use gripsack_ir::{
-    Diagnostic, Ir, Severity, codes,
+    Ir, Severity,
     workspace_model::{
         AcquisitionSource, WorkspaceOutput, WorkspaceProducer,
         lock::{LockedPin, PlatformResolution, platform_key},
@@ -25,25 +25,7 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
     {
         return Err(ExecError::Gate(diagnostic));
     }
-    let workspace = ir
-        .workspace_catalog
-        .as_ref()
-        .filter(|_| {
-            matches!(
-                ir.ir_version,
-                gripsack_ir::WORKSPACE_V6_VERSION
-                    | gripsack_ir::WORKSPACE_V7_VERSION
-                    | gripsack_ir::IR_VERSION
-            ) && ir.workspace.is_none()
-                && ir.workspace_v4.is_none()
-                && ir.modules.is_empty()
-        })
-        .ok_or_else(|| {
-            ExecError::Gate(Diagnostic::error(
-                codes::BAD_WORKSPACE_CONTEXT,
-                "portable resolution requires a current workspace",
-            ))
-        })?;
+    let workspace = &ir.workspace;
     let all;
     let selected = if ctx.only.is_empty() {
         all = workspace
@@ -72,7 +54,7 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
         SurveyReports::new(selection.required.len() + usize::from(changed_definitions));
     if changed_definitions {
         reports.push(UpdateReport {
-            module: "workspace frontend/import pins".into(),
+            output: "workspace frontend/import pins".into(),
             status: UpdateStatus::Bumped {
                 old: had_definitions.then(|| "previous captured definitions".into()),
                 new: "current captured definitions".into(),
@@ -192,7 +174,7 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
             }
         };
         reports.push(UpdateReport {
-            module: (*name).to_owned(),
+            output: (*name).to_owned(),
             status,
             layout: Default::default(),
         })?;
@@ -211,3 +193,6 @@ fn pin_label(pin: &LockedPin) -> String {
         .or_else(|| pin.resolved.tree256.clone())
         .expect("acquisition measures a source identity")
 }
+
+#[cfg(test)]
+mod tests;

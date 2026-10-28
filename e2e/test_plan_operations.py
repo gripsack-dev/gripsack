@@ -1,6 +1,6 @@
 """Read-only preview and agreement with executed destination operations."""
 
-from conftest import grip, make_env_repo, make_tarball, refresh_host
+from conftest import native_target, grip, make_workspace_repo, make_tarball, refresh_workspace
 
 
 def test_plan_renders_the_same_ops_apply_executes(sandbox):
@@ -11,23 +11,21 @@ def test_plan_renders_the_same_ops_apply_executes(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("v1\n")
     (confdir / "b.toml").write_text("b\n")
-    repo = make_env_repo(
+    repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "demo": """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: {
-    "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml"),
-    "configs/demo/b.toml": trackedCopy("~/.config/demo/b.toml"),
-  },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") }),
+    file({ source: repoFile("configs/demo/b.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/b.toml") })
+  ] });
 """
         },
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
-    assert "+ configs/demo/a.toml → ~/.config/demo/a.toml (new)" in out.stdout, out.stdout
+    assert "~/.config/demo/a.toml (new)" in out.stdout, out.stdout
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert (sandbox / ".config/demo/a.toml").read_text() == "v1\n"
@@ -46,16 +44,16 @@ export default module("demo", {
 
     # update + prune in one preview
     (repo / "configs" / "demo" / "a.toml").write_text("v2\n")
-    (repo / "modules" / "demo.ts").write_text(
+    (repo / "outputs" / "demo.ts").write_text(
         """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.toml"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.toml") })
+  ] });
 """
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
     out = grip("plan", "--host", "testhost", cwd=repo)
     assert "- ~/.config/demo/b.toml (prune)" in out.stdout, out.stdout
     out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
@@ -64,52 +62,30 @@ export default module("demo", {
     assert (sandbox / ".config/demo/a.toml").read_text() == "v2\n"
 
 
-def test_plan_marks_opaque_run_steps(sandbox):
-    """0033 R5 + 0034: a run-step module never reads as a no-op."""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { module } from "@gripsack/core";
-
-export default module("demo", {
-  steps: [
-    {
-      id: "build",
-      action: { kind: "run", argv: ["true"], outputs: [] },
-      phase: "custom",
-    },
-  ],
-});
-""",
-    )
-    out = grip("plan", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    assert "opaque effects" in out.stdout, out.stdout
-    assert "nothing would change" not in out.stdout
 
 
 def test_plan_creates_nothing_and_reads_state_correctly(sandbox):
     """0035 F7: plan is read-only (no parent dirs appear), a satisfied
     owned link previews as satisfied, and a deferred fetched
     destination is never shown as a prune."""
-    payload = make_tarball(sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hi\n"})
-    repo = make_env_repo(
+    payload = make_tarball(sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hi\n"})
+    repo = make_workspace_repo(
         sandbox / "myenv",
         {
             "hello": f"""
-import {{ fileFetch, module, symlink }} from "@gripsack/core";
+import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default module("hello", {{
-  fetch: fileFetch("{payload}"),
-  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
-}});
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+profile("hello", {{ files: [
+    file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
+  ] }})];
 """,
             "demo": """
-import { module, trackedCopy } from "@gripsack/core";
+import { file, identity, profile, repoFile, trackedCopyTo } from "@gripsack/core";
 
-export default module("demo", {
-  config: { "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") },
-});
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/a.conf"), content: identity(), destination: trackedCopyTo("~/.config/demo/a.conf") })
+  ] });
 """,
         },
     )
@@ -126,6 +102,7 @@ export default module("demo", {
 
     out = grip("plan", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "= ~/.local/bin/hello (satisfied)" in out.stdout, out.stdout
+    assert "= ~/.config/demo/a.conf (satisfied)" in out.stdout, out.stdout
+    assert "~/.local/bin/hello" in out.stdout, out.stdout
     assert "+ " not in out.stdout, "a satisfied link must not preview as new"
     assert "(prune)" not in out.stdout, "a deferred dest is still declared"

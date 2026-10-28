@@ -6,25 +6,26 @@ self-update — split from test_flow.py; fixture repos come from conftest."""
 
 import json
 import os
+import re
 import shutil
-import subprocess
 
 import pytest
 
 from conftest import (
-    GRIP,
     grip,
-    make_env_repo,
-    refresh_host,
+    make_workspace_repo,
+    make_tarball,
+    refresh_workspace,
 )
 
 
 
-HELLO_MODULE = """
-import { module, trackedCopy } from "@gripsack/core";
+HELLO_PROFILE = """
+import { profile, file, repoFile, identity, trackedCopyTo } from "@gripsack/core";
 
-export default module("hello", {
-  config: { "configs/demo/a": trackedCopy("~/.config/demo/a") },
+export default profile("hello", {
+  files: [file({ source: repoFile("configs/demo/a"), content: identity(),
+    destination: trackedCopyTo("~/.config/demo/a") })],
 });
 """
 
@@ -37,7 +38,7 @@ def test_frontend_output_budget_fails_closed(sandbox, monkeypatch, stream, reaso
     """0048 §1.4: a hostile pinned runtime cannot make check collect
     arbitrarily many stdout/stderr bytes. Only the supervisor is under
     test here; other e2e flows exercise the real Deno frontend."""
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     fake = sandbox / "hostile-deno"
     fake.write_text(
         "#!/usr/bin/env python3\n"
@@ -74,7 +75,7 @@ def test_doctor_reports_environment(sandbox):
 
 def test_untrusted_repo_fails_closed_without_tty(sandbox):
     """No repository code runs before explicit captured-source approval."""
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     (repo / "configs" / "demo").mkdir(parents=True)
     (repo / "configs" / "demo" / "a").write_text("a\n")
     out = grip("check", "--host", "testhost", cwd=repo, approve=False)
@@ -87,7 +88,7 @@ def test_untrusted_repo_fails_closed_without_tty(sandbox):
 
 def test_trust_add_records_and_unblocks_eval(sandbox):
     """Explicit source/policy approval permits eval; revocation re-arms it."""
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     (repo / "configs" / "demo").mkdir(parents=True)
     (repo / "configs" / "demo" / "a").write_text("a\n")
 
@@ -115,46 +116,10 @@ def test_trust_add_records_and_unblocks_eval(sandbox):
     assert not json.loads(grip("trust", "list", "--json", approve=False).stdout)["approved"]
 
 
-def test_eval_env_reaches_build_steps(sandbox):
-    """[eval] env (build-time exported env): env.toml declares it,
-    a build step's shell inherits it."""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { module, shellStep } from "@gripsack/core";
-
-export default module("probe", {
-  steps: [shellStep('test "$MY_CERT_PATH" = "/etc/ssl/company.pem"', "probe")],
-});
-""",
-    )
-    (repo / "env.toml").write_text(
-        '[env]\nname = "fixture"\n\n[eval]\nenv = { MY_CERT_PATH = "/etc/ssl/company.pem" }\n'
-    )
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
 
 
-def test_repo_build_path_selects_structured_run_command(sandbox):
-    """Structured run argv, not just /bin/sh, must resolve repo PATH."""
-    bindir = sandbox / "build-only-bin"
-    bindir.mkdir()
-    tool = bindir / "repo-only-tool"
-    tool.write_text("#!/bin/sh\nprintf 'scoped path\\n' > tool.out\n")
-    tool.chmod(0o755)
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """import { module, runStep } from '@gripsack/core';
-export default module('built', {
-  steps: [runStep(['repo-only-tool'], 'from-repo-path', { outputs: ['tool.out'] })],
-});""",
-    )
-    (repo / "env.toml").write_text(
-        f'[env]\nname = "fixture"\n\n[eval]\nenv = {{ PATH = "{bindir}:{os.environ["PATH"]}" }}\n'
-    )
 
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stdout + out.stderr
+
 
 
 def test_repo_build_path_does_not_choose_core_fact_detector(sandbox):
@@ -170,32 +135,31 @@ def test_repo_build_path_does_not_choose_core_fact_detector(sandbox):
         'printf "ldd (GNU libc) 999.0\\n"\n'
     )
     ldd.chmod(0o755)
-    repo = make_env_repo(
-        sandbox / "myenv",
-        {
-            "hosted": 'import { module } from "@gripsack/core";\n'
-                      'export default module("hosted", { install: [] });\n'
-        },
-    )
-    (repo / "hosts/testhost.ts").write_text(
-        'import { defineEnv } from "@gripsack/core";\n'
-        'import hosted from "../modules/hosted.ts";\n'
-        'export default defineEnv(ctx => ({ '
-        'modules: [ctx.facts.libc === "glibc-999.0" && hosted] }));\n'
+    repo = make_workspace_repo(sandbox / "myenv",
+    {
+        "hosted": 'import { profile } from "@gripsack/core";\n'
+                  'export default profile("hosted", { files: [] });\n'
+    },)
+    (repo / "gripsack.ts").write_text(
+        'import { defineWorkspace, workspace, profile } from "@gripsack/core";\n'
+        'import hosted from "./outputs/hosted.ts";\n'
+        'export default defineWorkspace(ctx => workspace({ '
+        'outputs: [profile("baseline", {files: []}), '
+        '...(ctx.facts.libc === "glibc-999.0" ? [hosted] : [])] }));\n'
     )
     (repo / "env.toml").write_text(
         f'[env]\nname = "fixture"\n\n[eval]\nenv = {{ PATH = "{shimdir}" }}\n'
     )
 
-    out = grip("check", "--host", "testhost", cwd=repo)
+    out = grip("check", "--json", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert not marker.exists(), "repo PATH must never choose the core's ldd"
-    assert "0 modules" in out.stdout, out.stdout
+    assert [output["name"] for output in json.loads(out.stdout)["outputs"]] == ["baseline"]
 
 
 def test_repo_build_env_does_not_reach_frontend_runtime(sandbox, monkeypatch):
     """A build child receives repo env; the provisioned evaluator does not."""
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     (repo / "configs/demo").mkdir(parents=True)
     (repo / "configs/demo/a").write_text("a\n")
     (repo / "env.toml").write_text(
@@ -226,23 +190,21 @@ def test_probe_fixpoint_converges_in_two_rounds(sandbox):
     not the happy path."""
     import json
 
-    repo = make_env_repo(
-        sandbox / "myenv",
-        {
-            "hosted": """
-import { module } from "@gripsack/core";
+    repo = make_workspace_repo(sandbox / "myenv",
+    {
+        "hosted": """
+    import { profile } from "@gripsack/core";
 
-export default module("hosted", { install: [] });
-"""
-        },
-    )
-    # a host that actually calls ctx.probe
-    (repo / "hosts" / "testhost.ts").write_text(
-        'import { defineEnv } from "@gripsack/core";\n'
-        'import hosted from "../modules/hosted.ts";\n\n'
-        "export default defineEnv((ctx) => ({\n"
-        '  tags: ["probe"],\n'
-        "  modules: [ctx.probe.executable(\"sh\") && hosted],\n"
+    export default profile("hosted", { files: [] });
+    """
+    },)
+    # The root declaration actually requests a core-bound probe.
+    (repo / "gripsack.ts").write_text(
+        'import { defineWorkspace, workspace, profile } from "@gripsack/core";\n'
+        'import hosted from "./outputs/hosted.ts";\n'
+        "export default defineWorkspace((ctx) => workspace({\n"
+        '  outputs: [profile("baseline", {files: []}), '
+        '...(ctx.probe.executable("sh") ? [hosted] : [])],\n'
         "}));\n"
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
@@ -264,18 +226,16 @@ export default module("hosted", { install: [] });
 
 
 def test_check_fails_statically_on_missing_config_source(sandbox):
-    """E110 (review finding E2): a fetch-less module's source must be
-    a repo file — missing is a check-time error, not mid-deploy."""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { module, trackedCopy } from "@gripsack/core";
-
-export default module("aaa", {
-  config: { "configs/aaa/MISSING.conf": trackedCopy("~/.out/a.conf") },
-});
-""",
-    )
+    """A profile's repository source must exist at check time,
+    before any destination or generation can be published."""
+    repo = make_workspace_repo(sandbox / "myenv",
+    """
+    import { profile, file, repoFile, identity, trackedCopyTo } from "@gripsack/core";
+    export default profile("aaa", {
+      files: [file({source:repoFile("configs/aaa/MISSING.conf"),content:identity(),
+        destination:trackedCopyTo("~/.out/a.conf")})],
+    });
+    """,)
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "E110" in out.stderr
@@ -291,15 +251,14 @@ def test_init_scaffolds_a_working_env_repo(sandbox):
     out = grip("init", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert (repo / "env.toml").exists()
-    assert (repo / "modules" / "hello.ts").exists()
-    assert (repo / "modules" / "examples.ts").exists()
+    assert (repo / "gripsack.ts").exists()
+    assert not (repo / "modules").exists()
     assert (repo / "configs" / "hello" / "hello.toml").exists()
     assert (repo / "package.json").exists()
     assert '"@gripsack/core"' in (repo / "package.json").read_text()
     assert (repo / "tsconfig.json").exists()
     assert "node_modules/" in (repo / ".gitignore").read_text()
-    hosts = list((repo / "hosts").glob("*.ts"))
-    assert len(hosts) == 1
+    assert not (repo / "hosts").exists()
     assert (repo / ".git").is_dir()
 
     # the scaffold is a working repo: check and apply succeed offline
@@ -310,63 +269,37 @@ def test_init_scaffolds_a_working_env_repo(sandbox):
     assert (sandbox / ".config" / "hello" / "hello.toml").is_symlink()
 
     # init never clobbers an existing env repo
+    existing = {
+        path.relative_to(repo): path.read_bytes()
+        for path in repo.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repo).parts
+    }
     out = grip("init", cwd=repo)
     assert out.returncode != 0
-    assert "already looks like an env repo" in out.stderr
+    assert {
+        path.relative_to(repo): path.read_bytes()
+        for path in repo.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repo).parts
+    } == existing
 
 
-def test_unmatched_host_errors_instead_of_empty_tags(sandbox):
-    """A hosts/ dir with no matching entrypoint must not silently
-    yield empty tags — every gated module would drop and the run would
-    report success (enterprise review finding)."""
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
-    (sandbox / "myenv" / "configs" / "demo").mkdir(parents=True)
-    (sandbox / "myenv" / "configs" / "demo" / "a").write_text("a\n")
-    out = grip("check", "--host", "nosuchhost", cwd=repo)
-    assert out.returncode != 0
-    assert "nosuchhost" in out.stderr
 
 
-def test_default_host_resolves_role_named_entrypoint(sandbox):
-    """[env] default_host: containers with random hostnames still get a
-    deterministic host entrypoint (enterprise review finding)."""
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
-    (sandbox / "myenv" / "configs" / "demo").mkdir(parents=True)
-    (sandbox / "myenv" / "configs" / "demo" / "a").write_text("a\n")
-    (sandbox / "myenv" / "hosts" / "testhost.ts").unlink()
-    (sandbox / "myenv" / "hosts" / "role.ts").write_text(
-        'import { defineEnv } from "@gripsack/core";\n'
-        "import hello from \"../modules/hello.ts\";\n"
-        "\n"
-        "export default defineEnv((ctx) => ({\n"
-        '  tags: ["container"],\n'
-        "  modules: [hello],\n"
-        "}));\n"
-    )
-    env_toml = repo / "env.toml"
-    env_toml.write_text(env_toml.read_text().replace(
-        '[env]\nname = "fixture"', '[env]\nname = "fixture"\ndefault_host = "role"'))
-    out = grip("check", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    assert "container" in out.stdout
+
+
 
 
 def test_default_host_path_traversal_rejects_before_eval_or_lock_write(sandbox):
-    """0048 §1.3: a repo-selected host must never turn into a lock
-    path outside locks/ or an entrypoint outside hosts/."""
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
-    (repo / "modules" / "role.ts").write_text(
-        'import { defineEnv } from "@gripsack/core";\n'
-        'import hello from "./hello.ts";\n'
-        "export default defineEnv(() => ({ modules: [hello] }));\n"
-    )
+    """0048 §1.3: repository-selected host labels reject traversal
+    before frontend evaluation or any lock publication."""
+    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     (repo / "env.toml").write_text(
-        '[env]\nname = "fixture"\ndefault_host = "../modules/role"\n'
+        '[env]\nname = "fixture"\ndefault_host = "../outputs/role"\n'
     )
     out = grip("update", cwd=repo)
     assert out.returncode != 0
     assert "E132" in out.stderr, out.stderr
-    assert not (repo / "modules" / "role.lock").exists()
+    assert not (repo / "outputs" / "role.lock").exists()
     assert not (sandbox / ".local/share/gripsack/frontend").exists()
     checked = grip("check", "--json", cwd=repo)
     assert checked.returncode != 0
@@ -376,14 +309,8 @@ def test_default_host_path_traversal_rejects_before_eval_or_lock_write(sandbox):
 
 def test_absolute_host_cannot_replace_lock_outside_repo(sandbox):
     """0048 §1.3: an absolute CLI host is not an arbitrary .lock writer."""
-    repo = make_env_repo(sandbox / "myenv", {})
+    repo = make_workspace_repo(sandbox / "myenv", {})
     absolute_host = str(sandbox / "victim")
-    nested_host = repo / "hosts" / f"{absolute_host.lstrip('/')}.ts"
-    nested_host.parent.mkdir(parents=True)
-    nested_host.write_text(
-        'import { defineEnv } from "@gripsack/core";\n'
-        "export default defineEnv(() => ({ modules: [] }));\n"
-    )
     victim = sandbox / "victim.lock"
     victim.write_text("do not clobber\n")
     out = grip("update", "--host", absolute_host, cwd=repo, approve=False)
@@ -394,12 +321,12 @@ def test_absolute_host_cannot_replace_lock_outside_repo(sandbox):
 
 
 def test_explicit_role_host_with_safe_dots_is_unchanged(sandbox):
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE, host="role.dev")
+    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     (repo / "configs" / "demo").mkdir(parents=True)
     (repo / "configs" / "demo" / "a").write_text("a\n")
-    out = grip("check", "--host", "role.dev", cwd=repo)
+    out = grip("check", "--json", "--host", "role.dev", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "1 modules" in out.stdout
+    assert [output["name"] for output in json.loads(out.stdout)["outputs"]] == ["hello"]
 
 
 def test_plan_diffs_against_the_current_generation(sandbox):
@@ -408,19 +335,17 @@ def test_plan_diffs_against_the_current_generation(sandbox):
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { module, trackedCopy } from "@gripsack/core";
-
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
-});
-""",
-    )
+    repo = make_workspace_repo(sandbox / "myenv",
+    """
+    import { profile, file, repoFile, identity, trackedCopyTo } from "@gripsack/core";
+    export default profile("demo", {
+      files: [file({source:repoFile("configs/demo/a.toml"),content:identity(),
+        destination:trackedCopyTo("~/.config/demo/a.toml")})],
+    });
+    """,)
     out = grip("plan", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "+ configs/demo/a.toml" in out.stdout
+    assert re.search(r"^\s*\+ .+ → ~/.config/demo/a\.toml \(new\)$", out.stdout, re.MULTILINE)
 
     grip("apply", "--host", "testhost", cwd=repo)
     out = grip("plan", "--host", "testhost", cwd=repo)
@@ -428,31 +353,30 @@ export default module("demo", {
 
     (confdir / "a.toml").write_text("b\n")
     (confdir / "b.toml").write_text("b\n")
-    (sandbox / "myenv" / "modules" / "hello.ts").write_text(
+    (repo / "outputs" / "hello.ts").write_text(
         """
-import { module, trackedCopy } from "@gripsack/core";
-
-export default module("demo", {
-  config: {
-    "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml"),
-    "configs/demo/b.toml": trackedCopy("~/.config/demo/b.toml"),
-  },
+import { profile, file, repoFile, identity, trackedCopyTo } from "@gripsack/core";
+export default profile("demo", {
+  files: ["a", "b"].map(name => file({
+    source:repoFile(`configs/demo/${name}.toml`),content:identity(),
+    destination:trackedCopyTo(`~/.config/demo/${name}.toml`),
+  })),
 });
 """
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
-    assert "~ configs/demo/a.toml" in out.stdout
-    assert "+ configs/demo/b.toml" in out.stdout
+    assert re.search(r"^\s*~ .+ → ~/.config/demo/a\.toml \(update\)$", out.stdout, re.MULTILINE)
+    assert re.search(r"^\s*\+ .+ → ~/.config/demo/b\.toml \(new\)$", out.stdout, re.MULTILINE)
 
-    # apply the two-entry module, then drop b → the next plan prunes it
+    # Apply both profile files, then drop b: the next plan prunes it.
     grip("apply", "--host", "testhost", cwd=repo)
 
-    (sandbox / "myenv" / "modules" / "hello.ts").write_text(
+    (repo / "outputs" / "hello.ts").write_text(
         """
-import { module, trackedCopy } from "@gripsack/core";
-
-export default module("demo", {
-  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+import { profile, file, repoFile, identity, trackedCopyTo } from "@gripsack/core";
+export default profile("demo", {
+  files: [file({source:repoFile("configs/demo/a.toml"),content:identity(),
+    destination:trackedCopyTo("~/.config/demo/a.toml")})],
 });
 """
     )
@@ -470,19 +394,18 @@ def test_plan_compares_template_and_merge_in_deployed_terms(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "app.toml").write_text('key = "{{ value }}"\n')
     (confdir / "block.sh").write_text("export DEMO=1\n")
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { merge, module, template } from "@gripsack/core";
-
-export default module("demo", {
-  config: {
-    "configs/demo/app.toml": template("~/.config/demo/app.toml", { value: "rendered" }),
-    "configs/demo/block.sh": merge("~/.bashrc"),
-  },
-});
-""",
-    )
+    repo = make_workspace_repo(sandbox / "myenv",
+    """
+    import { profile, file, repoFile, templateFile, identity, managedBlock, trackedCopyTo } from "@gripsack/core";
+    export default profile("demo", {
+      files: [
+        file({source:repoFile("configs/demo/app.toml"),
+          content:templateFile({value:"rendered"}),destination:trackedCopyTo("~/.config/demo/app.toml")}),
+        file({source:repoFile("configs/demo/block.sh"),
+          content:identity(),destination:managedBlock("~/.bashrc", "demo")}),
+      ],
+    });
+    """,)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert 'key = "rendered"' in (sandbox / ".config/demo/app.toml").read_text()
@@ -502,25 +425,29 @@ export default module("demo", {
 
 
 def test_exec_failures_render_with_codes_and_spans(sandbox):
-    """0004 §3 across the stack: a fetch failure at apply is a coded,
-    span-labeled diagnostic pointing at the module — never a bare
-    `error:` line. (The placeholder E114 path is unit-tested in
-    gripsack-ir; this covers the apply renderer.)"""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { module, tarball } from "@gripsack/core";
-
-export default module("demo", {
-  fetch: tarball("http://127.0.0.1:1/never-there.tar.gz"),
-});
-""",
-    )
+    """A locked native fetch failure is coded and source-labeled,
+    including cold acquisition after an unrooted update cache is evicted."""
+    payload = make_tarball(sandbox / "payload.tar.gz", {"payload": b"original"})
+    repo = make_workspace_repo(sandbox / "myenv", f"""
+import {{ pkg, provider, fileFetch, profile, file, artifactFile, identity, symlinkTo }} from "@gripsack/core";
+export default [
+  pkg("demo", {{producer:provider(fileFetch({json.dumps(str(payload))})),
+    commands:{{}},target:{{os:"linux",arch:"x86_64"}},layout:{{kind:"relocatable"}}}}),
+  profile("installed", {{files:[file({{source:artifactFile("demo","payload"),
+    content:identity(),destination:symlinkTo("~/.failed-fetch")}})]}}),
+];
+""")
+    updated = grip("update", "--host", "testhost", cwd=repo)
+    assert updated.returncode == 0, updated.stdout + updated.stderr
+    # No generation roots these source bytes yet; force actual cold transport.
+    shutil.rmtree(sandbox / ".local/share/gripsack/store")
+    payload.unlink()
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
-    assert "E301" in out.stderr
-    assert "modules/hello.ts" in out.stderr  # make_env_repo's default filename
-    assert str(repo / "modules/hello.ts") in out.stderr
+    assert "E201" in out.stderr
+    assert "outputs/hello.ts" in out.stderr
+    assert str(repo / "outputs/hello.ts") in out.stderr
+    assert not (sandbox / ".failed-fetch").exists()
 
 
 def test_third_party_npm_deps_resolve_in_module_code(sandbox):
@@ -528,7 +455,7 @@ def test_third_party_npm_deps_resolve_in_module_code(sandbox):
     read-only within the repo (node_modules included), and the pin map
     is applied via --import-map (not deno.json discovery) so BYONM
     still engages. Repos without package.json keep the embedded copy."""
-    repo = make_env_repo(sandbox / "myenv", {})
+    repo = make_workspace_repo(sandbox / "myenv", {})
     pkg = repo / "node_modules/tinypkg"
     pkg.mkdir(parents=True)
     (pkg / "package.json").write_text(
@@ -539,24 +466,17 @@ def test_third_party_npm_deps_resolve_in_module_code(sandbox):
         '{"name": "fixture", "private": true, "type": "module",'
         ' "dependencies": {"tinypkg": "1.0.0"}}'
     )
-    (repo / "modules" / "usesdep.ts").write_text(
+    (repo / "outputs" / "usesdep.ts").write_text(
         'import { answer } from "tinypkg";\n'
-        'import { module, tree } from "@gripsack/core";\n'
-        'export default module("usesdep", {\n'
-        '  config: tree("configs/demo", "~/.config/demo", answer === 42 ? "owned" : "merge"),\n'
-        '});\n'
+        'import { profile, file, repoTree, identity, symlinkTo } from "@gripsack/core";\n'
+        'if (answer !== 42) throw new Error("wrong dependency");\n'
+        'export default profile("usesdep", {files:[file({source:repoTree("configs/demo"),\n'
+        '  content:identity(),destination:symlinkTo("~/.config/demo")})]});\n'
     )
     confdir = repo / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.txt").write_text("a\n")
-    # rewrite the host to include the new module
-    host = repo / "hosts" / "testhost.ts"
-    src = host.read_text().replace("modules: []", "modules: [usesdep]")
-    src = src.replace(
-        'import { defineEnv } from "@gripsack/core";',
-        'import { defineEnv } from "@gripsack/core";\nimport usesdep from "../modules/usesdep.ts";',
-    )
-    host.write_text(src)
+    refresh_workspace(repo)
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
 
@@ -567,16 +487,14 @@ def test_embedded_frontend_serves_without_node_modules(sandbox):
     under $GRIPSACK_HOME/frontend/ts-<version>/. Only the runtime is
     provisioned — and the sandbox inherits deno from PATH, so nothing
     downloads (e2e is offline)."""
-    repo = make_env_repo(
-        sandbox / "env",
-        """
-import { module, trackedCopy } from "@gripsack/core";
-
-export default module("c", {
-  config: { "x.toml": trackedCopy("~/.config/x.toml") },
-});
-""",
-    )
+    repo = make_workspace_repo(sandbox / "env",
+    """
+    import { profile, file, repoFile, identity, trackedCopyTo } from "@gripsack/core";
+    export default profile("c", {
+      files: [file({source:repoFile("x.toml"),content:identity(),
+        destination:trackedCopyTo("~/.config/x.toml")})],
+    });
+    """,)
     (repo / "x.toml").write_text("embedded = true\n")
     assert not (repo / "node_modules").exists()
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -607,39 +525,30 @@ export default module("c", {
 
 
 
-def test_update_reports_modules_outside_the_hosts_graph(sandbox):
-    """F3 regression: a name passed to `grip update` that this host's
-    graph does not declare (probe-gated or typo) used to vanish
-    silently — eight asked, seven answered, exit 0."""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { module } from "@gripsack/core";
-
-export default module("present", { install: [] });
-""",
-    )
+def test_update_rejects_outputs_outside_the_workspace(sandbox):
+    """Every requested output must be admitted; typos never vanish
+    from an otherwise successful update."""
+    repo = make_workspace_repo(sandbox / "myenv",
+    """
+    import { profile } from "@gripsack/core";
+    export default profile("present", { files: [] });
+    """,)
     out = grip("update", "present", "ghost", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    lines = out.stdout
-    assert "ghost" in lines, out.stdout
-    assert "not in this host's graph" in lines, out.stdout
+    assert out.returncode != 0, out.stdout + out.stderr
+    assert "ghost" in out.stdout + out.stderr
+    assert not (repo / "gripsack.lock").exists()
 
 
-def test_apply_refuses_unknown_module_names(sandbox):
+def test_apply_refuses_unknown_profile_names(sandbox):
     """The same silence on apply would be worse — an apply that
     'succeeded' while ignoring part of the request lies."""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { module } from "@gripsack/core";
-
-export default module("present", { install: [] });
-""",
-    )
+    repo = make_workspace_repo(sandbox / "myenv",
+    """
+    import { profile } from "@gripsack/core";
+    export default profile("present", { files: [] });
+    """,)
     out = grip("apply", "ghost", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
-    assert "not in this host's graph" in out.stderr, out.stderr
     assert "ghost" in out.stderr
 
 
@@ -650,13 +559,13 @@ def test_comma_pinned_package_cannot_expand_deno_read_grant(sandbox):
     outside.mkdir()
     canary = outside / "canary.ts"
     canary.write_text('export default "outside";\n')
-    repo = make_env_repo(sandbox / "myenv", {})
-    (repo / "modules" / "evil.ts").write_text(
-        'import { module } from "@gripsack/core";\n'
+    repo = make_workspace_repo(sandbox / "myenv", {})
+    (repo / "outputs" / "evil.ts").write_text(
+        'import { profile } from "@gripsack/core";\n'
         f'import secret from "{canary.as_uri()}";\n'
-        'export default module(secret === "outside" ? "evil" : "bad", { install: [] });\n'
+        'export default profile(secret === "outside" ? "evil" : "bad", { files: [] });\n'
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
 
     control = grip("check", "--host", "testhost", cwd=repo)
     assert control.returncode != 0, "outside import must not work without a planted pin"
@@ -684,13 +593,13 @@ def test_comma_in_repo_path_cannot_expand_deno_read_grant(sandbox):
     outside.mkdir()
     canary = outside / "canary.ts"
     canary.write_text('export default "outside";\n')
-    repo = make_env_repo(sandbox / f"env,{outside}", {})
-    (repo / "modules" / "evil.ts").write_text(
-        'import { module } from "@gripsack/core";\n'
+    repo = make_workspace_repo(sandbox / f"env,{outside}", {})
+    (repo / "outputs" / "evil.ts").write_text(
+        'import { profile } from "@gripsack/core";\n'
         f'import secret from "{canary.as_uri()}";\n'
-        'export default module(secret === "outside" ? "evil" : "bad", { install: [] });\n'
+        'export default profile(secret === "outside" ? "evil" : "bad", { files: [] });\n'
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
 
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, (out.returncode, out.stdout[:300], out.stderr[:300])
@@ -700,7 +609,7 @@ def test_comma_in_repo_path_cannot_expand_deno_read_grant(sandbox):
 
 def test_comma_in_original_frontend_home_is_not_a_read_grant(sandbox, monkeypatch):
     """Original runtime storage is copied, not passed as a Deno read root."""
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     (repo / "configs/demo").mkdir(parents=True)
     (repo / "configs/demo/a").write_text("captured\n")
     monkeypatch.setenv("GRIPSACK_HOME", str(sandbox / "managed,home"))
@@ -712,7 +621,7 @@ def test_comma_in_original_frontend_home_is_not_a_read_grant(sandbox, monkeypatc
 def test_valid_external_core_pin_still_works_without_extra_grants(sandbox):
     """An ordinary canonical package pin outside the repo is allowed
     when its own directory is the only extra read grant."""
-    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     (repo / "configs/demo").mkdir(parents=True)
     (repo / "configs/demo/a").write_text("a\n")
     first = grip("check", "--host", "testhost", cwd=repo)
@@ -737,17 +646,17 @@ def test_a_pin_symlink_to_a_nonpackage_grants_nothing(sandbox):
     outside.mkdir()
     (outside / "secret.ts").write_text("export default 42;\n")
 
-    repo = make_env_repo(sandbox / "myenv", {})
-    # a module importing outside the repo — the sandbox denies the read
-    (repo / "modules" / "evil.ts").write_text(
+    repo = make_workspace_repo(sandbox / "myenv", {})
+    # An output importing outside the repo must not gain ambient authority.
+    (repo / "outputs" / "evil.ts").write_text(
         f"""
-import {{ module }} from "@gripsack/core";
+import {{ profile }} from "@gripsack/core";
 import secret from "{outside}/secret.ts";
 
-export default module("evil", {{}});
+export default profile(String(secret), {{files:[]}});
 """
     )
-    refresh_host(repo)
+    refresh_workspace(repo)
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, "the outside import must be denied"
 
@@ -763,7 +672,7 @@ def test_eval_env_cannot_override_operator_runtime(sandbox):
     """0035 F10: [eval] env must never redefine the GRIPSACK_*
     operator namespace — a trusted repo's GRIPSACK_DENO shim is a
     config error, not an evaluator."""
-    repo = make_env_repo(sandbox / "myenv", {})
+    repo = make_workspace_repo(sandbox / "myenv", {})
     (repo / "env.toml").write_text(
         '[env]\nname = "fixture"\n\n[eval]\n[eval.env]\nGRIPSACK_DENO = "/tmp/shim"\n'
     )

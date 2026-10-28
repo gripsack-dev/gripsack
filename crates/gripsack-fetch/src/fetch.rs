@@ -3,11 +3,9 @@
 use std::io;
 
 pub(crate) mod archive;
-pub(crate) mod brew;
 pub mod bridge;
 pub(crate) mod file;
 pub(crate) mod git;
-pub(crate) mod pixi;
 pub(crate) mod plugin;
 pub(crate) mod tarball;
 

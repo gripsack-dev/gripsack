@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 import pytest
-from release_fixture import REPO, Releases, archive
+from release_fixture import REJECTED_IR_CONTRACTS, REPO, Releases, archive
 
 
 @pytest.fixture
@@ -79,6 +79,18 @@ def test_rejected_candidate_preserves_old_installation(installer, mutation):
     result = run()
     assert result.returncode != 0, result.stdout
     assert destination.read_bytes() == original
+
+
+@pytest.mark.parametrize("contract", [contract for _, contract in REJECTED_IR_CONTRACTS],
+                         ids=[name for name, _ in REJECTED_IR_CONTRACTS])
+def test_noncurrent_ir_contract_rejects_before_payload_download(installer, contract):
+    server, destination, _, run = installer
+    server.mutate_manifest("9.9.9", lambda m: m["compatible"].update(ir=contract))
+    result = run()
+    assert result.returncode != 0
+    assert "unsupported IR compatibility contract" in result.stderr
+    assert destination.read_bytes() == b"old executable\n"
+    assert server.count(".tar.gz") == 0
 
 
 @pytest.mark.parametrize("reason", ["wrong-signer", "wrong-repository-certificate", "wrong-tag-certificate", "wrong-source-certificate", "bad-signature", "missing-signature"])

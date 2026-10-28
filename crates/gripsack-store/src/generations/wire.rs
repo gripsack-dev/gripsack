@@ -1,6 +1,6 @@
 //! Manifest versions are authority boundaries: v1/v2 cannot acquire v3
 //! migration recovery roots or inode-bound directory transition receipts.
-use super::{Generation, GenerationId, MigrationReceipt, ModuleState};
+use super::{DeploymentState, Generation, GenerationId, MigrationReceipt};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -13,7 +13,8 @@ impl Serialize for Generation {
         struct Manifest<'a> {
             #[serde(with = "crate::generation_wire")]
             number: GenerationId,
-            modules: &'a BTreeMap<String, ModuleState>,
+            #[serde(rename = "modules")]
+            deployments: &'a BTreeMap<String, DeploymentState>,
             #[serde(skip_serializing_if = "Vec::is_empty")]
             directory_transitions: &'a Vec<crate::journal::directory::DirectoryTransition>,
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -26,14 +27,14 @@ impl Serialize for Generation {
         }
         let manifest = Manifest {
             number: self.number,
-            modules: &self.modules,
+            deployments: &self.deployments,
             directory_transitions: &self.directory_transitions,
             migration: &self.migration,
         };
         if self.migration.is_some()
             || !self.directory_transitions.is_empty()
             || self
-                .modules
+                .deployments
                 .values()
                 .flat_map(|state| &state.intents)
                 .any(|intent| intent.action.requires_v2())
@@ -60,7 +61,8 @@ impl<'de> Deserialize<'de> for Generation {
         struct Manifest {
             #[serde(with = "crate::generation_wire")]
             number: GenerationId,
-            modules: BTreeMap<String, ModuleState>,
+            #[serde(rename = "modules")]
+            deployments: BTreeMap<String, DeploymentState>,
             #[serde(default)]
             directory_transitions: Vec<crate::journal::directory::DirectoryTransition>,
             #[serde(default)]
@@ -94,7 +96,7 @@ impl<'de> Deserialize<'de> for Generation {
         };
         if version == 1
             && manifest
-                .modules
+                .deployments
                 .values()
                 .flat_map(|state| &state.intents)
                 .any(|intent| intent.action.requires_v2())
@@ -115,7 +117,7 @@ impl<'de> Deserialize<'de> for Generation {
         }
         Ok(Self {
             number: manifest.number,
-            modules: manifest.modules,
+            deployments: manifest.deployments,
             directory_transitions: manifest.directory_transitions,
             migration: manifest.migration,
         })

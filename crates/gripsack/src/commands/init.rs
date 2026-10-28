@@ -1,4 +1,4 @@
-//! `grip init` — scaffold an env repo (0001 §5).
+//! `grip init` — create a usable workspace repo.
 //!
 //! The template is embedded in the binary, never fetched: first run
 //! is exactly the moment a corporate proxy bites hardest, and an
@@ -12,8 +12,7 @@ use owo_colors::OwoColorize;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// (repo-relative path, embedded contents). `hosts/myhost.ts` is
-/// renamed to the machine's hostname at write time.
+/// Repository-relative paths and embedded contents.
 const TEMPLATE: &[(&str, &str)] = &[
     ("env.toml", include_str!("../../template/env-repo/env.toml")),
     (
@@ -25,16 +24,8 @@ const TEMPLATE: &[(&str, &str)] = &[
         include_str!("../../template/env-repo/README.md"),
     ),
     (
-        "hosts/myhost.ts",
-        include_str!("../../template/env-repo/hosts/myhost.ts"),
-    ),
-    (
-        "modules/hello.ts",
-        include_str!("../../template/env-repo/modules/hello.ts"),
-    ),
-    (
-        "modules/examples.ts",
-        include_str!("../../template/env-repo/modules/examples.ts"),
+        "gripsack.ts",
+        include_str!("../../template/env-repo/gripsack.ts"),
     ),
     (
         "configs/hello/hello.toml",
@@ -46,25 +37,17 @@ const TEMPLATE: &[(&str, &str)] = &[
     ),
 ];
 
-/// package.json for the IDE story: the frontend's types as a devDep so
-/// editors give autocomplete + inline errors on module code. Also the
-/// deliberate pin (0013 D3) — the repo's install shadows the embedded
-/// frontend, so it must shadow a COMPATIBLE version: pin to this
-/// grip's major.minor, floating the patch. 0.40: the package ships its
-/// TypeScript source, so `@types/node` rides along (the DSL's source
-/// imports node: modules).
+/// Optional editor dependencies, pinned to this binary's published SDK archive.
+/// Capture excludes node_modules, so editor installs never select evaluated code.
 fn package_json() -> String {
-    let version = env!("CARGO_PKG_VERSION")
-        .rsplit_once('.')
-        .map(|(major_minor, _)| major_minor)
-        .unwrap_or(env!("CARGO_PKG_VERSION"));
+    let version = env!("CARGO_PKG_VERSION");
     format!(
         r#"{{
   "name": "my-env",
   "private": true,
   "type": "module",
   "devDependencies": {{
-    "@gripsack/core": "^{version}",
+    "@gripsack/core": "https://github.com/gripsack-dev/gripsack/releases/download/core-v{version}/gripsack-core-{version}.tgz",
     "@types/node": "^26",
     "typescript": "^7"
   }}
@@ -73,13 +56,8 @@ fn package_json() -> String {
     )
 }
 
-fn hostname() -> String {
-    super::sanitize_hostname(&super::hostname())
-}
-
-/// Scaffold an env repo at `dir`. Never clobbers: an existing env.toml
-/// means "this is already an env repo" and is an error; any other
-/// existing file is skipped and reported.
+/// Create a workspace at `dir`. Existing env.toml or gripsack.ts refuses the
+/// operation; other existing files are skipped and reported.
 pub fn init(dir: &Path, palette: Palette) -> ExitCode {
     let c = |s: &str| {
         if palette.enabled {
@@ -88,21 +66,18 @@ pub fn init(dir: &Path, palette: Palette) -> ExitCode {
             s.to_string()
         }
     };
-    if dir.join("env.toml").exists() {
+    if dir.join("env.toml").symlink_metadata().is_ok()
+        || dir.join("gripsack.ts").symlink_metadata().is_ok()
+    {
         eprintln!(
-            "grip: {} already looks like an env repo (env.toml exists) — nothing written",
+            "grip: {} already looks like a workspace repo — nothing written",
             dir.display()
         );
         return ExitCode::FAILURE;
     }
-    let host = hostname();
     let mut created = Vec::new();
     for (rel, contents) in TEMPLATE {
-        let rel = if *rel == "hosts/myhost.ts" {
-            format!("hosts/{host}.ts")
-        } else {
-            rel.to_string()
-        };
+        let rel = rel.to_string();
         let path: PathBuf = dir.join(&rel);
         if path.exists() {
             eprintln!("  {} {rel} (exists — kept)", palette.warn("skip"));
@@ -144,15 +119,13 @@ pub fn init(dir: &Path, palette: Palette) -> ExitCode {
             _ => "git not available — skipped git init",
         }
     };
-    println!("{} env repo in {}", c("created"), dir.display());
+    println!("{} workspace repo in {}", c("created"), dir.display());
     for rel in &created {
         let note = match rel.as_str() {
-            "env.toml" => "— the environment declaration",
-            "package.json" => "— the IDE story + deliberate pin",
+            "env.toml" => "— workspace settings and captured source policy",
+            "package.json" => "— optional editor dependencies",
             "tsconfig.json" => "— editor typechecking",
-            r if r.starts_with("hosts/") => "— this machine's entrypoint (tags)",
-            "modules/hello.ts" => "— a working first module (config-only)",
-            "modules/examples.ts" => "— the feature tour, commented",
+            "gripsack.ts" => "— workspace outputs and file ownership",
             _ => "",
         };
         println!("  {rel} {note}");
@@ -161,7 +134,25 @@ pub fn init(dir: &Path, palette: Palette) -> ExitCode {
     println!(
         "next: {} && {}",
         c("grip check"),
-        c(&format!("grip apply --host {host}"))
+        c("grip plan && grip apply")
     );
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn existing_workspace_is_never_overwritten() {
+        let directory = tempfile::tempdir().unwrap();
+        let entrypoint = directory.path().join("gripsack.ts");
+        std::fs::write(&entrypoint, "existing workspace").unwrap();
+        assert_eq!(init(directory.path(), Palette::plain()), ExitCode::FAILURE);
+        assert_eq!(
+            std::fs::read_to_string(entrypoint).unwrap(),
+            "existing workspace"
+        );
+        assert!(!directory.path().join("env.toml").exists());
+    }
 }
