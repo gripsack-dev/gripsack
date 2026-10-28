@@ -30,6 +30,11 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub(super) struct ImageIdentity(Sha256Digest);
+impl ImageIdentity {
+    pub(super) fn bytes(&self) -> &[u8; 32] {
+        self.0.as_bytes()
+    }
+}
 impl std::fmt::Display for ImageIdentity {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(out)

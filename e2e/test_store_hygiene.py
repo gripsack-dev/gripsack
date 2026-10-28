@@ -7,13 +7,17 @@ fixture repos come from conftest."""
 import json
 import os
 import stat
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from conftest import (
     native_target,
     grip,
     make_workspace_repo,
     make_tarball,
+    make_toolchain_tarball,
     remove_output,
 )
 
@@ -236,45 +240,93 @@ export default profile("demo", { files: [
     assert target.exists()
 
 
-def test_store_verify_covers_native_package_payloads(sandbox):
-    """0014 §1a: verify used to compare the store TREE hash against the
-    lock's TRANSPORT hash (never matches) under a hostname-keyed lock
-    lookup (usually skipped). The manifest's tree256 is the expectation
-    now — a tampered fetched payload fails verify, hostname-free."""
-    payload = make_tarball(sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
+def native_package_repo(sandbox):
+    payload = make_toolchain_tarball(sandbox / "myenv" / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
     repo = make_workspace_repo(
         sandbox / "myenv",
         f"""
 import {{ artifactFile, file, fileFetch, identity, pkg, profile, provider, symlinkTo }} from "@gripsack/core";
 
-export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{}}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
+export default [pkg("hello-payload", {{ producer: provider(fileFetch("{payload.name}")), commands: {{ hello: "bin/hello" }}, target: {native_target()}, layout: {{ kind: "relocatable" }} }}),
 profile("hello", {{ files: [
     file({{ source: artifactFile("hello-payload", "bin/hello"), content: identity(), destination: symlinkTo("~/.local/bin/hello") }})
   ] }})];
 """,
     )
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    out = grip("store-verify", cwd=repo)
-    assert out.returncode == 0, out.stdout + out.stderr
+    return repo
 
-    store = sandbox / ".local/share/gripsack/store"
-    target = next(path for path in store.iterdir() if (path / "bin/hello").is_file())
-    for f in target.rglob("*"):
-        if f.is_file() and not f.is_symlink():
-            f.chmod(0o644)  # store payloads are read-only (0016 §D3)
-            f.write_text("tampered\n")
-    out = grip("store-verify", cwd=repo)
-    assert out.returncode != 0
-    assert "corrupt" in out.stdout
-    out = grip("store-verify", "--repair", cwd=repo)
-    assert "removed corrupt" in out.stdout
-    # repair removed it; the next apply republishes the SAME path —
-    # the lock's tree256 names the content, and the bytes haven't moved
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    assert target.is_dir()
-    assert (target / "bin/hello").read_bytes() == b"#!/bin/sh\necho hello\n"
+
+@pytest.mark.parametrize("consumer", ["profile", "build"])
+def test_store_verify_covers_native_package_payloads(sandbox, consumer):
+    """Generation closures and standalone output roots both carry native bytes."""
+    repo = native_package_repo(sandbox)
+    home = sandbox / ".local/share/gripsack"
+
+    def realize():
+        if consumer == "profile":
+            result = grip("apply", "--host", "testhost", cwd=repo)
+            assert result.returncode == 0, result.stdout + result.stderr
+            receipt = json.loads(next((home / "store").glob("*/package.json")).read_text())
+            return Path(receipt["producer_payload"]) / receipt["commands"]["hello"]["selector"]
+        result = grip("build", "hello-payload", "--json", cwd=repo)
+        assert result.returncode == 0, result.stdout + result.stderr
+        return Path(json.loads(result.stdout)["outputs"][0]["commands"]["hello"]).resolve()
+
+    command = realize()
+    assert (home / "current").exists() == (consumer == "profile")
+    assert grip("store-verify", cwd=sandbox).returncode == 0
+    target = next(parent for parent in command.parents if parent.parent == home / "store")
+    command.chmod(0o755)
+    command.write_bytes(b"tampered\n")
+    refused = grip("store-verify", cwd=sandbox)
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    repaired = grip("store-verify", "--repair", cwd=sandbox)
+    assert not target.exists(), repaired.stdout + repaired.stderr
+
+    restored = realize()
+    assert restored == command
+    assert restored.read_bytes() == b"#!/bin/sh\necho hello\n"
+    executed = subprocess.run([str(restored)], capture_output=True, text=True, timeout=10)
+    assert executed.returncode == 0 and executed.stdout == "hello\n", executed.stderr
+    assert grip("store-verify", cwd=sandbox).returncode == 0
+
+
+@pytest.mark.parametrize("mutation", ["outside", "unsupported", "identity"])
+def test_native_store_repair_preserves_ambiguous_receipts_and_foreign_data(sandbox, mutation):
+    repo = native_package_repo(sandbox)
+    applied = grip("apply", cwd=repo)
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    home = sandbox / ".local/share/gripsack"
+    receipt_path = next((home / "store").glob("*/package.json"))
+    receipt = json.loads(receipt_path.read_text())
+    command = Path(receipt["producer_payload"]) / receipt["commands"]["hello"]["selector"]
+    foreign = sandbox / "foreign"
+    foreign.mkdir()
+    (foreign / "private").write_bytes(b"not store data\n")
+    if mutation == "outside":
+        receipt["producer_root"] = str(foreign)
+        receipt["producer_payload"] = str(foreign)
+    elif mutation == "unsupported":
+        receipt["version"] = 999
+    else:
+        # Keep the store-name prefix: a conflicting full receipt digest must
+        # not turn healthy content-addressed bytes into removal authority.
+        digest = receipt["tree"]
+        receipt["tree"] = digest[:-1] + ("0" if digest[-1] != "0" else "1")
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(receipt))
+    receipt_path.chmod(0o444)
+    recorded = receipt_path.read_bytes()
+    generation = (home / "current/manifest.json").read_bytes()
+    with command.open("rb") as held:
+        inode = command.stat().st_ino
+        refused = grip("store-verify", "--repair", cwd=sandbox)
+        assert refused.returncode != 0, refused.stdout + refused.stderr
+        assert command.stat().st_ino == inode
+        assert command.read_bytes() == held.read() == b"#!/bin/sh\necho hello\n"
+    assert receipt_path.read_bytes() == recorded
+    assert (foreign / "private").read_bytes() == b"not store data\n"
+    assert (home / "current/manifest.json").read_bytes() == generation
 
 
 def test_store_payloads_are_read_only(sandbox):

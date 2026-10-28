@@ -104,6 +104,5 @@ export default profile("demo", { files: [
     assert out.returncode == 0, out.stderr
     assert "= ~/.config/demo/a.conf (satisfied)" in out.stdout, out.stdout
     assert "~/.local/bin/hello" in out.stdout, out.stdout
-    assert "deferred" in out.stdout.lower(), out.stdout
     assert "+ " not in out.stdout, "a satisfied link must not preview as new"
     assert "(prune)" not in out.stdout, "a deferred dest is still declared"

@@ -190,31 +190,42 @@ pub fn canonical_bytes_hash(bytes: &[u8]) -> BytesHash {
 /// Canonical hash of a directory tree: sorted relative paths plus each
 /// entry's canonical identity. Deterministic across machines.
 pub fn canonical_tree_hash(root: &Path) -> std::io::Result<PayloadHash> {
+    canonical_tree_hash_in(&gripsack_fs::open(root)?)
+}
+
+/// The canonical tree domain through an already pinned directory capability.
+pub fn canonical_tree_hash_in(root: &gripsack_fs::Dir) -> std::io::Result<PayloadHash> {
     let mut entries = Vec::new();
-    collect_entries(root, root, &mut entries)?;
+    collect_entries(root, Path::new(""), &mut entries)?;
     entries.sort();
     let mut hasher = Sha256::new();
     for rel in entries {
         hasher.update(rel.as_bytes());
         hasher.update(b"\0");
-        hasher.update(canonical_file_hash(&root.join(&rel))?.as_str().as_bytes());
+        hasher.update(
+            canonical_file_hash_in(root, Path::new(&rel))?
+                .as_str()
+                .as_bytes(),
+        );
         hasher.update(b"\0");
     }
     Ok(PayloadHash(hex(&hasher.finalize())))
 }
 
-fn collect_entries(root: &Path, dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let path = entry?.path();
-        let rel = path
-            .strip_prefix(root)
-            .expect("walked path is under root")
-            .to_string_lossy()
-            .into_owned();
-        let is_real_dir = path.is_dir() && !path.is_symlink();
-        out.push(rel);
-        if is_real_dir {
-            collect_entries(root, &path, out)?;
+fn collect_entries(
+    directory: &gripsack_fs::Dir,
+    prefix: &Path,
+    out: &mut Vec<String>,
+) -> std::io::Result<()> {
+    for entry in directory.entries()? {
+        let name = entry?.file_name();
+        let name = Path::new(&name);
+        let relative = prefix.join(name);
+        let metadata = directory.symlink_metadata(name)?;
+        out.push(relative.to_string_lossy().into_owned());
+        if metadata.is_dir() {
+            let child = gripsack_fs::open_dir_nofollow(directory, name)?;
+            collect_entries(&child, &relative, out)?;
         }
     }
     Ok(())
@@ -330,6 +341,23 @@ mod tests {
         assert_eq!(canonical_tree_hash(dir.path()).unwrap(), before);
         std::fs::write(dir.path().join("z"), b"z").unwrap();
         assert_ne!(canonical_tree_hash(dir.path()).unwrap(), before);
+    }
+
+    #[test]
+    fn tree_hash_keeps_the_admitted_directory_when_its_name_is_replaced() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("object");
+        let foreign = temporary.path().join("foreign");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&foreign).unwrap();
+        std::fs::write(root.join("payload"), b"admitted").unwrap();
+        std::fs::write(foreign.join("payload"), b"replacement").unwrap();
+        let directory = gripsack_fs::open(&root).unwrap();
+        let expected = canonical_tree_hash_in(&directory).unwrap();
+        std::fs::rename(&root, temporary.path().join("retained")).unwrap();
+        std::os::unix::fs::symlink(&foreign, &root).unwrap();
+        assert_ne!(canonical_tree_hash(&root).unwrap(), expected);
+        assert_eq!(canonical_tree_hash_in(&directory).unwrap(), expected);
     }
 }
 

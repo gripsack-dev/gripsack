@@ -153,7 +153,7 @@ fn materialization_key(locked: &LockedCondaEnvironment, context: &[&str]) -> Str
     gripsack_process::Sha256Digest::from_bytes(hasher.finalize().into()).to_string()
 }
 
-fn native_location(
+pub(super) fn native_location(
     output: &str,
     home: &Path,
     locked: &LockedCondaEnvironment,

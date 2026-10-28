@@ -1,4 +1,4 @@
-//! `grip store verify` — re-hash walk with --repair (0008 §3).
+//! `grip store-verify` — retained payload audit and explicit repair.
 
 use crate::render::Palette;
 use std::process::ExitCode;

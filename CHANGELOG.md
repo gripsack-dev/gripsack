@@ -18,6 +18,8 @@ User-visible changes per release. Design archaeology lives in
   it no longer assumes a matching npm publication.
 - Directory growth over restorable prior content refuses before changing files;
   malformed IR diagnostics retain their JSON locations.
+- `store-verify` audits retained native packages, environments and OCI payloads,
+  including standalone build roots. Ambiguous receipt evidence blocks native repair.
 - Product-first website and guides for native tools, environments, dotfiles,
   BuildKit source builds, OCI image exports and explicit tasks.
 

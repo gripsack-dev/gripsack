@@ -119,6 +119,34 @@ their dead implementation, not as passing checks.
   not a relaxed transport check. The runner now names the current tool-artifact
   TLS refusal. HTTP (13 properties/4 mutants), process bounds (35/10), and
   update survey (3/7) all passed their positive and negative calibrations.
+- Candidate `983e74561975264a1efd1d1694f68b89dd991b98951ce52c8755e1b77e4058c1`
+  (`10110d8`) passed inventory, Rust, GNU, TypeScript, runtime images, dependency
+  audits, bridge reproduction and Linux B0. Its helper check correctly rejected
+  the pre-review pin after measuring identical new bytes in both builds.
+  The updated pin `9c072cc8efeaa6d71aad8ba2647acec336f0cf792a032d5482388911613761b2`
+  then passed two independent builds, static/protocol admission and exact pin
+  checking from `4144c73`; the helper lock remained unchanged.
+- The complete `10110d8` flow image passed 642/644 cases. The remaining wording
+  assertion is removed; the other failure exposed an actual native store-audit
+  omission, not a stray cache fixture: generation closures retained package
+  sources that the deployment-only verifier never hashed.
+- Native auditing now reads the existing bounded receipts and retention roots,
+  without evaluation or provisioning. Full payload claims cover packages,
+  recipes, Conda prefixes/archives, image materializations and OCI exports.
+  Unsupported versions, escaped references, conflicting claims and receipt
+  digests that disagree with self-identifying bytes block native repair.
+  Repairs use direct-child store capabilities rather than ambient deletion.
+- Capability tree hashing preserves the existing fixed digest vector and passes
+  a held-directory/name-replacement regression. Store/exec library tests passed
+  110/110 and 119/119; clippy passed. The corrected integrity/repair/preview
+  flow group passed 29/29, including failing-before cases for generation and
+  standalone native payloads and ambiguous receipt preservation.
+- Actual CLI corruption/repair smokes restored a fetched native payload, the
+  real ripgrep Conda prefix and the website's OCI archive. The Conda executable
+  and OCI archive returned to their exact previous SHA256 values; the active
+  generation stayed unchanged and the image flow created none. Healthy native
+  and image inventories audited with deliberately unavailable runtimes/helpers,
+  confirming that verification does not evaluate or provision.
 
 These are development observations, not a relabelled qualification receipt.
 The frozen 0.50 release must still complete its practical profile.

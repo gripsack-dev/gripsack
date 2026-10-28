@@ -4,6 +4,7 @@
 use crate::{Ctx, ExecError, LifecycleSession};
 mod archive_root;
 pub(super) mod hook;
+pub(super) mod integrity;
 use gripsack_ir::{
     workspace::{RecipeOutputKind, WorkspacePlatform},
     workspace_model::{

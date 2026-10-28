@@ -8,6 +8,7 @@ mod consumer;
 pub(crate) mod hooks;
 mod image;
 mod inputs;
+pub(crate) mod integrity;
 mod lowering;
 mod prepare;
 mod realize;

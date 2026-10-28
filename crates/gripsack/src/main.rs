@@ -145,7 +145,7 @@ enum Command {
     },
     /// Show which profile owns a deployed path
     WhyOwns { path: String },
-    /// Re-hash every store path and report corruption (0008 §3)
+    /// Re-hash retained deployment and native artifact payloads
     StoreVerify {
         /// Remove corrupt paths (next apply re-fetches)
         #[arg(long)]
