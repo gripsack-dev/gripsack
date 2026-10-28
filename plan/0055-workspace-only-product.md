@@ -151,6 +151,13 @@ their dead implementation, not as passing checks.
   in two independent builds: `1026d2f1c7761c072beae615e78d0f9c7fea983979855431c942ec1ce6044e89`.
   Static/protocol checks passed and the helper lock remained unchanged; the core
   pin is updated to these measured bytes before the next qualification snapshot.
+- Candidate `e418add7bc519e1ddc9b17a1d8c0e4c3060ea3dd3019224f4f8f5071415e5aa2`
+  (`54c1c29`) passed the first 13 practical gates, including static packaging,
+  SDK packaging, publication packages and the final helper pin check. Installed
+  consumers then refused a stale duplicated site pin before consuming artifacts.
+  Consumer and release-evidence readers now take external identities from the
+  frozen profile; release-script unit tests passed 128/128 after that cutover.
+  Installed-release flows also include native integrity and preview scenarios.
 
 These are development observations, not a relabelled qualification receipt.
 The frozen 0.50 release must still complete its practical profile.

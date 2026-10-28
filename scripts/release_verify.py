@@ -25,7 +25,7 @@ import release_consumer as consumer
 import release_evidence as evidence
 import release_manifest as schema
 import release_publish as publish
-from local_artifact_consumers import EXTERNAL, snapshot
+from local_artifact_consumers import external_repositories, snapshot
 from examples_check.fixtures import install_sdk
 
 require = schema.require
@@ -365,7 +365,7 @@ class Verification:
 
     def example(self):
         source = self.args.example.resolve()
-        require(schema.git(source, "rev-parse", "HEAD") == EXTERNAL["example"][1], "external recipe is not frozen qualified revision")
+        require(schema.git(source, "rev-parse", "HEAD") == external_repositories()["example"][1], "external recipe is not frozen qualified revision")
         require(not schema.git(source, "status", "--porcelain", "--untracked-files=all", "--ignored"), "external recipe is dirty")
         return source
 

@@ -22,10 +22,12 @@ from examples_check.extract import CheckFailure
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET = "x86_64-unknown-linux-musl"
-EXTERNAL = {
-    "site": ("https://github.com/gripsack-dev/gripsack-dev.github.io", "14d9b1453ef0975d151ce2e74007c9436cafa79b"),
-    "example": ("https://github.com/gripsack-dev/example-env-typescript", "dc0e5140b422d2fb9d37971615051556d70f7bed"),
-}
+
+
+def external_repositories() -> dict[str, tuple[str, str]]:
+    """The frozen profile is the sole external source-pin authority."""
+    repositories = json.loads((ROOT / ".ci/pilot.json").read_text())["external_inputs"]["repositories"]
+    return {name: (pin["url"].removesuffix(".git"), pin["commit"]) for name, pin in repositories.items()}
 
 
 def sha(path: Path) -> str:
@@ -138,13 +140,13 @@ class Consumer:
         for relative in ("Cargo.toml", "Cargo.lock", "typescript/package.json", "typescript/package-lock.json",
                          "tools/conda-helper/Cargo.toml", "tools/conda-helper/Cargo.lock",
                          "crates/gripsack-fetch/src/conda_pins.rs", "crates/gripsack-fetch/src/bridge_pins.rs",
-                         "scripts/local_artifact_consumers.py", "scripts/local_ci_conda_consumer.py"):
+                         "scripts/local_artifact_consumers.py", "scripts/local_ci_conda_consumer.py", ".ci/pilot.json"):
             self.receipt["source"]["contracts"][relative] = sha(ROOT / relative)
         for tool in ("python3", "node", "npm", "deno", "rustc", "git", "readelf", "zstd"):
             self.run([tool, "--version"])
         self.env["GRIPSACK_DENO"] = str(Path(shutil.which("deno", path=self.env["PATH"])).resolve())
         self.receipt["external_inputs"] = {}
-        for name, (url, expected) in EXTERNAL.items():
+        for name, (url, expected) in external_repositories().items():
             source = getattr(self.args, name).resolve()
             git = ["git", "-c", f"safe.directory={source}"]
             actual = self.run([*git, "rev-parse", "HEAD"], cwd=source).strip()
@@ -162,7 +164,7 @@ class Consumer:
         # Rust evaluates its own pin constants; no regex interpretation of Rust source.
         projection = self.work / "pins.rs"
         projection.write_text(
-            '#![allow(dead_code)]\nmod host { #[derive(Debug)] pub enum AssetTarget { LinuxX86_64Musl, LinuxAarch64Musl, MacosAarch64, MacosX86_64 } }\n'
+            '#![allow(dead_code)]\nmod host { #[derive(Debug)] pub enum AssetTarget { LinuxX86_64Musl } }\n'
             + f'#[path={json.dumps(str(ROOT / "crates/gripsack-fetch/src/conda_pins.rs"))}] mod conda;\n'
             + f'#[path={json.dumps(str(ROOT / "crates/gripsack-fetch/src/bridge_pins.rs"))}] mod bridge;\n'
             + 'fn main() { println!("{:?}", conda::CONDA_VERSION); println!("{:?}", bridge::BRIDGE_VERSION); '
@@ -282,7 +284,8 @@ class Consumer:
                  "test_workspace_captured_files.py", "test_workspace_archive_roots.py",
                  "test_workspace_managed_launchers.py", "test_workspace_file_checks.py",
                  "test_workspace_migration.py", "test_workspace_directory_evolution.py",
-                 "test_task_graphs.py", "test_workspace_gnu_loader.py"]
+                 "test_task_graphs.py", "test_workspace_gnu_loader.py",
+                 "test_store_hygiene.py", "test_plan_operations.py"]
         # Fault-control tests remain mandatory in the debug flow gate; the
         # installed release intentionally does not contain those controls.
         self.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",

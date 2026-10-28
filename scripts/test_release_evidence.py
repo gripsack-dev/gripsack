@@ -88,7 +88,7 @@ class EvidenceTests(unittest.TestCase):
         self.external_files = {"gripsack.ts": b"synthetic representative workspace source",
                                "workspaces/conda/gripsack.ts": b"synthetic conda source", "workspaces/conda/gripsack.lock": b"frozen lock"}
         self.external_proof, external_source = proof(self.root, "example-proof", self.external_files)
-        external_patch = patch.dict(evidence.EXTERNAL, {"example": ("https://example.invalid/fixture", external_source["commit"])})
+        external_patch = patch.object(evidence, "external_repositories", return_value={"example": ("https://example.invalid/fixture", external_source["commit"])})
         external_patch.start()
         self.addCleanup(external_patch.stop)
         self.manifest_path = self.put("downloads/gripsack-release-" + self.version + ".json", schema.canonical(self.manifest))
