@@ -20,7 +20,7 @@ sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-vstd = "=0.0.0-2026-09-06-0133"
+vstd = "=0.0.0-2026-10-04-0306"
 
 [dev-dependencies]
 # Real JSON Schema validation for the schema↔parser acceptance corpus
