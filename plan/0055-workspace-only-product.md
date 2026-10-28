@@ -172,5 +172,45 @@ their dead implementation, not as passing checks.
   in active consumer declarations. No lock refresh or public SDK substitution
   was used to turn the refusal into success.
 
-These are development observations, not a relabelled qualification receipt.
-The frozen 0.50 release must still complete its practical profile.
+The observations above are development history. The exact-source release result
+is recorded separately below.
+
+## Published 0.50.0 — 2026-10-28
+
+[Release](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.50.0) is
+public/latest, with short product-first notes and 15 immutable manual-install
+assets. Core and SDK are 0.50.0; the authoring contract is workspace-only IR9.
+The qualified source is `d060e1fef80f83212210e66bf65a8f1d62631bd0`, merged in
+[PR198](https://github.com/gripsack-dev/gripsack/pull/198). It removes **37,496
+lines net across 470 files** relative to its main base.
+
+- Candidate `0bd892ef25778650c2808c1608b3095027e780a49c47f16c354320de126fd89f`
+  passed all **17** practical gates, **648** normal flows, **227** installed-release
+  cases and **96** persistence partitions with both drift states.
+  [Qualification receipt](https://github.com/gripsack-dev/gripsack/releases/download/core-v0.50.0/gripsack-0.50.0-local-qualification.json)
+  SHA256: `ed0d8c9be9650c2591b3c7423f89ea24fa542de4ba1bd1b2bbd4e5c27a3ce937`.
+- All **15** uploaded assets passed byte-for-byte GitHub download readback before
+  publication. The downloaded core passed isolated init, approval, preview, apply,
+  unchanged-generation reuse, changed-source refusal, rollback, store verification
+  and retired IR8 refusal. Published tags and asset bytes were not rewritten.
+- Cold public helper provisioning passed without overrides. The frozen Conda
+  consumer ran ripgrep 15.2.0 and reused its generation. The actual website
+  BuildKit recipe ran natively and as an independently inspected OCI image in
+  Docker; retained native execution survived owned worker/cache removal.
+- The published [example](https://github.com/gripsack-dev/example-env-typescript)
+  installed the GitHub SDK through `npm ci` with a fresh cache, passed TypeScript
+  checking and real `grip check`, and left its manifests and locks unchanged.
+  [PR6](https://github.com/gripsack-dev/example-env-typescript/pull/6) carries the
+  qualified workspace-only sources.
+- The product-first [site](https://gripsack.dev/) is live from source
+  `4a157e3a36c2f6e891e7beb3f3a8f8240259b853`
+  ([PR26](https://github.com/gripsack-dev/gripsack-dev.github.io/pull/26)).
+  Static commit `86d3e8021fb735dfdd3ff319ea62984e1497e6b3` deployed through the
+  [upload-only Pages run](https://github.com/gripsack-dev/gripsack-dev.github.io/actions/runs/40718329787).
+  Live desktop/mobile, dark/light and navigation were exercised: **18** pages,
+  **519** internal references, no broken internal anchors, no browser errors and
+  no horizontal overflow.
+
+This is the owner's selected Linux/WSL x86_64 practical, unsigned publication
+style—not a registry publication or a new formal-proof claim. The original
+handover mapping and next product work remain as recorded above.

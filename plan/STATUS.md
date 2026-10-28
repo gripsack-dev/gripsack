@@ -4,28 +4,36 @@ One row per plan. Current work and priorities live in the numbered plans;
 historical decisions remain here rather than on the product website.
 Update this ledger in the same change as the plan it tracks.
 
-## Workspace-only 0.50 — in progress
+## Workspace-only 0.50 — published 2026-10-28
 
-[0055](0055-workspace-only-product.md) records the owner's clean alpha cutover:
-one workspace API and IR9, removal of the module executor and obsolete providers,
-current examples and a product-first website. Retained deployment and recovery
-data keep their meaning. Qualification and publication results will be recorded
-with the actual release, not inferred from this source version.
+[0.50.0 is public/latest](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.50.0),
+from immutable qualified source `d060e1fef80f83212210e66bf65a8f1d62631bd0`.
+All 17 practical gates passed: 648 normal flows, 227 installed-release cases,
+all 96 persistence partitions, packaging and reproducibility. All 15 uploaded
+assets passed download readback; the downloaded CLI, cold public helpers,
+native/OCI execution and public SDK installation passed real consumer smokes.
 
-## Current release and website — 2026-10-27
+[0055](0055-workspace-only-product.md#published-0500--2026-10-28) records the
+workspace-only IR9 cutover, retained-data boundary and release evidence.
+The release source removes 37,496 lines net across 470 files. The product-first
+[website](https://gripsack.dev/) is deployed; desktop/mobile navigation and
+519 internal link references passed. Publication stays manual and unsigned,
+with matching SDK assets; no npm/crates.io publication is implied.
 
-0.48 is public/latest and unsigned, at immutable source
+## Previous release and website — 2026-10-27
+
+0.48 was published unsigned, at immutable source
 `3a845bc8c83a42dd1b529789730d421208f929ae`. Its exact-source practical local
 candidate passed all 17 gates, including all 96 persistence partitions; uploaded
 assets were read back and real installed consumers passed. TLC/TLAPS/Verus are
 explicitly unqualified by this release. 0.47 remains an unverified prerelease.
 No npm/crates.io publication is implied.
 
-Main now uses strict `local-practical-qualification` status enforcement instead
-of hosted `test`. The refreshed website is public from source `a9ec21a`; local
-rendering and an 18-second static Pages deployment replaced signed-site admission.
-Postrelease maintainer edits remove obsolete site dispatch and refresh current
-guidance without changing release tags or artifacts. See [0054's current delivery](0054-workspace-ergonomics-and-handover-completion.md#current-delivery-2026-10-27)
+Main adopted strict `local-practical-qualification` status enforcement instead
+of hosted `test`. That website refresh used source `a9ec21a`; local rendering
+and an 18-second static Pages deployment replaced signed-site admission.
+Postrelease maintainer edits removed obsolete site dispatch and refreshed
+guidance without changing release tags or artifacts. See [0054's delivery](0054-workspace-ergonomics-and-handover-completion.md#current-delivery-2026-10-27)
 for evidence. Earlier pending-release notes below are historical; original
 handover/product/formal completion is still not claimed.
 
@@ -166,7 +174,7 @@ the fetcher registry stay the north star.
 | 0052 | Workspace graph, command, diagnostic and native-runtime contract | runtime through0.47 reviewer prerelease; A1/A2 closure pending | Historical IR8 and its retained readers describe that release; 0055 replaces them with workspace-only IR9. Named recipes/packages, environments/profiles, native Conda/Pixi, tasks/checks/hooks and BuildKit-backed production precede the0.47 captured-tree/template, launcher, task and file-check additions. Earlier admission-only/file-only checkpoints remain historical in plan0052 and the [immutable prototype ledger](https://github.com/gripsack-dev/gripsack/blob/fa3ada8f4f56a4274ee3a939d4642d30d54c6777/plan/STATUS.md#L110) | Original A1/A2/A2-P row/milestone closure, source-bound semantic review and proof catalogs remain separate. No pending row is permission to reimplement or weaken existing behavior | — |
 | 0053 | CI and release-flow migration | local qualification and main protection active | Buildbot controller/worker, exact source/receipt admission, installed-artifact consumers, same-host backup/restore, Gripsack's earlier19-gate/96-partition worker-recovery qualification, and strict local-practical-qualification main protection exercised | Off-device restore and remaining cross-project evidence remain separate; an isolated signer is not required by the selected unsigned release style | — |
 | 0054 | Workspace ergonomics and original handover completion |0.48 qualified and published | IR8 ergonomics and generation-bound migration shipped in the reviewer packet;0.48 adds lifecycle-stable capture globs and focused review. All17 practical gates, all96 persistence partitions, asset readback and installed consumers passed. Website/README examples and rendered navigation were exercised | Original178-row handover closure remains separate; 0055 tracks the next product/API cutover | — |
-| 0055 | One workspace surface |0.50 implementation integrated; qualification pending | IR9-only schema/core/SDK, current callers, ordinary retained-state transactions, legacy code removal and product-first website; development CLI/native/Conda/Pixi/BuildKit/OCI and rendered-site observations recorded | Exact-source practical qualification and publication | Authoring compatibility adapters |
+| 0055 | One workspace surface |0.50 qualified and published | Workspace-only IR9 schema/core/SDK, current callers, native artifact integrity, retained-state transactions, legacy removal, product-first website; 17 practical gates/96 partitions, all-asset readback and public CLI/SDK/helper/OCI consumers passed | Original handover's scheduled jobs, saved-plan review and portable sharing remain separate product work | Authoring compatibility adapters |
 
 **0048 R1 continuation (2026-09-29):** Source/policy-bound approval, copied
 read-only roots, retained runtime selection, immutable per-round inputs and
