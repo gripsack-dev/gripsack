@@ -155,6 +155,7 @@ impl WheelArchive {
             let start = entry.header_start();
             let end = entry
                 .data_start()
+                .ok_or_else(|| invalid("ZIP member data offset unavailable"))?
                 .checked_add(entry.compressed_size())
                 .ok_or_else(|| invalid("ZIP offset overflow"))?;
             if end > length
@@ -171,15 +172,15 @@ impl WheelArchive {
             }
             ranges.insert(start, end);
             let directory = entry.is_dir();
-            let name = entry
-                .name()
-                .strip_suffix('/')
-                .unwrap_or(entry.name())
-                .to_owned();
-            safe_path(&name)?;
-            if entry.name_raw() != entry.name().as_bytes() {
+            let decoded_name = entry.name().map_err(invalid)?;
+            if entry.name_raw() != decoded_name.as_bytes() {
                 return Err(invalid("non-UTF8 ZIP name"));
             }
+            let name = decoded_name
+                .strip_suffix('/')
+                .unwrap_or(&decoded_name)
+                .to_owned();
+            safe_path(&name)?;
             if !names.insert(name.to_ascii_lowercase()) {
                 return Err(invalid("duplicate/case-colliding ZIP entry"));
             }

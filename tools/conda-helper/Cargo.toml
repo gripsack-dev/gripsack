@@ -43,7 +43,7 @@ tokio = { version = "1", features = ["rt", "macros"] }
 [dev-dependencies]
 base64 = "0.22"
 tempfile = "3"
-zip = { version = "6", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # Preserve the complete pinned Git implementation while isolating its prefix
 # guard from pixi_utils' unused CLI/Python authentication dependencies.

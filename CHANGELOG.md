@@ -33,6 +33,8 @@ User-visible changes per release. Design archaeology lives in
   package-owned build scripts and silent dependency resolution are not supported.
   Wheel closure admission accepts deterministic platform-string markers while
   refusing malformed comparisons, unfrozen host facts and incomplete extras.
+  Wheel ZIP handling uses patched ZIP 9 in both the core and standalone helper,
+  retaining strict filename decoding and archive-bound checks.
 
 ### Removed
 

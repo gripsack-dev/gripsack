@@ -23,7 +23,7 @@ rattler_digest = { version = "=2.0.0", default-features = false }
 jiff = { version = "0.2", default-features = false, features = ["std"] }
 archspec = "0.2"
 url = "2"
-zip = { version = "6", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 csv = "1"
 base64 = "0.22"
 sha2.workspace = true

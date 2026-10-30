@@ -401,7 +401,7 @@ async fn prepared_native_wheel_rejects_incompatible_abi_before_linking() {
     for index in 0..original.len() {
         let mut entry = original.by_index(index).unwrap();
         assert!(!entry.is_dir());
-        let name = entry.name().to_owned();
+        let name = entry.name().unwrap().into_owned();
         let mut bytes = Vec::new();
         entry.read_to_end(&mut bytes).unwrap();
         members.insert(name, bytes);
