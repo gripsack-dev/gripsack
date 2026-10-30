@@ -225,6 +225,40 @@ completion or release evidence is claimed by this execution map.
   fragments are classified, not claimed executed. New complete qualification
   remains required. Core PR200 and website PR27 remain drafts; no public tag,
   asset or deployed-site claim follows.
+- The optimized candidate passed literal-Bash execution (nine commands),
+  PostgreSQL ownership/readiness/data retention (27 commands), semantic/saved
+  plans (26 commands), and the real systemd255 imported-tool lifecycle with
+  three current-trust refusals. Its signed static-tool manifest is
+  `1982abd94e9077bb4df310c0676aeca4de417a71d8f546a83516d27ce8dadb5e`;
+  independent OpenSSL DSSE verification and authenticated private-TLS registry
+  transfer/independent blob readback/actual execution also passed.
+- The complete marked native lane passed 11 cases but exposed a fixture
+  assumption: under a shorter pytest base directory, its supposedly overlong
+  prefix was 253 bytes and correctly imported. The refusal case now adds a
+  separate bounded path component, independent of the sandbox's root length;
+  that exact case passes under the same short root. No product rejection was
+  weakened or added to make the original valid path fail.
+- Owner-authorized storage cleanup preserved verified Seagate checkpoints,
+  source/uncommitted changes, release artifacts and failure evidence. The
+  current task's compiler cache released 24,341,135,360 allocated bytes; three
+  older compiler caches released 201,628,319,744 bytes, retaining mapped editor
+  libraries and Cargo locks. The Seagate checkpoints total 521,376,262 bytes
+  and passed content comparison before deletion. Ubuntu reached 243 GiB free;
+  online trim reported 266.4 GiB discarded, but its nonsparse Windows VHDX did
+  not shrink. Receipt:
+  `release-evidence/gripsack/0.51.0/old-compiler-cache-reclamation-g93hq574/receipt.json`.
+- The owner grants ongoing bounded cache cleanup and verified archive
+  relocation under `STORAGE-HYGIENE-2026-10-30`, now recorded in `AGENTS.md`
+  and the release handoff. Docker-managed caches belong on B:, but a host
+  `target/` bind writes into Ubuntu on C:. No blanket Docker/volume prune or
+  storage-floor reduction is authorized.
+- B:'s nonsparse Docker data VHDX subsequently crossed the unchanged 128-GiB
+  host floor while a separate STROP build was active. Exact-ID removal of 22
+  inactive, private, immutable Gripsack compiler/checker cache records reclaimed
+  50.66 GB inside Docker but zero Windows bytes. Actual storage admission still
+  refuses; no other build, container, volume or daemon was interrupted. Safe
+  offline VHDX compaction remains separate from guest-cache deletion, and no
+  successful new candidate or release is claimed.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer

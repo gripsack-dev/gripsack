@@ -246,9 +246,13 @@ def test_overlong_binary_prefix_refuses_without_publishing_an_environment(sandbo
     private, public = authority(signing)
     independent_sign(bundle, private, signing)
     identity = sha(bundle / "manifest.json")
-    # Preserve the originally exercised overlong recipient as a refusal case.
-    # Conda binary placeholders have finite capacity; reconstruction cannot grow them.
-    env = offline_recipient(sandbox / ("native wheel recipient " + "long prefix " * 10), public)
+    # Exceed the fixture's binary-placeholder capacity even with a short pytest
+    # base directory; keep each individual path component within NAME_MAX.
+    recipient_root = (
+        sandbox / ("native wheel recipient " + "long prefix " * 10)
+        / ("nested prefix " * 10)
+    )
+    env = offline_recipient(recipient_root, public)
     rejected = package(env, "import", "--bundle", bundle, ok=False)
     assert rejected.returncode == 1
     assert package(env, "inspect", "--manifest", identity, ok=False).returncode == 1

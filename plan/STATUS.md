@@ -31,6 +31,16 @@ passing results or automatic release prerequisites. The
 [release handoff](../verification/release-handoff.md) supersedes historical
 all-gates language below while preserving those original evidence records.
 
+`STORAGE-HYGIENE-2026-10-30` authorizes bounded inactive-cache cleanup and
+verified Seagate archive relocation without repeated capacity approvals.
+Old compiler-cache removal restored Ubuntu headroom while preserving source,
+release evidence and active editor libraries. B:'s Docker VHDX still needs
+physical space recovery: guest-cache pruning does not shrink that nonsparse
+file, and the unchanged external-volume floor currently blocks qualification.
+The [storage flow](../verification/release-handoff.md#storage-hygiene-and-archive-relocation)
+records copy verification, protected data, Docker bind-mount placement and
+the separate offline-compaction requirement.
+
 
 ## Workspace-only 0.50 — published 2026-10-28
 

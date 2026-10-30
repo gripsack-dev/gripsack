@@ -47,6 +47,31 @@ the gate runs TLC with `-cleanup`). Keep a counterexample as a cfg
 that must FAIL, not as a committed trace — reproducible beats
 archived.
 
+## Storage hygiene — standing owner authorization
+
+`STORAGE-HYGIENE-2026-10-30`: when capacity blocks work, reclaim inactive
+rebuildable caches or relocate cold artifacts to the verified Seagate archive
+without asking again. Delete non-rebuildable copies only after independently
+verifying a complete retained copy. Preserve active work, source/uncommitted
+changes, published releases, backups, checkpoints and unbacked failure evidence.
+Record paths, hashes, retained locations and measured space recovery.
+
+Docker execution does not determine where its files live. On the current
+workstation, Docker-managed storage is on **B:**, Ubuntu's VHDX is on **C:**,
+and the Seagate cold archive is **D:** (`/mnt/d/CI-Archive`). A bind mount of
+`~/workspace/.../target` writes into Ubuntu on C:, even when Cargo runs in Docker.
+Prefer a Docker-managed named target/cache volume for development iteration;
+ordinary image-build layers already use Docker storage. Host editor checks can
+also create Ubuntu caches. Verify volume identity and capacity, not drive letters
+alone, before relocation. Never move live controller state onto an unchecked
+filesystem or weaken its storage floor.
+
+Follow [the storage flow](verification/release-handoff.md#storage-hygiene-and-archive-relocation).
+No blanket Docker/volume pruning, deletion of unmatched evidence, or unannounced
+WSL shutdown. Preserve in-use editor libraries rather than killing the editor.
+Guest free space and Windows VHDX space are different measurements.
+
+
 ## Where things are
 
 | Path | Contents |

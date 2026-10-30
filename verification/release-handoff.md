@@ -211,6 +211,76 @@ it never treats a failed selected lane as optional. Fuzz/replay remains separate
 owner-authorized (`REL-FUZZ-2026-09-27`); do not run it as part of routine release
 qualification. Existing fuzz entrypoints remain available for that assignment.
 
+## Storage hygiene and archive relocation
+
+Standing owner authorization `STORAGE-HYGIENE-2026-10-30` permits bounded
+cleanup and verified cold relocation without another capacity-approval round.
+It does not authorize discarding unique evidence, reducing admission floors,
+rewriting receipts, deleting data volumes or interrupting active work.
+
+1. Measure both filesystems before acting: `df`/`du` for Ubuntu and
+   `Get-Volume` for Windows. The current Ubuntu VHDX lives on C:, Docker-managed
+   storage on B:, and Seagate's archive on D:. Inspect the WSL registration,
+   configured storage identities and `/mnt/d/CI-Archive/.ci-storage-identity.json`;
+   do not infer identity from a drive letter or an existing empty directory.
+2. Classify the exact paths. Cargo `target/` intermediates are rebuildable;
+   executables used for a reported observation, diagnostics, source, `dist/`,
+   receipts, checkpoints and backups are not disposable merely because their
+   parent looks temporary. Check active compiler processes, open/mapped files
+   and live container mounts. Retain active files and their parent directories.
+3. Prefer clearing inactive compiler output first. Checkpoint retained
+   executables, generated packages and diagnostics to a fresh Seagate directory;
+   preserve modes and links in an archive, compare its contents against the
+   source, then hash the completed archive. Never use broad workspace globs as
+   deletion authority. Root-owned container output can be handled through a
+   container bound only to the explicitly selected cache directories.
+4. For duplicate CI attempt evidence or predecessor inputs, hold the existing
+   controller request lock and confirm no live request/build owns the candidate.
+   Validate the candidate/gate/attempt receipts, complete inventories, every
+   file's size/hash and stable identities against the retained archive.
+   A directory name or a successful old log is not backup evidence. Keep
+   unmatched, interrupted and unbacked attempts.
+5. If more room is needed, copy inactive cold artifacts to a fresh directory
+   under the verified Seagate archive. Record source-to-archive paths and a
+   complete inventory, preserve filesystem metadata in an archive where needed,
+   read back and independently verify every retained byte before removing the
+   original. Keep published release/controller admission records available at
+   their required paths; do not replace live state with NTFS symlinks or assume
+   an archive copy is immediately usable as restored state. Same-host external
+   storage is not offline/disaster-recovery proof.
+6. Save a cleanup receipt outside the deleted tree: selected paths, protected
+   paths, source/retained hashes, verification results, before/after available
+   bytes and the exact removals. Run the real `ci_infra storage-check` afterward.
+   Never substitute lowering the 64-GiB state floor or waiving a gate.
+
+For development compilation, use a toolchain/profile-specific Docker named
+volume, not a host checkout's `target/` bind:
+
+```sh
+docker compose run --build --rm \
+  -v gripsack-dev-rust198-musl:/app/target \
+  -e CARGO_PROFILE_DEV_OPT_LEVEL=1 \
+  -e CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true \
+  -e CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true \
+  build cargo build --locked -p gripsack
+```
+
+Named volumes remain caches, not release evidence, and consume B: capacity.
+The ordinary e2e image already uses an optimized development build with debug
+assertions and overflow checks; do not mistake opt-level-zero hashing cost for
+a reason to weaken runtime admission or enlarge command deadlines.
+
+Deleting Ubuntu files does not necessarily shrink its Windows VHDX. Online
+`fstrim` and an eventual offline
+[DiskPart compaction](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/compact-vdisk)
+are separate maintenance steps. Inspect the actual Ubuntu VHDX path first.
+Compaction requires the disk detached or attached read-only; quit Docker/WSL
+clients and stop the distro only in an explicit downtime window. Do not terminate
+the running assistant, editor or qualification jobs to shrink the file. Report
+guest free space and Windows free space separately; an unrun compaction is not
+a claimed recovery.
+
+
 ## Conda measurements and unchanged-source reuse
 
 Conda remains supported. Core/SDK/helper versions are coordinated at 0.51.0 for
