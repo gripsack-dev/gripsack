@@ -272,7 +272,8 @@ completion or release evidence is claimed by this execution map.
   passed formatting, strict workspace clippy and all workspace Rust tests in
   the pinned container. Its six cold-store/journey/repair cases and a separate
   26-command semantic/saved-plan smoke passed; 21 migrated diagnostic/example
-  cases also passed. The full ordinary-flow rerun remains separate. Compilation
+  cases also passed. The complete ordinary-flow rerun then passed all 706 cases
+  with 12 explicitly marked native cases deselected. Compilation
   used the Docker-managed `gripsack-dev-rust198-musl` volume, not a host target
   bind. The measured helper's source-input digest is unchanged.
 - The completed profiler fixture was archived to Seagate before removal.
@@ -283,6 +284,10 @@ completion or release evidence is claimed by this execution map.
   `e0eeb4729a61587e13fb4d1a680f58f8b8fc4e6d28540577e06b3c870282c771`.
   Verification inventories and the deliberate teardown receipt accompany it;
   bind-mounted evidence remains separately retained.
+- The disposable systemd fixture and both registry data volumes were also
+  checkpointed and read back before their owned containers were removed.
+  Scheduler teardown left the host WSLInterop bytes unchanged. The unrelated
+  Docker build and controller containers were not stopped.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer
