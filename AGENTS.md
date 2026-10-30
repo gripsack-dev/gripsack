@@ -70,6 +70,10 @@ Follow [the storage flow](verification/release-handoff.md#storage-hygiene-and-ar
 No blanket Docker/volume pruning, deletion of unmatched evidence, or unannounced
 WSL shutdown. Preserve in-use editor libraries rather than killing the editor.
 Guest free space and Windows VHDX space are different measurements.
+Start and stop Docker Desktop as the normal owning account. Elevation is only
+for the specific disk/ACL maintenance step; do not launch Docker from that
+elevated shell afterward. A successful compaction is not proof of usable WSL
+permissions or preserved engine identity: verify both and run a retained image.
 
 
 ## Where things are

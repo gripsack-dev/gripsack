@@ -40,6 +40,12 @@ file, and the unchanged external-volume floor currently blocks qualification.
 The [storage flow](../verification/release-handoff.md#storage-hygiene-and-archive-relocation)
 records copy verification, protected data, Docker bind-mount placement and
 the separate offline-compaction requirement.
+Docker startup after maintenance was recovered without a reset: normal-user
+bootstrap ACL access, the original daemon identity and retained CLI bytes were
+verified. The storage handoff now separates elevated maintenance from ordinary
+Docker startup. The owner's planned 4-TB USB4 fast-tier replacement keeps
+Seagate as the archive; the future HP-mini verifier/signer is not yet provisioned
+and does not change current release authority.
 
 
 ## Workspace-only 0.50 — published 2026-10-28

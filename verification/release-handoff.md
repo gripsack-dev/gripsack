@@ -280,6 +280,58 @@ the running assistant, editor or qualification jobs to shrink the file. Report
 guest free space and Windows free space separately; an unrun compaction is not
 a claimed recovery.
 
+### Docker Desktop privilege boundary
+
+Start and stop Docker Desktop as its normal owning user. Run only the necessary
+disk-maintenance command in Administrator PowerShell, detach the disk, then
+leave that elevated shell before starting Docker. Do not bundle an elevated
+`docker desktop start` into the compaction instructions.
+
+If WSL reports `MountDisk/HCS/E_ACCESSDENIED`, inspect the exact VHDX named in
+the error, its attributes, attachment state, owner and effective permissions.
+Docker's small `main/ext4.vhdx` bootstrap and large `disk/docker_data.vhdx`
+are different files. The 2026-10-30 recovery found an Administrator-owned
+bootstrap whose normal account could read/write bytes but could not manage
+its ACL; the data disk did not have that restriction. Saved ACLs and a narrowly
+scoped, owner-approved permission repair restored normal-user startup without
+resetting Docker or changing the bootstrap bytes.
+
+Back up security descriptors before repair. Grant only the intended owning
+account the required access within the actual Docker WSL directory; retain
+SYSTEM and existing VM/capability entries. Protected Administrator-owned child
+ACLs can require elevation even when the parent is user-owned. Never grant
+Everyone full control, recursively reset the whole drive, unregister a distro,
+or replace the data disk as a first response. Verify the original daemon ID,
+retained volume bytes and an actual container execution afterward.
+
+Ubuntu and Docker also have separate guest filesystems. Trimming Ubuntu's `/`
+does not trim Docker's data disk. Identify the actual Docker data mount before
+any discard operation; a reported guest discard does not establish Windows
+space recovery. Re-measure host capacity and retain the configured admission
+floor.
+
+### Planned hardware, unchanged storage roles
+
+The owner-selected next fast tier is a Lexar NM790 4-TB NVMe in an OWC Express
+1M2 enclosure on the workstation's USB4 40-Gb/s port. It replaces the existing
+fast build tier; Seagate remains the cold archive. Until it is installed and
+verified, the existing drive and storage identity remain authoritative.
+
+Use the supported Docker storage-location workflow in a quiescent window.
+Retain and verify the old copy before retirement, check normal-user ACLs and
+the engine/image/volume inventories, and deliberately update the recorded
+physical/volume identities for the replacement device. Keeping drive letter B:
+does not make a new disk match the old storage binding. Keep bounded cache
+retention even with the extra capacity.
+
+The HP mini is a future independent verification/signing boundary, not a
+provisioned signer today. It should receive immutable candidates and verify
+their bytes and approval evidence independently; signing keys must not enter
+the shared build cache or untrusted build execution. The current unsigned
+GitHub-only release authority remains unchanged until the real host and its
+explicit policy are provisioned and exercised.
+
+
 
 ## Conda measurements and unchanged-source reuse
 
