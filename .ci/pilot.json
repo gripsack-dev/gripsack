@@ -84,7 +84,9 @@
       "argv": [
         "python3",
         "scripts/local_ci.py",
-        "helper"
+        "helper",
+        "--reuse-helper-dist",
+        "/home/tarek/.local/share/buildbot-ci/worker/retained-inputs/conda-0.51.0-60d66f94"
       ],
       "timeout_seconds": 0,
       "inputs": [],

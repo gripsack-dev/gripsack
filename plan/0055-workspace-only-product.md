@@ -288,6 +288,14 @@ completion or release evidence is claimed by this execution map.
   checkpointed and read back before their owned containers were removed.
   Scheduler teardown left the host WSLInterop bytes unchanged. The unrelated
   Docker build and controller containers were not stopped.
+- After the owner's manual Docker-data compaction, Windows B: free space rose
+  from 124,474,019,840 to 175,293,255,680 bytes. The VHDX shrank by the same
+  50,819,235,840 bytes; actual `storage-check` now passes without reducing any
+  floor. Normal-user Docker startup retains engine identity
+  `9be6eb8e-4477-4485-9cf1-4fa32d04a4fe`, and an existing container executed the
+  preserved `grip 0.51.0` build. The selected helper gate explicitly re-admits
+  the unchanged measured tuple rather than compiling identical helper inputs;
+  fresh static/protocol/license and installed-consumer admission still apply.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer

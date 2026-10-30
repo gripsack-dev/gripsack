@@ -362,6 +362,19 @@ select the explicit reuse argv/path in the reviewed profile before freezing it;
 its resulting bytes still pass the normal installed consumer gate. Historical
 manifests without the source binding require one new measurement.
 
+The 0.51 local profile explicitly re-admits the existing helper measurement at
+`/home/tarek/.local/share/buildbot-ci/worker/retained-inputs/conda-0.51.0-60d66f94`.
+Its six files were copied and hash-verified from the passed `helper-pins` attempt
+of candidate `1a2df07b09fa6b9d441e88d9dc52fc3b96d048dea2950cf3c7dd035e8bef6b10`;
+that candidate's later failure does not become a passing overall qualification.
+The helper source digest remains
+`971f8f393ca26612059d4fd41454687e6bb5ba5107369ff51ec6d97dc43d6d76`.
+This path is a worker-visible input of the selected local installation, not a
+new measurement or a portable host default. Another installation must stage
+and verify that exact tuple or explicitly select an ordinary helper build
+before freezing its source/profile. No fallback or gate-success reuse is implied.
+
+
 ## Manual unsigned GitHub-only publication
 
 No Homebrew channel, BuildKit bridge/B0 release asset, hosted duplicate build,
