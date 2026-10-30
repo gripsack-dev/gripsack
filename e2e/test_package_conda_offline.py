@@ -486,6 +486,7 @@ export default defineWorkspace(() => workspace({outputs:[pkg("runtime", {
   producer:provider(conda.environment({
     // Tk links X11; portable native use must own it rather than borrow the host.
     channels:["conda-forge"], packages:{python:"3.12.*",wheel:"==0.45.1","xorg-libx11":"*"},
+    systemRequirements:{libc:{family:"glibc",version:"2.28"},linux:"4.18"},
     wheels:''' + json.dumps([wheel_source]) + ''',
   })),
   commands:{python:"bin/python",wheel:"bin/wheel","offline-wheel":"bin/offline-wheel"},
@@ -513,7 +514,8 @@ export default defineWorkspace(() => workspace({outputs:[pkg("runtime", {
     (directory / "gripsack.lock").write_bytes(lock_bytes)
     specification = {
         "version": 1, "namespace": "fixture/conda", "publisher": "fixture-publisher",
-        "target": native_target(), "layout": {"kind": "conda"},
+        "target": {**native_target(), "abi": {"kind": "glibc", "minimum": "2.28"},
+                   "minimum_kernel": "4.18"}, "layout": {"kind": "conda"},
         "components": [{"id": "environment", "payload": None, "tree": None, "runtime": [],
                         "inventory": [], "external": None, "conda": {"lock": closures[0], "archives": [],
                         "helper": {"sha256": "0" * 64, "size": 0, "media_type": ""}, "helper_notices": {}}}],

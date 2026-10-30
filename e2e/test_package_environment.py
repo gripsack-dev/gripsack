@@ -354,6 +354,8 @@ def test_mixed_environment_roundtrip_consumes_real_python_wheel_native_profile_a
     producer_prefix = Path(producer_runtime["payload"])
 
     spec = specification()
+    # GNU-linked Python keeps its declared ABI in both local and external members.
+    spec["target"] = copy.deepcopy(runtime_manifest["target"])
     runtime = {"id": "runtime", "payload": None, "tree": None, "runtime": [],
                "conda": None, "external": None, "inventory": []}
     if runtime_kind == "external":

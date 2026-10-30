@@ -96,6 +96,7 @@ struct ProjectionOperation<'a> {
     core: PathBuf,
     limits: FetchLimits,
     projected: BTreeMap<String, Arc<ProjectedEnvironment>>,
+    admission: super::ReadmissionScope,
 }
 
 fn destination(
@@ -295,10 +296,11 @@ fn check_record(
 /// Prefix-materialized without a Conda receipt is valid only for this separately
 /// receipted home-bound projection. A layout tag or metadata directory is not proof.
 pub(in crate::workspace) fn readmit_projection(
-    home: &Path,
+    admission: &mut super::ReadmissionScope,
     payload: &Path,
     retention: &BTreeSet<PathBuf>,
 ) -> Result<(), ExecError> {
+    let home = admission.home();
     let root = payload
         .parent()
         .ok_or_else(|| runtime::failure("projection payload has no root"))?;
@@ -310,13 +312,14 @@ pub(in crate::workspace) fn readmit_projection(
     let directory = artifact::retained_directory(home, root)?
         .ok_or_else(|| runtime::failure("environment projection receipt missing"))?;
     let record = read_record(&directory)?;
-    check_record(home, root, &record, FetchLimits::default())?;
+    check_record(home, root, &record, admission.limits())?;
     if !record.retention.is_subset(retention) {
         return Err(runtime::failure(
             "package omitted environment projection retention",
         ));
     }
-    let environment = runtime::admit_environment(home, &record.authority, FetchLimits::default())?
+    let environment = admission
+        .admit_environment(&record.authority)?
         .ok_or_else(|| runtime::failure("projection import is not a passive environment"))?;
     if !contains(&environment, &record.manifest)
         || !environment.artifact.retention.is_subset(&record.retention)
@@ -361,6 +364,7 @@ fn project(
         core: std::env::current_exe()?.canonicalize()?,
         limits,
         projected: BTreeMap::new(),
+        admission: super::ReadmissionScope::new(&ctx.home, limits),
     };
     // Only children need captured roots for attachment to a parent. The root
     // source is returned directly and receives ordinary native admission.
@@ -379,7 +383,7 @@ fn project_node(
         .ok_or_else(|| runtime::failure("nested environment capture disappeared"))?;
     let record = read_record(&directory)?;
     let nested_runtime = crate::workspace::consumer::launcher::captured_imported_packages(
-        &operation.ctx.home,
+        &mut operation.admission,
         &record.activation,
     )?;
     let projected = Arc::new(ProjectedEnvironment {

@@ -14,6 +14,24 @@ use gripsack_store::{
 };
 use std::{fs, io::Write};
 
+fn admit_environment(
+    home: &Path,
+    manifest: &str,
+    limits: FetchLimits,
+) -> Result<Option<Arc<super::super::environment::AdmittedEnvironment>>, ExecError> {
+    super::super::ReadmissionScope::new(home, limits).admit_environment(manifest)
+}
+
+fn readmit_fixed<'a>(
+    home: &Path,
+    payload: &Path,
+    prefix: &Path,
+    paths: impl IntoIterator<Item = &'a Path>,
+) -> Result<(), ExecError> {
+    super::super::ReadmissionScope::new(home, FetchLimits::default())
+        .readmit_fixed(payload, prefix, paths)
+}
+
 struct Fixture {
     _temporary: tempfile::TempDir,
     ctx: Ctx,
@@ -262,7 +280,10 @@ fn imported_closure_outlives_producer_and_exports_exact_originals() {
     let original = fs::read(fixture.bundle.join("manifest.json")).unwrap();
     let facts = fixture.import().unwrap();
     fs::remove_dir_all(&fixture.producer).unwrap();
-    let source = acquire(&fixture.ctx.home, &facts.manifest, FetchLimits::default()).unwrap();
+    let source = admit_source(&fixture.ctx.home, &facts.manifest, FetchLimits::default())
+        .unwrap()
+        .unwrap()
+        .prepared;
     assert!(
         source
             .artifact
@@ -437,7 +458,7 @@ fn exact_signed_bytes_and_requested_identity_cannot_be_swapped() {
         .unwrap();
     file.write_all(b"\n").unwrap();
     assert!(fixture.import().is_err());
-    assert!(acquire(&fixture.ctx.home, "../../outside", FetchLimits::default()).is_err());
+    assert!(admit_source(&fixture.ctx.home, "../../outside", FetchLimits::default()).is_err());
 }
 
 #[test]
@@ -487,7 +508,10 @@ fn fixed_placement_requires_signed_exact_recipient_prefix() {
     fixture.policy(&fixture.policy);
     fixture.sign();
     let facts = fixture.import().unwrap();
-    let source = acquire(&fixture.ctx.home, &facts.manifest, FetchLimits::default()).unwrap();
+    let source = admit_source(&fixture.ctx.home, &facts.manifest, FetchLimits::default())
+        .unwrap()
+        .unwrap()
+        .prepared;
     readmit_fixed(
         &fixture.ctx.home,
         &facts.payload,
@@ -650,7 +674,10 @@ fn independent_closure_round_trip_retains_originals_without_exposing_upstream() 
         1
     );
     fs::remove_dir_all(&fixture.producer).unwrap();
-    let source = acquire(&fixture.ctx.home, &facts.manifest, FetchLimits::default()).unwrap();
+    let source = admit_source(&fixture.ctx.home, &facts.manifest, FetchLimits::default())
+        .unwrap()
+        .unwrap()
+        .prepared;
     assert_eq!(source.artifact.retention.len(), 2);
     assert_eq!(
         fs::read(
@@ -684,7 +711,7 @@ fn every_managed_consume_readmits_independent_publisher_and_digest() {
     let mut revoked = fixture.policy.clone();
     revoked["revoked_manifests"] = serde_json::json!([child]);
     fixture.policy(&revoked);
-    assert!(acquire(&fixture.ctx.home, &facts.manifest, FetchLimits::default()).is_err());
+    assert!(admit_source(&fixture.ctx.home, &facts.manifest, FetchLimits::default()).is_err());
     assert!(
         export_bundle(
             &fixture.ctx.home,
@@ -912,7 +939,7 @@ fn independent_blob_tamper_and_tightened_layout_policy_reject() {
     let mut policy = fixture.policy.clone();
     policy["keys"][1]["allowed_layouts"] = serde_json::json!(["fixed"]);
     fixture.policy(&policy);
-    assert!(acquire(&fixture.ctx.home, &facts.manifest, FetchLimits::default()).is_err());
+    assert!(admit_source(&fixture.ctx.home, &facts.manifest, FetchLimits::default()).is_err());
     fixture.policy(&fixture.policy);
     let mut bundle =
         super::super::closure::ClosureBundle::read(&fixture.bundle, FetchLimits::default())
@@ -1294,6 +1321,17 @@ fn passive_shared_environment_dag_stays_bounded_and_root_authority_local() {
         .unwrap()
         .unwrap();
     assert_shared(&admitted);
+    let mut scope = super::super::ReadmissionScope::new(&fixture.ctx.home, FetchLimits::default());
+    scope
+        .readmit_roots(admitted.artifact.retention.iter().map(PathBuf::as_path))
+        .unwrap();
+    let scoped = scope.admit_environment(&first.manifest).unwrap().unwrap();
+    for _ in 0..26 {
+        let repeated = scope.admit_environment(&first.manifest).unwrap().unwrap();
+        assert!(Arc::ptr_eq(&scoped, &repeated));
+    }
+    assert_eq!(scope.production_loads(), 1);
+    assert_shared(&scoped);
     assert!(
         inspect(&fixture.ctx.home, &first.manifest)
             .unwrap()
@@ -1673,4 +1711,228 @@ fn complete_multi_manifest_environment_receipt_exceeds_old_cap_and_round_trips()
             .unwrap()
             .is_some()
     );
+}
+
+#[test]
+fn operation_readmission_verifies_each_complete_view_once() {
+    let mut fixture = Fixture::new();
+    fixture.external();
+    let facts = fixture.import().unwrap();
+    let root = imported_root(&fixture.ctx.home, &facts.manifest).unwrap();
+    let mut scope = super::super::ReadmissionScope::new(&fixture.ctx.home, FetchLimits::default());
+    let original_pin = scope.pin_input(&root).unwrap();
+    let producer_pin = scope.pin_input(&facts.payload).unwrap();
+    for _ in 0..26 {
+        scope
+            .readmit_roots([root.as_path(), facts.payload.as_path()])
+            .unwrap();
+    }
+    assert_eq!(scope.production_loads(), 1);
+    assert_eq!(scope.pinned_inputs(), 2);
+    assert!(Arc::ptr_eq(&original_pin, &scope.pin_input(&root).unwrap()));
+    assert!(Arc::ptr_eq(
+        &producer_pin,
+        &scope.pin_input(&facts.payload).unwrap()
+    ));
+    let mut fresh = super::super::ReadmissionScope::new(&fixture.ctx.home, FetchLimits::default());
+    fresh
+        .readmit_roots([root.as_path(), facts.payload.as_path()])
+        .unwrap();
+    assert_eq!(fresh.production_loads(), 1);
+}
+
+#[test]
+fn root_only_readmission_discovers_then_binds_the_complete_view() {
+    let fixture = Fixture::new();
+    let facts = fixture.import().unwrap();
+    let root = imported_root(&fixture.ctx.home, &facts.manifest).unwrap();
+    let mut scope = super::super::ReadmissionScope::new(&fixture.ctx.home, FetchLimits::default());
+    for _ in 0..26 {
+        scope.readmit_roots([root.as_path()]).unwrap();
+    }
+    assert_eq!(scope.production_loads(), 2);
+}
+
+#[test]
+fn operation_readmission_refuses_policy_removal_and_independent_revocation() {
+    for remove in [false, true] {
+        let mut fixture = Fixture::new();
+        let (child, _) = fixture.external();
+        let facts = fixture.import().unwrap();
+        let root = imported_root(&fixture.ctx.home, &facts.manifest).unwrap();
+        let mut scope =
+            super::super::ReadmissionScope::new(&fixture.ctx.home, FetchLimits::default());
+        scope
+            .readmit_roots([root.as_path(), facts.payload.as_path()])
+            .unwrap();
+        if remove {
+            fs::remove_file(fixture.ctx.home.join("sharing/trust.json")).unwrap();
+        } else {
+            let mut policy = fixture.policy.clone();
+            policy["revoked_manifests"] = serde_json::json!([child]);
+            fixture.policy(&policy);
+        }
+        assert!(scope.readmit_roots([root.as_path()]).is_err());
+        assert_eq!(scope.production_loads(), 1);
+        // Restoring policy cannot resurrect a failed operation's acceptance.
+        fixture.policy(&fixture.policy);
+        assert!(scope.readmit_roots([root.as_path()]).is_err());
+        assert!(readmit_roots(&fixture.ctx.home, [root.as_path()]).is_ok());
+    }
+}
+
+#[test]
+fn operation_and_fresh_readmission_reject_changed_original_receipt_blob_and_payload() {
+    for input in [
+        "manifest.json",
+        "envelope.json",
+        "receipt.json",
+        "blob",
+        "payload",
+    ] {
+        let fixture = Fixture::new();
+        let facts = fixture.import().unwrap();
+        let root = imported_root(&fixture.ctx.home, &facts.manifest).unwrap();
+        let mut scope =
+            super::super::ReadmissionScope::new(&fixture.ctx.home, FetchLimits::default());
+        scope
+            .readmit_roots([root.as_path(), facts.payload.as_path()])
+            .unwrap();
+        let path = match input {
+            "blob" => root.join("blobs").join(
+                &fixture.manifest.components[0]
+                    .payload
+                    .as_ref()
+                    .unwrap()
+                    .sha256,
+            ),
+            "payload" => facts.payload.join("components/tool/bin/tool"),
+            name => root.join(name),
+        };
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        let mut bytes = fs::read(&path).unwrap();
+        bytes[0] ^= 1;
+        fs::write(&path, bytes).unwrap();
+        assert!(scope.readmit_roots([root.as_path()]).is_err(), "{input}");
+        assert_eq!(scope.production_loads(), 1);
+        assert!(
+            readmit_roots(&fixture.ctx.home, [root.as_path()]).is_err(),
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn operation_readmission_never_reuses_missing_inputs_or_replaced_roots() {
+    for replace in [false, true] {
+        let fixture = Fixture::new();
+        let facts = fixture.import().unwrap();
+        let root = imported_root(&fixture.ctx.home, &facts.manifest).unwrap();
+        let mut scope =
+            super::super::ReadmissionScope::new(&fixture.ctx.home, FetchLimits::default());
+        scope
+            .readmit_roots([root.as_path(), facts.payload.as_path()])
+            .unwrap();
+        if replace {
+            let old = root.with_extension("old");
+            fs::rename(&root, &old).unwrap();
+            fs::create_dir(&root).unwrap();
+        } else {
+            fs::remove_file(root.join("receipt.json")).unwrap();
+        }
+        assert!(scope.readmit_roots([root.as_path()]).is_err());
+        assert_eq!(scope.production_loads(), 1);
+    }
+}
+
+#[test]
+fn operation_readmission_is_home_and_budget_bound() {
+    let fixture = Fixture::new();
+    let facts = fixture.import().unwrap();
+    let root = imported_root(&fixture.ctx.home, &facts.manifest).unwrap();
+    let mut admitted =
+        super::super::ReadmissionScope::new(&fixture.ctx.home, FetchLimits::default());
+    admitted
+        .readmit_roots([root.as_path(), facts.payload.as_path()])
+        .unwrap();
+    assert_eq!(admitted.home(), fixture.ctx.home);
+    let other = Fixture::new();
+    let mut other_home =
+        super::super::ReadmissionScope::new(&other.ctx.home, FetchLimits::default());
+    assert!(
+        other_home
+            .readmit_roots([root.as_path(), facts.payload.as_path()])
+            .is_err()
+    );
+    let limits = FetchLimits {
+        download_bytes: std::num::NonZeroU64::new(1).unwrap(),
+        ..Default::default()
+    };
+    let mut restricted = super::super::ReadmissionScope::new(&fixture.ctx.home, limits);
+    assert!(
+        restricted
+            .readmit_roots([root.as_path(), facts.payload.as_path()])
+            .is_err()
+    );
+    assert_eq!(restricted.production_loads(), 1);
+    assert_eq!(admitted.production_loads(), 1);
+}
+
+#[test]
+fn retained_snapshot_walks_wide_trees_without_pinning_sibling_directories() {
+    let temporary = tempfile::tempdir().unwrap();
+    let home = temporary.path();
+    let root = gripsack_store::content_path(home, "package-payload", &"a".repeat(64));
+    fs::create_dir_all(&root).unwrap();
+    // Exceed common per-process descriptor limits without changing the test
+    // process's limits (other tests may be running concurrently).
+    for index in 0..2048 {
+        fs::create_dir(root.join(format!("member-{index}"))).unwrap();
+    }
+    let snapshot =
+        super::super::RetainedInputSnapshot::capture(home, &root, FetchLimits::default()).unwrap();
+    snapshot.check(home, &root).unwrap();
+    fs::write(root.join("member-2047/changed"), b"changed").unwrap();
+    assert!(snapshot.check(home, &root).is_err());
+}
+
+#[test]
+fn operation_snapshot_pool_shares_256_member_scc_base_and_view_producers() {
+    let temporary = tempfile::tempdir().unwrap();
+    let home = temporary.path();
+    let mut scope = super::super::ReadmissionScope::new(home, FetchLimits::default());
+    let mut members = Vec::new();
+    for index in 0..256 {
+        let identity =
+            |member: usize| gripsack_process::Sha256Digest::of(&member.to_le_bytes()).to_string();
+        let base = gripsack_store::content_path(home, "package", &identity(index * 3));
+        let view = gripsack_store::content_path(home, "package", &identity(index * 3 + 1));
+        let producer =
+            gripsack_store::content_path(home, "package-payload", &identity(index * 3 + 2));
+        for root in [&base, &view, &producer] {
+            fs::create_dir_all(root).unwrap();
+        }
+        // Base and runtime-view receipts have distinct identities but the same
+        // producer. Holding both pairs must not pin that producer twice.
+        let base_evidence = (
+            scope.pin_input(&base).unwrap(),
+            scope.pin_input(&producer).unwrap(),
+        );
+        let view_evidence = (
+            scope.pin_input(&view).unwrap(),
+            scope.pin_input(&producer).unwrap(),
+        );
+        members.push((base, base_evidence, view_evidence));
+    }
+    // A single 256-member runtime ring revisits every base from another view;
+    // these graph edges must also share the existing exact-root evidence.
+    for index in 0..members.len() {
+        let next = &members[(index + 1) % members.len()];
+        scope.pin_input(&next.0).unwrap();
+    }
+    assert_eq!(scope.pinned_inputs(), 768);
+    fs::write(members[0].0.join("changed"), b"changed").unwrap();
+    assert!(scope.check_input(&members[0].0).is_err());
+    assert_eq!(scope.pinned_inputs(), 0);
+    assert!(scope.pin_input(&members[1].0).is_err());
 }

@@ -13,6 +13,7 @@ pub(in crate::workspace) struct NativeContext<'a> {
     pub(super) target: HostTarget,
     pub(super) home: &'a Path,
     admitted: RefCell<BTreeSet<PackageDigest>>,
+    imports: RefCell<crate::workspace::sharing::ReadmissionScope>,
     deadline: Instant,
     gnu_loader: RefCell<Option<Arc<gripsack_process::SelectedGnuLoader>>>,
 }
@@ -29,9 +30,25 @@ impl<'a> NativeContext<'a> {
             target,
             home,
             admitted: RefCell::default(),
+            imports: RefCell::new(crate::workspace::sharing::ReadmissionScope::new(
+                home,
+                gripsack_fetch::FetchLimits::default(),
+            )),
             deadline,
             gnu_loader: RefCell::default(),
         })
+    }
+
+    /// Receipt restoration and native admission share import evidence only for
+    /// this invocation. Drop this borrow before entering native command checks.
+    pub(in crate::workspace) fn readmission(
+        &self,
+        home: &Path,
+    ) -> Result<std::cell::RefMut<'_, crate::workspace::sharing::ReadmissionScope>, ExecError> {
+        if home != self.home {
+            return Err(super::failure("native admission belongs to another home"));
+        }
+        Ok(self.imports.borrow_mut())
     }
 
     pub(super) fn gnu_loader(
@@ -70,20 +87,21 @@ impl<'a> NativeContext<'a> {
         let mut visited = BTreeSet::new();
         let mut admitted = self.admitted.borrow_mut();
         let mut bytecode = None;
+        let mut imports = self.imports.borrow_mut();
         while let Some(package) = pending.pop() {
             if !visited.insert(package.identity) {
                 continue;
             }
             pending.extend(package.runtime.iter().map(std::sync::Arc::as_ref));
-            crate::workspace::sharing::readmit_roots(
-                self.home,
-                package
-                    .producer
-                    .retention
-                    .iter()
-                    .map(std::path::PathBuf::as_path),
-            )
-            .map_err(|error| gate(span, error.to_string()))?;
+            imports
+                .readmit_roots(
+                    package
+                        .producer
+                        .retention
+                        .iter()
+                        .map(std::path::PathBuf::as_path),
+                )
+                .map_err(|error| gate(span, error.to_string()))?;
             if let Some(receipt) = &package.conda {
                 bytecode = Some(receipt.closure.materializer.bytecode);
             }
@@ -131,7 +149,7 @@ impl<'a> NativeContext<'a> {
                 }
                 (CatalogPackageLayout::PrefixMaterialized, None) => {
                     crate::workspace::sharing::readmit_projection(
-                        self.home,
+                        &mut imports,
                         &package.producer.payload,
                         &package.producer.retention,
                     )
@@ -144,17 +162,17 @@ impl<'a> NativeContext<'a> {
                     ));
                 }
                 (CatalogPackageLayout::FixedPrefix { prefix }, _) => {
-                    crate::workspace::sharing::readmit_fixed(
-                        self.home,
-                        &package.producer.payload,
-                        Path::new(prefix.as_str()),
-                        package
-                            .producer
-                            .retention
-                            .iter()
-                            .map(std::path::PathBuf::as_path),
-                    )
-                    .map_err(|error| gate(span, error.to_string()))?;
+                    imports
+                        .readmit_fixed(
+                            &package.producer.payload,
+                            Path::new(prefix.as_str()),
+                            package
+                                .producer
+                                .retention
+                                .iter()
+                                .map(std::path::PathBuf::as_path),
+                        )
+                        .map_err(|error| gate(span, error.to_string()))?;
                 }
             }
             admitted.insert(package.identity);

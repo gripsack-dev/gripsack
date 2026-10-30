@@ -169,10 +169,29 @@ completion or release evidence is claimed by this execution map.
   `ea78d708be97efc5573372dec48c328ba373fa136b084894eb6932491f940269`.
   Earlier development Conda journeys used the preceding measured helper;
   final-byte consumer qualification remains separate.
+- Frozen source `75269f4afb277fe9c5bfd2ce87ed6f3c6f853ead` entered candidate
+  `bda22db687347c7dc6aa62d5bb66eefecefa0478450e7cedf8719596822529ea`.
+  Inventory, Rust, TypeScript and runtime-image gates passed; dependency audit
+  refused ZIP 6 under RUSTSEC-2026-0367/0368/0369. Later gates were not admitted.
+  Both direct ZIP consumers are migrated to ZIP 9, without UV vendoring or
+  audit-policy changes. Paired remediation audits passed at advisory revision
+  `ee1a49a2769a24a596afc1c20cb33748d2769586`; the compatible helper Tokio update
+  removes its separately reported I/O-safety warning. New source qualification
+  and helper measurement are required, not a reused successful candidate.
+- The 26-node shared-DAG runtime journey remains a release blocker after the
+  initial graph-predicate fix. A preserved cold update was profiled, not merely
+  retried: 4,103 CPU samples over 45 seconds identify repeated signature and
+  payload verification. Operation-local admission reuse must preserve receipt,
+  trust, target and budget authority; no larger timeout or empty-command bypass
+  is accepted as a fix.
+- Python fixture admission correctly refused missing X11 runtime and an
+  omitted GNU ABI. Its actual package request now owns X11 and declares glibc
+  2.28/Linux 4.18; the signed runtime and enclosing environment retain that
+  requirement. Those errors are not waived or converted to ambient host lookup.
 
-These are uncommitted development observations. Exact-source selected-gate,
-artifact, independent-consumer and website evidence must be recorded separately
-before publication.
+These development observations span preserved intermediate binaries and source
+checkpoints. Exact-source selected-gate, final-artifact, independent-consumer
+and deployed-website evidence must be recorded separately before publication.
 
 
 

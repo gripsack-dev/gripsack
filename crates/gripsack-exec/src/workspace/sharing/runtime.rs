@@ -58,9 +58,14 @@ pub(super) struct AdmittedSource {
     pub environment: Option<Arc<super::environment::AdmittedEnvironment>>,
 }
 
-struct LoadedImport {
-    facts: PackageFacts,
-    source: AdmittedSource,
+pub(super) struct LoadedImport {
+    pub(super) facts: PackageFacts,
+    pub(super) source: AdmittedSource,
+}
+impl LoadedImport {
+    pub(super) fn retention(&self) -> &BTreeSet<PathBuf> {
+        &self.source.prepared.artifact.retention
+    }
 }
 
 pub(super) fn failure(detail: impl Into<String>) -> ExecError {
@@ -70,7 +75,7 @@ pub(super) fn failure(detail: impl Into<String>) -> ExecError {
         detail: detail.into(),
     }
 }
-fn imported_root(home: &Path, manifest: &str) -> Result<PathBuf, ExecError> {
+pub(super) fn imported_root(home: &Path, manifest: &str) -> Result<PathBuf, ExecError> {
     format::digest(manifest)?;
     Ok(gripsack_store::content_path(
         home,
@@ -479,7 +484,7 @@ fn register(
     )
 }
 
-fn load(
+pub(super) fn load(
     home: &Path,
     identity: &str,
     limits: FetchLimits,
@@ -640,13 +645,6 @@ fn load(
 pub fn inspect(home: &Path, manifest: &str) -> Result<Option<PackageFacts>, ExecError> {
     Ok(load(home, manifest, FetchLimits::default())?.map(|loaded| loaded.facts))
 }
-pub(super) fn admit_environment(
-    home: &Path,
-    manifest: &str,
-    limits: FetchLimits,
-) -> Result<Option<Arc<super::environment::AdmittedEnvironment>>, ExecError> {
-    Ok(load(home, manifest, limits)?.and_then(|loaded| loaded.source.environment))
-}
 pub(super) fn admit_source(
     home: &Path,
     manifest: &str,
@@ -654,90 +652,11 @@ pub(super) fn admit_source(
 ) -> Result<Option<AdmittedSource>, ExecError> {
     Ok(load(home, manifest, limits)?.map(|loaded| loaded.source))
 }
-pub(in crate::workspace) fn acquire(
-    home: &Path,
-    manifest: &str,
-    limits: FetchLimits,
-) -> Result<PreparedSource, ExecError> {
-    load(home, manifest, limits)?
-        .map(|loaded| loaded.source.prepared)
-        .ok_or_else(|| failure("package is not imported; import its signed bundle first"))
-}
 pub fn readmit_roots<'a>(
     home: &Path,
     paths: impl IntoIterator<Item = &'a Path>,
 ) -> Result<(), ExecError> {
-    for path in paths {
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if !name.ends_with("-package-import") {
-            continue;
-        }
-        let directory = artifact::retained_directory(home, path)?
-            .ok_or_else(|| failure("retained import receipt missing"))?;
-        let bytes = receipt::read(
-            &directory,
-            Path::new("manifest.json"),
-            format::MAX_MANIFEST_BYTES as u64,
-        )?;
-        let manifest = PortableManifest::decode(&bytes)?;
-        let identity = manifest.digest()?;
-        if imported_root(home, &identity)? != path {
-            return Err(failure("import root is not bound to its manifest"));
-        }
-        acquire(home, &identity, FetchLimits::default())?;
-    }
-    Ok(())
-}
-/// An authored fixed prefix alone grants no placement authority. Only a
-/// current-policy-admitted import at exactly its signed destination qualifies.
-pub(in crate::workspace) fn readmit_fixed<'a>(
-    home: &Path,
-    payload: &Path,
-    prefix: &Path,
-    paths: impl IntoIterator<Item = &'a Path>,
-) -> Result<(), ExecError> {
-    if payload != prefix {
-        return Err(failure(
-            "fixed package prefix differs from its actual payload",
-        ));
-    }
-    for path in paths {
-        if !path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.ends_with("-package-import"))
-        {
-            continue;
-        }
-        let directory = artifact::retained_directory(home, path)?
-            .ok_or_else(|| failure("fixed package import receipt missing"))?;
-        let bytes = receipt::read(
-            &directory,
-            Path::new("manifest.json"),
-            format::MAX_MANIFEST_BYTES as u64,
-        )?;
-        let manifest = PortableManifest::decode(&bytes)?;
-        let identity = manifest.digest()?;
-        if imported_root(home, &identity)? != path {
-            return Err(failure("fixed import root identity mismatch"));
-        }
-        let loaded = load(home, &identity, FetchLimits::default())?
-            .ok_or_else(|| failure("fixed package import missing"))?;
-        if (loaded.facts.layout == "fixed" && loaded.facts.payload == payload)
-            || loaded
-                .source
-                .environment
-                .as_ref()
-                .is_some_and(|environment| environment.admits_fixed(payload))
-        {
-            return Ok(());
-        }
-    }
-    Err(failure(
-        "fixed prefix has no matching signed imported placement",
-    ))
+    super::ReadmissionScope::new(home, FetchLimits::default()).readmit_roots(paths)
 }
 
 pub fn export_bundle(

@@ -138,13 +138,13 @@ impl Activation {
     /// nested libraries/interpreters remain part of ordinary runtime traversal.
     pub(super) fn captured_packages(
         &self,
-        home: &Path,
+        admission: &mut crate::workspace::sharing::ReadmissionScope,
     ) -> Result<Vec<Arc<artifact::Package>>, ExecError> {
-        let mut loaded = BTreeMap::new();
-        let mut visiting = BTreeSet::new();
+        let mut restoration = artifact::hook::ReceiptRestoration::new(&self.receipts, admission);
         for identity in self.receipts.keys() {
-            artifact::hook::restore(home, *identity, &self.receipts, &mut loaded, &mut visiting)?;
+            restoration.restore(*identity)?;
         }
+        let loaded = restoration.into_packages();
         let dependencies: BTreeSet<_> = loaded
             .values()
             .flat_map(|package| package.runtime.iter().map(|dependency| dependency.identity))
@@ -172,7 +172,10 @@ impl Activation {
             .receipts
             .get(identity)
             .ok_or_else(|| super::super::failure("imported activation has no selected receipt"))?;
-        let package = self.restore(home, *identity, *receipt)?;
+        let package = {
+            let mut admission = context.readmission(home)?;
+            self.restore(&mut admission, *identity, *receipt)?
+        };
         let provided = package.commands.get(name).ok_or_else(|| {
             super::super::failure("imported activation command differs from package")
         })?;
@@ -196,7 +199,7 @@ impl Activation {
     }
     pub(super) fn restore(
         &self,
-        home: &Path,
+        admission: &mut crate::workspace::sharing::ReadmissionScope,
         package: PackageDigest,
         receipt: Sha256Digest,
     ) -> Result<Arc<artifact::Package>, ExecError> {
@@ -205,13 +208,7 @@ impl Activation {
                 "managed launcher receipt differs from its activation binding",
             ));
         }
-        artifact::hook::restore(
-            home,
-            package,
-            &self.receipts,
-            &mut BTreeMap::new(),
-            &mut BTreeSet::new(),
-        )
+        artifact::hook::ReceiptRestoration::new(&self.receipts, admission).restore(package)
     }
 
     pub(super) fn admit(
@@ -221,22 +218,23 @@ impl Activation {
         span: &Span,
         closure: &mut BTreeSet<PathBuf>,
     ) -> Result<(), ExecError> {
-        let mut loaded = BTreeMap::new();
-        let mut visiting = BTreeSet::new();
+        let loaded = {
+            let mut admission = context.readmission(home)?;
+            let mut restoration =
+                artifact::hook::ReceiptRestoration::new(&self.receipts, &mut admission);
+            for (name, identity) in &self.commands {
+                if !crate::workspace::profile_launchers::valid_command_name(name) {
+                    return Err(super::super::failure(
+                        "managed activation contains an invalid command name",
+                    ));
+                }
+                restoration.restore(*identity)?;
+            }
+            restoration.into_packages()
+        };
         let mut retained = BTreeSet::new();
         for (name, identity) in &self.commands {
-            if !crate::workspace::profile_launchers::valid_command_name(name) {
-                return Err(super::super::failure(
-                    "managed activation contains an invalid command name",
-                ));
-            }
-            let package = artifact::hook::restore(
-                home,
-                *identity,
-                &self.receipts,
-                &mut loaded,
-                &mut visiting,
-            )?;
+            let package = &loaded[identity];
             if retained.insert(*identity) {
                 package.retain_into(closure);
             }
@@ -244,7 +242,7 @@ impl Activation {
                 super::super::failure("managed activation export differs from its retained package")
             })?;
             admit::admit_command_in_scope(
-                &package,
+                package,
                 &command.selector,
                 &command.executable,
                 context,

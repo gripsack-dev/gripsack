@@ -121,6 +121,13 @@ impl TrustPolicy {
         let bytes = read_bounded(&home.join("sharing/trust.json"), MAX_POLICY_BYTES, false)?;
         Self::from_bytes(&bytes)
     }
+    /// Observe exact current policy bytes without repeating public-key parsing.
+    /// Only a scope already populated through full policy admission may reuse
+    /// this revision; a missing or changed file never preserves acceptance.
+    pub(super) fn current_revision(home: &Path) -> Result<String, TrustError> {
+        let bytes = read_bounded(&home.join("sharing/trust.json"), MAX_POLICY_BYTES, false)?;
+        Ok(digest(&bytes))
+    }
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TrustError> {
         if bytes.len() > MAX_POLICY_BYTES {
             return Err(reject("policy exceeds byte limit"));

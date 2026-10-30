@@ -283,6 +283,16 @@ its own authority context and fresh trust checks.
 Transitive host-policy and portable-retention queries likewise visit each borrowed
 package view once, including all-false results. Distinct policy views are not
 collapsed merely because they share a content or package identity.
+Within one operation, repeated receipt views may reuse a complete admission
+bound to the same home, resource limits and exact local policy revision.
+Pinned retained-object identity/change snapshots guard that reuse; changed,
+missing or replaced inputs fail the scope. Package restoration caches belong to
+one immutable expected receipt map, not merely a producer or package name.
+New managed operations perform fresh admission; this is not a persistent trust
+cache and does not bypass native executable or ABI checks.
+Directory inode pins are shared by exact retained root across import admission
+and package-view restoration; SCC bases/views do not open duplicate producer
+pins. Snapshot mutation checks and expected-receipt isolation remain mandatory.
 
 ### Passive mixed environments
 
@@ -390,6 +400,9 @@ Conda requirements or selected by an imported Pixi lock:
 conda.environment({
   channels: ["conda-forge"],
   packages: { python: "3.12.*", "xorg-libx11": "*" },
+  systemRequirements: {
+    libc: { family: "glibc", version: "2.28" }, linux: "4.18",
+  },
   wheels: [{
     name: "my-tool",
     version: "1.0",
@@ -402,6 +415,9 @@ conda.environment({
 The Python fixture owns Tk's X11 runtime through `xorg-libx11`; it does not
 borrow an undeclared host library. Missing ELF dependencies are admission
 errors even when a particular command has not exercised that optional module.
+Its portable manifest declares `abi: {kind: "glibc", minimum: "2.28"}` and a
+matching kernel floor. A kernel-only Linux target does not authorize a dynamic
+program's host GNU loader; local and external environment members keep that ABI.
 
 Binary prefix replacement remains bounded by the original Conda placeholders.
 An overlong final prefix is refused, never truncated or silently redirected;

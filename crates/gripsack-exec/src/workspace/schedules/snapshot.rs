@@ -12,7 +12,7 @@ use gripsack_process::{ProgramIdentity, Sha256Digest};
 use gripsack_store as store;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     io::Read,
     path::{Path, PathBuf},
 };
@@ -43,13 +43,18 @@ pub(super) struct Snapshot {
 }
 impl Snapshot {
     pub fn realization(&self, home: &Path) -> Result<Realization<'_>, ExecError> {
-        let mut loaded = BTreeMap::new();
-        let mut visiting = BTreeSet::new();
+        let mut admission = crate::workspace::sharing::ReadmissionScope::new(
+            home,
+            gripsack_fetch::FetchLimits::default(),
+        );
+        let mut restoration =
+            artifact::hook::ReceiptRestoration::new(&self.receipts, &mut admission);
         let packages = self
             .packages
             .iter()
             .map(|(name, identity)| {
-                artifact::hook::restore(home, *identity, &self.receipts, &mut loaded, &mut visiting)
+                restoration
+                    .restore(*identity)
                     .map(|package| (name.as_str(), package))
             })
             .collect::<Result<_, _>>()?;

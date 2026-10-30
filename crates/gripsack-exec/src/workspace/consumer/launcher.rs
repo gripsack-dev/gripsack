@@ -128,14 +128,14 @@ pub(in crate::workspace) fn admit_imported_command(
 }
 
 pub(in crate::workspace) fn captured_imported_packages(
-    home: &Path,
+    admission: &mut crate::workspace::sharing::ReadmissionScope,
     encoded: &str,
 ) -> Result<Vec<std::sync::Arc<artifact::Package>>, ExecError> {
     let projection: Projection = serde_json::from_str(encoded)?;
     projection
         .activation
         .ok_or_else(|| super::failure("imported environment requires exact activation"))?
-        .captured_packages(home)
+        .captured_packages(admission)
 }
 
 /// A capture is not native authority. Complete top-level acquisition and every
@@ -413,7 +413,13 @@ pub fn run_package_command(
         .as_ref()
         .and_then(|projection| projection.activation.as_ref())
     {
-        Some(activation) => activation.restore(home, package, receipt)?,
+        Some(activation) => {
+            let mut admission = crate::workspace::sharing::ReadmissionScope::new(
+                home,
+                gripsack_fetch::FetchLimits::default(),
+            );
+            activation.restore(&mut admission, package, receipt)?
+        }
         None => match projection
             .as_ref()
             .filter(|value| !value.receipts.is_empty())
@@ -424,13 +430,12 @@ pub fn run_package_command(
                         "launcher root differs from its captured receipt graph",
                     ));
                 }
-                artifact::hook::restore(
+                let mut admission = crate::workspace::sharing::ReadmissionScope::new(
                     home,
-                    package,
-                    &value.receipts,
-                    &mut BTreeMap::new(),
-                    &mut BTreeSet::new(),
-                )?
+                    gripsack_fetch::FetchLimits::default(),
+                );
+                artifact::hook::ReceiptRestoration::new(&value.receipts, &mut admission)
+                    .restore(package)?
             }
             None => artifact::hook::restore_launcher(home, package, receipt)?,
         },
@@ -478,7 +483,8 @@ pub fn run_package_command(
     {
         activation.admit(home, &host, &span, &mut closure)?;
     }
-    crate::workspace::sharing::readmit_roots(home, closure.iter().map(PathBuf::as_path))?;
+    host.readmission(home)?
+        .readmit_roots(closure.iter().map(PathBuf::as_path))?;
     let retention = crate::workspace::roots::RetentionSet::admit(&session, closure)?;
     let lease = crate::workspace::roots::ProcessLease::register(&session, &retention)?;
     let staged = if let Some(projected) = projection
