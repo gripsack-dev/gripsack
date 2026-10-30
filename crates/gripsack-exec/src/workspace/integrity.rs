@@ -205,6 +205,10 @@ pub(crate) fn inspect(
             Some("workspace-recipe") => artifact::integrity::recipe(root, &mut expected),
             Some("workspace-image") => image::integrity(root, &mut expected),
             Some("workspace-conda-image") => image::materialize::integrity(root, &mut expected),
+            // Review artifacts bind the complete tree digest (not a shortened
+            // payload lookup key) and have their own bounded private schema.
+            Some("semantic-review") => crate::semantic::retention::audit_root(home, root)
+                .map_err(|error| failure(error.to_string())),
             _ => continue,
         };
         if let Err(error) = result {
@@ -309,7 +313,7 @@ fn namespace(root: &Path) -> Option<&str> {
 fn content_addressed_tree(namespace: &str) -> bool {
     matches!(
         namespace,
-        "workspace-source" | "workspace-input" | "workspace-files"
+        "workspace-source" | "workspace-input" | "workspace-files" | "package-payload"
     )
 }
 

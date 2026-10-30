@@ -21,7 +21,7 @@ pub(in crate::workspace) fn prepare(
     base_overlay: &EnvironmentOverlay,
 ) -> Result<PreparedCommand, ExecError> {
     let span = command.span().clone();
-    let (program_binding, argv, declared_env) = match command {
+    let (program_binding, mut argv, declared_env) = match command {
         WorkspaceCommand::Exec { argv, env, .. } => {
             let (program, arguments) = argv
                 .split_first()
@@ -100,6 +100,14 @@ pub(in crate::workspace) fn prepare(
         resolve_program(plan, &program_arg, &span, options)?
     };
     if let Some(admitted) = admitted {
+        let mut defaults = admitted.entries.clone();
+        defaults.extend(entries);
+        entries = defaults;
+        if !admitted.arguments.is_empty() {
+            let mut arguments = admitted.arguments.clone();
+            arguments.extend(argv);
+            argv = arguments;
+        }
         let mut dirs = admitted.library_dirs.clone();
         dirs.extend(library);
         library = dirs;
@@ -112,6 +120,7 @@ pub(in crate::workspace) fn prepare(
         &span,
     )?;
     let overlay = EnvironmentOverlay::admit(entries, search, library).map_err(operational)?;
+    let overlay = super::launcher::compose_imported(admitted, overlay)?;
     let cwd = task_cwd(
         command.working_directory(),
         subject,

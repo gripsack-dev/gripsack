@@ -159,8 +159,6 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
             .unwrap();
     let options = crate::workspace::BuildOptions {
         environment: &environment,
-        bridge: None,
-        worker: Default::default(),
         deadline,
     };
     let selected = crate::workspace::consumer::bind_admitted_program(&admitted, &options).unwrap();

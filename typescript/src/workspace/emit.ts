@@ -1,7 +1,7 @@
 /** Current workspace emission: named references, role admission and cycles. */
 
 import type { HostFacts } from "../facts.ts";
-export const IR_VERSION = 9;
+export const IR_VERSION = 10;
 import type { Span } from "../span.ts"
 import type {
   PackageNode,
@@ -21,13 +21,13 @@ import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
 import { checkTargetsAndLayouts } from "./target.ts";
 import { asInput } from "./bindings.ts";
 import { rejectUnknownFields } from "../fields.ts";
-import { checkImageSelection } from "./image.ts";
 import { checkFileBindings } from "./file-checks.ts";
+import { serviceNames, serviceProperties } from "./services.ts";
 
 /** Catalog roles never conflate publication checks or retention with
  * production closure. Ordered local commands are intra-output and
  * keep their list order; no catalog `ordering` edge is fabricated. */
-type EdgeRole = "production" | "build_input" | "runtime" | "task_prereq" | "validation" | "retention";
+type EdgeRole = "runtime" | "task_prereq" | "validation" | "retention";
 
 interface Edge {
   from: string;
@@ -38,14 +38,11 @@ interface Edge {
 }
 
 function isDependency(role: EdgeRole): boolean {
-  return role === "production" || role === "build_input" ||
-    role === "runtime" || role === "task_prereq";
+  return role === "runtime" || role === "task_prereq";
 }
 
-/** Outputs whose artifacts an `artifact` reference may address —
- *  recipes and packages carry artifacts; images (and every consumer
- *  kind) do not (0052 §2.2). */
-const ARTIFACT_KINDS: readonly WorkspaceOutputKind[] = ["recipe", "package"];
+/** Only packages carry artifacts addressable by artifact references. */
+const ARTIFACT_KINDS: readonly WorkspaceOutputKind[] = ["package"];
 
 /** Selector admission at emit: constructors guard their own values,
  *  but hand-built nodes reach the emitter unchecked — reject escapes
@@ -132,14 +129,7 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
     }
   };
   switch (node.kind) {
-    case "recipe":
-      for (const step of node.steps ?? []) stepEdges(step, node.name, node.span, "build_input", edges);
-      names(node.checks, ["check"], "validation");
-      break;
     case "package":
-      if (node.producer.kind === "recipe") {
-        names([node.producer.recipe], ["recipe"], "production");
-      }
       names(node.runtime, ["package"], "runtime");
       break;
     case "environment":
@@ -152,9 +142,14 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
         }
       }
       break;
+    case "service":
+      serviceProperties(node, `service '${node.name}'`);
+      names(node.depends_on, ["service"], "runtime");
+      break;
     case "task":
       for (const step of node.steps) stepEdges(step, node.name, node.span, "runtime", edges);
       names(node.deps, ["task"], "task_prereq");
+      names(serviceNames(node.services, `task '${node.name}' services`), ["service"], "runtime");
       names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "runtime");
       names(node.checks, ["check"], "validation");
       break;
@@ -163,13 +158,7 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
       break;
     case "check":
       commandEdges(node.run, node.name, "runtime", edges);
-      names([node.subject], ["recipe", "package", "environment", "task", "schedule", "check", "image", "profile", "hook"], "validation");
-      break;
-    case "image":
-      names(node.packages, ["package"], "runtime");
-      for (const argument of node.config.entrypoint) {
-        if (argument.kind === "package_command") names([argument.package], ["package"], "runtime");
-      }
+      names([node.subject], ["package", "environment", "service", "task", "schedule", "check", "profile", "hook"], "validation");
       break;
     case "profile":
       for (const f of node.files ?? []) {
@@ -201,8 +190,8 @@ function orList(kinds: readonly string[]): string {
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the IR9 envelope —
- *  `{ir_version: 9, host, workspace}`. Admission mirrors the decoded core:
+/** Serialize a workspace value as the IR10 envelope —
+ *  `{ir_version: 10, host, workspace}`. Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
  *  paths, environment values are data only, producer/consumer OS,
@@ -319,12 +308,11 @@ export function emitWorkspaceIr(
         }
       }
     }
-    if (node.kind === "recipe" || node.kind === "task") {
+    if (node.kind === "task") {
       for (const step of node.steps ?? []) if ("command" in step) collectCommandKeys(step.command);
     }
     if (node.kind === "check" || node.kind === "hook") collectCommandKeys(node.run);
     if (node.kind === "environment") collectArgKeys(Object.values(node.env ?? {}), node.span);
-    if (node.kind === "image") collectArgKeys(node.config.entrypoint, node.span);
   }
   for (const { pkg: target, command, span } of commandKeys) {
     if (!Object.hasOwn(target.commands, command)) {
@@ -339,13 +327,8 @@ export function emitWorkspaceIr(
     }
   }
   checkTargetsAndLayouts(catalog);
-  for (const node of catalog.values()) {
-    if (node.kind === "image") checkImageSelection(node, catalog);
-  }
 
-  // dependency cycles over production/build edges only — validation
-  // edges (a recipe gated by a check on the package it produces) may
-  // legitimately close a loop
+  // Validation and retention edges may legitimately close a dependency loop.
   const adj = new Map<string, Edge[]>();
   for (const e of depEdges) {
     const list = adj.get(e.from) ?? [];

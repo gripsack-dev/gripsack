@@ -31,6 +31,7 @@ mod generation_wire;
 pub mod generations;
 pub use gripsack_policy::{GenerationId, GenerationInventory, GenerationList};
 pub mod hash;
+pub mod jobs;
 pub mod journal;
 pub mod ownership;
 pub mod paths;

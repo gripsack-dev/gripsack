@@ -25,6 +25,16 @@ pub(in crate::workspace) fn package(
         expected.admit_reference(path)?;
         bind_digest(path, "workspace-package", identity.bytes())?;
     }
+    for path in &receipt.producer_retention {
+        expected.retain(path)?;
+    }
+    crate::workspace::sharing::readmit_roots(
+        expected.home,
+        receipt
+            .producer_retention
+            .iter()
+            .map(std::path::PathBuf::as_path),
+    )?;
     if let Some(conda) = &receipt.conda {
         gripsack_conda::virtuals::validate_frozen_environment(&conda.closure, None)
             .map_err(|error| failure(error.to_string()))?;

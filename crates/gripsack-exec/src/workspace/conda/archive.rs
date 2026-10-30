@@ -57,10 +57,23 @@ pub(super) struct CondaArchive {
     pub payload: BTreeMap<String, ArchiveEntry>,
     pub info: BTreeMap<String, ArchiveEntry>,
     pub expanded_bytes: u64,
+    pub entries: usize,
+    max_bytes: u64,
+    max_entries: usize,
 }
 
 impl CondaArchive {
+    #[cfg(test)]
     pub fn open(path: &Path, expected_sha256: &str) -> io::Result<Self> {
+        Self::open_bounded(path, expected_sha256, MAX_TAR_BYTES, MAX_ENTRIES)
+    }
+
+    pub fn open_bounded(
+        path: &Path,
+        expected_sha256: &str,
+        bytes: u64,
+        entries: usize,
+    ) -> io::Result<Self> {
         let parent = path
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
@@ -85,6 +98,9 @@ impl CondaArchive {
             payload: BTreeMap::new(),
             info: BTreeMap::new(),
             expanded_bytes: 0,
+            entries: 0,
+            max_bytes: bytes.min(MAX_TAR_BYTES),
+            max_entries: entries.min(MAX_ENTRIES),
         };
         if &magic[..2] == b"PK" {
             let mut zip = zip::ZipArchive::new(file).map_err(invalid_error)?;
@@ -104,11 +120,19 @@ impl CondaArchive {
                     result.scan(zstd::stream::read::Decoder::new(member)?, Some(false))?;
                 } else if name == "metadata.json" && !metadata {
                     metadata = true;
-                    let mut bytes = Vec::new();
-                    member.take(1025).read_to_end(&mut bytes)?;
-                    if bytes.len() > 1024 {
-                        return Err(invalid("oversized container metadata"));
+                    if result.entries >= result.max_entries {
+                        return Err(invalid("archive entry count exceeds its bound"));
                     }
+                    result.entries += 1;
+                    let remaining = result.max_bytes - result.expanded_bytes;
+                    let mut bytes = Vec::new();
+                    member
+                        .take(remaining.min(1024) + 1)
+                        .read_to_end(&mut bytes)?;
+                    if bytes.len() as u64 > remaining.min(1024) {
+                        return Err(invalid("container metadata exceeds its byte bound"));
+                    }
+                    result.expanded_bytes += bytes.len() as u64;
                     let value: serde_json::Value =
                         serde_json::from_slice(&bytes).map_err(invalid_error)?;
                     if value
@@ -134,16 +158,17 @@ impl CondaArchive {
     }
 
     fn scan(&mut self, reader: impl Read, section: Option<bool>) -> io::Result<()> {
-        let remaining = MAX_TAR_BYTES - self.expanded_bytes;
+        let remaining = self.max_bytes - self.expanded_bytes;
         let mut limited = reader.take(remaining + 1);
         {
             let mut archive = tar::Archive::new(&mut limited);
             let mut extended = headers::ExtendedHeader::default();
-            for (count, member) in archive.entries()?.raw(true).enumerate() {
-                let mut member = member?;
-                if count >= MAX_ENTRIES || self.payload.len() + self.info.len() >= MAX_ENTRIES {
+            for member in archive.entries()?.raw(true) {
+                if self.entries >= self.max_entries {
                     return Err(invalid("archive entry count exceeds its bound"));
                 }
+                self.entries += 1;
+                let mut member = member?;
                 if extended.read(&mut member)? {
                     continue;
                 }
@@ -175,7 +200,7 @@ impl CondaArchive {
                         } else {
                             MAX_ENTRY_BYTES
                         };
-                        if size > bound {
+                        if size > bound.min(remaining) {
                             return Err(invalid(format!("{path:?} exceeds its byte bound")));
                         }
                         let spool = self.spool.get_mut();

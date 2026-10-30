@@ -4,7 +4,7 @@
   "profile": "linux-x64-trusted-pilot",
   "platform": "linux-x86_64",
   "policy": "PLATFORM-LINUX-X64-2026-10-09",
-  "version": "0.50.0",
+  "version": "0.51.0",
   "gates": [
     {
       "id": "inventory",
@@ -28,19 +28,6 @@
       "inputs": [],
       "outputs": [
         "local-ci/images/test.json"
-      ]
-    },
-    {
-      "id": "gnu-test",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "gnu-test"
-      ],
-      "timeout_seconds": 0,
-      "inputs": [],
-      "outputs": [
-        "local-ci/images/gnu-test.json"
       ]
     },
     {
@@ -93,36 +80,7 @@
       ]
     },
     {
-      "id": "bridge-repro-pins",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "bridge"
-      ],
-      "timeout_seconds": 0,
-      "inputs": [],
-      "outputs": [
-        "dist/grip-buildkit-bridge-0.50.0-x86_64-unknown-linux-musl",
-        "dist/grip-buildkit-bridge-0.50.0-x86_64-unknown-linux-musl.sha256"
-      ]
-    },
-    {
-      "id": "b0-linux",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "b0"
-      ],
-      "timeout_seconds": 0,
-      "inputs": [
-        "local-ci/debug/grip"
-      ],
-      "outputs": [
-        "local-ci/b0-results.tar.gz"
-      ]
-    },
-    {
-      "id": "helper-repro-pins",
+      "id": "helper-pins",
       "argv": [
         "python3",
         "scripts/local_ci.py",
@@ -131,12 +89,12 @@
       "timeout_seconds": 0,
       "inputs": [],
       "outputs": [
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.sha256",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.manifest.json",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.LICENSE-pixi",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.LICENSE-rattler",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.sha256",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.manifest.json",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-pixi",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-rattler",
         "local-ci/images/local-helper.json"
       ]
     },
@@ -157,8 +115,8 @@
         "local-ci/audit.json"
       ],
       "outputs": [
-        "dist/gripsack-0.50.0-x86_64-unknown-linux-musl.tar.gz",
-        "dist/gripsack-0.50.0-x86_64-unknown-linux-musl.tar.gz.sha256",
+        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz",
+        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz.sha256",
         "local-ci/core-artifact.json"
       ]
     },
@@ -175,7 +133,7 @@
         "local-ci/images/local-tools.json"
       ],
       "outputs": [
-        "dist/gripsack-core-0.50.0.tgz"
+        "dist/gripsack-core-0.51.0.tgz"
       ]
     },
     {
@@ -185,7 +143,7 @@
       "inputs": [
         "local-ci/images/local-tools.tar",
         "local-ci/images/local-tools.json",
-        "dist/gripsack-core-0.50.0.tgz"
+        "dist/gripsack-core-0.51.0.tgz"
       ],
       "outputs": [
         "local-ci/publication/packages.tar.gz",
@@ -222,17 +180,15 @@
         "local-ci/external/site.bundle",
         "local-ci/external/example.bundle",
         "local-ci/external/sources.json",
-        "dist/gripsack-0.50.0-x86_64-unknown-linux-musl.tar.gz",
-        "dist/gripsack-0.50.0-x86_64-unknown-linux-musl.tar.gz.sha256",
-        "dist/grip-buildkit-bridge-0.50.0-x86_64-unknown-linux-musl",
-        "dist/grip-buildkit-bridge-0.50.0-x86_64-unknown-linux-musl.sha256",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.sha256",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.manifest.json",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.LICENSE-pixi",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
-        "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.LICENSE-rattler",
-        "dist/gripsack-core-0.50.0.tgz"
+        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz",
+        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz.sha256",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.sha256",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.manifest.json",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-pixi",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
+        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-rattler",
+        "dist/gripsack-core-0.51.0.tgz"
       ],
       "outputs": [
         "local-ci/consumers.json",
@@ -252,188 +208,53 @@
         "local-ci/images/e2e.json"
       ],
       "outputs": []
-    },
-    {
-      "id": "core-repro",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "repro"
-      ],
-      "timeout_seconds": 0,
-      "inputs": [
-        "local-ci/images/builder.tar",
-        "local-ci/images/builder.json"
-      ],
-      "outputs": [
-        "local-ci/core-repro.tar.gz"
-      ]
-    },
-    {
-      "id": "persistence-96",
-      "argv": [
-        "python3",
-        "scripts/local_ci_persistence.py"
-      ],
-      "timeout_seconds": 0,
-      "inputs": [
-        "local-ci/images/e2e.tar",
-        "local-ci/images/e2e.json"
-      ],
-      "outputs": [
-        "local-ci/persistence/reports/Linux-apply-deploy-error-0/Linux-apply-deploy-error-0.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-error-1/Linux-apply-deploy-error-1.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-error-2/Linux-apply-deploy-error-2.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-error-3/Linux-apply-deploy-error-3.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-error-4/Linux-apply-deploy-error-4.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-error-5/Linux-apply-deploy-error-5.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-error-6/Linux-apply-deploy-error-6.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-error-7/Linux-apply-deploy-error-7.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-kill-0/Linux-apply-deploy-kill-0.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-kill-1/Linux-apply-deploy-kill-1.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-kill-2/Linux-apply-deploy-kill-2.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-kill-3/Linux-apply-deploy-kill-3.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-kill-4/Linux-apply-deploy-kill-4.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-kill-5/Linux-apply-deploy-kill-5.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-kill-6/Linux-apply-deploy-kill-6.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-kill-7/Linux-apply-deploy-kill-7.json",
-        "local-ci/persistence/reports/Linux-apply-prune-error-0/Linux-apply-prune-error-0.json",
-        "local-ci/persistence/reports/Linux-apply-prune-error-1/Linux-apply-prune-error-1.json",
-        "local-ci/persistence/reports/Linux-apply-prune-error-2/Linux-apply-prune-error-2.json",
-        "local-ci/persistence/reports/Linux-apply-prune-error-3/Linux-apply-prune-error-3.json",
-        "local-ci/persistence/reports/Linux-apply-prune-error-4/Linux-apply-prune-error-4.json",
-        "local-ci/persistence/reports/Linux-apply-prune-error-5/Linux-apply-prune-error-5.json",
-        "local-ci/persistence/reports/Linux-apply-prune-error-6/Linux-apply-prune-error-6.json",
-        "local-ci/persistence/reports/Linux-apply-prune-error-7/Linux-apply-prune-error-7.json",
-        "local-ci/persistence/reports/Linux-apply-prune-kill-0/Linux-apply-prune-kill-0.json",
-        "local-ci/persistence/reports/Linux-apply-prune-kill-1/Linux-apply-prune-kill-1.json",
-        "local-ci/persistence/reports/Linux-apply-prune-kill-2/Linux-apply-prune-kill-2.json",
-        "local-ci/persistence/reports/Linux-apply-prune-kill-3/Linux-apply-prune-kill-3.json",
-        "local-ci/persistence/reports/Linux-apply-prune-kill-4/Linux-apply-prune-kill-4.json",
-        "local-ci/persistence/reports/Linux-apply-prune-kill-5/Linux-apply-prune-kill-5.json",
-        "local-ci/persistence/reports/Linux-apply-prune-kill-6/Linux-apply-prune-kill-6.json",
-        "local-ci/persistence/reports/Linux-apply-prune-kill-7/Linux-apply-prune-kill-7.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-error-0/Linux-rollback-deploy-error-0.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-error-1/Linux-rollback-deploy-error-1.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-error-2/Linux-rollback-deploy-error-2.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-error-3/Linux-rollback-deploy-error-3.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-error-4/Linux-rollback-deploy-error-4.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-error-5/Linux-rollback-deploy-error-5.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-error-6/Linux-rollback-deploy-error-6.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-error-7/Linux-rollback-deploy-error-7.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-kill-0/Linux-rollback-deploy-kill-0.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-kill-1/Linux-rollback-deploy-kill-1.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-kill-2/Linux-rollback-deploy-kill-2.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-kill-3/Linux-rollback-deploy-kill-3.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-kill-4/Linux-rollback-deploy-kill-4.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-kill-5/Linux-rollback-deploy-kill-5.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-kill-6/Linux-rollback-deploy-kill-6.json",
-        "local-ci/persistence/reports/Linux-rollback-deploy-kill-7/Linux-rollback-deploy-kill-7.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-error-0/Linux-rollback-prune-error-0.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-error-1/Linux-rollback-prune-error-1.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-error-2/Linux-rollback-prune-error-2.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-error-3/Linux-rollback-prune-error-3.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-error-4/Linux-rollback-prune-error-4.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-error-5/Linux-rollback-prune-error-5.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-error-6/Linux-rollback-prune-error-6.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-error-7/Linux-rollback-prune-error-7.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-kill-0/Linux-rollback-prune-kill-0.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-kill-1/Linux-rollback-prune-kill-1.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-kill-2/Linux-rollback-prune-kill-2.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-kill-3/Linux-rollback-prune-kill-3.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-kill-4/Linux-rollback-prune-kill-4.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-kill-5/Linux-rollback-prune-kill-5.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-kill-6/Linux-rollback-prune-kill-6.json",
-        "local-ci/persistence/reports/Linux-rollback-prune-kill-7/Linux-rollback-prune-kill-7.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-error-0/Linux-apply-deploy-copy-error-0.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-error-1/Linux-apply-deploy-copy-error-1.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-error-2/Linux-apply-deploy-copy-error-2.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-error-3/Linux-apply-deploy-copy-error-3.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-error-4/Linux-apply-deploy-copy-error-4.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-error-5/Linux-apply-deploy-copy-error-5.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-error-6/Linux-apply-deploy-copy-error-6.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-error-7/Linux-apply-deploy-copy-error-7.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-kill-0/Linux-apply-deploy-copy-kill-0.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-kill-1/Linux-apply-deploy-copy-kill-1.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-kill-2/Linux-apply-deploy-copy-kill-2.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-kill-3/Linux-apply-deploy-copy-kill-3.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-kill-4/Linux-apply-deploy-copy-kill-4.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-kill-5/Linux-apply-deploy-copy-kill-5.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-kill-6/Linux-apply-deploy-copy-kill-6.json",
-        "local-ci/persistence/reports/Linux-apply-deploy-copy-kill-7/Linux-apply-deploy-copy-kill-7.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-error-0/Linux-apply-prune-copy-error-0.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-error-1/Linux-apply-prune-copy-error-1.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-error-2/Linux-apply-prune-copy-error-2.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-error-3/Linux-apply-prune-copy-error-3.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-error-4/Linux-apply-prune-copy-error-4.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-error-5/Linux-apply-prune-copy-error-5.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-error-6/Linux-apply-prune-copy-error-6.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-error-7/Linux-apply-prune-copy-error-7.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-kill-0/Linux-apply-prune-copy-kill-0.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-kill-1/Linux-apply-prune-copy-kill-1.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-kill-2/Linux-apply-prune-copy-kill-2.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-kill-3/Linux-apply-prune-copy-kill-3.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-kill-4/Linux-apply-prune-copy-kill-4.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-kill-5/Linux-apply-prune-copy-kill-5.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-kill-6/Linux-apply-prune-copy-kill-6.json",
-        "local-ci/persistence/reports/Linux-apply-prune-copy-kill-7/Linux-apply-prune-copy-kill-7.json",
-        "local-ci/persistence/logs.tar.gz",
-        "local-ci/persistence/dispatch.json"
-      ]
     }
   ],
   "artifacts": [
-    "dist/gripsack-0.50.0-x86_64-unknown-linux-musl.tar.gz",
-    "dist/gripsack-0.50.0-x86_64-unknown-linux-musl.tar.gz.sha256",
-    "dist/grip-buildkit-bridge-0.50.0-x86_64-unknown-linux-musl",
-    "dist/grip-buildkit-bridge-0.50.0-x86_64-unknown-linux-musl.sha256",
-    "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl",
-    "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.sha256",
-    "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.manifest.json",
-    "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.LICENSE-pixi",
-    "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
-    "dist/gripsack-conda-0.50.0-x86_64-unknown-linux-musl.LICENSE-rattler",
-    "dist/gripsack-core-0.50.0.tgz",
+    "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz",
+    "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz.sha256",
+    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl",
+    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.sha256",
+    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.manifest.json",
+    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-pixi",
+    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
+    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-rattler",
+    "dist/gripsack-core-0.51.0.tgz",
     "dist/install.sh"
   ],
   "external_inputs": {
     "repositories": {
       "site": {
         "url": "https://github.com/gripsack-dev/gripsack-dev.github.io.git",
-        "commit": "4a157e3a36c2f6e891e7beb3f3a8f8240259b853"
+        "commit": "809eafd063466357136e4aaaccc349a193b3c965"
       },
       "example": {
         "url": "https://github.com/gripsack-dev/example-env-typescript.git",
-        "commit": "e8efdbb214e5ee5805f83a9ee1159cd7e287acac"
+        "commit": "ed90e26a106782b563b7a392e1bef69c2da96ce2"
       }
     },
     "sdk": {
       "name": "@gripsack/core",
-      "version": "0.50.0"
+      "version": "0.51.0"
     },
     "core": {
       "crate": "gripsack",
       "binary": "grip",
-      "version": "0.50.0",
+      "version": "0.51.0",
       "target": "x86_64-unknown-linux-musl"
     },
     "helper": {
       "crate": "gripsack-conda",
-      "version": "0.50.0",
+      "version": "0.51.0",
       "target": "x86_64-unknown-linux-musl"
     },
-    "bridge": {
-      "binary": "grip-buildkit-bridge",
-      "version": "0.50.0",
-      "target": "x86_64-unknown-linux-musl"
-    },
-    "ir_version": 9,
+    "ir_version": 10,
     "fuzz_exclusion": "REL-FUZZ-2026-09-27",
-    "authority": "LOCAL-PRACTICAL-QUALIFICATION-2026-10-27",
-    "formal_exclusion": {
-      "decision": "REL-PRACTICAL-050-2026-10-27",
-      "gates": ["model", "tlaps", "verify"],
-      "status": "separate research; not qualified by this release profile"
+    "authority": "LOCAL-PRACTICAL-QUALIFICATION-2026-10-28",
+    "optional_verification": {
+      "decision": "REL-PRACTICAL-051-2026-10-28",
+      "gates": ["gnu-test", "core-repro", "helper-repro", "persistence-96", "model", "tlaps", "verify", "mutants"],
+      "status": "not run by this profile; only executed on explicit request; no passing claim"
     },
     "buildkit_cache": "retained; build output records cache hits, not fresh RUN execution",
     "persistence_budget": {

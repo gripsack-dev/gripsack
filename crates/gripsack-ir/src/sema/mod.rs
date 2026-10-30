@@ -6,8 +6,8 @@ mod workspace_model;
 use crate::{Diagnostic, Ir, Severity};
 
 pub fn run(ir: &Ir) -> Vec<Diagnostic> {
-    if ir.ir_version != crate::IR_VERSION {
-        return vec![crate::parse::version_error(u64::from(ir.ir_version))];
+    if let Err(diagnostic) = crate::authoring::admit(ir) {
+        return vec![diagnostic];
     }
     let mut diagnostics = Vec::new();
     workspace_model::check(&ir.workspace, &mut diagnostics);

@@ -49,6 +49,32 @@ pub fn ensure_deno(home: &Path, context: &gripsack_fetch::FetchContext) -> io::R
     ))
 }
 
+/// Select an already-present runtime without downloading or executing it.
+pub(crate) fn existing_deno(home: &Path) -> io::Result<PathBuf> {
+    if let Some(path) = std::env::var_os("GRIPSACK_DENO") {
+        return Ok(PathBuf::from(path));
+    }
+    let pinned = home
+        .join("tools")
+        .join(format!("deno-{}", DENO_RELEASE.version))
+        .join("deno");
+    if pinned.is_file() {
+        return Ok(pinned);
+    }
+    if let Some(paths) = std::env::var_os("PATH") {
+        for directory in std::env::split_paths(&paths) {
+            let candidate = directory.join("deno");
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        "saved apply requires the previously approved runtime; run explicit live planning to provision it",
+    ))
+}
+
 /// The pinned runtime: already provisioned, or downloaded (flock'd,
 /// sha256-verified). Ok(None) when this platform can't have it
 /// (musl) or the download failed and a caller fallback should get a

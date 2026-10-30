@@ -12,9 +12,9 @@ export type Fetch =
  * v from the locked tag. Legacy `{version}` tries raw then stripped asset names.
  * The platform placeholders (0016 §D1) are:
  * `{system}` (x86_64-linux, flake-style), `{target}` (the rust
- * triple, musl for linux), `{arch}` (x86_64|aarch64), `{arch.go}`
- * (amd64|arm64), `{os}` (linux|darwin) — expanded by the core from the
- * machine's facts, so one spec serves every platform.
+ * triple, musl for Linux), `{arch}` (x86_64), `{arch.go}`
+ * (amd64), `{os}` (linux) — expanded by the core from the
+ * machine's facts for the supported Linux/WSL x86_64 target.
  */
 export function githubRelease(spec: {
   repo: string;

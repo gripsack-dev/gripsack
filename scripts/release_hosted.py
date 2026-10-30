@@ -143,37 +143,6 @@ def publish(args):
                       "manifest_sha256": schema.digest(path), "tag": tag}, sort_keys=True))
 
 
-def promote(args):
-    manifest = schema.validate_bundle(args.bundle, source=Path.cwd())
-    version = manifest["compatible"]["core"]
-    tag = f"core-v{version}"
-    release = consumer.select_release(version)
-    consumer.require(release["tag_name"] == tag, "native release must be finalized before promotion")
-    package = next(item for item in manifest["packages"]
-                   if item["registry"] == "crates.io" and item["name"] == "gripsack")
-    with tempfile.TemporaryDirectory(prefix="gripsack-tap-") as directory:
-        root = Path(directory)
-        downloaded = root / "core.crate"
-        consumer.download(f"https://static.crates.io/crates/gripsack/gripsack-{version}.crate",
-                          downloaded, package["size_bytes"])
-        consumer.require(schema.digest(downloaded) == package["sha256"], "tap crate identity differs")
-        gh("repo", "clone", "gripsack-dev/homebrew-tap", root / "tap", "--", "--depth", "1")
-        formula = root / "tap/Formula/gripsack.rb"
-        original = formula.read_text()
-        updated, urls = re.subn(r"gripsack-[0-9]+\.[0-9]+\.[0-9]+\.crate", f"gripsack-{version}.crate", original)
-        updated, hashes = re.subn(r'sha256 "[0-9a-f]{64}"', f'sha256 "{package["sha256"]}"', updated)
-        consumer.require(urls == 1 and hashes == 1, "tap formula shape changed; refusing ambiguous mutation")
-        if updated != original:
-            formula.write_text(updated)
-            prefix = ["git", "-C", str(root / "tap")]
-            consumer.command(prefix + ["config", "user.name", "github-actions[bot]"])
-            consumer.command(prefix + ["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
-            consumer.command(prefix + ["add", "Formula/gripsack.rb"])
-            consumer.command(prefix + ["commit", "-m", f"gripsack {version}"])
-            gh("auth", "setup-git")
-            consumer.command(prefix + ["push", "origin", "HEAD:main"])
-
-
 def verify(args):
     manifest = schema.validate_bundle(args.bundle, source=Path.cwd())
     consumer.verifier()
@@ -194,10 +163,8 @@ def main():
     publication.add_argument("--bundle", type=Path, required=True)
     publication.add_argument("--publication", type=Path, required=True)
     publication.add_argument("--signature", type=Path, required=True)
-    promotion = sub.add_parser("promote", help="Promote the verified crates.io source formula")
-    promotion.add_argument("--bundle", type=Path, required=True)
     args = parser.parse_args()
-    {"admit": admit, "verify": verify, "publish": publish, "promote": promote}[args.command](args)
+    {"admit": admit, "verify": verify, "publish": publish}[args.command](args)
 
 
 if __name__ == "__main__":

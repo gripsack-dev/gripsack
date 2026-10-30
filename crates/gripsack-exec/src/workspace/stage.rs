@@ -1,18 +1,13 @@
-//! Independent admission of a completed private staging tree. The backend's
-//! completion message does not construct this capability or publish an object.
+//! Bounded tree admission for native inputs and retained producer payloads.
 use crate::ExecError;
 use gripsack_ir::workspace::RecipeOutputKind;
 use gripsack_store as store;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub struct ValidatedTree {
-    root: PathBuf,
     tree: store::hash::PayloadHash,
 }
 impl ValidatedTree {
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
     pub fn tree_hash(&self) -> &store::hash::PayloadHash {
         &self.tree
     }
@@ -39,7 +34,6 @@ pub fn validate_output_tree(
         }
     }
     Ok(ValidatedTree {
-        root: root.to_owned(),
         tree: store::canonical_tree_hash(root)?,
     })
 }

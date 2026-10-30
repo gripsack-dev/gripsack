@@ -254,14 +254,11 @@ fn native_file_checks_preserve_operation_deadline() {
     let deadline = Instant::now() + Duration::from_secs(10);
     let host = consumer::admit::NativeContext::new(&facts, home.path(), deadline).unwrap();
     let realization = Realization {
-        recipes: BTreeMap::new(),
         packages: BTreeMap::new(),
         inputs: BTreeMap::new(),
     };
     let options = super::super::BuildOptions {
         environment: &environment,
-        bridge: None,
-        worker: Default::default(),
         deadline,
     };
     let command = WorkspaceCommand::Exec {

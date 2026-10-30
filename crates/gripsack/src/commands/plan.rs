@@ -10,7 +10,7 @@ fn ir_source_root(path: &Path) -> &Path {
 
 /// Validate current IR and preview the selected workspace profiles.
 #[tracing::instrument(name = "plan", skip(palette), fields(file = %path.display()))]
-pub fn plan_ir(path: &Path, selected: &[String], palette: Palette) -> ExitCode {
+pub fn plan_ir(path: &Path, selected: &[String], palette: Palette, structured: bool) -> ExitCode {
     let json = match std::fs::read_to_string(path) {
         Ok(j) => j,
         Err(e) => {
@@ -37,6 +37,15 @@ pub fn plan_ir(path: &Path, selected: &[String], palette: Palette) -> ExitCode {
         &mut crate::render::DiagnosticSink::terminal(palette, ir_source_root(path)),
     ) {
         return code;
+    }
+    if structured {
+        return super::review::plan(
+            &ir,
+            &gripsack_exec::Repository::direct(ir_source_root(path).to_path_buf()),
+            selected,
+            Default::default(),
+            true,
+        );
     }
     native_preview(&ir, ir_source_root(path), selected, palette)
 }

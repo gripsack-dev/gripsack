@@ -14,7 +14,6 @@
 use vstd::prelude::*;
 
 pub mod activation;
-pub mod buildkit;
 pub mod conda_admission;
 pub mod generation;
 pub use generation::{GenerationId, GenerationInventory, GenerationList};
@@ -32,7 +31,6 @@ pub mod semantic;
 pub mod target;
 pub mod task;
 pub mod update_survey;
-pub mod worker_lease;
 pub mod workspace_command;
 
 verus! {

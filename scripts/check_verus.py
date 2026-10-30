@@ -16,7 +16,9 @@ CRATE = ROOT / "crates/gripsack-policy"
 # and one build-minus-runtime membership obligation to the previous floor.
 # The superseded batch role adapter contributed one more; current admission
 # uses project_graph_role directly. Retained named obligations remain required.
-MIN_OBLIGATIONS = 427
+# The BuildKit cutover removes eight named definition/session functions and
+# nine worker-lease functions (baseline 799676d); retained family floors remain.
+MIN_OBLIGATIONS = 410
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
@@ -66,15 +68,6 @@ FAMILIES = {
         "admit_directory", "admit_argument", "admit_bash_options", "admit_production_binding",
         "interpreter_and_environment_roles_are_disjoint",
         "isolated_execution_never_admits_live_host_directory",
-    )),
-    "buildkit-definition": tuple("buildkit::" + name for name in (
-        "backward_edge", "isolated_execution", "output_mount", "VertexIndex::new",
-        "input_binding", "transition", "done_requires_export", "terminals_are_fenced",
-    )),
-    "owned-worker": tuple("worker_lease::" + name for name in (
-        "bytes_equal", "identity_decision", "admit_acquire", "admit_stop",
-        "admit_removal", "release_disposition", "admit_cache_cleanup", "retired_epoch",
-        "admit_replacement",
     )),
     "rate-admission": (
         "rate_limit::binary_rate::admit_binary_rate",
@@ -207,40 +200,6 @@ MUTANTS = (
            "            if ed != ad {", "            if false {"),
     Mutant("conda-final-prefix", "conda_admission.rs", "conda_admission::admit_response",
            "            } else if ep != ap {", "            } else if false {"),
-    Mutant("buildkit-forward-producer", "buildkit.rs", "buildkit::backward_edge",
-           "    producer < consumer\n", "    producer <= consumer\n"),
-    Mutant("buildkit-network-isolation", "buildkit.rs", "buildkit::isolated_execution",
-           "    network == NETWORK_NONE && security == SECURITY_SANDBOX\n", "    security == SECURITY_SANDBOX\n"),
-    Mutant("buildkit-writable-input", "buildkit.rs", "buildkit::output_mount",
-           "    kind == MOUNT_BIND && readonly == !selected\n", "    kind == MOUNT_BIND\n"),
-    Mutant("buildkit-input-output-binding", "buildkit.rs", "buildkit::input_binding",
-           "    actual.vertex.value == expected.vertex.value && actual.output == expected.output",
-           "    actual.vertex.value == expected.vertex.value"),
-    Mutant("buildkit-premature-done", "buildkit.rs", "buildkit::transition",
-           "    ensures next == next_stage(stage, event),\n{\n    match (stage, event) {",
-           "    ensures next == next_stage(stage, event),\n{\n    if event == SessionEvent::Done { return Some(SessionStage::Done); }\n    match (stage, event) {"),
-    Mutant("worker-acquire-state", "worker_lease.rs", "worker_lease::admit_acquire",
-           "    if phase != WorkerPhase::Ready {\n        Err(AcquireRefusal::NotReady)",
-           "    if phase == WorkerPhase::Ready {\n        Err(AcquireRefusal::NotReady)"),
-    Mutant("worker-live-stop", "worker_lease.rs", "worker_lease::admit_stop",
-           "    } else if live > 0 {\n        Err(StopRefusal::LiveLeases)",
-           "    } else if live > MAX_LIVE_LEASES {\n        Err(StopRefusal::LiveLeases)"),
-    Mutant("worker-removal-identity", "worker_lease.rs", "worker_lease::admit_removal",
-           "    if identity == IdentityDecision::Current {", "    if identity != IdentityDecision::Current {"),
-    Mutant("worker-unconfirmed-release", "worker_lease.rs", "worker_lease::release_disposition",
-           "    if cleanup_confirmed {", "    if true {"),
-    Mutant("worker-foreign-cache", "worker_lease.rs", "worker_lease::admit_cache_cleanup",
-           "    if !volume_owned {", "    if false {"),
-    Mutant("worker-recovery-namespace", "worker_lease.rs", "worker_lease::retired_epoch",
-           "    same_namespace && 0 < epoch && epoch < next_epoch\n", "    0 < epoch && epoch < next_epoch\n"),
-    Mutant("worker-recovery-next-epoch", "worker_lease.rs", "worker_lease::retired_epoch",
-           "    same_namespace && 0 < epoch && epoch < next_epoch\n", "    same_namespace && 0 < epoch && epoch <= next_epoch\n"),
-    Mutant("worker-replacement-live-clients", "worker_lease.rs", "worker_lease::admit_replacement",
-           "    } else if live > 0 {\n        Err(ReplacementRefusal::LiveLeases)",
-           "    } else if live > MAX_LIVE_LEASES {\n        Err(ReplacementRefusal::LiveLeases)"),
-    Mutant("worker-replacement-mid-transition", "worker_lease.rs", "worker_lease::admit_replacement",
-           "    } else if phase != WorkerPhase::Ready && phase != WorkerPhase::Stopped {",
-           "    } else if false {"),
     Mutant("classifier", "selection.rs", "selection::classify", "(Some(_), _) => Classification::Ambiguous,", "(Some(_), _) => Classification::Committed,"),
     Mutant("classifier-transaction-identity", "selection.rs", "selection::classify",
            "(Some(_), Some(current)) if current == facts.target =>",

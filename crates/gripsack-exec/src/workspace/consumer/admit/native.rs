@@ -75,6 +75,15 @@ impl<'a> NativeContext<'a> {
                 continue;
             }
             pending.extend(package.runtime.iter().map(std::sync::Arc::as_ref));
+            crate::workspace::sharing::readmit_roots(
+                self.home,
+                package
+                    .producer
+                    .retention
+                    .iter()
+                    .map(std::path::PathBuf::as_path),
+            )
+            .map_err(|error| gate(span, error.to_string()))?;
             if let Some(receipt) = &package.conda {
                 bytecode = Some(receipt.closure.materializer.bytecode);
             }
@@ -95,6 +104,19 @@ impl<'a> NativeContext<'a> {
                 continue;
             }
             admit_target(&package.target, &self.target, span, "package")?;
+            if package
+                .producer
+                .root
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with("-package-environment-projection"))
+                && !matches!(package.layout, CatalogPackageLayout::PrefixMaterialized)
+            {
+                return Err(gate(
+                    span,
+                    "an imported environment projection must remain prefix-materialized",
+                ));
+            }
             match (&package.layout, &package.conda) {
                 (CatalogPackageLayout::Relocatable, None) => {}
                 (CatalogPackageLayout::PrefixMaterialized, Some(receipt)) => {
@@ -108,10 +130,12 @@ impl<'a> NativeContext<'a> {
                     super::platform::admit(&receipt.system, &self.target, span)?;
                 }
                 (CatalogPackageLayout::PrefixMaterialized, None) => {
-                    return Err(gate(
-                        span,
-                        "prefix-materialized package has no independently validated Conda receipt",
-                    ));
+                    crate::workspace::sharing::readmit_projection(
+                        self.home,
+                        &package.producer.payload,
+                        &package.producer.retention,
+                    )
+                    .map_err(|error| gate(span, error.to_string()))?;
                 }
                 (CatalogPackageLayout::Relocatable, Some(_)) => {
                     return Err(gate(
@@ -120,13 +144,17 @@ impl<'a> NativeContext<'a> {
                     ));
                 }
                 (CatalogPackageLayout::FixedPrefix { prefix }, _) => {
-                    return Err(gate(
-                        span,
-                        format!(
-                            "fixed prefix {:?} has no native placement authority; use a materialized Conda prefix or a relocatable package",
-                            prefix.as_str()
-                        ),
-                    ));
+                    crate::workspace::sharing::readmit_fixed(
+                        self.home,
+                        &package.producer.payload,
+                        Path::new(prefix.as_str()),
+                        package
+                            .producer
+                            .retention
+                            .iter()
+                            .map(std::path::PathBuf::as_path),
+                    )
+                    .map_err(|error| gate(span, error.to_string()))?;
                 }
             }
             admitted.insert(package.identity);

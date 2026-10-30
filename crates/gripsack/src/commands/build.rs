@@ -1,11 +1,10 @@
 use super::{eval_repo, validated_ir};
 use crate::render::{DiagnosticSink, Palette};
-use gripsack_buildkit::worker::{MemoryBytes, WorkerOptions};
 use gripsack_exec::{BuildOptions, Ctx, ExecError, Repository};
 use gripsack_process::{OperatorEnvironment, terminal::tame};
 use std::{
-    num::{NonZeroU16, NonZeroU64},
-    path::{Path, PathBuf},
+    num::NonZeroU64,
+    path::Path,
     process::ExitCode,
     sync::Arc,
     time::{Duration, Instant},
@@ -13,24 +12,12 @@ use std::{
 
 #[derive(Debug, clap::Args)]
 pub struct BuildArgs {
-    /// Named recipe, package or OCI image outputs; no personal activation.
+    /// Named direct package outputs; no personal activation.
     #[arg(required = true)]
     pub outputs: Vec<String>,
     #[arg(long)]
     pub repo: Option<String>,
-    /// Operator-selected bridge executable, overriding the pinned,
-    /// hash-verified helper this core provisions lazily on first solve.
-    /// Deliberate operator authority: the repository never selects
-    /// these bytes. GRIPSACK_BRIDGE_MIRROR redirects only the download
-    /// origin of the pinned helper (the compiled-in sha256 still
-    /// authenticates it).
-    #[arg(long)]
-    pub bridge: Option<PathBuf>,
-    #[arg(long, default_value = "2")]
-    pub builder_cpus: NonZeroU16,
-    #[arg(long, default_value = "4096")]
-    pub builder_memory_mib: NonZeroU64,
-    /// One deadline across bridge preparation, execution and cleanup.
+    /// Deadline for native package preparation.
     #[arg(long, default_value = "1800")]
     pub timeout_seconds: NonZeroU64,
     /// Emit retained output paths and commands as JSON.
@@ -58,18 +45,6 @@ fn build_inner(repo: &Path, args: BuildArgs, sink: &mut DiagnosticSink) -> Resul
             eprintln!("grip: build deadline is out of range");
             ExitCode::from(2)
         })?;
-    let memory = args
-        .builder_memory_mib
-        .get()
-        .checked_mul(1024 * 1024)
-        .ok_or_else(|| {
-            eprintln!("grip: builder memory is out of range");
-            ExitCode::from(2)
-        })?;
-    let memory = MemoryBytes::new(memory).map_err(|error| {
-        eprintln!("grip: {error}");
-        ExitCode::from(2)
-    })?;
     let environment = OperatorEnvironment::capture().map_err(operational)?;
     let outcome = eval_repo(repo, None, sink)?;
     let ir = validated_ir(&outcome, sink)?;
@@ -93,12 +68,6 @@ fn build_inner(repo: &Path, args: BuildArgs, sink: &mut DiagnosticSink) -> Resul
     };
     let options = BuildOptions {
         environment: &environment,
-        bridge: args.bridge.as_deref(),
-        worker: WorkerOptions {
-            cpus: args.builder_cpus,
-            memory,
-            ..WorkerOptions::default()
-        },
         deadline,
     };
     let result = gripsack_exec::build_workspace(&ir, &ctx, &options).map_err(|error| {

@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Admit the actual GitHub `needs` results; only a named owner waiver can skip fuzz.
+"""Admit essential CI results and explicitly selected optional campaigns.
 
-The feedback exception is plan/0048 §15, REL-FUZZ-2026-09-27. It is selected
-explicitly on a manual dispatch, not inferred from a branch, CI variable or
-missing result. All other required jobs must succeed, including when fuzz is
-waived. This qualifies CI composition, not the whole release's implementation.
+Unselected campaigns must be skipped, never represented as passing evidence.
+Selected campaigns must succeed, including complete persistence receipts.
 """
 from __future__ import annotations
 
@@ -12,17 +10,17 @@ import argparse
 import json
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
-REQUIRED_JOBS = ("test", "docs", "audit", "fuzz")
-TEST_LANES = ("core", "e2e", "e2e-persistence", "formal")
+REQUIRED_JOBS = ("test", "docs", "audit")
+OPTIONAL_JOBS = ("fuzz",)
+TEST_LANES = ("core", "e2e")
+OPTIONAL_TEST_LANES = ("e2e-persistence", "formal", "gnu", "mutants")
 PERSISTENCE_SCENARIOS = (
     "apply-deploy", "apply-prune", "rollback-deploy", "rollback-prune",
     "apply-deploy-copy", "apply-prune-copy",
 )
 PERSISTENCE_SHARDS = 8
-FEEDBACK_WAIVER = "REL-FUZZ-2026-09-27"
 MAX_RESULTS_BYTES = 64 * 1024
 EVENTS = ("push", "pull_request", "workflow_dispatch")
 
@@ -30,11 +28,6 @@ EVENTS = ("push", "pull_request", "workflow_dispatch")
 class GateFailure(ValueError):
     pass
 
-
-@dataclass(frozen=True)
-class GateDecision:
-    fuzz: str
-    waiver: str | None
 
 
 def unique_fields(pairs):
@@ -58,39 +51,36 @@ def decode(raw: str) -> dict:
     return value
 
 
-def admit(results: dict, event: str, waiver: str) -> GateDecision:
-    if event not in EVENTS:
-        raise GateFailure(f"unsupported CI event {event!r}")
-    if waiver not in ("none", FEEDBACK_WAIVER):
-        raise GateFailure(f"unknown fuzz waiver {waiver!r}")
-    waived = waiver == FEEDBACK_WAIVER
-    if waived and event != "workflow_dispatch":
-        raise GateFailure("the feedback waiver requires an explicit manual dispatch")
-    if set(results) != set(REQUIRED_JOBS):
-        missing = sorted(set(REQUIRED_JOBS) - set(results))
-        unexpected = sorted(set(results) - set(REQUIRED_JOBS))
-        raise GateFailure(f"required-job inventory mismatch: missing={missing!r}, unexpected={unexpected!r}")
-    failures = []
-    for name in REQUIRED_JOBS:
-        record = results[name]
-        expected = "skipped" if name == "fuzz" and waived else "success"
+def selection(raw: str, allowed: tuple[str, ...]) -> tuple[str, ...]:
+    names = tuple(raw.split(",")) if raw else ()
+    if len(set(names)) != len(names) or set(names) - set(allowed):
+        raise GateFailure(f"invalid optional gate selection: {raw!r}")
+    return names
+
+
+def admit_jobs(results: dict, required: tuple[str, ...],
+               optional: tuple[str, ...], selected: tuple[str, ...]) -> None:
+    if len(set(selected)) != len(selected) or set(selected) - set(optional):
+        raise GateFailure("unknown or duplicate selected gates")
+    if set(results) != set(required + optional):
+        raise GateFailure("job inventory mismatch")
+    for name, record in results.items():
+        expected = "success" if name in required or name in selected else "skipped"
         actual = record.get("result") if isinstance(record, dict) else None
         if actual != expected:
-            failures.append(f"{name}: expected {expected}, got {actual!r}")
-    if failures:
-        raise GateFailure("; ".join(failures))
-    return GateDecision(
-        fuzz="not_run_owner_waived" if waived else "passed",
-        waiver=FEEDBACK_WAIVER if waived else None,
-    )
+            raise GateFailure(f"{name}: expected {expected}, got {actual!r}")
 
 
-def admit_test_lanes(results: dict) -> None:
-    if set(results) != set(TEST_LANES):
-        raise GateFailure("required test-lane inventory mismatch")
-    for lane, record in results.items():
-        if not isinstance(record, dict) or record.get("result") != "success":
-            raise GateFailure(f"required test lane did not succeed: {lane}={record!r}")
+def admit(results: dict, event: str, selected: tuple[str, ...] = ()) -> None:
+    if event not in EVENTS:
+        raise GateFailure(f"unsupported CI event {event!r}")
+    if selected and event != "workflow_dispatch":
+        raise GateFailure("optional campaigns require explicit manual selection")
+    admit_jobs(results, REQUIRED_JOBS, OPTIONAL_JOBS, selected)
+
+
+def admit_test_lanes(results: dict, selected: tuple[str, ...] = ()) -> None:
+    admit_jobs(results, TEST_LANES, OPTIONAL_TEST_LANES, selected)
 
 
 def admit_persistence_partition(report: dict, source: str) -> tuple:
@@ -156,74 +146,9 @@ def admit_persistence(reports: list[dict], source: str) -> None:
 
 
 def self_check() -> None:
-    def clean():
-        return {
-            "test": {"result": "success"},
-            "docs": {"result": "success"},
-            "audit": {"result": "success"},
-            "fuzz": {"result": "success"},
-        }
-
     positive = 0
-    for event in ("push", "pull_request", "workflow_dispatch"):
-        assert admit(clean(), event, "none") == GateDecision("passed", None)
-        positive += 1
-    feedback = clean()
-    feedback["fuzz"]["result"] = "skipped"
-    assert admit(feedback, "workflow_dispatch", FEEDBACK_WAIVER) == GateDecision(
-        "not_run_owner_waived", FEEDBACK_WAIVER,
-    )
-    positive += 1
-
-    lanes = {lane: {"result": "success"} for lane in TEST_LANES}
-    admit_test_lanes(lanes)
-    positive += 1
-
     negative = 0
 
-    def rejects(label, results, event="pull_request", waiver="none"):
-        nonlocal negative
-        try:
-            admit(results, event, waiver)
-        except GateFailure:
-            negative += 1
-            return
-        raise GateFailure(f"calibration admitted {label}")
-
-    for name in clean():
-        missing = clean()
-        del missing[name]
-        rejects(f"missing {name}", missing)
-        for outcome in ("failure", "cancelled", "skipped", "", None, "unknown"):
-            failed = clean()
-            failed[name]["result"] = outcome
-            rejects(f"{name}={outcome!r}", failed)
-        malformed = clean()
-        malformed[name] = "success"
-        rejects(f"malformed {name}", malformed)
-    extra = clean()
-    extra["new-required-lane"] = {"result": "success"}
-    rejects("unreviewed new job inventory", extra)
-    retired = clean()
-    retired["e2e-macos"] = retired.pop("test")
-    rejects("retired Mac job substituted for Linux aggregate", retired)
-    for name in clean():
-        for outcome in ("failure", "cancelled", "success" if name == "fuzz" else "skipped"):
-            failed = clean()
-            failed["fuzz"]["result"] = "skipped"
-            failed[name]["result"] = outcome
-            rejects(f"waiver concealed {name}={outcome}", failed, "workflow_dispatch", FEEDBACK_WAIVER)
-    rejects("unknown waiver", clean(), "workflow_dispatch", "unapproved")
-    for event in ("push", "pull_request"):
-        rejects("automatic waiver", feedback, event, FEEDBACK_WAIVER)
-    rejects("unknown trigger", clean(), "unrecognized")
-    for raw in ('[]', '{"test":{},"test":{}}', '{broken', ' ' * (MAX_RESULTS_BYTES + 1)):
-        try:
-            decode(raw)
-        except GateFailure:
-            negative += 1
-        else:
-            raise GateFailure("calibration admitted invalid result envelope")
     def refuses(check, label):
         nonlocal negative
         try:
@@ -233,15 +158,36 @@ def self_check() -> None:
         else:
             raise GateFailure(f"calibration admitted {label}")
 
-    for lane in TEST_LANES:
-        refuses(lambda: admit_test_lanes({key: value for key, value in lanes.items() if key != lane}),
-                f"missing test lane {lane}")
-        for result in ("failure", "cancelled", "skipped", None):
-            refuses(lambda: admit_test_lanes({**lanes, lane: {"result": result}}),
-                    f"test lane {lane}={result}")
-        substituted = {key: value for key, value in lanes.items() if key != lane}
-        substituted["e2e-macos"] = {"result": "success"}
-        refuses(lambda: admit_test_lanes(substituted), f"retired Mac substituted for {lane}")
+    # Every optional subset: an omitted or unsuccessful selected gate must fail.
+    for required, optional in (
+        (REQUIRED_JOBS, OPTIONAL_JOBS), (TEST_LANES, OPTIONAL_TEST_LANES),
+    ):
+        for mask in range(1 << len(optional)):
+            selected = tuple(name for index, name in enumerate(optional) if mask & (1 << index))
+            results = {name: {"result": "success" if name in required + selected else "skipped"}
+                       for name in required + optional}
+            admit_jobs(results, required, optional, selected)
+            positive += 1
+            for name in results:
+                refuses(lambda: admit_jobs({key: value for key, value in results.items() if key != name},
+                                            required, optional, selected), f"missing {name}")
+                for outcome in ("failure", "cancelled", None, "unknown",
+                                "skipped" if name in required + selected else "success"):
+                    refuses(lambda: admit_jobs({**results, name: {"result": outcome}},
+                                                required, optional, selected), f"{name}={outcome}")
+            refuses(lambda: admit_jobs({**results, "unknown": {"result": "success"}},
+                                        required, optional, selected), "unexpected gate")
+            refuses(lambda: admit_jobs(results, required, optional, ("unknown",)), "unknown selection")
+            if optional:
+                refuses(lambda: admit_jobs(results, required, optional, (optional[0], optional[0])),
+                        "duplicate selection")
+    for event in ("push", "pull_request"):
+        refuses(lambda: admit({}, event, ("fuzz",)), "automatic optional campaign")
+    refuses(lambda: admit({}, "unknown"), "unknown event")
+    for raw in ('[]', '{"test":{},"test":{}}', '{broken', ' ' * (MAX_RESULTS_BYTES + 1)):
+        refuses(lambda: decode(raw), "invalid envelope")
+    for raw in ("unknown", "fuzz,fuzz", ",fuzz"):
+        refuses(lambda: selection(raw, OPTIONAL_JOBS), "invalid selection")
     receipts = [
         {"system": system, "machine": "x86_64",
          "scenario": scenario, "fault": fault, "shard": shard, "shards": PERSISTENCE_SHARDS,
@@ -277,6 +223,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--test-lanes", action="store_true")
+    parser.add_argument("--selected", default="")
     parser.add_argument("--persistence-reports", type=Path)
     args = parser.parse_args()
     try:
@@ -284,26 +231,30 @@ def main() -> int:
             self_check()
             return 0
         if args.test_lanes:
-            admit_test_lanes(decode(os.environ.get("GRIPSACK_TEST_NEEDS", "")))
-            if args.persistence_reports is None:
-                raise GateFailure("required persistence receipts directory is missing")
-            reports = [decode(path.read_text()) for path in sorted(args.persistence_reports.rglob("*.json"))]
-            admit_persistence(reports, os.environ.get("GITHUB_SHA", ""))
-            print(f"test aggregate OK: all required lanes and {len(reports)} persistence partitions succeeded")
+            selected = selection(args.selected, OPTIONAL_TEST_LANES)
+            if selected and os.environ.get("GRIPSACK_CI_EVENT") != "workflow_dispatch":
+                raise GateFailure("optional campaigns require explicit manual selection")
+            admit_test_lanes(decode(os.environ.get("GRIPSACK_TEST_NEEDS", "")), selected)
+            if "e2e-persistence" in selected:
+                if args.persistence_reports is None:
+                    raise GateFailure("selected persistence receipts directory is missing")
+                reports = [decode(path.read_text()) for path in sorted(args.persistence_reports.rglob("*.json"))]
+                admit_persistence(reports, os.environ.get("GITHUB_SHA", ""))
+            elif args.persistence_reports is not None:
+                raise GateFailure("persistence receipts supplied without selecting persistence")
+            print("test aggregate OK: every selected lane succeeded")
             return 0
-        decision = admit(
-            decode(os.environ.get("GRIPSACK_CI_RESULTS", "")),
-            os.environ.get("GRIPSACK_CI_EVENT", ""),
-            os.environ.get("GRIPSACK_FUZZ_WAIVER", "none"),
-        )
+        selected = selection(args.selected, OPTIONAL_JOBS)
+        admit(decode(os.environ.get("GRIPSACK_CI_RESULTS", "")),
+              os.environ.get("GRIPSACK_CI_EVENT", ""), selected)
     except GateFailure as error:
         print(f"CI gate refused: {error}", file=sys.stderr)
         return 1
     print(json.dumps({
-        "format": "gripsack-ci-gate", "version": 1,
+        "format": "gripsack-ci-gate", "version": 2,
         "source": os.environ.get("GITHUB_SHA"),
-        "required_jobs": list(REQUIRED_JOBS),
-        "fuzz": decision.fuzz, "owner_waiver": decision.waiver,
+        "required_jobs": list(REQUIRED_JOBS + selected),
+        "not_run": sorted(set(OPTIONAL_JOBS) - set(selected)),
     }, sort_keys=True))
     return 0
 

@@ -1,5 +1,4 @@
 pub mod archive;
-pub mod buildkit_protocol;
 pub mod journal;
 pub mod manifest;
 pub mod merge;
@@ -7,14 +6,7 @@ mod sandbox;
 pub mod store_gc;
 
 pub const MAX_INPUT: usize = 65_536;
-pub const TARGETS: &[&str] = &[
-    "manifest",
-    "journal",
-    "merge",
-    "store_gc",
-    "archive",
-    "buildkit_protocol",
-];
+pub const TARGETS: &[&str] = &["manifest", "journal", "merge", "store_gc", "archive"];
 
 /// Replay and libFuzzer enter the identical implementation.
 pub fn dispatch(target: &str, input: &[u8]) {
@@ -36,7 +28,6 @@ pub fn dispatch(target: &str, input: &[u8]) {
         "merge" => merge::exercise(input),
         "store_gc" => store_gc::exercise(&sandbox, input),
         "archive" => archive::exercise(&sandbox, input),
-        "buildkit_protocol" => buildkit_protocol::exercise(input),
         _ => unreachable!(),
     }
 }

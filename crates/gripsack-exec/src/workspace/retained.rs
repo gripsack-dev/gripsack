@@ -30,7 +30,6 @@ pub(super) fn inspect<'a>(
     limits: gripsack_fetch::FetchLimits,
 ) -> Result<Realization<'a>, ExecError> {
     let mut realized = Realization {
-        recipes: BTreeMap::new(),
         packages: BTreeMap::new(),
         inputs: BTreeMap::new(),
     };
@@ -48,7 +47,6 @@ pub(super) fn inspect<'a>(
         for &name in &selection.required {
             let output = selection.outputs[name];
             let source = match output {
-                WorkspaceOutput::Recipe(recipe) => Some((&recipe.source, &recipe.target)),
                 WorkspaceOutput::Package(package) => match &package.producer {
                     WorkspaceProducer::Provider { provider } => Some((provider, &package.target)),
                     _ => None,
@@ -124,31 +122,7 @@ pub(super) fn inspect<'a>(
                 captured.insert(input.name.as_str(), value);
             }
         }
-        let prepared = Prepared::identities(
-            workspace,
-            selection,
-            &definitions,
-            sources,
-            captured,
-            command_pins,
-        )?;
-        for (&name, identity) in &prepared.recipes {
-            let WorkspaceOutput::Recipe(recipe) = prepared.selection.outputs[name] else {
-                unreachable!();
-            };
-            if let Some(artifact) = artifact::retained_recipe(
-                home,
-                limits,
-                *identity,
-                recipe.output_kind,
-                &recipe.execution,
-                &prepared.retained_roots(home, name),
-            )
-            .map_err(|error| super::file_failure(&recipe.span, error))?
-            {
-                realized.recipes.insert(name, artifact);
-            }
-        }
+        let prepared = Prepared::identities(workspace, selection, sources, captured, command_pins)?;
         let mut pending: BTreeSet<_> = prepared.packages.keys().map(String::as_str).collect();
         while !pending.is_empty() {
             let before = pending.len();
@@ -156,17 +130,7 @@ pub(super) fn inspect<'a>(
                 let WorkspaceOutput::Package(package) = prepared.selection.outputs[name] else {
                     unreachable!();
                 };
-                let producer = match &package.producer {
-                    WorkspaceProducer::Recipe { recipe } => {
-                        realized.recipes.get(recipe.as_str()).cloned()
-                    }
-                    WorkspaceProducer::Provider { .. } => {
-                        Some(prepared.sources[name].artifact.clone())
-                    }
-                };
-                let Some(producer) = producer else {
-                    continue;
-                };
+                let producer = prepared.sources[name].artifact.clone();
                 let runtime: Option<Vec<_>> = package
                     .runtime
                     .iter()
@@ -210,6 +174,9 @@ fn retained_source(
     pin: Option<&gripsack_ir::workspace_model::lock::LockedPin>,
     limits: gripsack_fetch::FetchLimits,
 ) -> Result<Option<PreparedSource>, ExecError> {
+    if let AcquisitionSource::Package { manifest, .. } = source {
+        return super::sharing::inspect_source(home, manifest, limits);
+    }
     let AcquisitionSource::Fetch(fetch) = source else {
         let Some(pin) = pin else {
             return Ok(None);
@@ -219,7 +186,7 @@ fn retained_source(
             .as_ref()
             .ok_or_else(|| std::io::Error::other("Conda pin is missing its frozen closure"))?;
         super::conda::admit_frozen(name, source, locked)?;
-        return super::conda::inspect_retained(name, home, locked).map(|materialized| {
+        return super::conda::inspect_retained(name, home, locked, None).map(|materialized| {
             materialized.map(|value| PreparedSource {
                 artifact: Arc::new(value.artifact),
                 resolved: pin.resolved.clone(),

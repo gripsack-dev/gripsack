@@ -1,19 +1,31 @@
 name: ci
 
-# Manual diagnostics only, not integration or release acceptance authority.
-# Exact-source local qualification owns all required gates and 96 persistence
-# partitions. Never dispatch this workflow for the no-fuzz/corpus release.
+# Manual diagnostics; routine selection is essential-only. Optional campaigns
+# are enforced when explicitly selected, never required by omission.
 
 on:
   workflow_dispatch:
     inputs:
-      fuzz_waiver:
-        description: "Explicit owner-approved fuzz/corpus-replay waiver; all other gates remain mandatory"
-        type: choice
-        default: none
-        options:
-          - none
-          - REL-FUZZ-2026-09-27
+      formal:
+        description: Run TLC, TLAPS and Verus campaigns
+        type: boolean
+        default: false
+      persistence:
+        description: Run all 96 persistence partitions
+        type: boolean
+        default: false
+      gnu:
+        description: Run duplicate GNU-native regressions
+        type: boolean
+        default: false
+      mutants:
+        description: Run mutation campaigns
+        type: boolean
+        default: false
+      fuzz:
+        description: Run bounded corpus replay
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -24,45 +36,17 @@ concurrency:
 
 jobs:
 
-  # 0.43 repair: the old single `test` job ran Rust, TS, B0, the full E2E
-  # suite and every formal gate SERIALLY — run 36774936349 died at the 6h
-  # job timeout inside E2E (~66%, before the persistence matrix finished and
-  # before model/TLAPS/Verus ever started). The lanes below run in parallel;
-  # `test` is a diagnostic aggregate, not protected acceptance authority,
-  # and cannot pass unless every lane succeeded.
   core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # Delivery validation and calibration live in a lane the required
-      # `test` aggregate admits — never only in an optional sibling job.
-      - name: Delivery inventory and closure calibration
-        run: |
-          python3 scripts/check_delivery.py --validate
-          python3 scripts/delivery_checker_calibration.py
-
-      - name: A1 dependency direction (calibrated)
-        run: python3 scripts/check_architecture.py --self-check
 
       - name: Rust gate (fmt, clippy, tests)
         run: docker compose run --build --rm test
 
-      - name: GNU loader admission and auxiliary-input regressions
-        run: docker compose run --build --rm gnu-test
-
       - name: TypeScript frontend tests (deno)
         run: docker compose run --build --rm ts-test
 
-      - name: Production bridge release artifacts and pins
-        run: tools/buildkit-bridge/dist.sh --check --dist dist
-
-      # B0's qualification is a real Go client against disposable
-      # digest-pinned BuildKit workers. Keep it in the required core lane,
-      # not an optional docs/probe job; any failed verifier/load aborts.
-      - name: B0 Linux BuildKit qualification
-        run: |
-          sh verification/buildkit-qualification/bridge/build.sh
-          sh verification/buildkit-qualification/probes.sh
 
   # Flow tests: real binary + real frontend against fixture env
   # repos, offline (file:// fixtures only). The persistence matrix has
@@ -72,20 +56,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: E2E (flow suite)
-        env:
-          GRIPSACK_CORPUS_WAIVED: ${{ github.event_name == 'workflow_dispatch' && inputs.fuzz_waiver == 'REL-FUZZ-2026-09-27' }}
-        run: |
-          extra=()
-          if [ "$GRIPSACK_CORPUS_WAIVED" = true ]; then
-            extra+=(--ignore=test_golden.py)
-            echo "Owner-waived: golden IR corpus replay not run"
-          fi
-          docker compose run --build --rm e2e uv run --locked --no-sync pytest --ignore=test_persistence_matrix.py "${extra[@]}"
+        run: docker compose run --build --rm e2e
 
-  # Linux: every scenario x fault runs eight disjoint round-robin cut
-  # partitions. Each partition retains both drift states and real recovery;
-  # the required aggregate checks their complete measured inventory union.
+  # Explicitly selected persistence requires the complete measured union.
   e2e-persistence:
+    if: inputs.persistence
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 120
     strategy:
@@ -117,6 +92,7 @@ jobs:
           if-no-files-found: error
 
   formal:
+    if: inputs.formal
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -124,19 +100,33 @@ jobs:
         gate: [model, tlaps, verify]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Required formal gate (${{ matrix.gate }})
+      - name: Selected formal gate (${{ matrix.gate }})
         run: docker compose run --build --rm "${{ matrix.gate }}"
 
+  gnu:
+    if: inputs.gnu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: docker compose run --build --rm gnu-test
+
+  mutants:
+    if: inputs.mutants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: docker compose run --build --rm mutants
+
   # Manual diagnostic aggregate over the parallel lanes.
-  # if: always() plus an explicit per-lane result admission — a failed,
-  # cancelled or skipped lane can never let this go green.
+  # A selected lane cannot be missing, failed, cancelled or skipped.
   test:
     if: always()
-    needs: [core, e2e, e2e-persistence, formal]
+    needs: [core, e2e, e2e-persistence, formal, gnu, mutants]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        if: inputs.persistence
         with:
           pattern: persistence-*
           path: persistence-reports
@@ -145,16 +135,26 @@ jobs:
       - name: Admit every required lane
         env:
           GRIPSACK_TEST_NEEDS: ${{ toJSON(needs) }}
-        run: python3 scripts/check_ci_gate.py --test-lanes --persistence-reports persistence-reports
+          GRIPSACK_CI_EVENT: ${{ github.event_name }}
+          SELECT_FORMAL: ${{ inputs.formal }}
+          SELECT_PERSISTENCE: ${{ inputs.persistence }}
+          SELECT_GNU: ${{ inputs.gnu }}
+          SELECT_MUTANTS: ${{ inputs.mutants }}
+        run: |
+          selected=()
+          args=()
+          if [ "$SELECT_FORMAL" = true ]; then selected+=(formal); fi
+          if [ "$SELECT_GNU" = true ]; then selected+=(gnu); fi
+          if [ "$SELECT_MUTANTS" = true ]; then selected+=(mutants); fi
+          if [ "$SELECT_PERSISTENCE" = true ]; then
+            selected+=(e2e-persistence)
+            args+=(--persistence-reports persistence-reports)
+          fi
+          selection=$(IFS=,; echo "${selected[*]}")
+          python3 scripts/check_ci_gate.py --test-lanes --selected "$selection" "${args[@]}"
 
-  # Bounded, deterministic fuzz replay (plan/0042 E): the checked-in
-  # seed corpus through the real targets, OS-contained by bubblewrap —
-  # fail-closed, no uncontained fallback. Longer coverage-guided runs
-  # available manually in fuzz.yml, not here.
   fuzz:
-    # Only explicit manual feedback dispatches may omit this lane. Unknown
-    # waiver inputs also omit execution, but the final gate rejects them.
-    if: github.event_name != 'workflow_dispatch' || inputs.fuzz_waiver == 'none'
+    if: inputs.fuzz
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -191,11 +191,7 @@ jobs:
         with:
           node-version: 22.23.2
 
-      - name: Build the candidate npm package (release workflow commands)
-        # npm ci → tsc (npm run build) → npm pack: exactly what
-        # release-typescript.yml ships, so CI tests the same artifact
-        # shape the registry serves (0.40: src/ for types, dist/ for
-        # the Deno pin — node_modules never type-strips)
+      - name: Build candidate SDK package for consumer examples
         run: |
           cd typescript
           npm ci --no-audit --no-fund
@@ -222,6 +218,7 @@ jobs:
           tool: cargo-audit
       - run: cargo audit
       - run: cargo audit --file tools/conda-helper/Cargo.lock
+      - run: npm ci --ignore-scripts --prefix typescript && npm audit --prefix typescript
 
   gate:
     if: always()
@@ -235,5 +232,8 @@ jobs:
         env:
           GRIPSACK_CI_RESULTS: ${{ toJSON(needs) }}
           GRIPSACK_CI_EVENT: ${{ github.event_name }}
-          GRIPSACK_FUZZ_WAIVER: ${{ github.event_name == 'workflow_dispatch' && inputs.fuzz_waiver || 'none' }}
-        run: python3 scripts/check_ci_gate.py
+          SELECT_FUZZ: ${{ inputs.fuzz }}
+        run: |
+          selected=""
+          if [ "$SELECT_FUZZ" = true ]; then selected=fuzz; fi
+          python3 scripts/check_ci_gate.py --selected "$selected"

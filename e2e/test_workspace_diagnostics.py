@@ -200,87 +200,35 @@ def test_ambient_bash_interpreter_is_a_structured_capability_error(sandbox):
 
 
 def test_dedented_bash_interpolation_maps_to_the_original_source_line(sandbox):
-    """The label points at the user's template line (9), not the
-    dedented body line (2) — the frontend's line map and the core's
-    rendering agree."""
+    """The label points at the actual JavaScript substitution in the
+    user's template, not a generated script line."""
     repo = write_repo(
         sandbox,
         "dedent",
         'import { defineWorkspace, workspace, pkg, provider, fileFetch, targetPlatform, '
-        'task, bash, bashBody, packageCommand } from "@gripsack/core";\n'
+        'task, bash, packageCommand } from "@gripsack/core";\n'
         'const shell = pkg("shell", { producer: provider(fileFetch("shell.bin")),\n'
         '  commands: { bash: "bin/bash" },\n'
         '  target: targetPlatform({ os: "linux", arch: "x86_64" }),\n'
         '  layout: { kind: "relocatable" } });\n'
-        'const script = task("script", { steps: [bash(packageCommand("shell", "bash"))\n'
-        "  .body(bashBody`\n"
+        'const script = task("script", { steps: [\n'
+        "  bash`\n"
         "    echo first\n"
-        "    echo second \\${HOME}\n"
+        '    echo second ${"dynamic"}\n'
         "    echo third\n"
-        "  `).build()] });\n"
+        '  `.interpreter(packageCommand("shell", "bash")).build()] });\n'
         "export default defineWorkspace(() => workspace({ outputs: [shell, script] }));\n",
     )
     terminal, doc = check_both(repo)
     assert terminal.returncode == 1
     assert "E130" in terminal.stderr
     assert "gripsack.ts:9" in terminal.stderr
-    assert "echo second \\${HOME}" in terminal.stderr  # snippet shows the source line
+    assert 'echo second ${"dynamic"}' in terminal.stderr  # snippet shows the source line
     assert_same_facts(terminal, doc)
     span = doc["diagnostics"][0]["labels"][0]["span"]
     assert span["line"] == 9, "generated (dedented) line 2 must map back to source line 9"
 
 
-def test_core_line_map_renders_the_mapped_source_snippet(sandbox):
-    """Decoded IR (no frontend): the core maps a dedented body's
-    generated line back through line_map and renders the snippet from
-    the real file at the mapped line."""
-    repo = sandbox / "decoded"
-    repo.mkdir()
-    source_lines = ["// filler"] * 60
-    source_lines[54] = "echo ${HOME}  # original line 55"
-    (repo / "bad.ts").write_text("\n".join(source_lines) + "\n")
-    recipe = {
-        "kind": "recipe", "name": "build", "span": {"file": "bad.ts", "line": 2},
-        "source": {"kind": "fetch", "fetch": {"kind": "file", "path": "src.tar.gz"}, "span": {"file": "bad.ts", "line": 3}},
-        "execution": {
-            "kind": "isolated_linux", "worker": "buildkit",
-            "platform": {"os": "linux", "arch": "x86_64"},
-            "toolchain": {"reference": "docker.io/library/alpine@sha256:" + "a" * 64},
-        },
-        "output_kind": "tree",
-        "target": {"os": "linux", "arch": "x86_64"},
-    }
-    package = {
-        "kind": "package", "name": "tool", "span": {"file": "bad.ts", "line": 4},
-        "producer": {"kind": "recipe", "recipe": "build"},
-        "commands": {"tool": "bin/tool"},
-        "target": {"os": "linux", "arch": "x86_64"},
-        "layout": {"kind": "relocatable"},
-    }
-    task = {
-        "kind": "task", "name": "bad", "span": {"file": "bad.ts", "line": 5},
-        "steps": [{"command": {
-            "kind": "run_bash", "span": {"file": "bad.ts", "line": 8},
-            "options": ["-e", "-u", "-o", "pipefail"],
-            "interpreter": {"kind": "package_command", "package": "tool", "command": "tool"},
-            "body": "echo ok\necho ${HOME}",
-            "line_map": [9, 55],
-        }}],
-        "context": {"kind": "host", "mutable_paths": []},
-    }
-    doc = {
-        "ir_version": 9,
-        "host": {"os": "linux", "arch": "x86_64", "tags": []},
-        "workspace": {"span": {"file": "bad.ts", "line": 1}, "outputs": [recipe, package, task]},
-    }
-    ir_path = repo / "workspace.ir.json"
-    ir_path.write_text(json.dumps(doc))
-    result = grip("plan", "--ir", str(ir_path), cwd=repo)
-    assert result.returncode != 0
-    assert "E130" in result.stderr
-    assert "bad.ts:55" in result.stderr, result.stderr
-    assert "original line 55" in result.stderr, "snippet must render the mapped source line"
-    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_decoded_diagnostic_span_cannot_read_outside_repo(sandbox):
@@ -309,7 +257,7 @@ def test_decoded_diagnostic_span_cannot_read_outside_repo(sandbox):
         "context": {"kind": "host", "mutable_paths": []},
     }
     doc = {
-        "ir_version": 9,
+        "ir_version": 10,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {
             "span": {"file": "gripsack.ts", "line": 1},
@@ -351,35 +299,6 @@ def test_check_success_json_lists_the_named_outputs(sandbox):
     assert not (sandbox / ".config/demo/settings.conf").exists()
 
 
-def test_check_never_provisions_a_builder(sandbox):
-    """A1 no-builder guarantee: even an isolated_linux recipe checks
-    clean without BuildKit/Lima materializing anywhere."""
-    repo = write_repo(
-        sandbox,
-        "isolated",
-        'import { defineWorkspace, workspace, recipe, targetPlatform, fileFetch, profile } from "@gripsack/core";\n'
-        'const build = recipe("build", { source: fileFetch("src.tar.gz"),\n'
-        '  execution: { kind: "isolated_linux", worker: "buildkit", '
-        'platform: targetPlatform({ os: "linux", arch: "x86_64" }), '
-        'toolchain: { reference: "docker.io/library/alpine@sha256:' + "a" * 64 + '" } },\n'
-        '  output_kind: "tree",\n'
-        '  target: targetPlatform({ os: "linux", arch: "x86_64" }) });\n'
-        'export default defineWorkspace(() => workspace({ outputs: [build, profile("personal", {})] }));\n',
-    )
-    checked = grip("check", cwd=repo)
-    assert checked.returncode == 0, checked.stdout + checked.stderr
-    assert "build (recipe)" in checked.stdout
-    builders = [
-        p
-        for p in sandbox.rglob("*")
-        if any(marker in p.name.lower() for marker in ("buildkit", "lima", "builder"))
-    ]
-    assert builders == [], f"check provisioned a builder: {builders}"
-    # Planning keeps the unselected recipe inert without provisioning its worker.
-    planned = grip("plan", cwd=repo)
-    assert planned.returncode == 0, planned.stdout + planned.stderr
-    assert not (sandbox / ".local/share/gripsack/buildkit").exists()
-    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_schedule_registration_is_refused_before_effects(sandbox):
@@ -398,7 +317,7 @@ def test_schedule_registration_is_refused_before_effects(sandbox):
         "task": "build", "trigger": {"kind": "daily", "time": "03:30"}, "scope": "user",
     }
     document = {
-        "ir_version": 9,
+        "ir_version": 10,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {
             "span": {"file": "gripsack.ts", "line": 1},
@@ -429,7 +348,7 @@ def test_invalid_decoded_command_coordinates_keep_labels_without_reading_source(
     }
     path = repo / "workspace.ir.json"
     path.write_text(json.dumps({
-        "ir_version": 9,
+        "ir_version": 10,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {
             "span": {"file": "source.ts", "line": 1},
@@ -461,7 +380,7 @@ def test_escaping_profile_file_destination_is_a_structured_error(sandbox):
     }
     path = repo / "workspace.ir.json"
     path.write_text(json.dumps({
-        "ir_version": 9,
+        "ir_version": 10,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
     }))
@@ -489,7 +408,7 @@ def test_escaped_repository_file_origin_rejects_before_executor(sandbox):
             }],
         }
         input_file.write_text(json.dumps({
-            "ir_version": 9,
+            "ir_version": 10,
             "host": {"os": "linux", "arch": "x86_64"},
             "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
         }))
@@ -525,7 +444,7 @@ def test_distinct_managed_block_markers_coexist_over_one_host_file(sandbox):
         }
         path = repo / "workspace.ir.json"
         path.write_text(json.dumps({
-            "ir_version": 9,
+            "ir_version": 10,
             "host": {"os": "linux", "arch": "x86_64"},
             "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
         }))
@@ -564,7 +483,7 @@ def test_duplicate_profile_destination_names_both_owners_before_any_executor(san
     }
     path = repo / "workspace.ir.json"
     path.write_text(json.dumps({
-        "ir_version": 9,
+        "ir_version": 10,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
     }))

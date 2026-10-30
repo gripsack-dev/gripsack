@@ -1,17 +1,16 @@
 //! `grip run` / `grip shell` / `grip task` — native project consumers over a
 //! current workspace catalog. One shared path: evaluate, realize the selected closure
-//! (cached/provider closures need no bridge), then launch through the common
+//! through native package acquisition, then launch through the common
 //! consumer service. No personal generation is created and the live
 //! checkout stays the working directory.
 use super::{eval_repo, validated_ir};
 use crate::render::{DiagnosticSink, Palette};
-use gripsack_buildkit::worker::{MemoryBytes, WorkerOptions};
 use gripsack_exec::{BuildOptions, ConsumerRequest, Ctx, ExecError, Repository, consume};
 use gripsack_ir::workspace_model::identity::PackageDigest;
 use gripsack_process::{OperatorEnvironment, Sha256Digest, terminal::tame};
 use std::{
     ffi::OsString,
-    num::{NonZeroU16, NonZeroU64},
+    num::NonZeroU64,
     path::{Path, PathBuf},
     process::ExitCode,
     sync::Arc,
@@ -36,13 +35,6 @@ pub struct RunArgs {
     pub env: String,
     #[arg(long)]
     pub repo: Option<String>,
-    /// Operator-selected bridge, needed only when the closure must be built.
-    #[arg(long)]
-    pub bridge: Option<PathBuf>,
-    #[arg(long, default_value = "2")]
-    pub builder_cpus: NonZeroU16,
-    #[arg(long, default_value = "4096")]
-    pub builder_memory_mib: NonZeroU64,
     /// Deadline for realization and launch admission; an interactive session
     /// itself is unbounded.
     #[arg(long, default_value = "1800")]
@@ -58,13 +50,6 @@ pub struct ShellArgs {
     pub env: String,
     #[arg(long)]
     pub repo: Option<String>,
-    /// Operator-selected bridge, needed only when the closure must be built.
-    #[arg(long)]
-    pub bridge: Option<PathBuf>,
-    #[arg(long, default_value = "2")]
-    pub builder_cpus: NonZeroU16,
-    #[arg(long, default_value = "4096")]
-    pub builder_memory_mib: NonZeroU64,
     #[arg(long, default_value = "1800")]
     pub timeout_seconds: NonZeroU64,
 }
@@ -119,9 +104,6 @@ pub fn run(repo: &Path, args: RunArgs, palette: Palette) -> ExitCode {
         repo,
         palette,
         NativeRequest::Consumer(request),
-        args.bridge,
-        args.builder_cpus,
-        args.builder_memory_mib,
         args.timeout_seconds,
     )
 }
@@ -141,9 +123,6 @@ pub fn shell(repo: &Path, args: ShellArgs, palette: Palette) -> ExitCode {
         repo,
         palette,
         NativeRequest::Consumer(request),
-        args.bridge,
-        args.builder_cpus,
-        args.builder_memory_mib,
         args.timeout_seconds,
     )
 }
@@ -152,9 +131,6 @@ fn inner(
     repo: &Path,
     palette: Palette,
     request: NativeRequest<'_>,
-    bridge: Option<PathBuf>,
-    cpus: NonZeroU16,
-    memory_mib: NonZeroU64,
     timeout_seconds: NonZeroU64,
 ) -> ExitCode {
     let mut sink = DiagnosticSink::terminal(palette, repo);
@@ -162,17 +138,6 @@ fn inner(
         Some(deadline) => deadline,
         None => {
             eprintln!("grip: operation deadline is out of range");
-            return ExitCode::from(2);
-        }
-    };
-    let memory = match memory_mib
-        .get()
-        .checked_mul(1024 * 1024)
-        .and_then(|bytes| MemoryBytes::new(bytes).ok())
-    {
-        Some(memory) => memory,
-        None => {
-            eprintln!("grip: builder memory is out of range");
             return ExitCode::from(2);
         }
     };
@@ -210,12 +175,6 @@ fn inner(
     };
     let options = BuildOptions {
         environment: &environment,
-        bridge: bridge.as_deref(),
-        worker: WorkerOptions {
-            cpus,
-            memory,
-            ..WorkerOptions::default()
-        },
         deadline,
     };
     match request {

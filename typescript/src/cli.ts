@@ -25,10 +25,10 @@ async function main(): Promise<void> {
   if (
     typeof core.parseInputs !== "function" ||
     typeof core.createProbeBuilder !== "function" ||
-    typeof core.emitWorkspaceIr !== "function" || core.IR_VERSION !== 9
+    typeof core.emitWorkspaceIr !== "function" || core.IR_VERSION !== 10
   ) {
     die(
-      `the pinned @gripsack/core at ${coreUrl} must support the IR9 workspace frontend — ` +
+      `the pinned @gripsack/core at ${coreUrl} must support the IR10 workspace frontend — ` +
         `update or remove the repo's node_modules/@gripsack/core pin`,
     );
   }

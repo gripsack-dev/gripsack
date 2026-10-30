@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 
 fn fixture() -> Value {
     let span = json!({"file":"files.ts","line":1});
-    json!({"ir_version":9,"host":{"os":"linux","arch":"x86_64"},"workspace":{
+    json!({"ir_version":10,"host":{"os":"linux","arch":"x86_64"},"workspace":{
         "span":span,"outputs":[
             {"kind":"profile","name":"personal","span":span,"files":[{
                 "span":span,"source":{"kind":"repo_file","path":"config"},

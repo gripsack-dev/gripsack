@@ -1,10 +1,12 @@
-//! Immutable producer/package objects in the existing store. Operational worker
-//! identities never enter receipts or keys, and payloads never point into a
-//! disposable builder cache. Every publication requires lifecycle authority.
+//! Immutable native package objects and read-only historical recipe receipts.
+//! Every publication requires lifecycle authority.
 use crate::{Ctx, ExecError, LifecycleSession};
 mod archive_root;
 pub(super) mod hook;
 pub(super) mod integrity;
+#[cfg(test)]
+#[path = "artifact/runtime_tests.rs"]
+mod runtime_tests;
 use gripsack_ir::{
     workspace::{RecipeOutputKind, WorkspacePlatform},
     workspace_model::{
@@ -28,6 +30,7 @@ const RECEIPT_VERSION: u32 = 1;
 const PACKAGE_RECEIPT_BASE: u32 = 1;
 const PACKAGE_RECEIPT_HOST_RUNTIME: u32 = 2;
 const PACKAGE_RECEIPT_ARCHIVE_ROOT: u32 = 3;
+const PACKAGE_RECEIPT_PORTABLE: u32 = 4;
 const MAX_RECEIPT_BYTES: u64 = 1024 * 1024;
 const RECIPE_RECEIPT: &str = "recipe.json";
 const PACKAGE_RECEIPT: &str = "package.json";
@@ -77,7 +80,42 @@ impl Package {
             .unwrap_or(&self.producer.payload)
     }
     pub fn host_dependent(&self) -> bool {
-        self.host_runtime.is_some() || self.runtime.iter().any(|package| package.host_dependent())
+        self.any_in_runtime_closure(|package| package.host_runtime.is_some())
+    }
+    pub fn portable(&self) -> bool {
+        self.any_in_runtime_closure(|package| {
+            package.producer.retention.iter().any(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with("-package-import"))
+            })
+        })
+    }
+
+    /// Shared descendants must be queried once per immutable in-memory view,
+    /// not recursively expanded along every incoming edge. A digest may be
+    /// shared by distinct policy/retention views, so visitation uses borrowed
+    /// object addresses only for this walk; no pointer enters persisted state.
+    /// Local and leaf answers allocate nothing.
+    fn any_in_runtime_closure(&self, mut predicate: impl FnMut(&Package) -> bool) -> bool {
+        if predicate(self) {
+            return true;
+        }
+        if self.runtime.is_empty() {
+            return false;
+        }
+        let mut visited = BTreeSet::from([std::ptr::from_ref(self)]);
+        let mut pending: Vec<_> = self.runtime.iter().map(Arc::as_ref).collect();
+        while let Some(package) = pending.pop() {
+            if !visited.insert(std::ptr::from_ref(package)) {
+                continue;
+            }
+            if predicate(package) {
+                return true;
+            }
+            pending.extend(package.runtime.iter().map(Arc::as_ref));
+        }
+        false
     }
     pub fn retain_into(&self, roots: &mut BTreeSet<PathBuf>) {
         let mut pending = vec![self];
@@ -128,11 +166,17 @@ struct PackageReceipt {
     archive_root: Option<ArchiveRootPolicy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     selected_root: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    producer_retention: BTreeSet<PathBuf>,
 }
 
 impl PackageReceipt {
     // Keep policy-free v1 receipts byte-for-byte serializable for retained hooks.
     fn supported_version(&self) -> bool {
+        if !self.producer_retention.is_empty() {
+            return self.version == PACKAGE_RECEIPT_PORTABLE
+                && self.archive_root.is_some() == self.selected_root.is_some();
+        }
         self.version
             == if self.archive_root.is_some() && self.selected_root.is_some() {
                 PACKAGE_RECEIPT_ARCHIVE_ROOT
@@ -146,123 +190,15 @@ impl PackageReceipt {
     }
 }
 
-pub(super) fn cached_recipe(
-    ctx: &Ctx,
-    session: &LifecycleSession,
-    recipe: RecipeDigest,
-    kind: RecipeOutputKind,
-    execution: &RecipeExecution,
-    inputs: &BTreeSet<PathBuf>,
-) -> Result<Option<Arc<Artifact>>, ExecError> {
-    authority(ctx, session)?;
-    retained_recipe(
-        &ctx.home,
-        ctx.fetch.limits(),
-        recipe,
-        kind,
-        execution,
-        inputs,
-    )
+pub(super) struct ProducerIdentity<'a> {
+    pub pin: &'a ResolvedPinFields,
+    pub conda: Option<&'a super::conda::CondaRuntimeReceipt>,
 }
 
-pub(super) fn retained_recipe(
-    home: &Path,
-    limits: gripsack_fetch::FetchLimits,
-    recipe: RecipeDigest,
-    kind: RecipeOutputKind,
-    execution: &RecipeExecution,
-    inputs: &BTreeSet<PathBuf>,
-) -> Result<Option<Arc<Artifact>>, ExecError> {
-    let root = store::content_path(home, "workspace-recipe", &recipe.to_string());
-    let Some(receipt): Option<RecipeReceipt> = read_receipt_readonly(home, &root, RECIPE_RECEIPT)?
-    else {
-        return Ok(None);
-    };
-    if receipt.version != RECEIPT_VERSION
-        || receipt.recipe != recipe
-        || receipt.output_kind != kind
-        || &receipt.execution != execution
-        || &receipt.retention != inputs
-    {
-        return Err(failure("retained recipe identity/kind/policy differs"));
-    }
-    let payload = root.join("payload");
-    let checked = super::stage::validate_output_tree(&payload, kind, "workspace-recipe", limits)?;
-    if checked.tree_hash() != &receipt.tree {
-        return Err(failure("retained recipe payload differs from its receipt"));
-    }
-    for retained in &receipt.retention {
-        store::paths::validate_store_root(home, retained)?;
-    }
-    let mut retention = receipt.retention;
-    retention.insert(root.clone());
-    Ok(Some(Arc::new(Artifact {
-        root,
-        payload,
-        tree: receipt.tree,
-        retention,
-    })))
-}
-
-pub(super) fn publish_recipe(
-    ctx: &Ctx,
-    session: &LifecycleSession,
-    recipe: RecipeDigest,
-    kind: RecipeOutputKind,
-    execution: &RecipeExecution,
-    stage: super::stage::ValidatedTree,
-    inputs: BTreeSet<PathBuf>,
-) -> Result<Arc<Artifact>, ExecError> {
-    authority(ctx, session)?;
-    for path in &inputs {
-        store::paths::validate_store_root(&ctx.home, path)?;
-    }
-    if let Some(retained) = cached_recipe(ctx, session, recipe, kind, execution, &inputs)? {
-        if retained.tree != *stage.tree_hash() {
-            return Err(failure(
-                "same recipe produced divergent bytes; retained output was not overwritten",
-            ));
-        }
-        return Ok(retained);
-    }
-    let root = store::content_path(&ctx.home, "workspace-recipe", &recipe.to_string());
-    let temporary = tempfile::Builder::new()
-        .prefix("grip-workspace-publication-")
-        .tempdir_in(
-            stage
-                .root()
-                .parent()
-                .ok_or_else(|| failure("validated staging has no parent"))?,
-        )?;
-    let object = temporary.path().join("object");
-    std::fs::create_dir(&object)?;
-    let receipt = RecipeReceipt {
-        version: RECEIPT_VERSION,
-        recipe,
-        tree: stage.tree_hash().clone(),
-        output_kind: kind,
-        execution: execution.clone(),
-        retention: inputs,
-    };
-    std::fs::rename(stage.root(), object.join("payload"))?;
-    write_receipt(&object, RECIPE_RECEIPT, &receipt)?;
-    crate::source::publish(ctx, "workspace-recipe", &object, &root)?;
-    let mut retention = receipt.retention;
-    retention.insert(root.clone());
-    Ok(Arc::new(Artifact {
-        payload: root.join("payload"),
-        root,
-        tree: receipt.tree,
-        retention,
-    }))
-}
-
-pub(super) enum ProducerIdentity<'a> {
-    Recipe(RecipeDigest),
-    Provider {
-        pin: &'a ResolvedPinFields,
-        conda: Option<&'a super::conda::CondaRuntimeReceipt>,
-    },
+/// One selected runtime closure in its realized and identity-binding forms.
+pub(super) struct PackageRuntime<'a> {
+    pub packages: Vec<Arc<Package>>,
+    pub identities: &'a BTreeMap<String, PackageDigest>,
 }
 pub(super) fn publish_package(
     ctx: &Ctx,
@@ -273,18 +209,50 @@ pub(super) fn publish_package(
     runtime: Vec<Arc<Package>>,
     runtime_names: &BTreeMap<String, PackageDigest>,
 ) -> Result<Arc<Package>, ExecError> {
+    publish_package_with_context(
+        ctx,
+        session,
+        declaration,
+        producer,
+        identity,
+        PackageRuntime {
+            packages: runtime,
+            identities: runtime_names,
+        },
+        None,
+    )
+}
+
+/// Internal realizations may retain authority-dependent evidence absent from
+/// ordinary provider pins. Bind that evidence into their immutable identity;
+/// declaration names alone are deliberately not semantic package identity.
+/// Normal workspace callers retain their existing context-free digest.
+pub(super) fn publish_package_with_context(
+    ctx: &Ctx,
+    session: &LifecycleSession,
+    declaration: &PackageOutput,
+    producer: Arc<Artifact>,
+    identity: ProducerIdentity<'_>,
+    runtime: PackageRuntime<'_>,
+    context: Option<&[u8]>,
+) -> Result<Arc<Package>, ExecError> {
     authority(ctx, session)?;
-    let (identity, conda) = match identity {
-        ProducerIdentity::Recipe(recipe) => (
-            identity::recipe_package_digest(declaration, recipe, runtime_names),
-            None,
-        ),
-        ProducerIdentity::Provider { pin, conda } => (
-            identity::provider_package_digest(declaration, pin, runtime_names),
-            conda,
-        ),
+    let ProducerIdentity { pin, conda } = identity;
+    let PackageRuntime {
+        packages: runtime,
+        identities: runtime_names,
+    } = runtime;
+    let identity = identity::provider_package_digest(declaration, pin, runtime_names)
+        .map_err(|error| failure(error.to_string()))?;
+    let identity = if let Some(context) = context {
+        let mut digest = Sha256::new();
+        digest.update(b"gripsack/portable-context-package/v1\0");
+        digest.update(identity.bytes());
+        digest.update(context);
+        identity::PackageDigest::from_bytes(digest.finalize().into())
+    } else {
+        identity
     };
-    let identity = identity.map_err(|error| failure(error.to_string()))?;
     let selected_root = archive_root::select(
         declaration.archive_root.as_ref(),
         &declaration.layout,
@@ -301,8 +269,11 @@ pub(super) fn publish_package(
     )?;
     let root = store::content_path(&ctx.home, "workspace-package", &identity.to_string());
     let runtime_receipts = runtime_receipts(&ctx.home, declaration, &runtime)?;
+    let producer_retention = portable_retention(&producer);
     let receipt = PackageReceipt {
-        version: if declaration.archive_root.is_some() {
+        version: if !producer_retention.is_empty() {
+            PACKAGE_RECEIPT_PORTABLE
+        } else if declaration.archive_root.is_some() {
             PACKAGE_RECEIPT_ARCHIVE_ROOT
         } else if declaration.host_runtime.is_some() || !runtime_receipts.is_empty() {
             PACKAGE_RECEIPT_HOST_RUNTIME
@@ -325,6 +296,7 @@ pub(super) fn publish_package(
         runtime_receipts,
         archive_root: declaration.archive_root,
         selected_root,
+        producer_retention,
     };
     match read_receipt::<PackageReceipt>(ctx, &root, PACKAGE_RECEIPT)? {
         Some(existing) if existing != receipt => {
@@ -405,6 +377,7 @@ pub(super) fn retained_package(
         || receipt.runtime_receipts != runtime_receipts
         || receipt.archive_root != declaration.archive_root
         || receipt.selected_root != selected_root
+        || receipt.producer_retention != portable_retention(&producer)
         || (receipt.archive_root.is_some() && conda.is_some())
     {
         return Err(failure(
@@ -428,6 +401,18 @@ pub(super) fn retained_package(
         conda,
         host_runtime: declaration.host_runtime.clone(),
     })))
+}
+
+fn portable_retention(producer: &Artifact) -> BTreeSet<PathBuf> {
+    if producer.retention.iter().any(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with("-package-import"))
+    }) {
+        producer.retention.clone()
+    } else {
+        BTreeSet::new()
+    }
 }
 
 fn runtime_receipts(

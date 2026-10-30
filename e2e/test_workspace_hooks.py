@@ -332,32 +332,32 @@ def test_run_bash_package_interpreter_freezes_argv_and_replays_identity(sandbox,
     launcher = b'#!/bin/bash\nexec /bin/bash "$@"\n'
     archive = make_toolchain_tarball(sandbox / "bash.tar.gz", {"bin/bash": launcher})
     digest = hashlib.sha256(launcher).hexdigest()
-    body = (
-        '[[ -n $BASH_VERSION ]] || exit 20; '
-        '[[ $0 == gripsack-bash ]] || exit 21; '
-        '[[ $- == *e* && $- == *u* ]] || exit 22; '
-        '[[ :$SHELLOPTS: == *:pipefail:* ]] || exit 23; '
-        '[[ $MARKER == "two words" && $PWD == "$EXPECTED_CWD" ]] || exit 24; '
-        'printf "%s:%s:%s:%s\\n" "$MARKER" "$0" '
-        '"$GRIPSACK_ACTIVATION_INTENT_ID" "$GRIPSACK_ACTIVATION_ATTEMPT" >> "$EFFECT"'
-    )
+    body = r'''
+        [[ -n $BASH_VERSION ]] || exit 20
+        [[ $0 == gripsack-bash ]] || exit 21
+        [[ $- == *e* && $- == *u* ]] || exit 22
+        [[ :$SHELLOPTS: == *:pipefail:* ]] || exit 23
+        [[ \${MARKER:-missing} == "two words" && $PWD == "$EXPECTED_CWD" ]] || exit 24
+        printf "%s:%s:%s:%s\n" "$MARKER" "$0" \
+          "$GRIPSACK_ACTIVATION_INTENT_ID" "$GRIPSACK_ACTIVATION_ATTEMPT" >> "$EFFECT"
+    '''
     repo = sandbox / "bash-hooks"
     repo.mkdir()
     (repo / "gripsack.ts").write_text('''import {
-      defineWorkspace, workspace, profile, hook, runBash, packageCommand, lit,
+      defineWorkspace, workspace, profile, hook, bash, packageCommand, lit,
       pkg, provider, tarball,
     } from "@gripsack/core";
     export default defineWorkspace(ctx => workspace({outputs: [
       pkg("shell", {producer: provider(tarball(''' + json.dumps(archive.as_uri()) + ''')),
         commands: {bash: "bin/bash"}, target: {os: ctx.facts.os, arch: ctx.facts.arch},
         layout: {kind: "relocatable"}}),
-      hook("after", {trigger: "post_link", run: runBash({
-        interpreter: packageCommand("shell", "bash", ''' + json.dumps(digest) + '''),
-        body: ''' + json.dumps(body) + ''',
-        cwd: lit(''' + json.dumps(str(directory)) + '''),
-        env: {MARKER: lit("two words"), EFFECT: lit(''' + json.dumps(str(effect)) + '''),
-          EXPECTED_CWD: lit(''' + json.dumps(str(directory)) + ''')}
-      })}),
+      hook("after", {trigger: "post_link", run: bash`''' + body + '''`
+        .interpreter(packageCommand("shell", "bash", ''' + json.dumps(digest) + '''))
+        .cwd(lit(''' + json.dumps(str(directory)) + '''))
+        .env("MARKER", lit("two words"))
+        .env("EFFECT", lit(''' + json.dumps(str(effect)) + '''))
+        .env("EXPECTED_CWD", lit(''' + json.dumps(str(directory)) + '''))
+        .build()}),
       profile("personal", {hooks: ["after"]}),
     ]}));\n''')
     run(repo, "update", "shell")

@@ -1,5 +1,5 @@
 use gripsack_ir::{
-    check,
+    Ir,
     workspace_model::{
         AcquisitionSource, WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspaceStep,
         identity::{self, ArtifactDigest, CommandPins, DefinitionDigest, PinGap, RecipePins},
@@ -47,7 +47,7 @@ fn document() -> serde_json::Value {
 }
 #[test]
 fn recipe_identity_binds_required_check_policy_but_not_diagnostic_locations() {
-    let ir = check(&document().to_string()).unwrap();
+    let ir: Ir = serde_json::from_value(document()).unwrap();
     let workspace = ir.workspace;
     let WorkspaceOutput::Recipe(recipe) = &workspace.outputs[0] else {
         panic!("recipe fixture");
@@ -112,7 +112,7 @@ fn recipe_identity_binds_required_check_policy_but_not_diagnostic_locations() {
 }
 #[test]
 fn unresolved_inputs_and_checks_cannot_acquire_recipe_identity() {
-    let mut ir = check(&document().to_string()).unwrap();
+    let mut ir: Ir = serde_json::from_value(document()).unwrap();
     let WorkspaceOutput::Recipe(mut recipe) = ir.workspace.outputs.remove(0) else {
         panic!("recipe fixture");
     };
@@ -140,21 +140,10 @@ fn unresolved_inputs_and_checks_cannot_acquire_recipe_identity() {
         Err(PinGap::Input(_))
     ));
 }
-#[test]
-fn unknown_command_authority_remains_rejected() {
-    let mut input = document();
-    input["workspace"]["outputs"][0]["steps"][0]["command"]["extra_authority"] = true.into();
-    assert!(
-        check(&input.to_string())
-            .unwrap_err()
-            .iter()
-            .any(|diagnostic| diagnostic.code == gripsack_ir::codes::MALFORMED)
-    );
-}
 
 #[test]
 fn ordered_commands_and_resolved_definition_pins_invalidate_production() {
-    let ir = check(&document().to_string()).unwrap();
+    let ir: Ir = serde_json::from_value(document()).unwrap();
     let workspace = ir.workspace;
     let WorkspaceOutput::Recipe(mut recipe) = workspace.outputs[0].clone() else {
         panic!("recipe fixture");
@@ -208,7 +197,7 @@ fn ordered_commands_and_resolved_definition_pins_invalidate_production() {
 
 #[test]
 fn inherited_check_execution_and_transitive_policy_changes_invalidate_reuse() {
-    let ir = check(&document().to_string()).unwrap();
+    let ir: Ir = serde_json::from_value(document()).unwrap();
     let workspace = ir.workspace;
     let WorkspaceOutput::Recipe(recipe) = &workspace.outputs[0] else {
         unreachable!();

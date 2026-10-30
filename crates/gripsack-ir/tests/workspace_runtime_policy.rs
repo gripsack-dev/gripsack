@@ -21,7 +21,7 @@ fn policy() -> Value {
 }
 fn schema() -> jsonschema::Validator {
     jsonschema::validator_for(
-        &serde_json::from_str::<Value>(include_str!("../schema-v9.json")).unwrap(),
+        &serde_json::from_str::<Value>(include_str!("../schema-v10.json")).unwrap(),
     )
     .unwrap()
 }
@@ -52,12 +52,12 @@ fn host_runtime_schema_and_core_reject_unsafe_or_unknown_policy() {
         cases.push(json!({"library_directories":[path]}));
     }
     for invalid in cases {
-        let mut doc = document(9);
+        let mut doc = document(gripsack_ir::IR_VERSION);
         doc["workspace"]["outputs"][0]["host_runtime"] = invalid.clone();
         assert!(!schema.is_valid(&doc), "schema admitted {invalid}");
         assert!(check(&doc.to_string()).is_err(), "core admitted {invalid}");
     }
-    let mut doc = document(9);
+    let mut doc = document(gripsack_ir::IR_VERSION);
     doc["workspace"]["outputs"][0]["host_runtime"] = policy();
     doc["workspace"]["outputs"][0]["target"]["abi"] = json!("musl");
     assert!(!schema.is_valid(&doc));
@@ -67,7 +67,7 @@ fn host_runtime_schema_and_core_reject_unsafe_or_unknown_policy() {
 #[test]
 fn conda_baselines_are_strict_declarations() {
     let current = schema();
-    let mut doc = document(9);
+    let mut doc = document(gripsack_ir::IR_VERSION);
     doc["workspace"]["outputs"][0]["layout"] = json!({"kind":"prefix_materialized"});
     doc["workspace"]["outputs"][0]["producer"]["provider"] = json!({
         "kind":"conda_environment","channels":["conda-forge"],"packages":{"python":"==3.12.1"},
@@ -100,7 +100,7 @@ fn conda_baselines_are_strict_declarations() {
 
 #[test]
 fn ordered_host_policy_changes_consumer_identity_not_producer() {
-    let mut ir = check(&document(9).to_string()).unwrap();
+    let mut ir = check(&document(gripsack_ir::IR_VERSION).to_string()).unwrap();
     let WorkspaceOutput::Package(mut package) = ir.workspace.outputs.remove(0) else {
         panic!("package fixture")
     };

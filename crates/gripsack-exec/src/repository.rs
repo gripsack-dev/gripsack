@@ -3,10 +3,28 @@
 //! captured bundle and receipt for the entire downstream operation.
 use gripsack_store::{source_bundle::SourceBundle, trust::evaluation::EvaluationId};
 use std::{
+    collections::BTreeMap,
     io,
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+/// Actual inputs supplied to the trusted evaluation. Absence means that this
+/// caller did not retain the inputs, not that evaluation used no probes.
+#[derive(Clone)]
+pub struct EvaluationInputs {
+    facts: crate::facts::HostFacts,
+    probes: BTreeMap<String, bool>,
+}
+
+impl EvaluationInputs {
+    pub fn facts(&self) -> &crate::facts::HostFacts {
+        &self.facts
+    }
+    pub fn probes(&self) -> &BTreeMap<String, bool> {
+        &self.probes
+    }
+}
 
 #[derive(Clone)]
 pub enum Repository {
@@ -14,6 +32,7 @@ pub enum Repository {
     Evaluated {
         sources: Arc<SourceBundle>,
         receipt: EvaluationId,
+        inputs: Option<Arc<EvaluationInputs>>,
     },
 }
 
@@ -22,7 +41,31 @@ impl Repository {
         Self::Direct(path)
     }
     pub fn evaluated(sources: Arc<SourceBundle>, receipt: EvaluationId) -> Self {
-        Self::Evaluated { sources, receipt }
+        Self::Evaluated {
+            sources,
+            receipt,
+            inputs: None,
+        }
+    }
+
+    pub fn evaluated_with_inputs(
+        sources: Arc<SourceBundle>,
+        receipt: EvaluationId,
+        facts: crate::facts::HostFacts,
+        probes: BTreeMap<String, bool>,
+    ) -> Self {
+        Self::Evaluated {
+            sources,
+            receipt,
+            inputs: Some(Arc::new(EvaluationInputs { facts, probes })),
+        }
+    }
+
+    pub fn evaluation_inputs(&self) -> Option<&EvaluationInputs> {
+        match self {
+            Self::Direct(_) => None,
+            Self::Evaluated { inputs, .. } => inputs.as_deref(),
+        }
     }
 
     /// Operator-owned mutable pin state/publication, held under the existing lifecycle session.

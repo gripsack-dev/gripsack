@@ -27,9 +27,7 @@ ENV_KEYS = frozenset({"PATH", "LANG", "LC_ALL", "TZ", "HOME", "TMPDIR", "GRIPSAC
                       "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_OPTIONAL_LOCKS",
                       "PYTHONDONTWRITEBYTECODE", "PYTEST_DISABLE_PLUGIN_AUTOLOAD"})
 require = schema.require
-CORE_RECIPES = ("install.sh", "scripts/local_artifact_consumers.py",
-                "examples/workspaces/03-source-built/gripsack.ts",
-                "examples/workspaces/03-source-built/source/greeter.c")
+CORE_RECIPES = ("install.sh", "scripts/local_artifact_consumers.py")
 
 
 def object_digest(kind, data):
@@ -97,7 +95,7 @@ def required_surfaces(manifest):
         result.add("registries")
     if any(p["registry"] == "npm" for p in manifest["packages"]):
         result.add("sdk")
-    if {a["role"] for a in manifest["artifacts"]} & {"conda", "bridge"}:
+    if any(a["role"] == "conda" for a in manifest["artifacts"]):
         result.add("default_helpers")
     return result
 
@@ -362,40 +360,27 @@ def verify_completion(path, expected_digest, record, run):
                 "embedded updater did not perform replacement")
 
     helpers = surfaces["default_helpers"]
-    schema.keys(helpers["data"], {"installed", "conda_lock", "conda_output", "bridge_output"})
-    helper_commands = steps(root, helpers, {"conda_inspect", "conda_approve", "conda_check", "conda_build", "conda_run",
-                                          "bridge_inspect", "bridge_approve", "bridge_lock", "bridge_build", "bridge_run", "bridge_stop"})
-    require(set(helpers["data"]["installed"]) == {"conda", "bridge"}, "absent default helper provisioning")
-    for role, ref in helpers["data"]["installed"].items():
-        helper = resolve(root, ref)
-        require(schema.digest(helper) == manifest["compatible"]["helper_pins"][role], "wrong default helper bytes")
-        namespace, filename = ("conda-helper", "gripsack-conda") if role == "conda" else ("buildkit-bridge", "bridge")
-        require(helper == root / "home/.gs/tools" / f"{namespace}-{version}" / filename,
-                "helper not in default provisioned cache")
+    schema.keys(helpers["data"], {"installed", "conda_lock", "conda_output"})
+    helper_commands = steps(root, helpers, {"conda_inspect", "conda_approve", "conda_check", "conda_build", "conda_run"})
+    require(set(helpers["data"]["installed"]) == {"conda"}, "absent default helper provisioning")
+    helper = resolve(root, helpers["data"]["installed"]["conda"])
+    require(schema.digest(helper) == manifest["compatible"]["helper_pins"]["conda"], "wrong default helper bytes")
+    require(helper == root / "home/.gs/tools" / f"conda-helper-{version}" / "gripsack-conda",
+            "helper not in default provisioned cache")
     resolve(root, helpers["data"]["conda_lock"])
-    conda_repo, bridge_repo = root / "conda-consumer", root / "bridge-consumer"
+    conda_repo = root / "conda-consumer"
     approval(helper_commands, "conda", installed, conda_repo)
-    approval(helper_commands, "bridge", installed, bridge_repo)
     argv(helper_commands["conda_check"][0], [str(installed), "check", "--json"])
     check_output(helper_commands["conda_check"][1])
-    argv(helper_commands["bridge_lock"][0], [str(installed), "update"])
-    for relative in ("gripsack.ts", "source/greeter.c"):
-        require(schema.digest(schema.regular(bridge_repo / relative))
-                == schema.digest(recipes["examples/workspaces/03-source-built/" + relative]),
-                "default bridge consumer is not frozen source")
     for name, suffix in (("conda_build", ["build", "ripgrep", "--json"]),
-                         ("conda_run", ["run", "--env", "search", "--", "rg", "^needle$"]),
-                         ("bridge_build", ["build", "greeter", "--json"]),
-                         ("bridge_run", ["task", "run", "smoke"]), ("bridge_stop", ["builder", "stop"])):
+                         ("conda_run", ["run", "--env", "search", "--", "rg", "^needle$"])):
         argv(helper_commands[name][0], [str(installed)], suffix)
     require(helper_commands["conda_run"][1].strip() == "needle", "default helper consumer did not run real package")
-    for name, key, expected_name in (("conda_build", "conda_output", "ripgrep"), ("bridge_build", "bridge_output", "greeter")):
-        build = schema.decode_json(helper_commands[name][1].encode())
-        require([(o.get("name"), o.get("kind")) for o in build.get("outputs", [])] == [(expected_name, "package")],
-                "helper build did not produce requested package")
-        output = resolve(root, helpers["data"][key])
-        require(any(output.is_relative_to(Path(o["path"])) for o in build["outputs"]), "package output not retained")
-    require(helper_commands["bridge_run"][1].strip() == "hello from greeter", "bridge consumer did not execute built program")
+    build = schema.decode_json(helper_commands["conda_build"][1].encode())
+    require([(o.get("name"), o.get("kind")) for o in build.get("outputs", [])] == [("ripgrep", "package")],
+            "helper build did not produce requested package")
+    output = resolve(root, helpers["data"]["conda_output"])
+    require(any(output.is_relative_to(Path(o["path"])) for o in build["outputs"]), "package output not retained")
 
     sdk = surfaces["sdk"]
     schema.keys(sdk["data"], {"tarball", "installed_files", "package_root", "recipe", "source_proof"})

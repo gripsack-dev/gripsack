@@ -6,7 +6,7 @@
 //! stays live and writable: host task access is not a hermetic sandbox.
 pub(super) mod admit;
 pub(super) mod command;
-mod launcher;
+pub(in crate::workspace) mod launcher;
 pub use launcher::run_package_command;
 mod task_graph;
 mod task_locks;
@@ -14,10 +14,11 @@ mod task_report;
 mod tasks;
 pub use task_graph::{TaskPlan, TaskRevision, plan_task};
 pub use task_report::{
-    AttemptId, InvocationId, TaskExecutionBinding, TaskNodeReport, TaskReport, TaskStatus,
-    read_task_log, read_task_report,
+    AttemptId, InvocationId, ScheduledInvocation, TaskExecutionBinding, TaskNodeReport, TaskReport,
+    TaskStatus, read_task_log, read_task_report,
 };
 pub use tasks::{BusyPolicy, TaskOutputMode, TaskRunPolicy, TaskStdin, run_task};
+pub(in crate::workspace) use tasks::{capture_programs, run_captured};
 mod bindings;
 pub(in crate::workspace) use bindings::task_argument;
 use bindings::{admit_package_command, bind_admitted_program, task_cwd};
@@ -106,11 +107,9 @@ pub fn consume(
             ));
         }
     };
-    // The common realization service: cached/provider closures need no
-    // bridge or worker; a cold production needs the explicitly selected
-    // bridge. The held session carries through project-root registration so
-    // no GC window opens between publication and root acquisition.
-    let mut held = realize::realize_held(ir, ctx, options, &ctx.only)?;
+    // The held session carries native realization through project-root
+    // registration, so publication and root acquisition have no GC window.
+    let held = realize::realize_held(ir, ctx, options, &ctx.only)?;
     let (plan, environment_span) = match environment_name {
         Some(name) => {
             let WorkspaceOutput::Environment(declaration) = outputs[name] else {
@@ -138,7 +137,6 @@ pub fn consume(
     }
     let retention = RetentionSet::admit(&held.session, closure)?;
     roots::register_project_root(&held.session, &selection_id, &retention)?;
-    held.finish_build()?;
     let realize::HeldRealization { session, .. } = held;
     match request {
         ConsumerRequest::Run { argv, .. } => run_launch(
@@ -180,7 +178,12 @@ fn run_launch(
         )?
         .with_overlay(overlay)
         .retain_leases(leases)?;
-        let borrowed: Vec<&OsStr> = arguments.iter().map(OsString::as_os_str).collect();
+        let borrowed: Vec<&OsStr> = admitted
+            .into_iter()
+            .flat_map(|command| command.arguments.iter())
+            .chain(arguments.iter())
+            .map(OsString::as_os_str)
+            .collect();
         invocation
             .run_interactive(&borrowed)
             .map_err(operational)
@@ -271,7 +274,7 @@ fn with_process_root(
     launch: impl FnOnce(&Path, ProcessLeases) -> Result<ConsumerOutcome, ExecError>,
 ) -> Result<ConsumerOutcome, ExecError> {
     let retention = RetentionSet::admit(&session, closure)?;
-    let lease = ProcessLease::register(&session, &retention, None)?;
+    let lease = ProcessLease::register(&session, &retention)?;
     let parent_path = Path::new(roots::BUILD_STAGING_DIRECTORY);
     gripsack_fs::create_dir_all(ctx.home_dir()?, parent_path)?;
     let parent = gripsack_fs::open_dir_nofollow(ctx.home_dir()?, parent_path)?;

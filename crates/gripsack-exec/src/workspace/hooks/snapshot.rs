@@ -282,7 +282,6 @@ impl Context {
             packages.insert(name.as_str(), package);
         }
         Ok(Realization {
-            recipes: BTreeMap::new(),
             inputs: BTreeMap::new(),
             packages,
         })

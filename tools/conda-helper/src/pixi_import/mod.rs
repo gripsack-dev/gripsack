@@ -20,6 +20,9 @@ use std::{
     path::Path,
 };
 
+mod pypi;
+use pypi::{normalize_wheel, validate_pypi_closure};
+
 struct Selection<'a> {
     manifest: &'a WorkspaceManifest,
     features: &'a [&'a Feature],
@@ -172,16 +175,22 @@ pub(super) fn import_pixi(request: ImportPixiRequest) -> HResult<LockedCondaEnvi
             ),
         )
     })?;
-    // Refuse records before conversion, so diagnostics retain their exact names.
+    let mut pypi = Vec::new();
+    let mut wheels = Vec::new();
+    // Refuse unsupported records before conversion, retaining their exact names.
     for package in packages {
-        if package.as_pypi().is_some() {
-            return Err(fail(
-                "pypi_package",
-                format!(
-                    "pypi package '{}' is not importable into a conda closure",
-                    package.name()
-                ),
-            ));
+        if let Some(package) = package.as_pypi() {
+            let distribution = package.as_wheel().ok_or_else(|| {
+                fail(
+                    "source_package",
+                    format!(
+                        "source/editable pypi package '{}' requires a build capability",
+                        package.name()
+                    ),
+                )
+            })?;
+            wheels.push(normalize_wheel(distribution)?);
+            pypi.push(distribution);
         }
         if package
             .as_conda()
@@ -196,14 +205,14 @@ pub(super) fn import_pixi(request: ImportPixiRequest) -> HResult<LockedCondaEnvi
             ));
         }
     }
-    if let Some(name) = selected.pypi_dependencies(Some(platform)).names().next() {
-        return Err(fail(
-            "pypi_package",
-            format!(
-                "manifest pypi package '{}' is not importable into a conda closure",
-                name.as_source()
-            ),
-        ));
+    if !pypi.is_empty()
+        || selected
+            .pypi_dependencies(Some(platform))
+            .names()
+            .next()
+            .is_some()
+    {
+        pypi::validate_policy(&selected, &environment)?;
     }
     if let Some(name) = selected
         .combined_dev_dependencies(Some(platform))
@@ -375,6 +384,7 @@ pub(super) fn import_pixi(request: ImportPixiRequest) -> HResult<LockedCondaEnvi
             destination.push(spec);
         }
     }
+    roots.extend(validate_pypi_closure(&selected, platform, &records, &pypi)?);
     validate_closure(&records, &names, &virtuals, roots, constraints)?;
     let mut normalized = records
         .iter()
@@ -411,7 +421,8 @@ pub(super) fn import_pixi(request: ImportPixiRequest) -> HResult<LockedCondaEnvi
         }
     }
     normalized.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(LockedCondaEnvironment {
+    wheels.sort_by(|a, b| a.name.cmp(&b.name));
+    let locked = LockedCondaEnvironment {
         platform: request.platform,
         channels,
         channel_priority,
@@ -426,11 +437,14 @@ pub(super) fn import_pixi(request: ImportPixiRequest) -> HResult<LockedCondaEnvi
             })
             .collect(),
         packages: normalized,
+        wheels,
         materializer: MaterializerPolicy {
             bytecode: BytecodePolicy::Suppress,
             receipt: ReceiptPolicy::NormalizedCondaMeta,
         },
-    })
+    };
+    super::wheels::validate_lock(&locked)?;
+    Ok(locked)
 }
 
 type RawRequirements = BTreeMap<FeatureName, SystemRequirements>;

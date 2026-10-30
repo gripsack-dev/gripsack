@@ -3,13 +3,13 @@
 use super::*;
 use std::sync::Arc;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum Format {
     ProfileV1,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Activation {
     format: Format,
@@ -18,19 +18,35 @@ pub(super) struct Activation {
     receipts: BTreeMap<PackageDigest, Sha256Digest>,
     commands: BTreeMap<String, PackageDigest>,
     retention: BTreeSet<PathBuf>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(super) arguments: BTreeMap<String, Vec<String>>,
 }
 
-pub(in crate::workspace::consumer) struct ProfileEnvironment<'a> {
-    pub commands: &'a BTreeMap<String, admit::AdmittedCommand>,
+pub(in crate::workspace::consumer) struct ProfileEnvironment<'a, C = admit::AdmittedCommand> {
+    pub commands: &'a BTreeMap<String, C>,
     pub packages: &'a [Arc<artifact::Package>],
     pub entries: &'a [(OsString, OsString)],
     pub search_directories: &'a [PathBuf],
     pub library_directories: &'a [PathBuf],
     pub retention: &'a BTreeSet<PathBuf>,
 }
-impl ProfileEnvironment<'_> {
-    pub fn write(&self, home: &Path, directory: &Path, names: &[String]) -> Result<(), ExecError> {
+impl<C> ProfileEnvironment<'_, C> {
+    pub fn write_with_arguments(
+        &self,
+        home: &Path,
+        directory: &Path,
+        names: &[String],
+        arguments: &BTreeMap<String, Vec<String>>,
+    ) -> Result<String, ExecError> {
         validate_exports(names, self.commands)?;
+        if arguments
+            .keys()
+            .any(|name| !self.commands.contains_key(name))
+        {
+            return Err(super::super::failure(
+                "command arguments name an absent export",
+            ));
+        }
         let mut receipts = BTreeMap::new();
         let mut commands = BTreeMap::new();
         for package in self.packages {
@@ -63,6 +79,7 @@ impl ProfileEnvironment<'_> {
         let projection = Projection {
             variables: Vec::new(),
             library_directories: self.library_directories.to_vec(),
+            receipts: BTreeMap::new(),
             activation: Some(Activation {
                 format: Format::ProfileV1,
                 entries,
@@ -70,6 +87,7 @@ impl ProfileEnvironment<'_> {
                 receipts,
                 commands,
                 retention: self.retention.clone(),
+                arguments: arguments.clone(),
             }),
         };
         let encoded = encode(&projection)?;
@@ -93,7 +111,7 @@ impl ProfileEnvironment<'_> {
         for (name, binding) in bindings {
             binding.write(directory, name, &encoded)?;
         }
-        Ok(())
+        Ok(encoded)
     }
 }
 
@@ -115,6 +133,67 @@ fn validate_exports<T>(names: &[String], commands: &BTreeMap<String, T>) -> Resu
 }
 
 impl Activation {
+    /// Restore the captured native graph without granting executable admission.
+    /// Its minimal roots are attached to an enclosing environment member so
+    /// nested libraries/interpreters remain part of ordinary runtime traversal.
+    pub(super) fn captured_packages(
+        &self,
+        home: &Path,
+    ) -> Result<Vec<Arc<artifact::Package>>, ExecError> {
+        let mut loaded = BTreeMap::new();
+        let mut visiting = BTreeSet::new();
+        for identity in self.receipts.keys() {
+            artifact::hook::restore(home, *identity, &self.receipts, &mut loaded, &mut visiting)?;
+        }
+        let dependencies: BTreeSet<_> = loaded
+            .values()
+            .flat_map(|package| package.runtime.iter().map(|dependency| dependency.identity))
+            .collect();
+        Ok(loaded
+            .into_iter()
+            .filter_map(|(identity, package)| {
+                (!dependencies.contains(&identity)).then_some(package)
+            })
+            .collect())
+    }
+    pub(super) fn imported_command(
+        &self,
+        home: &Path,
+        name: &str,
+        context: &admit::NativeContext<'_>,
+        span: &Span,
+        scope: &admit::RuntimeScope<'_>,
+    ) -> Result<admit::AdmittedCommand, ExecError> {
+        let identity = self
+            .commands
+            .get(name)
+            .ok_or_else(|| super::super::failure("imported activation has no selected command"))?;
+        let receipt = self
+            .receipts
+            .get(identity)
+            .ok_or_else(|| super::super::failure("imported activation has no selected receipt"))?;
+        let package = self.restore(home, *identity, *receipt)?;
+        let provided = package.commands.get(name).ok_or_else(|| {
+            super::super::failure("imported activation command differs from package")
+        })?;
+        let mut command = admit::admit_command_in_scope(
+            &package,
+            &provided.selector,
+            &provided.executable,
+            context,
+            span,
+            Some(scope),
+            admit::EnvironmentResolution::DeferToEnclosing,
+        )?;
+        command.arguments.extend(
+            self.arguments
+                .get(name)
+                .into_iter()
+                .flatten()
+                .map(OsString::from),
+        );
+        Ok(command)
+    }
     pub(super) fn restore(
         &self,
         home: &Path,
@@ -164,12 +243,14 @@ impl Activation {
             let command = package.commands.get(name).ok_or_else(|| {
                 super::super::failure("managed activation export differs from its retained package")
             })?;
-            admit::admit_command(
+            admit::admit_command_in_scope(
                 &package,
                 &command.selector,
                 &command.executable,
                 context,
                 span,
+                None,
+                admit::EnvironmentResolution::DeferToEnclosing,
             )?;
         }
         closure.extend(self.retention.iter().cloned());
@@ -191,11 +272,21 @@ impl Activation {
         staging.create_dir("bin")?;
         gripsack_fs::fsync_pinned_dir(&parent, parent_path)?;
         let bin = home.join(parent_path).join(lease.id().as_str()).join("bin");
+        self.write_commands(home, &bin, encoded)?;
+        Ok(bin)
+    }
+
+    pub(super) fn write_commands(
+        &self,
+        home: &Path,
+        bin: &Path,
+        encoded: &str,
+    ) -> Result<(), ExecError> {
         for (name, identity) in &self.commands {
             Binding::retained(home, *identity, self.receipts[identity])?
-                .write(&bin, name, encoded)?;
+                .write(bin, name, encoded)?;
         }
-        Ok(bin)
+        Ok(())
     }
 }
 
@@ -222,7 +313,7 @@ mod tests {
     #[test]
     fn duplicate_and_missing_exports_are_refused_before_writing() {
         let directory = tempfile::tempdir().unwrap();
-        let commands = BTreeMap::new();
+        let commands: BTreeMap<String, admit::AdmittedCommand> = BTreeMap::new();
         let environment = ProfileEnvironment {
             commands: &commands,
             packages: &[],
@@ -233,7 +324,12 @@ mod tests {
         };
         assert!(
             environment
-                .write(directory.path(), directory.path(), &["missing".into()])
+                .write_with_arguments(
+                    directory.path(),
+                    directory.path(),
+                    &["missing".into()],
+                    &BTreeMap::new()
+                )
                 .is_err()
         );
         assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);

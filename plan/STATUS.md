@@ -4,6 +4,28 @@ One row per plan. Current work and priorities live in the numbered plans;
 historical decisions remain here rather than on the product website.
 Update this ledger in the same change as the plan it tracks.
 
+## Native workspaces 0.51 — implementation and qualification in progress
+
+[0055's active continuation](0055-workspace-only-product.md#active-continuation--2026-10-28)
+targets coordinated core/SDK/helper 0.51.0, current IR10, lock3 and helper
+protocol4. Mac/Homebrew/BuildKit authoring and execution are retired, including
+the obsolete B0 harness and worker/session proof dispatcher entries. Actual
+stored ownership, generation, receipt and rollback readers remain.
+
+Development CLI journeys have exercised literal Bash, PostgreSQL readiness and
+data retention, real systemd255 calendar/lifecycle behavior, and offline semantic
+review/saved-plan application. Portable sharing and native-wheel qualification
+remain in progress; current-source admission, artifacts, public consumers and
+the website must still pass before publication. No 0.51 release is claimed here.
+
+The owner's `REL-PRACTICAL-051-2026-10-28` amendment selects twelve routine gates.
+Formal/model/mutant/fuzz, exhaustive persistence, duplicate GNU and two-build
+reproducibility, and disruptive timing campaigns are explicit opt-ins—not
+passing results or automatic release prerequisites. The
+[release handoff](../verification/release-handoff.md) supersedes historical
+all-gates language below while preserving those original evidence records.
+
+
 ## Workspace-only 0.50 — published 2026-10-28
 
 [0.50.0 is public/latest](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.50.0),

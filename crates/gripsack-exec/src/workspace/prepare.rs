@@ -1,7 +1,6 @@
 //! Native preparation and identity calculation for one selected output closure.
-//! This is planning, not per-recipe execution. Production identities precede
-//! required-check identities so self/mutual validation does not recurse through
-//! an unknown output checksum. The finite validation closure then fences reuse.
+//! Production identities and captured command pins precede final package
+//! identities so native runtime dependencies retain complete authority.
 use super::{
     acquire::{self, ResolutionMode},
     artifact::{self, Artifact},
@@ -15,10 +14,9 @@ use gripsack_ir::{
     Diagnostic, Ir, Span, codes,
     workspace_model::{
         identity::{
-            self, ArtifactDigest, CheckDigest, CommandPins, PackageDigest, PackageProductionDigest,
-            PinGap, RecipeDigest, RecipePins, ToolExecutable, ToolPin,
+            self, ArtifactDigest, CommandPins, PackageDigest, PinGap, ToolExecutable, ToolPin,
         },
-        lock::{DefinitionPins, ResolvedPinFields},
+        lock::ResolvedPinFields,
         *,
     },
 };
@@ -38,11 +36,7 @@ pub(super) struct Prepared<'a> {
     pub selection: Selection<'a>,
     pub sources: BTreeMap<&'a str, PreparedSource>,
     pub inputs: BTreeMap<&'a str, CapturedInput>,
-    pub recipes: BTreeMap<&'a str, RecipeDigest>,
     pub packages: BTreeMap<String, PackageDigest>,
-    pub package_productions: BTreeMap<String, PackageProductionDigest>,
-    pub command_pins: CommandPins,
-    pub checks: BTreeMap<(&'a str, &'a str), CheckDigest>,
 }
 
 impl<'a> Prepared<'a> {
@@ -68,7 +62,6 @@ impl<'a> Prepared<'a> {
         for name in &selection.required {
             let output = selection.outputs[name];
             let source = match output {
-                WorkspaceOutput::Recipe(recipe) => Some((&recipe.source, &recipe.target)),
                 WorkspaceOutput::Package(PackageOutput {
                     producer: WorkspaceProducer::Provider { provider },
                     target,
@@ -99,6 +92,9 @@ impl<'a> Prepared<'a> {
                             conda: None,
                         }
                     }
+                    AcquisitionSource::Package { manifest, .. } => {
+                        super::sharing::acquire(ctx, session, manifest, ctx.fetch.limits())?
+                    }
                     AcquisitionSource::CondaEnvironment(_) | AcquisitionSource::PixiLock(_) => {
                         let pin = pin.ok_or_else(|| ExecError::Step {
                             output: (*name).into(),
@@ -118,13 +114,8 @@ impl<'a> Prepared<'a> {
                                 ctx, session, workspace, name, declared, pin,
                             )?;
                         }
-                        let materialized = super::conda::materialize_locked(
-                            ctx,
-                            session,
-                            name,
-                            locked,
-                            super::conda::CondaDestination::Native,
-                        )?;
+                        let materialized =
+                            super::conda::materialize_locked(ctx, session, name, locked)?;
                         PreparedSource {
                             resolved: pin.resolved.clone(),
                             conda: Some(materialized.receipt.clone()),
@@ -150,106 +141,45 @@ impl<'a> Prepared<'a> {
                 inputs.insert(input.name.as_str(), captured);
             }
         }
-        Self::identities(
-            workspace,
-            selection,
-            &definitions,
-            sources,
-            inputs,
-            command_pins,
-        )
+        Self::identities(workspace, selection, sources, inputs, command_pins)
     }
 
     pub(super) fn identities(
         workspace: &'a WorkspaceCatalog,
         selection: Selection<'a>,
-        definitions: &DefinitionPins,
         sources: BTreeMap<&'a str, PreparedSource>,
         inputs: BTreeMap<&'a str, CapturedInput>,
         mut command_pins: CommandPins,
     ) -> Result<Self, ExecError> {
+        admit_capabilities(&selection)?;
         let mut pending: BTreeSet<_> = selection
             .required
             .iter()
             .copied()
-            .filter(|name| {
-                matches!(
-                    selection.outputs[name],
-                    WorkspaceOutput::Recipe(_) | WorkspaceOutput::Package(_)
-                )
-            })
+            .filter(|name| matches!(selection.outputs[name], WorkspaceOutput::Package(_)))
             .collect();
-        let mut productions = BTreeMap::new();
         let mut package_productions = BTreeMap::new();
-        let empty_checks = BTreeMap::new();
-        let empty_closure = BTreeSet::new();
         while !pending.is_empty() {
             let before = pending.len();
             let names: Vec<_> = pending.iter().copied().collect();
             for name in names {
                 let result = match selection.outputs[name] {
-                    WorkspaceOutput::Recipe(recipe) => identity::production_digest(
-                        recipe,
-                        &RecipePins {
-                            definitions,
-                            source: &sources[name].resolved,
-                            commands: &command_pins,
-                            checks: &empty_checks,
-                            transitive_checks: &empty_closure,
-                        },
-                    )
-                    .map(|digest| {
-                        productions.insert(name, digest);
-                        command_pins
-                            .artifacts
-                            .insert(name.to_owned(), ArtifactDigest::recipe_output(digest));
-                    }),
                     WorkspaceOutput::Package(package) => {
-                        let digest = match &package.producer {
-                            WorkspaceProducer::Recipe { recipe } => {
-                                match productions.get(recipe.as_str()) {
-                                    Some(recipe) => identity::recipe_package_production_digest(
-                                        package,
-                                        *recipe,
-                                        &package_productions,
-                                    ),
-                                    None => continue,
-                                }
-                            }
-                            WorkspaceProducer::Provider { .. } => {
-                                identity::provider_package_production_digest(
-                                    package,
-                                    &sources[name].resolved,
-                                    &package_productions,
-                                )
-                            }
-                        };
+                        let digest = identity::provider_package_production_digest(
+                            package,
+                            &sources[name].resolved,
+                            &package_productions,
+                        );
                         match digest {
                             Ok(digest) => {
-                                let provided = match &package.producer {
-                                    WorkspaceProducer::Provider { .. } => {
-                                        Some(artifact::inspect_commands(
-                                            package,
-                                            &sources[name].artifact.payload,
-                                        )?)
-                                    }
-                                    WorkspaceProducer::Recipe { .. } => None,
-                                };
+                                let provided = artifact::inspect_commands(
+                                    package,
+                                    &sources[name].artifact.payload,
+                                )?;
                                 let mut tools = BTreeMap::new();
                                 for (command, selector) in &package.commands {
-                                    let executable = match &package.producer {
-                                        WorkspaceProducer::Provider { .. } => {
-                                            ToolExecutable::Captured(
-                                                provided
-                                                    .as_ref()
-                                                    .expect("provider commands inspected")[command]
-                                                    .executable,
-                                            )
-                                        }
-                                        WorkspaceProducer::Recipe { recipe } => {
-                                            ToolExecutable::Produced(productions[recipe.as_str()])
-                                        }
-                                    };
+                                    let executable =
+                                        ToolExecutable::Captured(provided[command].executable);
                                     tools.insert(
                                         command.clone(),
                                         ToolPin {
@@ -270,7 +200,7 @@ impl<'a> Prepared<'a> {
                             Err(error) => Err(error),
                         }
                     }
-                    _ => unreachable!("production selection contains only recipes/packages"),
+                    _ => unreachable!("production selection contains only packages"),
                 };
                 match result {
                     Ok(()) => {
@@ -292,46 +222,6 @@ impl<'a> Prepared<'a> {
                 ));
             }
         }
-        let mut checks = BTreeMap::new();
-        for &name in productions.keys() {
-            let WorkspaceOutput::Recipe(recipe) = selection.outputs[name] else {
-                unreachable!("production names a recipe");
-            };
-            for check_name in &recipe.checks {
-                let WorkspaceOutput::Check(check) = selection.outputs[check_name.as_str()] else {
-                    unreachable!("check references admitted");
-                };
-                checks.insert(
-                    (name, check_name.as_str()),
-                    identity::check_digest(check, &command_pins, &recipe.execution)
-                        .map_err(|error| failure(Some(&check.span), error.to_string()))?,
-                );
-            }
-        }
-        let mut recipes = BTreeMap::new();
-        for &name in productions.keys() {
-            let WorkspaceOutput::Recipe(recipe) = selection.outputs[name] else {
-                unreachable!("production identity names a recipe");
-            };
-            let direct_checks = recipe
-                .checks
-                .iter()
-                .map(|check| (check.clone(), checks[&(name, check.as_str())]))
-                .collect();
-            let required_checks = validation_closure(&selection, name, &checks);
-            let validated = identity::recipe_digest(
-                recipe,
-                &RecipePins {
-                    definitions,
-                    source: &sources[name].resolved,
-                    commands: &command_pins,
-                    checks: &direct_checks,
-                    transitive_checks: &required_checks,
-                },
-            )
-            .map_err(|error| failure(Some(&recipe.span), error.to_string()))?;
-            recipes.insert(name, validated);
-        }
         let mut packages = BTreeMap::new();
         let mut remaining: BTreeSet<_> = package_productions.keys().map(String::as_str).collect();
         while !remaining.is_empty() {
@@ -341,18 +231,8 @@ impl<'a> Prepared<'a> {
                 let WorkspaceOutput::Package(package) = selection.outputs[name] else {
                     unreachable!("package identity names a package");
                 };
-                let digest = match &package.producer {
-                    WorkspaceProducer::Recipe { recipe } => identity::recipe_package_digest(
-                        package,
-                        recipes[recipe.as_str()],
-                        &packages,
-                    ),
-                    WorkspaceProducer::Provider { .. } => identity::provider_package_digest(
-                        package,
-                        &sources[name].resolved,
-                        &packages,
-                    ),
-                };
+                let digest =
+                    identity::provider_package_digest(package, &sources[name].resolved, &packages);
                 match digest {
                     Ok(digest) => {
                         packages.insert(name.to_owned(), digest);
@@ -373,21 +253,17 @@ impl<'a> Prepared<'a> {
             selection,
             sources,
             inputs,
-            recipes,
             packages,
-            package_productions,
-            command_pins,
-            checks,
         })
     }
 
-    pub fn retained_inputs(&self, ctx: &Ctx, recipe: &str) -> BTreeSet<PathBuf> {
-        self.retained_roots(&ctx.home, recipe)
+    pub fn retained_inputs(&self, ctx: &Ctx, output: &str) -> BTreeSet<PathBuf> {
+        self.retained_roots(&ctx.home, output)
     }
 
-    pub(super) fn retained_roots(&self, home: &std::path::Path, recipe: &str) -> BTreeSet<PathBuf> {
+    pub(super) fn retained_roots(&self, home: &std::path::Path, output: &str) -> BTreeSet<PathBuf> {
         let mut roots = BTreeSet::new();
-        let mut pending = VecDeque::from([recipe]);
+        let mut pending = VecDeque::from([output]);
         let mut visited = BTreeSet::new();
         while let Some(name) = pending.pop_front() {
             if !visited.insert(name) {
@@ -395,15 +271,6 @@ impl<'a> Prepared<'a> {
             }
             if let Some(source) = self.sources.get(name) {
                 roots.extend(source.artifact.retention.iter().cloned());
-            }
-            if name != recipe
-                && let Some(recipe) = self.recipes.get(name)
-            {
-                roots.insert(gripsack_store::content_path(
-                    home,
-                    "workspace-recipe",
-                    &recipe.to_string(),
-                ));
             }
             if let Some(package) = self.packages.get(name) {
                 roots.insert(gripsack_store::content_path(
@@ -427,30 +294,6 @@ impl<'a> Prepared<'a> {
     }
 }
 
-fn validation_closure(
-    selection: &Selection<'_>,
-    root: &str,
-    checks: &BTreeMap<(&str, &str), CheckDigest>,
-) -> BTreeSet<CheckDigest> {
-    let mut result = BTreeSet::new();
-    let mut pending = VecDeque::from([root]);
-    let mut visited = BTreeSet::new();
-    while let Some(name) = pending.pop_front() {
-        if !visited.insert(name) {
-            continue;
-        }
-        if let WorkspaceOutput::Recipe(recipe) = selection.outputs[name] {
-            for check in &recipe.checks {
-                result.insert(checks[&(name, check.as_str())]);
-            }
-        }
-        for edge in selection.references(name) {
-            pending.push_back(edge.to);
-        }
-    }
-    result
-}
-
 pub(super) fn collect_inputs<'a>(output: &'a WorkspaceOutput, inputs: &mut BTreeSet<&'a str>) {
     let mut command = |command: &'a WorkspaceCommand| {
         for argument in command.arguments() {
@@ -460,13 +303,6 @@ pub(super) fn collect_inputs<'a>(output: &'a WorkspaceOutput, inputs: &mut BTree
         }
     };
     match output {
-        WorkspaceOutput::Recipe(recipe) => {
-            for step in &recipe.steps {
-                if let WorkspaceStep::Command(value) = step {
-                    command(value);
-                }
-            }
-        }
         WorkspaceOutput::Task(task) => {
             for step in &task.steps {
                 if let WorkspaceStep::Command(value) = step {
@@ -490,29 +326,20 @@ pub(super) fn collect_inputs<'a>(output: &'a WorkspaceOutput, inputs: &mut BTree
 fn admit_capabilities(selection: &Selection<'_>) -> Result<(), ExecError> {
     for name in &selection.required {
         let output = selection.outputs[name];
-        if let WorkspaceOutput::Recipe(recipe) = output {
-            match &recipe.execution {
-                RecipeExecution::Host { .. } => return Err(ExecError::Gate(Diagnostic::error(codes::WORKSPACE_EXEC_UNAVAILABLE, "host recipe realization belongs to its native A2 executor; it cannot enter an isolated BuildKit solve").with_label(Some(recipe.span.clone()), "host policy declared here"))),
-                RecipeExecution::IsolatedLinux { platform, .. } if platform.os != recipe.target.os || platform.arch != recipe.target.arch => return Err(failure(Some(&recipe.span), "cross-compilation is not in the admitted initial BuildKit subset")),
-                RecipeExecution::IsolatedLinux { .. } => {},
-            }
-            for check in &recipe.checks {
-                let WorkspaceOutput::Check(check) = selection.outputs[check.as_str()] else {
-                    return Err(failure(
-                        Some(&recipe.span),
-                        "required validator is not a check",
-                    ));
-                };
-                if !matches!(
-                    selection.outputs[check.subject.as_str()],
-                    WorkspaceOutput::Recipe(_) | WorkspaceOutput::Package(_)
-                ) {
-                    return Err(failure(
-                        Some(&check.span),
-                        "a production validator requires a recipe/package subject",
-                    ));
-                }
-            }
+        if matches!(
+            output,
+            WorkspaceOutput::Recipe(_) | WorkspaceOutput::Image(_)
+        ) || matches!(
+            output,
+            WorkspaceOutput::Package(PackageOutput {
+                producer: WorkspaceProducer::Recipe { .. },
+                ..
+            })
+        ) {
+            return Err(failure(
+                Some(output.span()),
+                "executable recipe and OCI image authoring have been retired",
+            ));
         }
     }
     Ok(())

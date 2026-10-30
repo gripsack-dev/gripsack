@@ -14,6 +14,7 @@ pub open spec fn output_name_spec(output: &WorkspaceOutput) -> Seq<char> {
         WorkspaceOutput::Schedule(v) => v.name@, WorkspaceOutput::Check(v) => v.name@,
         WorkspaceOutput::Image(v) => v.name@, WorkspaceOutput::Profile(v) => v.name@,
         WorkspaceOutput::Hook(v) => v.name@,
+        WorkspaceOutput::Service(v) => v.name@,
     }
 }
 pub open spec fn output_kind_spec(output: &WorkspaceOutput) -> Seq<char> {
@@ -23,6 +24,7 @@ pub open spec fn output_kind_spec(output: &WorkspaceOutput) -> Seq<char> {
         WorkspaceOutput::Schedule(_) => "schedule"@, WorkspaceOutput::Check(_) => "check"@,
         WorkspaceOutput::Image(_) => "image"@, WorkspaceOutput::Profile(_) => "profile"@,
         WorkspaceOutput::Hook(_) => "hook"@,
+        WorkspaceOutput::Service(_) => "service"@,
     }
 }
 pub fn output_kind(output: &WorkspaceOutput) -> (kind: &'static str)
@@ -34,6 +36,7 @@ pub fn output_kind(output: &WorkspaceOutput) -> (kind: &'static str)
         WorkspaceOutput::Schedule(_) => "schedule", WorkspaceOutput::Check(_) => "check",
         WorkspaceOutput::Image(_) => "image", WorkspaceOutput::Profile(_) => "profile",
         WorkspaceOutput::Hook(_) => "hook",
+        WorkspaceOutput::Service(_) => "service",
     }
 }
 pub fn output_name(output: &WorkspaceOutput) -> (name: &str)
@@ -45,6 +48,7 @@ pub fn output_name(output: &WorkspaceOutput) -> (name: &str)
         WorkspaceOutput::Schedule(v) => &v.name, WorkspaceOutput::Check(v) => &v.name,
         WorkspaceOutput::Image(v) => &v.name, WorkspaceOutput::Profile(v) => &v.name,
         WorkspaceOutput::Hook(v) => &v.name,
+        WorkspaceOutput::Service(v) => &v.name,
     }
 }
 #[derive(Debug, Clone, Copy)]

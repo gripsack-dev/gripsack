@@ -14,6 +14,98 @@ const tool = (name = "tools") => api.pkg(name, {
 });
 const emit = (...outputs: api.WorkspaceOutput[]) => JSON.parse(emitWorkspaceIr(api.workspace({ outputs }), facts, []));
 
+Deno.test("Conda wheels emit exact binary requests and inherit source provenance", () => {
+  const wheel = { name: "tool", version: "1.0", url: "https://example.invalid/tool-1.0-py3-none-any.whl", sha256: "a".repeat(64) };
+  const wheels: readonly api.WheelSource[] = [wheel];
+  const source = api.conda.environment({
+    channels: ["conda-forge"], packages: { python: "3.12.*" }, wheels,
+  });
+  const output = api.pkg("python", {
+    producer: api.provider(source), commands: { python: "bin/python" },
+    target, layout: { kind: "prefix_materialized" },
+  });
+  const wire = emit(output).workspace.outputs[0].producer.provider;
+  assert.deepEqual(wire.wheels, [wheel]);
+  assert.deepEqual(wire.span, source.span);
+  assert.equal("span" in wire.wheels[0], false);
+  wheel.sha256 = "b".repeat(64);
+  assert.equal(source.wheels![0]!.sha256, "a".repeat(64));
+  assert.ok(Object.isFrozen(source.wheels));
+  assert.ok(Object.isFrozen(source.wheels![0]));
+  const plain = api.conda.environment({ channels: ["conda-forge"], packages: { python: "*" } });
+  assert.equal("wheels" in plain, false);
+});
+
+Deno.test("Conda wheel requests reject unpinned, source and editable requests", () => {
+  const wheel = { name: "tool", version: "1.0", url: "https://example.invalid/tool-1.0-py3-none-any.whl", sha256: "a".repeat(64) };
+  for (const invalid of [
+    null, {}, { url: wheel.url }, { ...wheel, sha256: "A".repeat(64) },
+    { ...wheel, sha256: "a".repeat(63) }, { ...wheel, url: "http://example.invalid/tool.whl" },
+    { ...wheel, url: "file:///tmp/tool.whl" }, { ...wheel, url: "https://example.invalid/tool.tar.gz" },
+    { ...wheel, url: "https://user:secret@example.invalid/tool.whl" },
+    { ...wheel, url: "https://example.invalid/tool.whl#hash" },
+    { ...wheel, url: "https://example.invalid/tool.whl?token=secret" },
+    { ...wheel, url: "https://example.invalid/tool%2D1.whl" },
+    { ...wheel, url: "https://example.invalid/tool\n.whl" },
+    { ...wheel, name: "Tool" }, { ...wheel, name: "my_tool" }, { ...wheel, name: "my.tool" },
+    { ...wheel, version: "" }, { ...wheel, version: " 1.0" }, { ...wheel, version: "1.0\n" },
+    { ...wheel, version: "1/0" }, { ...wheel, version: "1".repeat(257) },
+    { ...wheel, editable: true }, { ...wheel, source: true },
+  ]) {
+    assert.throws(() => api.conda.environment({
+      channels: ["conda-forge"], packages: { python: "*" }, wheels: [invalid] as never,
+    }));
+    assert.throws(() => api.provider({
+      kind: "conda_environment", channels: ["conda-forge"], packages: { python: "*" },
+      wheels: [invalid] as never, span,
+    }));
+  }
+  for (const wheels of [null, "tool", {}]) {
+    assert.throws(() => api.conda.environment({
+      channels: ["conda-forge"], packages: { python: "*" }, wheels: wheels as never,
+    }));
+  }
+  assert.doesNotThrow(() => api.conda.environment({
+    channels: ["conda-forge"], packages: { python: "*" },
+    wheels: [{ ...wheel, version: "1!1.0+local" }],
+  }));
+  for (const duplicate of [
+    { ...wheel, url: "https://example.invalid/other.whl", sha256: "b".repeat(64) },
+    { ...wheel, name: "other", sha256: "b".repeat(64) },
+    { ...wheel, name: "other", url: "https://example.invalid/other.whl" },
+  ]) {
+    assert.throws(() => api.conda.environment({
+      channels: ["conda-forge"], packages: { python: "*" }, wheels: [wheel, duplicate],
+    }), /duplicate wheel/);
+  }
+});
+
+Deno.test("v10 removes executable authoring exports and recipe producers", () => {
+  for (const retired of ["recipe", "image", "cargoPackage", "bashBody"]) {
+    assert.equal(retired in api, false);
+  }
+  for (const producer of ["old-recipe", { kind: "recipe", recipe: "old-recipe" }]) {
+    assert.throws(() => api.pkg("invalid", {
+      producer: producer as never, commands: {}, target, layout,
+    }));
+  }
+});
+
+Deno.test("portable package sources emit only an exact manifest digest and provenance", () => {
+  const manifest = "a".repeat(64);
+  const source = api.source.package({ manifest });
+  const packageValue = api.pkg("portable", {
+    producer: api.provider(source), commands: { tool: "bin/tool" }, target, layout,
+  });
+  const wire = emit(packageValue).workspace.outputs[0].producer.provider;
+  assert.deepEqual(wire, { kind: "package", manifest, span: source.span });
+  assert.ok(Object.isFrozen(source));
+  for (const invalid of ["", "a".repeat(63), "A".repeat(64), "g".repeat(64), `sha256:${manifest}`]) {
+    assert.throws(() => api.source.package({ manifest: invalid }), /64-hex SHA256/);
+  }
+  assert.throws(() => api.source.package({ manifest, transport: "registry" } as never));
+});
+
 Deno.test("repoTree is a pure captured declaration with normalized prefix selection", () => {
   const selection: RepoTreeSelection = { include: ["nested"], exclude: ["nested/cache"] };
   const source = api.repoTree("not-present-at-evaluation", selection);
@@ -45,8 +137,6 @@ Deno.test("archive root selection rejects incompatible producer and layout polic
   assert.throws(() => api.pkg("bad", { ...base, archiveRoot, layout: { kind: "fixed_prefix", prefix: "/opt/tools" } }));
   const condaSource = api.conda.environment({ channels: ["conda-forge"], packages: { python: "*" }, platforms: [target] });
   assert.throws(() => api.pkg("bad", { ...base, producer: api.provider(condaSource), archiveRoot }));
-  const recipe = api.recipe("source", { source: condaSource, execution: { kind: "host", access: "unconfined" }, output_kind: "tree", target });
-  assert.throws(() => emit(recipe, api.pkg("bad", { ...base, producer: "source", archiveRoot })));
 });
 
 Deno.test("managed launchers require an explicit unique command selection and environment", () => {

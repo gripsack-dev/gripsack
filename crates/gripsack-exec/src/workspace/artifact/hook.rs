@@ -25,6 +25,7 @@ pub(in crate::workspace) fn capture(
         || receipt.host_runtime != package.host_runtime
         || receipt.archive_root != package.archive_root
         || receipt.selected_root != package.selected_root
+        || receipt.producer_retention != portable_retention(&package.producer)
         || receipt.runtime.len() != package.runtime.len()
         || package
             .runtime
@@ -98,6 +99,12 @@ pub(in crate::workspace) fn restore(
         }
         runtime.push(package);
     }
+    let mut retention = receipt.producer_retention;
+    for path in &retention {
+        store::paths::validate_store_root(home, path)?;
+    }
+    crate::workspace::sharing::readmit_roots(home, retention.iter().map(PathBuf::as_path))?;
+    retention.insert(receipt.producer_root.clone());
     let package = Arc::new(Package {
         identity,
         root,
@@ -106,7 +113,7 @@ pub(in crate::workspace) fn restore(
             root: receipt.producer_root.clone(),
             payload,
             tree: receipt.tree,
-            retention: BTreeSet::from([receipt.producer_root]),
+            retention,
         }),
         archive_root: receipt.archive_root,
         selected_root,
@@ -151,7 +158,7 @@ pub(in crate::workspace) fn restore_launcher(
         &mut BTreeMap::new(),
         &mut BTreeSet::new(),
     )?;
-    if !package.host_dependent() {
+    if !package.host_dependent() && !package.portable() {
         return Err(failure(
             "retained launcher package has no host runtime policy",
         ));

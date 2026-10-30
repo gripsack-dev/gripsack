@@ -5,17 +5,16 @@
 //! materialization NEVER solves: it re-derives the durable prefix from
 //! the frozen lock + policy + canonical store context, stages through
 //! the helper, then INDEPENDENTLY validates the tree and receipts from
-//! the original archives before admission. Native and image consumers
-//! share `materialize_locked` — image prefixes are an explicit separate
-//! context, never a copy of native fixed-prefix bytes.
+//! the original archives before admission. Materialization only publishes
+//! native fixed-prefix packages; historical image receipts remain data-only.
 
 mod archive;
 mod prefix;
 mod runtime;
 mod validate;
 
-pub(super) use runtime::admit_native;
-pub(crate) use validate::SystemRuntime;
+pub(super) use runtime::{admit_host_requirements, admit_native};
+pub(crate) use validate::{AdmissionBudget, AdmittedArchives, SystemRuntime};
 
 use super::{
     artifact::Artifact,
@@ -29,10 +28,7 @@ use gripsack_ir::{
     workspace_model::{
         AcquisitionSource, LockedSource, PixiLockSource, WorkspaceCatalog,
         identity::conda_closure_digest,
-        lock::{
-            LockedCondaEnvironment, LockedCondaPackage, LockedPin, LockedVirtualPackage,
-            ResolvedPinFields,
-        },
+        lock::{LockedCondaEnvironment, LockedPin, LockedVirtualPackage, ResolvedPinFields},
     },
 };
 use gripsack_store as store;
@@ -43,18 +39,6 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
-
-/// Where a frozen closure is materialized.
-pub(crate) enum CondaDestination<'a> {
-    /// Durable native prefix: the materialization key is derived from
-    /// the frozen closure + policy + canonical store context (never
-    /// from the prefix itself), then the final content path follows.
-    Native,
-    /// Explicit image context: bytes are patched for `prefix` (the
-    /// declared ImageDestination path) and staged under the caller's
-    /// image staging. No store publication.
-    Image { prefix: &'a str, staging: &'a Path },
-}
 
 /// The runtime receipt persisted with the package publication: exact
 /// derivation inputs, the COMPLETE frozen closure (every install-critical
@@ -70,8 +54,7 @@ pub(crate) struct CondaRuntimeReceipt {
     /// 64-hex materialization key (see `materialization_key`).
     pub materialization: String,
     pub final_prefix: PathBuf,
-    /// The exact frozen closure — also what image re-materialization
-    /// consumes, so a package carries its complete lock authority.
+    /// Complete frozen installation authority retained with the native prefix.
     pub closure: LockedCondaEnvironment,
     /// Measured ambient runtime the closure cannot satisfy itself.
     #[serde(default, skip_serializing_if = "SystemRuntime::is_empty")]
@@ -100,6 +83,21 @@ pub(super) fn admit_frozen(
 ) -> Result<(), ExecError> {
     let result = match source {
         AcquisitionSource::CondaEnvironment(declared) => {
+            if declared.wheels.len() != locked.wheels.len()
+                || declared.wheels.iter().any(|request| {
+                    !locked.wheels.iter().any(|wheel| {
+                        wheel.name == request.name
+                            && wheel.version == request.version
+                            && wheel.url == request.url
+                            && wheel.sha256 == request.sha256
+                    })
+                })
+            {
+                return Err(failure(
+                    output,
+                    "frozen wheel set differs from declared hash-pinned requirements",
+                ));
+            }
             let requirements = gripsack_conda::virtuals::declared_system_requirements(
                 declared.system_requirements.as_ref(),
                 &locked.platform,
@@ -167,7 +165,7 @@ pub(super) fn native_location(
     Ok((key, prefix))
 }
 
-fn retained_archives(
+pub(super) fn retained_archives(
     output: &str,
     home: &Path,
     locked: &LockedCondaEnvironment,
@@ -177,11 +175,35 @@ fn retained_archives(
     locked
         .packages
         .iter()
-        .map(|record| {
-            let path = verify_archive(output, home, &record.sha256)?;
-            Ok((record.sha256.clone(), path))
+        .map(|record| (&record.sha256, record.size))
+        .chain(
+            locked
+                .wheels
+                .iter()
+                .map(|record| (&record.sha256, record.size)),
+        )
+        .map(|(digest, size)| {
+            let path = verify_archive(output, home, digest, size)?;
+            Ok((digest.clone(), path))
         })
         .collect()
+}
+
+/// Sharing preflights every original closure before any member can run a helper
+/// or publish a prefix. The ordinary materializer still independently validates
+/// the resulting tree against these same archive/lock authorities.
+pub(super) fn admit_portable_archives(
+    output: &str,
+    home: &Path,
+    locked: &LockedCondaEnvironment,
+    archives: &BTreeMap<String, PathBuf>,
+    budget: &mut AdmissionBudget,
+) -> Result<AdmittedArchives, ExecError> {
+    let (_, prefix) = native_location(output, home, locked)?;
+    let prefix = prefix
+        .to_str()
+        .ok_or_else(|| failure(output, "materialization prefix is not UTF-8"))?;
+    validate::admit_archives_bounded(output, locked, archives, prefix, budget)
 }
 
 fn acquire_locked_archives(
@@ -194,9 +216,16 @@ fn acquire_locked_archives(
     locked
         .packages
         .iter()
-        .map(|record| {
-            let object = retain_archive(output, ctx, record)?;
-            Ok((record.sha256.clone(), object.join("archive")))
+        .map(|record| (&record.name, &record.url, &record.sha256, record.size))
+        .chain(
+            locked
+                .wheels
+                .iter()
+                .map(|record| (&record.name, &record.url, &record.sha256, record.size)),
+        )
+        .map(|(name, url, digest, size)| {
+            let object = retain_archive(output, ctx, name, url, digest, size)?;
+            Ok((digest.clone(), object.join("archive")))
         })
         .collect()
 }
@@ -207,7 +236,6 @@ fn admitted_materialization(
     prefix: PathBuf,
     archives: &BTreeMap<String, PathBuf>,
     validated: validate::ValidatedTree,
-    retain_prefix: bool,
 ) -> CondaMaterialization {
     let mut retention: std::collections::BTreeSet<PathBuf> = archives
         .values()
@@ -217,9 +245,7 @@ fn admitted_materialization(
                 .to_path_buf()
         })
         .collect();
-    if retain_prefix {
-        retention.insert(prefix.clone());
-    }
+    retention.insert(prefix.clone());
     CondaMaterialization {
         artifact: Artifact {
             root: prefix.clone(),
@@ -243,37 +269,6 @@ pub(super) fn image_key(locked: &LockedCondaEnvironment, prefix: &str) -> String
     materialization_key(locked, &["image", prefix])
 }
 
-/// Reconstruct image materialization authority from original retained archives,
-/// without invoking the helper or treating a cached receipt as proof.
-pub(super) fn inspect_image(
-    output: &str,
-    home: &Path,
-    locked: &LockedCondaEnvironment,
-    prefix: &str,
-    payload: &Path,
-) -> Result<CondaMaterialization, ExecError> {
-    let archives = retained_archives(output, home, locked)?;
-    let validated = validate::validate_tree(
-        output,
-        locked,
-        &archives,
-        payload,
-        prefix,
-        validate::FileModes::Published,
-    )?;
-    let mut admitted = admitted_materialization(
-        locked,
-        image_key(locked, prefix),
-        PathBuf::from(prefix),
-        &archives,
-        validated,
-        false,
-    );
-    admitted.artifact.root = payload.to_path_buf();
-    admitted.artifact.payload = payload.to_path_buf();
-    Ok(admitted)
-}
-
 fn retained_prefix_exists(output: &str, prefix: &Path) -> Result<bool, ExecError> {
     match std::fs::symlink_metadata(prefix) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -289,6 +284,7 @@ pub(super) fn inspect_retained(
     output: &str,
     home: &Path,
     locked: &LockedCondaEnvironment,
+    admitted: Option<&AdmittedArchives>,
 ) -> Result<Option<CondaMaterialization>, ExecError> {
     let (key, prefix) = match native_location(output, home, locked) {
         Err(ExecError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -303,20 +299,28 @@ pub(super) fn inspect_retained(
     let prefix_text = prefix
         .to_str()
         .ok_or_else(|| failure(output, "materialization prefix is not UTF-8"))?;
-    let validated = validate::validate_tree(
+    let owned;
+    let admitted = match admitted {
+        Some(admitted) => admitted,
+        None => {
+            owned = validate::admit_archives(output, locked, &archives)?;
+            &owned
+        }
+    };
+    let validated = validate::validate_admitted_tree(
         output,
         locked,
-        &archives,
+        admitted,
         &prefix,
         prefix_text,
         validate::FileModes::Published,
     )?;
     Ok(Some(admitted_materialization(
-        locked, key, prefix, &archives, validated, true,
+        locked, key, prefix, &archives, validated,
     )))
 }
 
-fn archive_object(home: &Path, sha256: &str) -> PathBuf {
+pub(super) fn archive_object(home: &Path, sha256: &str) -> PathBuf {
     store::content_path(home, ARCHIVE_NAMESPACE, sha256)
 }
 
@@ -326,7 +330,12 @@ fn archive_file(home: &Path, sha256: &str) -> PathBuf {
 
 /// Rehash one retained archive against its locked digest. Missing is a
 /// missing-input error; a mismatch is corruption, never re-download.
-fn verify_archive(output: &str, home: &Path, sha256: &str) -> Result<PathBuf, ExecError> {
+fn verify_archive(
+    output: &str,
+    home: &Path,
+    sha256: &str,
+    size: Option<u64>,
+) -> Result<PathBuf, ExecError> {
     let path = archive_file(home, sha256);
     let file = std::fs::File::open(&path).map_err(|error| {
         failure(
@@ -336,6 +345,13 @@ fn verify_archive(output: &str, home: &Path, sha256: &str) -> Result<PathBuf, Ex
             ),
         )
     })?;
+    let actual_size = file.metadata()?.len();
+    if size.is_some_and(|size| actual_size != size) {
+        return Err(failure(
+            output,
+            format!("retained archive {sha256} differs from its locked size"),
+        ));
+    }
     let mut hasher = Sha256::new();
     let mut file = file.take(u64::MAX);
     let mut buffer = [0u8; 65_536];
@@ -356,10 +372,9 @@ fn verify_archive(output: &str, home: &Path, sha256: &str) -> Result<PathBuf, Ex
     Ok(path)
 }
 
-/// The optional helper: an explicit operator override first
-/// (`GRIPSACK_CONDA_HELPER`, same authority as `--bridge`), else the
-/// pinned lazy provisioning service. Absence of both is an explicit
-/// error, never a silent fallback to ambient binaries.
+/// The optional helper: an explicit `GRIPSACK_CONDA_HELPER` operator override
+/// first, else the pinned lazy provisioning service. Absence of both is an
+/// explicit error, never a silent fallback to ambient binaries.
 fn helper(ctx: &Ctx, output: &str) -> Result<CondaHelper, ExecError> {
     let deadline = std::time::Instant::now()
         .checked_add(gripsack_process::Limits::default().timeout)
@@ -398,7 +413,7 @@ fn subdir(output: &str, platform: &WorkspacePlatform) -> Result<&'static str, Ex
 
 /// Measured host facts a solve is grounded in. A foreign target needs its
 /// own explicit runtime facts; local measurements are never substituted.
-fn host_virtual_packages(
+pub(super) fn host_virtual_packages(
     output: &str,
     platform: &WorkspacePlatform,
 ) -> Result<Vec<LockedVirtualPackage>, ExecError> {
@@ -453,12 +468,15 @@ fn host_virtual_packages(
 fn retain_archive(
     output: &str,
     ctx: &Ctx,
-    record: &LockedCondaPackage,
+    name: &str,
+    url: &str,
+    sha256: &str,
+    size: Option<u64>,
 ) -> Result<PathBuf, ExecError> {
-    let object = archive_object(&ctx.home, &record.sha256);
+    let object = archive_object(&ctx.home, sha256);
     match std::fs::symlink_metadata(&object) {
         Ok(metadata) if metadata.is_dir() => {
-            return verify_archive(output, &ctx.home, &record.sha256).map(|_| object);
+            return verify_archive(output, &ctx.home, sha256, size).map(|_| object);
         }
         Ok(_) => return Err(failure(output, "retained Conda archive is not a directory")),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -466,8 +484,15 @@ fn retain_archive(
     }
     let download = ctx
         .fetch
-        .download_verified(&record.url, &record.sha256)
-        .map_err(|error| failure(output, format!("{} archive download: {error}", record.name)))?;
+        .download_verified(url, sha256)
+        .map_err(|error| failure(output, format!("{name} archive download: {error}")))?;
+    let actual_size = download.file.as_file().metadata()?.len();
+    if size.is_some_and(|size| actual_size != size) {
+        return Err(failure(
+            output,
+            format!("archive {name} differs from its locked size"),
+        ));
+    }
     let stage = tempfile::Builder::new()
         .prefix("grip-conda-archive-")
         .tempdir()?;
@@ -480,7 +505,7 @@ fn retain_archive(
     Ok(object)
 }
 
-/// Materialize a frozen closure — the common native/image service.
+/// Materialize a frozen closure into its native store prefix.
 /// Never solves. New prefixes acquire missing archives by locked URL/digest;
 /// retained prefixes require their existing evidence. The staged tree is
 /// independently validated from original archives before admission.
@@ -489,7 +514,41 @@ pub(super) fn materialize_locked(
     session: &LifecycleSession,
     output: &str,
     locked: &LockedCondaEnvironment,
-    dest: CondaDestination<'_>,
+) -> Result<CondaMaterialization, ExecError> {
+    materialize_with_inputs(ctx, session, output, locked, MaterializationInputs::Acquire)
+}
+
+/// Offline sharing never consults URLs, helper overrides or provisioning.
+/// The caller has retained the complete verified archive set and selected the
+/// core-pinned helper before entering the common materialization service.
+pub(super) fn materialize_offline(
+    ctx: &Ctx,
+    session: &LifecycleSession,
+    output: &str,
+    locked: &LockedCondaEnvironment,
+    helper: &CondaHelper,
+    admitted: &AdmittedArchives,
+) -> Result<CondaMaterialization, ExecError> {
+    materialize_with_inputs(
+        ctx,
+        session,
+        output,
+        locked,
+        MaterializationInputs::Offline(helper, admitted),
+    )
+}
+
+enum MaterializationInputs<'a> {
+    Acquire,
+    Offline(&'a CondaHelper, &'a AdmittedArchives),
+}
+
+fn materialize_with_inputs(
+    ctx: &Ctx,
+    session: &LifecycleSession,
+    output: &str,
+    locked: &LockedCondaEnvironment,
+    inputs: MaterializationInputs<'_>,
 ) -> Result<CondaMaterialization, ExecError> {
     if session.home() != ctx.home {
         return Err(failure(
@@ -497,34 +556,33 @@ pub(super) fn materialize_locked(
             "conda materialization belongs to another home",
         ));
     }
-    let (key, final_prefix, image_staging) = match &dest {
-        CondaDestination::Native => {
-            let (key, prefix) = native_location(output, &ctx.home, locked)?;
-            (key, prefix, None)
-        }
-        CondaDestination::Image { prefix, staging } => {
-            let key = image_key(locked, prefix);
-            (key, PathBuf::from(prefix), Some(*staging))
-        }
-    };
+    let (key, final_prefix) = native_location(output, &ctx.home, locked)?;
     let prefix_text = final_prefix
         .to_str()
         .ok_or_else(|| failure(output, "materialization prefix is not UTF-8"))?
         .to_owned();
     // 1. Retained prefixes must keep their original evidence; cold prefixes
     //    reconstruct only the frozen archive bytes, without solving or repodata.
-    let reuse = image_staging.is_none() && retained_prefix_exists(output, &final_prefix)?;
-    let archives = if reuse {
+    let reuse = retained_prefix_exists(output, &final_prefix)?;
+    let archives = if reuse || matches!(inputs, MaterializationInputs::Offline(..)) {
         retained_archives(output, &ctx.home, locked)?
     } else {
         acquire_locked_archives(output, ctx, locked)?
     };
+    let owned_admission;
+    let admitted_archives = match &inputs {
+        MaterializationInputs::Offline(_, admitted) => *admitted,
+        MaterializationInputs::Acquire => {
+            owned_admission = validate::admit_archives(output, locked, &archives)?;
+            &owned_admission
+        }
+    };
     // 2. Idempotent native reuse validates the prefix from original archives.
     if reuse {
-        let validated = validate::validate_tree(
+        let validated = validate::validate_admitted_tree(
             output,
             locked,
-            &archives,
+            admitted_archives,
             &final_prefix,
             &prefix_text,
             validate::FileModes::Published,
@@ -535,67 +593,52 @@ pub(super) fn materialize_locked(
             final_prefix,
             &archives,
             validated,
-            true,
         ));
     }
-    // 3. Reject unsupported archive lifecycles before staging or invoking the
-    // helper. Reuse these exact private spools for independent tree validation.
-    let admitted_archives = validate::admit_archives(output, locked, &archives)?;
-    let owned_staging;
-    let staging = match image_staging {
-        Some(staging) => {
-            std::fs::create_dir_all(staging)?;
-            staging.to_path_buf()
-        }
-        None => {
-            owned_staging = tempfile::Builder::new()
-                .prefix("grip-conda-materialize-")
-                .tempdir()?;
-            owned_staging.path().to_path_buf()
-        }
-    };
+    let owned_staging = tempfile::Builder::new()
+        .prefix("grip-conda-materialize-")
+        .tempdir()?;
+    let staging = owned_staging.path();
     let mut attempt = [0u8; 8];
     getrandom::fill(&mut attempt).map_err(std::io::Error::other)?;
     let archive_args: Vec<(String, PathBuf)> = archives
         .iter()
         .map(|(sha256, path)| (sha256.clone(), path.clone()))
         .collect();
-    let helper = helper(ctx, output)?;
+    let acquired_helper;
+    let helper = match inputs {
+        MaterializationInputs::Acquire => {
+            acquired_helper = helper(ctx, output)?;
+            &acquired_helper
+        }
+        MaterializationInputs::Offline(helper, _) => helper,
+    };
     helper
         .materialize(
             u64::from_le_bytes(attempt),
             locked,
             &final_prefix,
-            &staging,
+            staging,
             &archive_args,
         )
         .map_err(|error| failure(output, format!("conda materialize: {error}")))?;
     let validated = validate::validate_admitted_tree(
         output,
         locked,
-        &admitted_archives,
-        &staging,
+        admitted_archives,
+        staging,
         &prefix_text,
         validate::FileModes::Staged,
     )?;
-    // 4. Native publication through the common authority; image trees
-    //    stay in the caller's staging.
-    if image_staging.is_none() {
-        crate::source::publish(ctx, PREFIX_NAMESPACE, &staging, &final_prefix)?;
-    }
-    let mut admitted = admitted_materialization(
+    // 4. Publish only after independent admission of the complete native tree.
+    crate::source::publish(ctx, PREFIX_NAMESPACE, staging, &final_prefix)?;
+    Ok(admitted_materialization(
         locked,
         key,
         final_prefix,
         &archives,
         validated,
-        image_staging.is_none(),
-    );
-    if image_staging.is_some() {
-        admitted.artifact.root = staging.clone();
-        admitted.artifact.payload = staging;
-    }
-    Ok(admitted)
+    ))
 }
 
 /// Complete archive admission before update can register roots or return a pin.
@@ -604,12 +647,24 @@ fn admit_update_archives(
     ctx: &Ctx,
     environment: &LockedCondaEnvironment,
     mode: UpdateMode,
+    wheel_spools: &BTreeMap<String, tempfile::NamedTempFile>,
 ) -> Result<Vec<PathBuf>, ExecError> {
-    let mut objects = Vec::with_capacity(environment.packages.len());
+    let mut objects = Vec::with_capacity(environment.packages.len() + environment.wheels.len());
+    let mut archives = BTreeMap::new();
+    // Check mode must keep its private originals alive until cross-format
+    // ownership, dependency and aggregate expansion admission has completed.
+    let mut downloads = Vec::new();
     for record in &environment.packages {
         if mode == UpdateMode::Publish {
-            let object = retain_archive(name, ctx, record)?;
-            validate::admit_archive(name, record, &object.join("archive"))?;
+            let object = retain_archive(
+                name,
+                ctx,
+                &record.name,
+                &record.url,
+                &record.sha256,
+                record.size,
+            )?;
+            archives.insert(record.sha256.clone(), object.join("archive"));
             objects.push(object);
         } else {
             let download = ctx
@@ -618,14 +673,41 @@ fn admit_update_archives(
                 .map_err(|error| {
                     failure(name, format!("{} archive download: {error}", record.name))
                 })?;
-            validate::admit_archive(name, record, download.file.path())?;
+            archives.insert(record.sha256.clone(), download.file.path().to_path_buf());
+            downloads.push(download.file);
         }
     }
+    for wheel in &environment.wheels {
+        if mode == UpdateMode::Publish {
+            let object = retain_archive(
+                name,
+                ctx,
+                &wheel.name,
+                &wheel.url,
+                &wheel.sha256,
+                wheel.size,
+            )?;
+            archives.insert(wheel.sha256.clone(), object.join("archive"));
+            objects.push(object);
+        } else if let Some(spool) = wheel_spools.get(&wheel.sha256) {
+            archives.insert(wheel.sha256.clone(), spool.path().to_path_buf());
+        } else {
+            let download = ctx
+                .fetch
+                .download_verified(&wheel.url, &wheel.sha256)
+                .map_err(|error| {
+                    failure(name, format!("{} wheel download: {error}", wheel.name))
+                })?;
+            archives.insert(wheel.sha256.clone(), download.file.path().to_path_buf());
+            downloads.push(download.file);
+        }
+    }
+    validate::admit_archives(name, environment, &archives)?;
     Ok(objects)
 }
 
 /// Explicit update: solve/import through the helper, retain every
-/// archive as a verified store object, and return the lock v2 pin. The
+/// archive as a verified store object, and return the current lock pin. The
 /// caller upserts and publishes the lock; roots protect the archives
 /// from that moment (no GC window before the first realization).
 pub(crate) fn resolve_update(
@@ -642,6 +724,7 @@ pub(crate) fn resolve_update(
     getrandom::fill(&mut attempt).map_err(std::io::Error::other)?;
     let attempt = u64::from_le_bytes(attempt);
     let mut locked_source = source.locked();
+    let mut wheel_spools = BTreeMap::new();
     let environment = match source {
         AcquisitionSource::CondaEnvironment(declared) => {
             if !declared.platforms.is_empty() && !declared.platforms.contains(platform) {
@@ -659,7 +742,7 @@ pub(crate) fn resolve_update(
             gripsack_conda::virtuals::apply_solve_baseline(&requirements, &mut facts)
                 .map_err(|error| failure(name, error.to_string()))?;
             let helper = helper(ctx, name)?;
-            let environment = helper
+            let mut environment = helper
                 .resolve(
                     attempt,
                     &declared.channels,
@@ -677,6 +760,33 @@ pub(crate) fn resolve_update(
                 &requirements,
             )
             .map_err(|error| failure(name, error.to_string()))?;
+            for request in &declared.wheels {
+                let wheel = if mode == UpdateMode::Publish {
+                    let object = retain_archive(
+                        name,
+                        ctx,
+                        &request.name,
+                        &request.url,
+                        &request.sha256,
+                        None,
+                    )?;
+                    gripsack_conda::wheels::inspect(&object.join("archive"), request).map_err(
+                        |error| failure(name, format!("wheel {} metadata: {error}", request.name)),
+                    )?
+                } else {
+                    let download = ctx.fetch.download_verified(&request.url, &request.sha256)?;
+                    let wheel = gripsack_conda::wheels::inspect(download.file.path(), request)
+                        .map_err(|error| {
+                            failure(name, format!("wheel {} metadata: {error}", request.name))
+                        })?;
+                    wheel_spools.insert(request.sha256.clone(), download.file);
+                    wheel
+                };
+                environment.wheels.push(wheel);
+            }
+            environment
+                .wheels
+                .sort_by(|left, right| left.name.cmp(&right.name));
             environment
         }
         AcquisitionSource::PixiLock(declared) => {
@@ -711,8 +821,11 @@ pub(crate) fn resolve_update(
             }
             environment
         }
-        AcquisitionSource::Fetch(_) => {
-            return Err(failure(name, "fetch sources do not resolve through conda"));
+        AcquisitionSource::Fetch(_) | AcquisitionSource::Package { .. } => {
+            return Err(failure(
+                name,
+                "non-Conda sources do not resolve through the Conda helper",
+            ));
         }
     };
     if environment.platform != subdir {
@@ -727,7 +840,7 @@ pub(crate) fn resolve_update(
     admit_frozen(name, source, &environment)?;
     // Retain and admit every exact archive before the pin can name it. Check
     // mode enforces the same policy without publishing store objects or roots.
-    let objects = admit_update_archives(name, ctx, &environment, mode)?;
+    let objects = admit_update_archives(name, ctx, &environment, mode, &wheel_spools)?;
     if mode == UpdateMode::Publish {
         let retention: std::collections::BTreeSet<PathBuf> = objects.into_iter().collect();
         let retention = RetentionSet::admit(session, retention)?;
@@ -852,5 +965,53 @@ mod baseline_tests {
         locked.system_requirements = Default::default();
         locked.virtual_packages[0].version = "2.39".into();
         assert!(admit_frozen("python", &removed, &locked).is_ok());
+    }
+
+    #[test]
+    fn frozen_wheels_cannot_be_added_removed_or_rebound_without_authoring_change() {
+        let request = json!({
+            "name":"fixture-wheel","version":"1.0",
+            "url":"https://example.invalid/fixture_wheel-1.0-py3-none-any.whl",
+            "sha256":"a".repeat(64)
+        });
+        let declaration = json!({
+            "kind":"conda_environment","channels":["conda-forge"],"packages":{"python":"3.12.*"},
+            "wheels":[request],"span":{"file":"workspace.ts","line":1}
+        });
+        let source: AcquisitionSource = serde_json::from_value(declaration.clone()).unwrap();
+        let mut locked: LockedCondaEnvironment = serde_json::from_value(json!({
+            "platform":"linux-64","channels":["https://conda.anaconda.org/conda-forge"],
+            "channel_priority":"strict","system_requirements":{},
+            "packages":[{
+                "name":"python","version":"3.12.7","build":"fixture_0","build_number":0,
+                "subdir":"linux-64","channel":"https://conda.anaconda.org/conda-forge",
+                "url":"https://conda.anaconda.org/conda-forge/linux-64/python-3.12.7-fixture_0.conda",
+                "sha256":"0".repeat(64)
+            }],
+            "wheels":[{
+                "name":"fixture-wheel","version":"1.0","filename":"fixture_wheel-1.0-py3-none-any.whl",
+                "url":"https://example.invalid/fixture_wheel-1.0-py3-none-any.whl",
+                "sha256":"a".repeat(64),"requires_dist":[]
+            }],
+            "materializer":{"bytecode":"suppress","receipt":"normalized_conda_meta"}
+        })).unwrap();
+        assert!(admit_frozen("python", &source, &locked).is_ok());
+        for (field, value) in [
+            ("name", "other"),
+            ("version", "2.0"),
+            ("url", "https://example.invalid/other.whl"),
+            ("sha256", &"b".repeat(64)),
+        ] {
+            let mut changed = declaration.clone();
+            changed["wheels"][0][field] = json!(value);
+            let changed = serde_json::from_value(changed).unwrap();
+            assert!(admit_frozen("python", &changed, &locked).is_err());
+        }
+        let mut removed = declaration;
+        removed.as_object_mut().unwrap().remove("wheels");
+        let removed = serde_json::from_value(removed).unwrap();
+        assert!(admit_frozen("python", &removed, &locked).is_err());
+        locked.wheels.clear();
+        assert!(admit_frozen("python", &source, &locked).is_err());
     }
 }

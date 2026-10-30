@@ -1,7 +1,7 @@
 {
   "name": "@gripsack/core",
-  "version": "0.50.0",
-  "description": "gripsack TypeScript workspace SDK — typed declarations, emits IR9",
+  "version": "0.51.0",
+  "description": "gripsack TypeScript workspace SDK — typed declarations, emits IR10",
   "license": "MIT",
   "type": "module",
   "main": "./dist/src/index.js",

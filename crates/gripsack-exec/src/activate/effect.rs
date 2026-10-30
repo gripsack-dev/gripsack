@@ -32,6 +32,17 @@ pub(super) fn run(
     let mut processes = Vec::new();
     let mut output = CapturedOutput::default();
     let result = (|| {
+        if matches!(intent.action(), Action::ScheduledJob { .. }) {
+            processes =
+                crate::workspace::schedules::lifecycle::effect(intent.action(), home, permit)
+                    .map_err(|error| {
+                        admission(
+                            AdmissionStage::Execution,
+                            &io::Error::other(error.to_string()),
+                        )
+                    })?;
+            return Ok(());
+        }
         let environment = environment
             .as_ref()
             .map_err(|error| admission(AdmissionStage::Environment, error))?;
@@ -75,6 +86,7 @@ pub(super) fn run(
             Action::DesktopEntry => "update-desktop-database",
             Action::Service { .. } => "systemctl",
             Action::WorkspaceHook { .. } => unreachable!("workspace hook dispatched above"),
+            Action::ScheduledJob { .. } => unreachable!("schedule dispatched above"),
         };
         let selected = SelectedProgram::select(environment, Path::new(program), None, deadline)
             .map_err(|error| admission(AdmissionStage::Invocation, &error))?;
@@ -161,6 +173,7 @@ pub(super) fn run(
                 )?;
             }
             Action::WorkspaceHook { .. } => unreachable!("workspace hook dispatched above"),
+            Action::ScheduledJob { .. } => unreachable!("schedule dispatched above"),
         }
         Ok(())
     })();
@@ -176,6 +189,10 @@ pub(super) fn run(
         Action::Service { name, .. } => format!("service {name}"),
         Action::CustomShell { .. } => "custom hook".to_owned(),
         Action::WorkspaceHook { .. } => "workspace hook".to_owned(),
+        Action::ScheduledJob { job, enabled, .. } => format!(
+            "scheduled job {job} {}",
+            if *enabled { "registration" } else { "removal" }
+        ),
     };
     let summary = if failure.is_some() {
         format!(

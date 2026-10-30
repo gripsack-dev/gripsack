@@ -233,6 +233,11 @@ fn output(writer: &mut Encoder, output: &WorkspaceOutput) {
                     strings(writer, mutable_paths, false);
                 }
             }
+            // Preserve historical task identities when no service was declared.
+            if !value.services.is_empty() {
+                writer.field(b"gripsack/v10/task-services");
+                strings(writer, &value.services, false);
+            }
         }
         WorkspaceOutput::Schedule(value) => {
             writer.text(&value.task);
@@ -307,6 +312,47 @@ fn output(writer: &mut Encoder, output: &WorkspaceOutput) {
                 HookTrigger::OnRemove => b"on-remove",
             });
             commands::declaration(writer, &value.run);
+        }
+        WorkspaceOutput::Service(value) => {
+            writer.text(&value.image);
+            writer.number(value.ports.len() as u64);
+            for port in &value.ports {
+                writer.text(&port.address);
+                writer.number(u64::from(port.host));
+                writer.number(u64::from(port.container));
+            }
+            writer.number(value.volumes.len() as u64);
+            for volume in &value.volumes {
+                writer.text(&volume.name);
+                writer.text(&volume.target);
+            }
+            writer.number(value.env.len() as u64);
+            for (name, value) in &value.env {
+                writer.text(name);
+                match value {
+                    ServiceEnvValue::Literal { value } => {
+                        writer.field(b"literal");
+                        writer.text(value);
+                    }
+                    ServiceEnvValue::Inherited { name } => {
+                        writer.field(b"inherited");
+                        writer.text(name);
+                    }
+                }
+            }
+            strings(writer, &value.command, true);
+            let ServiceHealth::Command {
+                argv,
+                interval_seconds,
+                timeout_seconds,
+                retries,
+            } = &value.health;
+            writer.field(b"command");
+            strings(writer, argv, true);
+            writer.number(u64::from(*interval_seconds));
+            writer.number(u64::from(*timeout_seconds));
+            writer.number(u64::from(*retries));
+            strings(writer, &value.depends_on, false);
         }
     }
 }
@@ -501,6 +547,21 @@ fn conda(writer: &mut Encoder, environment: &LockedCondaEnvironment) {
     writer.field(match environment.materializer.receipt {
         ReceiptPolicy::NormalizedCondaMeta => b"receipt-normalized-conda-meta",
     });
+    // Empty historical closures retain exactly their original digest bytes.
+    if !environment.wheels.is_empty() {
+        writer.field(b"gripsack/v3/conda-wheels");
+        writer.number(environment.wheels.len() as u64);
+        for wheel in &environment.wheels {
+            writer.text(&wheel.name);
+            writer.text(&wheel.version);
+            writer.text(&wheel.filename);
+            writer.text(&wheel.url);
+            writer.text(&wheel.sha256);
+            optional_number(writer, wheel.size);
+            writer.optional(&wheel.requires_python);
+            strings(writer, &wheel.requires_dist, true);
+        }
+    }
 }
 
 fn optional_number(writer: &mut Encoder, value: Option<u64>) {

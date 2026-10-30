@@ -162,8 +162,8 @@ fn oversized_or_wrong_version_frame_never_admits_success() {
     ));
     let mut bytes = frame(&resolved(41, "linux-64"));
     let offset = bytes
-        .windows(b"\"protocol\":3".len())
-        .position(|part| part == b"\"protocol\":3")
+        .windows(b"\"protocol\":4".len())
+        .position(|part| part == b"\"protocol\":4")
         .unwrap();
     bytes[offset + b"\"protocol\":".len()] = b'1';
     let fixture = Fixture::new(&bytes, "exit 0", Duration::from_secs(5));
@@ -227,6 +227,7 @@ fn materialize_binds_full_closure_platform_prefix_attempt_and_operation() {
             platform: platform.into(),
             final_prefix: final_prefix.into(),
             packages: vec![],
+            wheels: vec![],
         });
         let fixture = Fixture::new(&frame(&response), "exit 0", Duration::from_secs(5));
         assert!(matches!(

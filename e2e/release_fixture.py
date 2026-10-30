@@ -2,7 +2,7 @@
 
 The gh executable here is explicitly a test double. Actual signature acceptance
 must additionally be exercised with a real signed candidate and real gh.
-The current release contract is writer 9/readers [9]; historical reader ranges
+The current release contract is writer 10/readers [10]; historical reader ranges
 are rejection cases, not supported compatibility fixtures.
 """
 from __future__ import annotations
@@ -21,10 +21,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 REJECTED_IR_CONTRACTS = [
     ("legacy-range", {"writer": 8, "readers": [3, 4, 5, 6, 7, 8]}),
-    ("mixed-readers", {"writer": 9, "readers": [8, 9]}),
-    ("wrong-reader", {"writer": 9, "readers": [8]}),
-    ("wrong-writer", {"writer": 8, "readers": [9]}),
-    ("missing-reader", {"writer": 9, "readers": []}),
+    ("previous-contract", {"writer": 9, "readers": [9]}),
+    ("mixed-readers", {"writer": 10, "readers": [9, 10]}),
+    ("wrong-reader", {"writer": 10, "readers": [9]}),
+    ("wrong-writer", {"writer": 9, "readers": [10]}),
+    ("missing-reader", {"writer": 10, "readers": []}),
 ]
 
 
@@ -39,14 +40,13 @@ def fixture_manifest(version, artifacts):
         "source": {"commit": "a" * 40, "tree": "b" * 40},
         "candidate_id": "c" * 64, "qualification_sha256": "d" * 64, "recipe_sha256": "e" * 64,
         "platform": "linux-x86_64", "signer": {"workflow": schema.WORKFLOW, "ref": f"refs/tags/core-v{version}"},
-        "compatible": {"core": version, "sdk": version, "bridge": version, "conda": version,
-                       "ir": {"writer": 9, "readers": [9]},
+        "compatible": {"core": version, "sdk": version, "conda": version,
+                       "ir": {"writer": 10, "readers": [10]},
                        "helper_pins": {role: hashlib.sha256(data).hexdigest() for _, data, role in artifacts
-                                       if role in {"bridge", "conda"}}},
-        "gates": [{"id": name, "receipt_sha256": "f" * 64} for name in sorted(schema.REQUIRED_GATES)],
-        "partitions": [{"id": f"Linux-{scenario}-{fault}-{shard}", "sha256": "f" * 64}
-                       for scenario in ("apply-deploy", "apply-prune", "rollback-deploy", "rollback-prune", "apply-deploy-copy", "apply-prune-copy")
-                       for fault in ("error", "kill") for shard in range(8)],
+                                       if role == "conda"}},
+        # Transport tests exercise schema admission, not full recipe evidence.
+        "gates": [{"id": "publication-packages", "receipt_sha256": "f" * 64}],
+        "partitions": [],
         "exclusions": schema.EXCLUSIONS, "provenance": {"builder": "local", "hosted_build": False},
         "artifacts": [record(f"artifacts/{name}", data, role=role) for name, data, role in artifacts],
         "packages": [record("packages/core.tgz", b"test-package", registry="npm", name="@gripsack/core", version=version,
@@ -132,7 +132,6 @@ class Releases:
 
     def serve(self, version, tarball):
         artifacts = [(f"gripsack-{version}-x86_64-unknown-linux-musl.tar.gz", tarball, "core"),
-                     (f"grip-buildkit-bridge-{version}-x86_64-unknown-linux-musl", b"bridge", "bridge"),
                      (f"gripsack-conda-{version}-x86_64-unknown-linux-musl", b"conda", "conda"),
                      ("install.sh", b"reviewed fixture installer", "auxiliary")]
         manifest = fixture_manifest(version, artifacts)

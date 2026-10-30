@@ -1,4 +1,4 @@
-//! Traverse the single current workspace grammar before typed decoding.
+//! Traverse current and retained workspace grammar before typed decoding.
 //! Plain structs deny unknown fields themselves; tagged unions use field rules.
 
 use super::{allowed_fetch_fields, check_tagged_at, raw_node_span};
@@ -8,9 +8,30 @@ use serde_json::Value;
 mod commands;
 mod fields;
 
-fn acquisition(node: &Value, path: &str, owner: Option<&Span>, out: &mut Vec<Diagnostic>) {
+fn acquisition(
+    node: &Value,
+    path: &str,
+    owner: Option<&Span>,
+    retained: bool,
+    out: &mut Vec<Diagnostic>,
+) {
     let span = raw_node_span(node);
     let span = span.as_ref().or(owner);
+    if retained && node.get("kind").and_then(Value::as_str) == Some("package") {
+        out.push(
+            Diagnostic::error(crate::codes::MALFORMED, "v9 has no imported package source")
+                .with_label(span.cloned(), "declared here"),
+        );
+    }
+    if retained
+        && node.get("kind").and_then(Value::as_str) == Some("conda_environment")
+        && node.get("wheels").is_some()
+    {
+        out.push(
+            Diagnostic::error(crate::codes::MALFORMED, "v9 has no wheel requests")
+                .with_label(span.cloned(), "declared here"),
+        );
+    }
     check_tagged_at(node, path, fields::acquisition, span, out);
     if node.get("kind").and_then(Value::as_str) == Some("fetch")
         && let Some(fetch) = node.get("fetch")
@@ -20,6 +41,7 @@ fn acquisition(node: &Value, path: &str, owner: Option<&Span>, out: &mut Vec<Dia
 }
 
 pub(super) fn check(value: &Value, out: &mut Vec<Diagnostic>) {
+    let retained = value.get("ir_version").and_then(Value::as_u64) == Some(9);
     let Some(workspace) = value.get("workspace") else {
         return;
     };
@@ -47,6 +69,15 @@ pub(super) fn check(value: &Value, out: &mut Vec<Diagnostic>) {
         let path = format!("workspace output {name:?} ({kind})");
         let output_span = raw_node_span(output);
         let span = output_span.as_ref();
+        if retained && (kind == "service" || (kind == "task" && output.get("services").is_some())) {
+            out.push(
+                Diagnostic::error(
+                    crate::codes::MALFORMED,
+                    "v9 has no service declarations or prerequisites",
+                )
+                .with_label(span.cloned(), "declared here"),
+            );
+        }
         check_tagged_at(output, &path, fields::output, span, out);
         match kind {
             "recipe" => {
@@ -54,7 +85,7 @@ pub(super) fn check(value: &Value, out: &mut Vec<Diagnostic>) {
                     check_tagged_at(execution, &path, fields::execution, span, out);
                 }
                 if let Some(source) = output.get("source") {
-                    acquisition(source, &path, span, out);
+                    acquisition(source, &path, span, retained, out);
                 }
                 commands::steps(output, &path, span, out);
             }
@@ -68,7 +99,7 @@ pub(super) fn check(value: &Value, out: &mut Vec<Diagnostic>) {
                 if let Some(producer) = output.get("producer") {
                     check_tagged_at(producer, &path, fields::producer, span, out);
                     if let Some(provider) = producer.get("provider") {
-                        acquisition(provider, &path, span, out);
+                        acquisition(provider, &path, span, retained, out);
                     }
                 }
             }

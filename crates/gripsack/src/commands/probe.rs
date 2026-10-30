@@ -335,6 +335,25 @@ fn bind_probe(req: &ProbeRequest) -> Result<bool, String> {
     }
 }
 
+/// Reobserve only the captured probe requests; never invoke the frontend.
+pub(super) fn reobserve(
+    recorded: &BTreeMap<String, bool>,
+) -> Result<BTreeMap<String, bool>, String> {
+    recorded
+        .keys()
+        .map(|key| {
+            let (kind, argument) = key.split_once(':').ok_or("invalid saved probe key")?;
+            let request = ProbeRequest {
+                kind: kind.into(),
+                name: (kind == "executable").then(|| argument.into()),
+                path: (kind == "file_exists").then(|| argument.into()),
+                span: None,
+            };
+            bind_probe(&request).map(|value| (key.clone(), value))
+        })
+        .collect()
+}
+
 fn executable_on_path(name: &str) -> bool {
     std::env::var_os("PATH")
         .map(|paths| std::env::split_paths(&paths).any(|dir| is_executable_file(&dir.join(name))))

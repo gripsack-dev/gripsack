@@ -53,8 +53,6 @@ pub(super) fn prepare(
     let environment = OperatorEnvironment::capture()?;
     let options = super::BuildOptions {
         environment: &environment,
-        bridge: None,
-        worker: Default::default(),
         deadline,
     };
     let mut prepared = Vec::with_capacity(names.len());
@@ -125,8 +123,6 @@ pub(super) fn run_context(
 ) -> io::Result<gripsack_process::NativeOutcome> {
     let options = super::BuildOptions {
         environment,
-        bridge: None,
-        worker: Default::default(),
         deadline,
     };
     let observation = context

@@ -36,7 +36,6 @@ fn requested_version(value: &str) -> Result<String, String> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Channel {
     Tarball,
-    Brew,
     Cargo,
     Mise,
     Other,
@@ -46,8 +45,6 @@ fn channel(exe: &Path) -> Channel {
     let s = exe.to_string_lossy();
     if s.contains(".cargo/bin") {
         Channel::Cargo
-    } else if s.contains("Cellar") || s.contains("homebrew") || s.contains("linuxbrew") {
-        Channel::Brew
     } else if s.contains("/mise/") {
         Channel::Mise
     } else if s.contains("/.local/") || s.contains("/usr/local/") {
@@ -129,7 +126,6 @@ fn run(args: &SelfUpdateArgs) -> Result<String, String> {
             return Ok(format!("grip {current} is current"));
         }
         let delegated = match channel {
-            Channel::Brew => Some(("homebrew", "brew upgrade gripsack")),
             Channel::Cargo => Some(("cargo", "cargo install gripsack")),
             Channel::Mise => Some(("mise", "mise up gripsack")),
             _ => None,

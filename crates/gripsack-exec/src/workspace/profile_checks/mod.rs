@@ -108,8 +108,6 @@ pub(super) fn prepare(
     let environment = OperatorEnvironment::capture()?;
     let options = super::BuildOptions {
         environment: &environment,
-        bridge: None,
-        worker: Default::default(),
         deadline,
     };
     let retained_span = |span: &Span| Span {

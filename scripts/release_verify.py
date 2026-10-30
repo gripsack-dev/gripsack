@@ -26,7 +26,6 @@ import release_evidence as evidence
 import release_manifest as schema
 import release_publish as publish
 from local_artifact_consumers import external_repositories, snapshot
-from examples_check.fixtures import install_sdk
 
 require = schema.require
 
@@ -404,8 +403,8 @@ class Verification:
         lock = conda / "gripsack.lock"
         original_lock = schema.digest(lock)
         home = Path(self.runner.environment["GRIPSACK_HOME"])
-        require(not any((home / "tools" / f"{stem}-{self.version}").exists()
-                        for stem in ("conda-helper", "buildkit-bridge")), "helper cache must be cold before default provisioning")
+        require(not (home / "tools" / f"conda-helper-{self.version}").exists(),
+                "helper cache must be cold before default provisioning")
         self.approve(surface, "conda", conda)
         output = self.runner.run(surface, "conda_check", [self.installed, "check", "--json"], cwd=conda)
         evidence.check_output(output)
@@ -415,24 +414,11 @@ class Verification:
         require(result.strip() == "needle" and schema.digest(lock) == original_lock, "frozen Conda consumer changed or did not execute")
         surface["data"] = {"installed": {}, "conda_lock": evidence.reference(self.root, lock),
                            "conda_output": evidence.reference(self.root, Path(built["outputs"][0]["path"]) / "bin/rg")}
-        bridge = self.root / "bridge-consumer"
-        shutil.copytree(self.args.source / "examples/workspaces/03-source-built", bridge)
-        install_sdk(bridge, self.sdk_root)
-        self.approve(surface, "bridge", bridge)
-        # This is the checked-in real static C build, not an echo fixture. The
-        # core owns its BuildKit worker under this fresh private GRIPSACK_HOME.
-        try:
-            self.runner.run(surface, "bridge_lock", [self.installed, "update"], cwd=bridge)
-            built = json.loads(self.runner.run(surface, "bridge_build", [self.installed, "build", "greeter", "--json"], cwd=bridge))
-            self.runner.run(surface, "bridge_run", [self.installed, "task", "run", "smoke"], cwd=bridge)
-            surface["data"]["bridge_output"] = evidence.reference(self.root, Path(built["outputs"][0]["path"]) / "bin/greeter")
-        finally:
-            self.runner.run(surface, "bridge_stop", [self.installed, "builder", "stop"], cwd=bridge)
-        for role, filename in (("conda", "gripsack-conda"), ("bridge", "bridge")):
-            matches = [p for p in (home / "tools").rglob(filename) if p.is_file()]
-            require(len(matches) == 1, f"{role} default helper was not provisioned")
-            require(schema.digest(matches[0]) == self.manifest["compatible"]["helper_pins"][role], "default helper bytes differ")
-            surface["data"]["installed"][role] = evidence.reference(self.root, matches[0])
+        helper = home / "tools" / f"conda-helper-{self.version}" / "gripsack-conda"
+        require(helper.is_file(), "conda default helper was not provisioned")
+        require(schema.digest(helper) == self.manifest["compatible"]["helper_pins"]["conda"],
+                "default helper bytes differ")
+        surface["data"]["installed"]["conda"] = evidence.reference(self.root, helper)
 
     def site(self, surface):
         binding, page = self.root / "site-release.json", self.root / "site.html"

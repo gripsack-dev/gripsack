@@ -29,11 +29,11 @@ export function checkFileBindings(catalog: ReadonlyMap<string, WorkspaceOutputNo
     }
   }
   for (const output of catalog.values()) {
-    if (output.kind === "recipe" || output.kind === "task") {
+    if (output.kind === "task") {
       for (const name of output.checks ?? []) {
         if (attached.has(name)) {
           throw errorAt(diagnosticCodes.badWorkspaceContext,
-            "a profile-bound file check cannot serve as a recipe validator or task postcondition",
+            "a profile-bound file check cannot serve as a task postcondition",
             output.span, "check consumed in a different lifecycle here");
         }
       }

@@ -28,8 +28,8 @@ ALLOWED: dict[str, frozenset[str]] = {
     "gripsack-policy": frozenset({"vstd"}),
     "gripsack-ir": frozenset({
         "gripsack-policy", "serde", "serde_json", "thiserror", "jsonschema",
-        # Pure semantic identities and verified workspace admission kernels.
-        "sha2", "vstd",
+        # Pure semantic identities, workspace admission and credential-free URI parsing.
+        "sha2", "vstd", "url",
     }),
     "gripsack-store": frozenset({
         "gripsack-fs", "gripsack-ir", "gripsack-policy", "gripsack-process", "serde", "serde_json",

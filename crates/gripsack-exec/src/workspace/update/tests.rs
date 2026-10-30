@@ -84,13 +84,13 @@ fn workspace(sources: &[(&str, PathBuf)]) -> Ir {
         .iter()
         .map(|(name, path)| {
             serde_json::json!({
-                "kind": "recipe", "name": name, "span": {"file":"gripsack.ts","line":2},
-                "source": {
+                "kind": "package", "name": name, "span": {"file":"gripsack.ts","line":2},
+                "producer": {"kind":"provider", "provider":{
                     "kind":"fetch", "fetch":{"kind":"file","path":path},
                     "span":{"file":"gripsack.ts","line":3}
-                },
-                "execution":{"kind":"host","access":"unconfined"},
-                "output_kind":"tree", "target":{"os":"linux","arch":"x86_64"}
+                }},
+                "commands": {}, "layout":{"kind":"relocatable"},
+                "target":{"os":"linux","arch":"x86_64"}
             })
         })
         .collect();
@@ -145,6 +145,33 @@ fn check_and_publish_agree_on_metadata_only_pin_changes() {
         current.summary().outcome(),
         crate::report::UpdateCheckOutcome::Current
     );
+}
+
+#[test]
+fn explicit_update_migrates_retained_lock_format_without_replacing_unselected_pins() {
+    let fixture = Fixture::new();
+    let ir = workspace(&[
+        ("tool", fixture.external("tool", "selected tool\n")),
+        ("other", fixture.external("other", "unselected tool\n")),
+    ]);
+    update(&ir, &fixture.context(), UpdateMode::Publish).unwrap();
+    let mut legacy: WorkspaceLock = serde_json::from_slice(&fixture.lock_bytes()).unwrap();
+    legacy.lock_version = 2;
+    let before = serde_json::to_vec_pretty(&legacy).unwrap();
+    WorkspaceLock::from_json(std::str::from_utf8(&before).unwrap()).unwrap();
+    fs::write(fixture.repo.join("gripsack.lock"), &before).unwrap();
+    let mut context = fixture.context();
+    context.only = vec!["tool".into()];
+
+    let checked = update(&ir, &context, UpdateMode::Check).unwrap();
+    assert_eq!(checked.summary().changed(), 1);
+    assert_eq!(fixture.lock_bytes(), before);
+    update(&ir, &context, UpdateMode::Publish).unwrap();
+    let current =
+        WorkspaceLock::from_json(std::str::from_utf8(&fixture.lock_bytes()).unwrap()).unwrap();
+    assert_eq!(current.lock_version, WORKSPACE_LOCK_VERSION);
+    assert_eq!(current.definitions, legacy.definitions);
+    assert_eq!(current.resolutions, legacy.resolutions);
 }
 
 #[test]

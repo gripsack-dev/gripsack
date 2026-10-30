@@ -23,12 +23,12 @@ pub(super) fn run(
     span: &Span,
     protection: &Protection<'_>,
 ) -> Result<(), ExecError> {
-    let lease = roots::ProcessLease::register(protection.session, protection.closure, None)?;
+    let lease = roots::ProcessLease::register(protection.session, protection.closure)?;
     let directory = gripsack_fs::open(home)?;
     let staging = match stage(context, root, home, lease.id()) {
         Ok(staging) => staging,
         Err(error) => {
-            roots::remove_build_staging(&directory, lease.id())?;
+            roots::remove_native_staging(&directory, lease.id())?;
             lease.release_unlaunched(protection.session)?;
             return Err(file_failure(span, error));
         }
@@ -36,7 +36,7 @@ pub(super) fn run(
     let handle = match lease.duplicate_handle() {
         Ok(handle) => handle,
         Err(error) => {
-            roots::remove_build_staging(&directory, lease.id())?;
+            roots::remove_native_staging(&directory, lease.id())?;
             lease.release_unlaunched(protection.session)?;
             return Err(error.into());
         }
@@ -79,7 +79,7 @@ pub(super) fn run(
         ));
     }
     // The shared supervisor's terminal receipt is the only cleanup authority.
-    roots::remove_build_staging(&directory, lease.id())?;
+    roots::remove_native_staging(&directory, lease.id())?;
     lease.release(protection.session, &outcome.receipt)?;
     if !outcome.success {
         return Err(file_failure(

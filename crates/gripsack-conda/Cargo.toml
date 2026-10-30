@@ -23,6 +23,20 @@ rattler_digest = { version = "=2.0.0", default-features = false }
 jiff = { version = "0.2", default-features = false, features = ["std"] }
 archspec = "0.2"
 url = "2"
+zip = { version = "6", default-features = false, features = ["deflate"] }
+csv = "1"
+base64 = "0.22"
+sha2.workspace = true
+tempfile = "3"
+uv-distribution-filename = "=0.0.98"
+uv-pypi-types = "=0.0.98"
+uv-pep440 = "=0.0.98"
+astral-ini = "0.0.1"
+uv-platform-tags = "=0.0.98"
+pep508_rs = "=0.9.2"
+mailparse = "0.16"
+hex = "0.4"
+uv-shell = "=0.0.98"
 
 [dev-dependencies]
 tempfile = "3"

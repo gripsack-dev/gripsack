@@ -13,7 +13,6 @@
 //!
 //! Command-owned acquisition combines bounded transports with reusable clients.
 
-mod bridge_pins;
 mod build_env;
 mod conda_pins;
 mod context;
@@ -29,8 +28,8 @@ pub mod spool;
 pub mod throttle;
 
 pub use context::FetchContext;
-pub use fetch::{FetchError, FetchOutcome, bridge, resolve_git_head};
-pub use host::{AssetTarget, BRIDGE_RELEASE, DENO_RELEASE, resolve as resolve_host_asset};
+pub use fetch::{FetchError, FetchOutcome, conda_helper, resolve_git_head};
+pub use host::{AssetTarget, DENO_RELEASE, resolve as resolve_host_asset};
 pub use http::{HttpFailure, HttpFailureKind, RetryStopReason};
 pub use identity::{DownloadHash, FetchIdentity};
 pub use limits::FetchLimits;

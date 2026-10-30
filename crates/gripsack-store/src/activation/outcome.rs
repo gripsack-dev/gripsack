@@ -68,6 +68,13 @@ impl StateRecord {
             | super::ActivationAction::WorkspaceHook { .. } => 1,
             super::ActivationAction::Fonts | super::ActivationAction::DesktopEntry => 2,
             super::ActivationAction::Service { .. } => 3,
+            super::ActivationAction::ScheduledJob { enabled, .. } => {
+                if *enabled {
+                    crate::jobs::REGISTER_PROCESS_COUNT
+                } else {
+                    crate::jobs::REMOVE_PROCESS_COUNT
+                }
+            }
         };
         if self.processes.len() > required_processes {
             return Err(invalid());

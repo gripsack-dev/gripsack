@@ -1,6 +1,6 @@
 //! `gripsack-conda` helper: the out-of-process Rattler solver and installer.
 //!
-//! Speaks one-shot protocol v3 (one versioned length-prefixed request and
+//! Speaks one-shot protocol v4 (one versioned length-prefixed request and
 //! response over stdio), implemented by `gripsack_conda::protocol`.
 //!
 //! * `resolve` — queries channel repodata over anonymous rustls HTTPS and
@@ -12,7 +12,8 @@
 //!   archive, extracts via `rattler_package_streaming`, refuses packages with
 //!   pre/post-link or activate/deactivate scripts, links with Rattler's
 //!   `link_package` patched for the final prefix (copy mode, clobber = hard
-//!   error), and writes normalized conda-meta receipts. NO network access.
+//!   error), installs admitted wheels with pinned offline uv, and writes
+//!   normalized conda-meta receipts. NO network access or Python execution.
 //!
 //! Helper success is advisory: the core re-validates independently.
 
@@ -30,9 +31,7 @@ use gripsack_ir::workspace_model::lock::{
     BytecodePolicy, ChannelPriority, LockedCondaEnvironment, LockedCondaPackage, LockedNoArch,
     LockedRunExports, MaterializerPolicy, ReceiptPolicy,
 };
-use rattler::install::{
-    AppleCodeSignBehavior, ClobberMode, InstallDriver, InstallOptions, PythonInfo, link_package,
-};
+use rattler::install::{ClobberMode, InstallDriver, InstallOptions, PythonInfo, link_package};
 use rattler_conda_types::package::{IndexJson, LinkJson, NoArchLinks, PackageFile, PathsJson};
 use rattler_conda_types::prefix::Prefix;
 use rattler_conda_types::{
@@ -40,6 +39,7 @@ use rattler_conda_types::{
     RepoDataRecord, Subdir, Version,
 };
 mod pixi_import;
+mod wheels;
 use pixi_import::import_pixi;
 use rattler_networking::LazyClient;
 use rattler_repodata_gateway::Gateway;
@@ -111,6 +111,20 @@ async fn serve() -> ExitCode {
             send_error(&mut output, Some(attempt), "protocol", error.to_string());
             return ExitCode::FAILURE;
         }
+    }
+    let platform = match &request {
+        Request::Resolve(request) => request.platform.as_str(),
+        Request::ImportPixi(request) => request.platform.as_str(),
+        Request::Materialize(request) => request.closure.platform.as_str(),
+    };
+    if platform != "linux-64" {
+        send_error(
+            &mut output,
+            Some(attempt),
+            "unsupported_platform",
+            "only Linux/WSL x86_64 (linux-64) is supported".into(),
+        );
+        return ExitCode::FAILURE;
     }
     let response = match request {
         Request::Resolve(request) => resolve(request).await.map(|environment| {
@@ -341,6 +355,7 @@ async fn resolve(request: ResolveRequest) -> HResult<LockedCondaEnvironment> {
         system_requirements: request.system_requirements,
         virtual_packages: request.virtual_packages,
         packages,
+        wheels: Vec::new(),
         materializer: MaterializerPolicy {
             bytecode: BytecodePolicy::Suppress,
             receipt: ReceiptPolicy::NormalizedCondaMeta,
@@ -623,6 +638,7 @@ async fn materialize(request: MaterializeRequest<'_>) -> HResult<MaterializedRes
         .packages
         .iter()
         .map(|record| record.sha256.as_str())
+        .chain(closure.wheels.iter().map(|record| record.sha256.as_str()))
         .collect();
     if archives.keys().copied().collect::<BTreeSet<_>>() != expected_archives {
         return Err(fail(
@@ -816,8 +832,30 @@ async fn materialize(request: MaterializeRequest<'_>) -> HResult<MaterializedRes
                 ));
             }
         }
+        let receipt_path = format!(
+            "conda-meta/{}-{}-{}.json",
+            package.record.name, package.record.version, package.record.build,
+        );
+        if let Some(previous) = owners.insert(receipt_path.clone(), name.clone()) {
+            return Err(fail(
+                "clobber",
+                format!("receipt '{receipt_path}' overlaps package '{previous}'"),
+            ));
+        }
         package_paths.push((name, paths_json));
     }
+    let prepared_wheels = wheels::prepare(
+        &closure,
+        &archives,
+        wheels::CondaInventory {
+            packages: &prepared,
+            paths: &package_paths,
+            python: python_info.as_ref(),
+        },
+        &mut owners,
+        &directory_paths,
+        &final_prefix,
+    )?;
     // Generated entry points are not protected by Rattler's clobber registry.
     // Check their relocated destinations and ancestor conflicts before any link.
     for (path, name) in &owners {
@@ -865,7 +903,6 @@ async fn materialize(request: MaterializeRequest<'_>) -> HResult<MaterializedRes
             allow_ref_links: Some(false),
             platform: Some(subdir),
             python_info: python_info.clone(),
-            apple_codesign_behavior: AppleCodeSignBehavior::default(),
             ..InstallOptions::default()
         };
         let installed = link_package(&package.directory, &prefix, &driver, options)
@@ -904,6 +941,7 @@ async fn materialize(request: MaterializeRequest<'_>) -> HResult<MaterializedRes
     // rattler prefix machinery appends a conda-meta/history log per link;
     // it is not a per-package receipt, so drop it.
     let _ = std::fs::remove_file(staging_dir.join("conda-meta/history"));
+    let wheel_receipts = prepared_wheels.install(&staging_dir, &final_prefix)?;
 
     Ok(MaterializedResponse {
         attempt: request.attempt,
@@ -911,6 +949,7 @@ async fn materialize(request: MaterializeRequest<'_>) -> HResult<MaterializedRes
         platform: closure.platform,
         final_prefix: request.final_prefix,
         packages: receipts,
+        wheels: wheel_receipts,
     })
 }
 

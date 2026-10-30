@@ -24,18 +24,15 @@ from .extract import Block, CheckFailure
 from .fixtures import scaffold, fresh_home
 
 def host_facts() -> dict:
-    os_name = {"Linux": "linux", "Darwin": "darwin"}.get(platform.system())
-    if os_name is None:
+    if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise CheckFailure(
-            f"unsupported checker host OS {platform.system()!r} — "
-            "expectations are derived for linux/darwin"
+            f"unsupported checker host {platform.system()!r}/{platform.machine()!r}; "
+            "expected Linux/WSL x86_64"
         )
-    machine = platform.machine()
-    arch = "aarch64" if machine in ("arm64", "aarch64") else "x86_64"
     return {
-        "os": os_name,
-        "arch": arch,
-        "libc": "glibc-2.36" if os_name == "linux" else None,
+        "os": "linux",
+        "arch": "x86_64",
+        "libc": "glibc-2.36",
         "hostname": "examples-checker",
     }
 

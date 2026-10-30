@@ -64,6 +64,15 @@ pub(crate) fn prepare_apply(
     ir: &Ir,
     ctx: &Ctx,
 ) -> Result<(LifecycleSession, NativeProfiles), ExecError> {
+    let session = LifecycleSession::acquire(&ctx.home)?;
+    prepare_apply_in_session(ir, ctx, session)
+}
+
+pub(crate) fn prepare_apply_in_session(
+    ir: &Ir,
+    ctx: &Ctx,
+    session: LifecycleSession,
+) -> Result<(LifecycleSession, NativeProfiles), ExecError> {
     let workspace = &ir.workspace;
     let mut selected = Vec::new();
     let mut needs_production = false;
@@ -82,6 +91,7 @@ pub(crate) fn prepare_apply(
         };
         admit(profile)?;
         needs_production |= !profile.hooks.is_empty()
+            || !profile.schedules.is_empty()
             || profile.environment.is_some()
             || profile.files.iter().any(|file| !file.checks.is_empty())
             || profile.files.iter().any(|file| {
@@ -107,8 +117,7 @@ pub(crate) fn prepare_apply(
         ));
     }
     if !needs_production {
-        let session = LifecycleSession::acquire(&ctx.home)?;
-        let native = NativeProfiles::prepare(
+        let mut native = NativeProfiles::prepare(
             ir,
             &ctx.repository,
             &ctx.home,
@@ -116,16 +125,15 @@ pub(crate) fn prepare_apply(
             ctx.fetch.limits(),
             None,
         )?;
+        retain_semantic_evidence(ir, ctx, &session, &mut native, None)?;
         return Ok((session, native));
     }
     let environment = gripsack_process::OperatorEnvironment::capture()?;
     let options = BuildOptions {
         environment: &environment,
-        bridge: None,
-        worker: Default::default(),
         deadline: Instant::now() + gripsack_process::Limits::default().timeout,
     };
-    let mut held = realize::realize_held(ir, ctx, &options, &selected)?;
+    let held = realize::realize_in_session(ir, ctx, &options, &selected, session)?;
     let predecessor = NativeProfiles::migration_predecessor(&ctx.home)?;
     let check_retention = if workspace.outputs.iter().any(|output| {
         matches!(output, WorkspaceOutput::Profile(profile)
@@ -163,22 +171,71 @@ pub(crate) fn prepare_apply(
                 "realized profile is absent from the deployment selection",
             )
         })?;
-        profile.build_closure = paths.iter().cloned().collect();
+        profile.build_closure.extend(paths.iter().cloned());
+        profile.build_closure.sort();
+        profile.build_closure.dedup();
     }
+    retain_semantic_evidence(ir, ctx, &held.session, &mut native, Some(&held.realization))?;
     // The still-held lifecycle session now protects all immutable objects until
     // the caller's generation is durable. No permanent Output root is leaked.
-    held.finish_build()?;
     Ok((held.session, native))
+}
+
+fn retain_semantic_evidence(
+    ir: &Ir,
+    ctx: &Ctx,
+    session: &LifecycleSession,
+    native: &mut NativeProfiles,
+    realization: Option<&super::realize::Realization<'_>>,
+) -> Result<(), ExecError> {
+    use crate::semantic::{capture_profile, retention};
+    let pins = super::pins::WorkspacePins::read(&ctx.repository)?;
+    let previous = gripsack_store::generations::current(&ctx.home)?
+        .map(|id| gripsack_store::generations::admit_manifest(&ctx.home, id))
+        .transpose()?;
+    for (name, profile) in &mut native.profiles {
+        let snapshot = capture_profile(ir, &ctx.repository, &pins, name, realization)
+            .map_err(|error| super::file_failure(&profile.span, error))?;
+        let previous = previous
+            .as_ref()
+            .and_then(|generation| generation.deployments.get(name));
+        let retained = previous
+            .map(|deployment| retention::read_profile(&ctx.home, name, deployment))
+            .transpose()
+            .map_err(|error| super::file_failure(&profile.span, error))?
+            .flatten();
+        let reuse = previous
+            .zip(retained.as_ref())
+            .filter(|(previous, retained)| {
+                previous.store_path == profile.store_path
+                    && previous.tree256.as_deref() == Some(profile.tree.as_str())
+                    && previous.env == profile.env
+                    && previous.intents == profile.intents
+                    && previous
+                        .build_closure
+                        .iter()
+                        .filter(|root| !retention::is_root(root))
+                        .eq(profile.build_closure.iter())
+                    && retention::same_desired_state(retained, &snapshot)
+            });
+        let root = if let Some((previous, _)) = reuse {
+            retention::profile_root(previous)
+                .map_err(|error| super::file_failure(&profile.span, error))?
+                .expect("admitted retained snapshot has a root")
+                .to_owned()
+        } else {
+            retention::publish_profile(session, name, snapshot)
+                .map_err(|error| super::file_failure(&profile.span, error))?
+        };
+        profile.build_closure.push(root);
+        profile.build_closure.sort();
+        profile.build_closure.dedup();
+    }
+    Ok(())
 }
 
 pub(super) fn admit(profile: &ProfileOutput) -> Result<(), ExecError> {
     super::profile_launchers::destinations(profile)?;
-    if !profile.schedules.is_empty() {
-        return Err(unavailable(
-            &profile.span,
-            "profile schedule registration is not available",
-        ));
-    }
     super::profile_checks::admit(profile)?;
     Ok(())
 }

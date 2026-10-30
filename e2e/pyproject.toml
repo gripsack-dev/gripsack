@@ -11,6 +11,8 @@ dependencies = [
 package = false
 
 [tool.pytest.ini_options]
+addopts = "-m 'not native_integration'"
 markers = [
     "requires_fault_controls: exercises fault/trace controls compiled only into debug/test cores",
+    "native_integration: explicitly selected real external runtime/helper/network qualification in isolated fixtures",
 ]

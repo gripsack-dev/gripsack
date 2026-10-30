@@ -25,6 +25,10 @@ use std::{
     time::Instant,
 };
 
+#[cfg(test)]
+#[path = "task_capture_tests.rs"]
+mod capture_tests;
+
 #[derive(Debug, Clone, Copy)]
 pub enum BusyPolicy {
     Fail,
@@ -79,7 +83,7 @@ pub fn run_task(
     task_report::persist_log(&ctx.home, &report, &[])?;
     // Common realization resolves the whole selected closure, including explicit
     // EnsureArtifact targets; neither task execution nor artifact hits are cached.
-    let mut held = match realize::realize_held(ir, ctx, options, &ctx.only) {
+    let held = match realize::realize_held(ir, ctx, options, &ctx.only) {
         Ok(held) => held,
         Err(error) => {
             report.status = TaskStatus::Blocked;
@@ -93,6 +97,90 @@ pub fn run_task(
         .iter()
         .flat_map(|(_, paths)| paths.iter().cloned())
         .collect();
+    run_realized(
+        ir,
+        ctx,
+        options,
+        policy,
+        graph,
+        report,
+        held.session,
+        &held.realization,
+        closure,
+        None,
+    )
+}
+
+/// Caller holds the same lifecycle fence used to select the active revision.
+/// Registration of the process root happens before that fence is released.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::workspace) fn run_captured(
+    ir: &Ir,
+    ctx: &Ctx,
+    options: &BuildOptions<'_>,
+    session: LifecycleSession,
+    realization: &realize::Realization<'_>,
+    closure: BTreeSet<PathBuf>,
+    expected: &[Vec<gripsack_process::ProgramIdentity>],
+    schedule: task_report::ScheduledInvocation,
+) -> Result<TaskReport, ExecError> {
+    let task = ctx
+        .only
+        .first()
+        .ok_or_else(|| failure("captured task has no root"))?;
+    task_graph::check_selection(ctx, task)?;
+    let graph = TaskGraph::admit(ir, task)?;
+    let mut report = TaskReport::new(task, graph.plan.revision.clone())?;
+    report.schedule = Some(schedule);
+    report.persist(&ctx.home)?;
+    task_report::persist_log(&ctx.home, &report, &[])?;
+    run_realized(
+        ir,
+        ctx,
+        options,
+        TaskRunPolicy {
+            on_busy: BusyPolicy::Skip,
+            stdin: TaskStdin::Closed,
+            output: TaskOutputMode::Capture,
+        },
+        graph,
+        report,
+        session,
+        realization,
+        closure,
+        Some(expected),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_realized(
+    ir: &Ir,
+    ctx: &Ctx,
+    options: &BuildOptions<'_>,
+    policy: TaskRunPolicy,
+    graph: TaskGraph<'_>,
+    mut report: TaskReport,
+    session: LifecycleSession,
+    realization: &realize::Realization<'_>,
+    closure: BTreeSet<PathBuf>,
+    expected: Option<&[Vec<gripsack_process::ProgramIdentity>]>,
+) -> Result<TaskReport, ExecError> {
+    let services: BTreeSet<_> = graph
+        .nodes
+        .iter()
+        .flat_map(|task| task.services.iter().cloned())
+        .collect();
+    if let Err(error) = crate::services::require_ready(
+        ir,
+        ctx,
+        &services.into_iter().collect::<Vec<_>>(),
+        options.deadline,
+    ) {
+        report.status = TaskStatus::Blocked;
+        report.error = Some(error.to_string());
+        report.persist(&ctx.home)?;
+        return Ok(report);
+    }
     report.execution_binding = Some(task_report::TaskExecutionBinding(
         gripsack_process::Sha256Digest::of(&serde_json::to_vec(&(
             &report.revision,
@@ -100,18 +188,27 @@ pub fn run_task(
             &closure,
         ))?),
     ));
-    let retention = RetentionSet::admit(&held.session, closure)?;
-    let lease = ProcessLease::register(&held.session, &retention, None)?;
+    let retention = RetentionSet::admit(&session, closure)?;
+    let lease = ProcessLease::register(&session, &retention)?;
     report.process_root = Some(lease.id().as_str().to_owned());
     report.root_retained = true;
     report.persist(&ctx.home)?;
-    held.finish_build()?;
     let staging = create_staging(ctx, lease.id().as_str())?;
-    let prepared = prepare(&graph, ctx, options, &held.realization, &staging, &ir.host);
+    let prepared =
+        prepare(&graph, ctx, options, realization, &staging, &ir.host).and_then(|nodes| {
+            if let Some(expected) = expected
+                && identities(&nodes) != expected
+            {
+                return Err(failure(
+                    "captured task executable or interpreter identity changed",
+                ));
+            }
+            Ok(nodes)
+        });
     let nodes = match prepared {
         Ok(nodes) => nodes,
         Err(error) => {
-            lease.release_unlaunched(&held.session)?;
+            lease.release_unlaunched(&session)?;
             remove_staging(ctx, &staging)?;
             report.status = TaskStatus::Blocked;
             report.root_retained = false;
@@ -128,7 +225,7 @@ pub fn run_task(
     )? {
         Ok(claims) => claims,
         Err(conflict) => {
-            lease.release_unlaunched(&held.session)?;
+            lease.release_unlaunched(&session)?;
             remove_staging(ctx, &staging)?;
             report.root_retained = false;
             report.status = match conflict {
@@ -147,7 +244,7 @@ pub fn run_task(
         worker: None,
         retention: Some(lease.duplicate_handle()?),
     };
-    drop(held.session);
+    drop(session);
     let mut logs = Vec::new();
     let mut launched = false;
     let execution = execute(
@@ -187,6 +284,35 @@ pub fn run_task(
     task_report::persist_log(&ctx.home, &report, &logs)?;
     report.persist(&ctx.home)?;
     Ok(report)
+}
+
+pub(in crate::workspace) fn capture_programs(
+    ir: &Ir,
+    ctx: &Ctx,
+    options: &BuildOptions<'_>,
+    realization: &realize::Realization<'_>,
+    staging: &Path,
+) -> Result<Vec<Vec<gripsack_process::ProgramIdentity>>, ExecError> {
+    let task = ctx
+        .only
+        .first()
+        .ok_or_else(|| failure("captured task has no root"))?;
+    let graph = TaskGraph::admit(ir, task)?;
+    let nodes = prepare(&graph, ctx, options, realization, staging, &ir.host)?;
+    Ok(identities(&nodes))
+}
+
+fn identities(nodes: &[PreparedNode]) -> Vec<Vec<gripsack_process::ProgramIdentity>> {
+    nodes
+        .iter()
+        .map(|node| {
+            node.commands
+                .iter()
+                .chain(&node.checks)
+                .map(|command| command.program.identity())
+                .collect()
+        })
+        .collect()
 }
 
 fn create_staging(ctx: &Ctx, id: &str) -> Result<PathBuf, ExecError> {
@@ -260,9 +386,7 @@ fn prepare(
                 WorkspaceStep::Action(
                     gripsack_ir::workspace_model::WorkspaceAction::EnsureArtifact { output, span },
                 ) => {
-                    if !realization.recipes.contains_key(output.as_str())
-                        && !realization.packages.contains_key(output.as_str())
-                    {
+                    if !realization.packages.contains_key(output.as_str()) {
                         return Err(gate(
                             span,
                             format!(

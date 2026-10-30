@@ -48,11 +48,26 @@ where
 /// per-kind fetch field allowlist; the Conda/Pixi variants are closed
 /// by their `deny_unknown_fields` records.
 pub(super) fn source<'de, D: Deserializer<'de>>(decoder: D) -> Result<LockedSource, D::Error> {
+    source_version(decoder, super::WORKSPACE_LOCK_VERSION)
+}
+
+pub(super) fn source_version<'de, D: Deserializer<'de>>(
+    decoder: D,
+    version: u32,
+) -> Result<LockedSource, D::Error> {
     let fields: BTreeMap<String, serde_json::Value> = unique_map(decoder)?;
     let kind = fields
         .get("kind")
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| D::Error::custom("locked source is missing its kind"))?;
+    if version == 2
+        && (matches!(kind, "package" | "oci_image")
+            || (kind == "conda_environment" && fields.contains_key("wheels")))
+    {
+        return Err(D::Error::custom(
+            "new source fields are not admitted by the retained version-2 lock",
+        ));
+    }
     match kind {
         "fetch" => {
             if fields.len() != 2 {
@@ -82,6 +97,24 @@ pub(super) fn source<'de, D: Deserializer<'de>>(decoder: D) -> Result<LockedSour
             ))
             .map_err(D::Error::custom)?;
             Ok(LockedSource::Fetch { fetch: spec })
+        }
+        "package" => {
+            if fields.len() != 2 || !fields.contains_key("manifest") {
+                return Err(D::Error::custom(
+                    "unknown or missing locked package-source field",
+                ));
+            }
+            LockedSource::deserialize(serde::de::value::MapDeserializer::new(fields.into_iter()))
+                .map_err(D::Error::custom)
+        }
+        "oci_image" => {
+            if fields.len() != 2 || !fields.contains_key("reference") {
+                return Err(D::Error::custom(
+                    "unknown or missing locked OCI image-source field",
+                ));
+            }
+            LockedSource::deserialize(serde::de::value::MapDeserializer::new(fields.into_iter()))
+                .map_err(D::Error::custom)
         }
         "conda_environment" | "pixi_lock" => {
             LockedSource::deserialize(serde::de::value::MapDeserializer::new(fields.into_iter()))

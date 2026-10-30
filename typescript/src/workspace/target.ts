@@ -1,11 +1,10 @@
-/** v5 per-output execution, platform and prefix admission (0052 A1-02).
+/** v10 per-output platform and prefix admission.
  *  Declared producer requirements are checked against consumers, not
  *  against the machine evaluating the workspace. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type {
   PackageLayout,
-  RecipeExecution,
   WorkspaceOsVersion,
   WorkspaceOutputNode,
   WorkspacePlatform,
@@ -29,50 +28,20 @@ function asVersion(value: unknown, where: string): WorkspaceOsVersion {
 export function asPlatform(value: unknown, where: string): WorkspacePlatform {
   const target = asRecord(value, where);
   rejectUnknownFields(where, target, ["os", "arch", "abi", "minimum_os"]);
-  if (target.os !== "linux" && target.os !== "macos") {
-    throw new Error(`${where}.os must be "linux" or "macos"`);
+  if (target.os !== "linux") {
+    throw new Error(`${where}.os must be "linux"`);
   }
-  if (target.arch !== "x86_64" && target.arch !== "aarch64") {
-    throw new Error(`${where}.arch must be "x86_64" or "aarch64"`);
+  if (target.arch !== "x86_64") {
+    throw new Error(`${where}.arch must be "x86_64"`);
   }
   if (target.abi !== undefined) {
-    const allowed = target.os === "linux" ? ["gnu", "musl"] : ["darwin"];
+    const allowed = ["gnu", "musl"];
     if (!allowed.includes(target.abi as string)) {
       throw new Error(`${where}.abi is incompatible with ${target.os}; expected ${allowed.join(" or ")}`);
     }
   }
   if (target.minimum_os !== undefined) asVersion(target.minimum_os, `${where}.minimum_os`);
   return value as WorkspacePlatform;
-}
-
-export function asExecution(value: unknown, where: string): RecipeExecution {
-  const execution = asRecord(value, where);
-  if (execution.kind === "host") {
-    rejectUnknownFields(where, execution, ["kind", "access"]);
-    if (execution.access !== "unconfined") {
-      throw new Error(`${where}.access must explicitly be "unconfined" (host filesystem/kernel/network access)`);
-    }
-  } else if (execution.kind === "isolated_linux") {
-    rejectUnknownFields(where, execution, ["kind", "worker", "platform", "toolchain"]);
-    if (execution.worker !== "buildkit") throw new Error(`${where}.worker must be "buildkit"`);
-    const platform = asPlatform(execution.platform, `${where}.platform`);
-    if (platform.os !== "linux") throw new Error(`${where}.platform must be Linux`);
-    const toolchain = asRecord(execution.toolchain, `${where}.toolchain`);
-    rejectUnknownFields(`${where}.toolchain`, toolchain, ["reference"]);
-    asImageReference(toolchain.reference, `${where}.toolchain.reference`);
-  } else {
-    throw new Error(`${where}.kind must be "host" or "isolated_linux"; native acquisition uses a provider-backed package`);
-  }
-  return value as RecipeExecution;
-}
-
-export function asImageReference(value: unknown, where: string): string {
-  if (typeof value !== "string" ||
-    !/^[a-z0-9][a-z0-9._:/-]*\/[a-z0-9._:/-]+@sha256:[a-f0-9]{64}$/.test(value) ||
-    value.includes("//")) {
-    throw new Error(`${where} must be a normalized digest-pinned OCI image`);
-  }
-  return value;
 }
 
 export function asInstallPrefix(value: unknown, where: string): string {
@@ -151,30 +120,18 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
     if ("target" in node) {
       guard(node, () => void asPlatform(node.target, `${node.kind} '${node.name}' target`));
     }
-    if (node.kind === "recipe") {
-      guard(node, () => void asExecution(node.execution, `recipe '${node.name}' execution`));
-    }
     if (node.kind === "package") {
       guard(node, () => void asLayout(node.layout, `package '${node.name}' layout`));
-      if (node.producer.kind === "recipe") {
-        const recipe = catalog.get(node.producer.recipe)!;
-        if (recipe.kind === "recipe") {
-          requireCompatibleTarget(`package '${node.name}' producer target mismatch`, node, recipe);
-          if (node.archive_root !== undefined && recipe.source.kind !== "fetch") {
-            guard(node, () => { throw new Error(`package '${node.name}': archiveRoot requires a native relocatable package`); });
-          }
-        }
-      }
     }
     if (node.kind === "environment" && node.prefix !== undefined) {
       guard(node, () => void asInstallPrefix(node.prefix, `environment '${node.name}' prefix`));
     }
-    if (node.kind === "environment" || node.kind === "image") {
+    if (node.kind === "environment") {
       for (const name of node.packages) {
         const selected = catalog.get(name)!;
         if (selected.kind !== "package") continue; // reference pass rejected this
         requireCompatibleTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
-        const prefix = node.kind === "image" ? node.destinations?.[name]?.path : node.prefix;
+        const prefix = node.prefix;
         if (selected.layout.kind === "fixed_prefix" && prefix !== selected.layout.prefix) {
           throw new DiagnosticError({
             code: diagnosticCodes.unknownWorkspaceRef,

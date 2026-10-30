@@ -1,6 +1,7 @@
 //! Native acquisition, coherent Conda environments and explicit Pixi lock imports.
 //! Declarations carry provenance; portable locks keep location-free identities.
 
+use super::WheelSource;
 use crate::model::FetchSpec;
 use crate::span::Span;
 use crate::workspace::{WorkspaceFetch, WorkspacePlatform};
@@ -16,7 +17,8 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
-/// How a recipe or provider package obtains its payload.
+/// How a provider package obtains its payload; historical recipes retain this
+/// projection only for data inspection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AcquisitionSource {
@@ -28,6 +30,8 @@ pub enum AcquisitionSource {
     /// Explicit Pixi lock import (manifest satisfaction + platform
     /// selection against an already-resolved lock document).
     PixiLock(PixiLockSource),
+    /// Content-addressed imported portable package manifest, never a host path.
+    Package { manifest: String, span: Span },
 }
 
 /// A binary Conda environment request. Resolution happens only inside
@@ -40,6 +44,9 @@ pub struct CondaEnvironmentSource {
     pub channels: Vec<String>,
     /// Package name → version MatchSpec (e.g. "3.12.*"); "*" allowed.
     pub packages: BTreeMap<String, String>,
+    /// Explicit binary wheels, downloaded by hash; no source/editable builds.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wheels: Vec<WheelSource>,
     /// Declared target platforms; empty = resolved per requesting
     /// consumer platform.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -150,6 +157,7 @@ impl AcquisitionSource {
             AcquisitionSource::Fetch(fetch) => &fetch.span,
             AcquisitionSource::CondaEnvironment(source) => &source.span,
             AcquisitionSource::PixiLock(source) => &source.span,
+            AcquisitionSource::Package { span, .. } => span,
         }
     }
 
@@ -166,6 +174,7 @@ impl AcquisitionSource {
                     channels: source.channels.clone(),
                     packages: source.packages.clone(),
                     platforms: source.platforms.clone(),
+                    wheels: source.wheels.clone(),
                 })
             }
             AcquisitionSource::PixiLock(source) => LockedSource::PixiLock(LockedPixiSource {
@@ -175,6 +184,9 @@ impl AcquisitionSource {
                 manifest_sha256: None,
                 lock_sha256: None,
             }),
+            AcquisitionSource::Package { manifest, .. } => LockedSource::Package {
+                manifest: manifest.clone(),
+            },
         }
     }
 }
@@ -193,6 +205,13 @@ pub enum LockedSource {
     },
     CondaEnvironment(LockedCondaSource),
     PixiLock(LockedPixiSource),
+    Package {
+        manifest: String,
+    },
+    /// Frozen digest-pinned image for an independently managed OCI service.
+    OciImage {
+        reference: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +221,8 @@ pub struct LockedCondaSource {
     pub packages: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub platforms: Vec<WorkspacePlatform>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wheels: Vec<WheelSource>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

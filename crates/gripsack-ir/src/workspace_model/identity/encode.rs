@@ -7,7 +7,7 @@ use crate::workspace::{
 use crate::workspace_model::lock::{DefinitionPins, ResolvedPinFields, WorkspaceLock};
 use crate::workspace_model::{
     AcquisitionSource, ArchiveRootPolicy, CatalogPackageLayout, CheckOutput, LockedSource,
-    PackageOutput, RecipeExecution, RecipeOutput, WorkspaceCatalog,
+    PackageOutput, RecipeExecution, RecipeOutput, WheelSource, WorkspaceCatalog,
 };
 use crate::{FetchSpec, HostFacts};
 use gripsack_policy::semantic::length_header;
@@ -246,12 +246,17 @@ impl Encoder {
                         None => self.field(b"no-libc"),
                     }
                 }
+                self.wheel_sources(&source.wheels);
             }
             AcquisitionSource::PixiLock(source) => {
                 self.field(b"pixi-lock");
                 self.text(&source.manifest);
                 self.text(&source.lock);
                 self.text(&source.environment);
+            }
+            AcquisitionSource::Package { manifest, .. } => {
+                self.field(b"package");
+                self.text(manifest);
             }
         }
     }
@@ -278,6 +283,7 @@ impl Encoder {
                 for platform in &source.platforms {
                     self.platform(platform);
                 }
+                self.wheel_sources(&source.wheels);
             }
             LockedSource::PixiLock(source) => {
                 self.field(b"pixi-lock");
@@ -287,6 +293,28 @@ impl Encoder {
                 self.optional(&source.manifest_sha256);
                 self.optional(&source.lock_sha256);
             }
+            LockedSource::Package { manifest } => {
+                self.field(b"package");
+                self.text(manifest);
+            }
+            LockedSource::OciImage { reference } => {
+                self.field(b"oci-image");
+                self.text(reference);
+            }
+        }
+    }
+    fn wheel_sources(&mut self, wheels: &[WheelSource]) {
+        // No new frame for historical declarations: their identity is immutable.
+        if wheels.is_empty() {
+            return;
+        }
+        self.field(b"gripsack/v10/wheel-sources");
+        self.number(wheels.len() as u64);
+        for wheel in wheels {
+            self.text(&wheel.name);
+            self.text(&wheel.version);
+            self.text(&wheel.url);
+            self.text(&wheel.sha256);
         }
     }
 }

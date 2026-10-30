@@ -1,0 +1,10 @@
+{
+  "number": 1,
+  "modules": {
+    "legacy-profile": {
+      "store_path": "@STORE@/legacy-profile",
+      "entries": [],
+      "env": []
+    }
+  }
+}

@@ -18,9 +18,10 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 gripsack-policy.workspace = true
 sha2.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
 thiserror.workspace = true
 vstd = "=0.0.0-2026-09-06-0133"
+url = "2"
 
 [dev-dependencies]
 # Real JSON Schema validation for the schema↔parser acceptance corpus

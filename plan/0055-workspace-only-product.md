@@ -1,5 +1,181 @@
 # 0055 — One workspace surface
 
+## Active continuation — 2026-10-28
+
+Owner direction supersedes the earlier product and qualification scope below:
+
+- Finish literal Bash/task authoring first, then **managed container services
+  before calendar scheduling**. The owner selected “Services first” after
+  distinguishing finite tasks, persistent services and systemd timers.
+- Linux/WSL x86_64 remains the only supported platform. Remove Homebrew and
+  BuildKit, including source-recipe and application-image authoring/execution,
+  helper distribution and dead platform branches. No implicit host-build
+  fallback replaces them. OCI artifact transport and running existing images
+  are distinct capabilities, not the retired builder.
+- A service uses Docker Engine's structured API, an explicitly pinned image,
+  workspace-scoped ownership, declared ports/volumes and readiness. Docker
+  supervises the process; Gripsack has no resident daemon. Start/stop/status/log
+  and task readiness use the same service identity. Foreign resources refuse.
+  Stopping, profile rollback and GC never delete database volumes or pretend to
+  reverse database migrations. Credentials stay outside captured declarations.
+- Continue native scheduled-job lifecycle (E), semantic review/saved plans (C)
+  and portable package/environment sharing (D), excluding the retired
+  Mac/Homebrew/BuildKit cases. Preserve stored generations, ownership, journal
+  authority and artifact integrity. Removed authoring is not removed data.
+- Essential gates are Rust formatting/clippy/unit tests, frontend tests and
+  examples, ordinary CLI flows, dependency audits, changed-path real runtime
+  scenarios and exact release/package/installed-consumer checks. Formal/model,
+  exhaustive persistence, broad mutation/fuzz campaigns, duplicate platform
+  builds and two-build reproducibility are **optional, explicitly requested**
+  checks for substantial releases. Existing proof results remain historical;
+  unrun gates are never reported as passed. This standing owner amendment
+  supersedes the earlier 17-gate/96-partition release requirement, not the
+  runtime safety contracts those checks exercise.
+- Release remains coordinated core/SDK/helper, local practical qualification
+  and manual unsigned publication; no assumed HP-mini access or new signer.
+
+### Execution ownership and evidence
+
+| Slice | Owner / boundary | Acceptance still to record |
+|---|---|---|
+| Bash/QoL | SDK command normalization and source mapping | Actual tagged-template task/check/hook execution and invalid interpolation |
+| Service runtime | Engine API, resource ownership and native task readiness | PostgreSQL readiness, task use, stop/restart data retention, foreign-resource refusal |
+| Backend cutover | IR/schema/SDK, realization and retained-data readers | Native consumers and old-generation rollback/integrity without backend provisioning |
+| Scheduled jobs | Profile transaction, captured task revisions, systemd adapter | Install/update/remove/rollback, stale callback and retained invocation roots |
+| Semantic review | Admitted snapshots, impact explanations and saved execution binding | Offline comparison and actual unchanged/stale-plan executions |
+| Portable sharing | Signed manifests, acquisition/materialization and current trust | Independent recipient, registry/offline transport, tamper/revocation and runtime closure |
+| Gate policy | Existing profile/runner and release admission | Essential-only default and truthful optional-gate selection |
+| Release/site | Integration owner | Exact artifacts, download/install readback and rendered website |
+
+Implementation is in the isolated `feat/linux-product-handover` worktree from
+`799676d`; the older checkout's uncommitted plan edits are preserved. No new
+completion or release evidence is claimed by this execution map.
+
+### Development observations — not release qualification
+
+- The current frontend container gate passed 59 tests and checked examples.
+  Integration corrected an IR9 driver capability check left behind by the IR10
+  emitter cutover; retired string-producer fixtures now exercise native providers.
+- A real literal-Bash journey ran nine CLI commands and two task/postcondition
+  invocations with the actual interpreter bytes pinned to
+  `bc5945feb8bd26203ebfafea5ce1878bb2e32cb8fb50ab7ae395cfb1e1aaaef1`.
+  Strict options, spaces in cwd and shell-looking typed environment values were
+  exercised without creating a personal generation. Private development evidence:
+  `/tmp/gripsack051-bash-0sl0c5yz/`.
+- The PostgreSQL guide ran 27 actual CLI/Engine commands against image digest
+  `979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4`.
+  Healthy startup, unchanged-container reuse, task readiness, SQL data surviving
+  down/up into a different container, missing-checkout cleanup and foreign
+  container refusal passed. Gripsack created no personal generation and never
+  removed the data volume; the fixture explicitly removed its own resources
+  afterward. Private development evidence: `/tmp/gripsack051-services-gpfg0vh4/`.
+- Actual execution reproduced a missing rustls-provider panic in the new native
+  HTTP clients and a nested lifecycle-lock deadlock in package export. Explicit
+  shared ring initialization repaired startup; export now reaches its normal
+  missing-import refusal rather than deadlocking. The tests do not convert a
+  publisher signature into host execution or registration authority.
+- The first real systemd fixture found the obsolete “schedule registration
+  unavailable” authoring barrier; it is removed. The subsequent real-manager
+  journey passed on systemd 255 under fresh passwd account UID 1098, including
+  calendar delivery, capture, old in-flight revision completion, replacement,
+  disable, rollback, drift refusal and GC. Its five effects and postconditions
+  matched (`first` three times, `admitted-old`, `replacement`). Development core
+  SHA-256: `02630d5d7d73c24ad99f7abc07e4f906a87ab46c1ea58438ca2ea0db39b56ab5`.
+  The owner's schedules were untouched; no sleep/reboot/DST claim follows.
+- Booting an unmodified privileged systemd fixture ran its binfmt service and
+  cleared WSL's Windows-executable registration. The fixture was killed without
+  shutdown hooks; the host's generated `:WSLInterop:M::MZ::/init:P` registration
+  was restored, and Windows-backed CI storage observation resumed. The corrected
+  fixture masks binfmt service/mount/automount, sysctl, module-loading and other
+  global-mutating services; the host WSLInterop bytes stayed unchanged across its
+  boot. This is a container isolation limit, not a Gripsack service requirement
+  or evidence for sleep/reboot/DST behavior.
+- The owner explicitly approved verified scratch reclamation after the 64-GiB
+  state-storage floor blocked qualification. Independent hash/inventory checks
+  against retained controller archives preceded deletion of 236 duplicate worker
+  attempts across 23 superseded candidates: 73,047,932,928 bytes reclaimed.
+  Published candidates, all archive/inbox data, active work and four unbacked
+  attempts were preserved. Storage admission passed with 102.05 GiB free.
+  Receipt: `release-evidence/gripsack/0.51.0/verified-ci-scratch-reclamation-20261029T192018Z/`.
+  Retained copies are on the same filesystem, not an independent disaster backup.
+- Required private-state and runtime regressions remain intact. Unit execution
+  exposed tempfile's permissive directory default in semantic snapshot
+  publication; staging now explicitly requests 0700 rather than weakening the
+  reader. A changed-executable fixture now changes actual bytes because Alpine's
+  `echo` and `false` are the same BusyBox image. No failure is relabeled a pass.
+- Protocol4 helper measurement succeeded in one pinned Rust 1.98/musl build:
+  `gripsack-conda-0.51.0-x86_64-unknown-linux-musl`, 25,132,360 bytes, SHA-256
+  `c547b6a33655be716b6153a0acc468e4de78a932c6ad57f6ab38d5929db5f545`.
+  Its source-input digest is
+  `a05ced31ffd87b935379236293b594a086225459a970ad58116ec46ef3ddbb67`;
+  static admission, protocol smoke and canonical notice checks passed. The core
+  pin records these measured bytes. This is not a two-build reproducibility claim.
+- Removed the unused IR9 authoring reader and the obsolete B0 Go/BuildKit
+  qualification harness, worker-lease/session models, their configurations and
+  active TLC/TLAPS dispatcher/catalog entries. Historical reports and actual
+  persisted-state readers remain. Retained recovery catalog structure admits
+  four roots, 45 proof units and 63 source modules; no prover was run.
+- Delivery inventory validation, 19 positive/798 negative CI admission
+  calibrations and 141 release-tooling unit tests passed. These unit fixtures
+  publish nothing and do not stand in for actual candidate qualification.
+- The official example journey exposed an explicit-update bug: a retained v2
+  lock kept its old writer version. The writer now promotes to v3 without
+  discarding unselected pins and reports format-only changes in `--check`.
+  Its regression passed; all three official example locks migrated through the
+  corrected CLI with unchanged external selections. Source pin:
+  `ed90e26a106782b563b7a392e1bef69c2da96ce2` (feature branch, not yet merged).
+- The same preserved development core passed a 26-command semantic/saved-plan
+  journey: exact saved apply, stale-source refusal, provenance-only no-op,
+  private value omission and source-independent rollback. Evidence:
+  `/tmp/gripsack051-semantic-imkwfpep/`. Focused real-CLI regression execution
+  also passed 53 task, schedule, service, review and saved-plan cases.
+- Real Conda/Python and ABI3 wheel fixtures were prepared through the pinned
+  helper. Offline execution passed the two original-archive/Python journeys and
+  six extension-wheel cases, including actual native extension execution,
+  Python/ABI/architecture/libc rejection and the upstream binary-prefix bound.
+  The original overlong-prefix case is retained as an explicit refusal test;
+  successful long/spaced-prefix coverage stays within that declared capacity.
+- A genuinely separate-filesystem native transfer found `pack` moving a tar
+  from the default temporary filesystem into destination-local blobs. The writer
+  now creates the temporary archive beside its destination and publishes it
+  without clobbering. The rebuilt core passed the real transfer at distinct
+  filesystem devices, after deleting both producer and first recipient. Static,
+  bundled-loader dynamic, transitive library, dlopen/data, shell/child, argv,
+  exit/signal, symlink-entry and moved-root cases passed. Core SHA-256:
+  `5ac5818ca4a67c9ffd2fc478df992f7defe4dd62348bb76adc96e586632e0334`.
+- The combined imported-tool/scheduler journey passed under a fresh real
+  systemd255 account, with only the signed bundle, independent public policy and
+  core copied into the recipient container. Producer paths were not mounted and
+  the transfer bundle was deleted before use. Calendar/postcondition execution,
+  in-flight update/GC, disable, rollback and three current-trust revocation checks
+  passed without killing the admitted old run. Package manifest:
+  `379d13a229dae7574ed3849a4f18272cb07a728741567fe066bf308d7a57262a`.
+- Authenticated HTTPS Distribution 3.1.2 transfer passed with a private fixture
+  CA, ordinary TLS verification, wrong/missing credential refusals, independent
+  `urllib`/hash verification of the OCI manifest and every blob, exact portable
+  manifest/DSSE payload bytes, and actual native execution after sender/cache
+  removal. Credentials stayed out of captured output. Private evidence:
+  `release-evidence/gripsack/0.51.0/private-registry-ng7za8q5/evidence/attempt-3/`.
+  The setup's CA-as-server-certificate mistake was refused, not worked around;
+  the fixture also follows the existing read-only-files/writable-directories
+  repair/GC policy rather than inventing a stronger permission contract.
+- The full container `test` gate passed core/helper formatting, strict clippy,
+  Rust tests, architecture and generated-source checks; helper results were
+  24 passed and one explicitly prepared-input test ignored. That exposed and
+  repaired ordinary PEP508 string-marker warning handling without discarding
+  parse-time ambiguity or incomplete-extra refusals. Fresh helper measurement:
+  SHA-256 `63beb313012c50a06af562d184124bd8143f148a52af549ab63431a17c55ce3e`,
+  25,148,744 bytes, source inputs
+  `ea78d708be97efc5573372dec48c328ba373fa136b084894eb6932491f940269`.
+  Earlier development Conda journeys used the preceding measured helper;
+  final-byte consumer qualification remains separate.
+
+These are uncommitted development observations. Exact-source selected-gate,
+artifact, independent-consumer and website evidence must be recorded separately
+before publication.
+
+
+
 Owner direction: 2026-10-27. Gripsack is an alpha product with one owner;
 obsolete authoring compatibility is not a product requirement. Remove it,
 rather than adding another migration layer. Keep releases small and practical.

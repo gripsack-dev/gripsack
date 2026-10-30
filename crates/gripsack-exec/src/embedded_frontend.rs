@@ -16,11 +16,10 @@ export type {
   CheckNode,
   EnvironmentNode,
   HookNode,
-  ImageNode,
   PackageNode,
   ProfileNode,
-  RecipeNode,
   ScheduleNode,
+  ServiceNode,
   TaskNode,
   WorkspaceOutputNode,
 } from "./workspace/ir.ts";
@@ -52,10 +51,10 @@ async function main(): Promise<void> {
   if (
     typeof core.parseInputs !== "function" ||
     typeof core.createProbeBuilder !== "function" ||
-    typeof core.emitWorkspaceIr !== "function" || core.IR_VERSION !== 9
+    typeof core.emitWorkspaceIr !== "function" || core.IR_VERSION !== 10
   ) {
     die(
-      `the pinned @gripsack/core at ${coreUrl} must support the IR9 workspace frontend — ` +
+      `the pinned @gripsack/core at ${coreUrl} must support the IR10 workspace frontend — ` +
         `update or remove the repo's node_modules/@gripsack/core pin`,
     );
   }
@@ -345,12 +344,12 @@ export const frontendDiagnosticCodeRegistry = {
  * The frontend never detects anything: one detector (the Rust core,
  * via the inputs envelope), one frontend. `os`/`arch` are the core's
  * `std::env::consts` values, `libc` is parsed there (`glibc-<ver>`,
- * `musl`, `darwin`). */
+ * `musl`). */
 
 export interface HostFacts {
   os: string;
   arch: string;
-  /** e.g. "glibc-2.36", "musl", "darwin" — binary asset selection
+  /** e.g. "glibc-2.36", "musl" — binary asset selection
    *  depends on it; null when undetectable. */
   libc: string | null;
   hostname: string;
@@ -370,9 +369,9 @@ export type Fetch =
  * v from the locked tag. Legacy `{version}` tries raw then stripped asset names.
  * The platform placeholders (0016 §D1) are:
  * `{system}` (x86_64-linux, flake-style), `{target}` (the rust
- * triple, musl for linux), `{arch}` (x86_64|aarch64), `{arch.go}`
- * (amd64|arm64), `{os}` (linux|darwin) — expanded by the core from the
- * machine's facts, so one spec serves every platform.
+ * triple, musl for Linux), `{arch}` (x86_64), `{arch.go}`
+ * (amd64), `{os}` (linux) — expanded by the core from the
+ * machine's facts for the supported Linux/WSL x86_64 target.
  */
 export function githubRelease(spec: {
   repo: string;
@@ -477,8 +476,6 @@ export {
   inputFile,
   lock,
   bash,
-  bashBody,
-  cargoPackage,
   check,
   conda,
   daily,
@@ -489,7 +486,6 @@ export {
   hook,
   hostPath,
   identity,
-  image,
   lit,
   literalText,
   managedBlock,
@@ -500,7 +496,8 @@ export {
   pixi,
   profile,
   provider,
-  recipe,
+  source,
+  service,
   repoFile,
   repoTree,
   runBash,
@@ -518,9 +515,9 @@ export type {
   BashBody,
   BashBuilder,
   BashCommandBuilder,
-  CargoPackageSpec,
   CheckSpec,
   CondaEnvironmentSource,
+  WheelSource,
   CondaEnvironmentSpec,
   CondaSystemRequirements,
   HostRuntimeSpec,
@@ -529,17 +526,18 @@ export type {
   ExecBuilder,
   ExecSpec,
   HookSpec,
-  ImageConfig,
-  ImageDestination,
-  ImageOwner,
-  ImageSpec,
   PackageLayout,
   PackageSpec,
+  PackageSource,
+  PackageSourceSpec,
+  ServiceSpec,
+  ServicePort,
+  ServiceVolume,
+  ServiceEnvironmentValue,
+  ServiceHealth,
   PixiLockSource,
   PixiLockSpec,
   ProfileSpec,
-  RecipeExecution,
-  RecipeSpec,
   FetchSource,
   RunBashSpec,
   ScheduleSpec,
@@ -689,11 +687,10 @@ export type {
   CheckNode,
   EnvironmentNode,
   HookNode,
-  ImageNode,
   PackageNode,
   ProfileNode,
-  RecipeNode,
   ScheduleNode,
+  ServiceNode,
   TaskNode,
   WorkspaceOutputNode,
 } from "./advanced.ts";
@@ -767,8 +764,6 @@ export const inputDirectory = api.inputDirectory;
 export const inputFile = api.inputFile;
 export const lock = api.lock;
 export const bash = api.bash;
-export const bashBody = api.bashBody;
-export const cargoPackage = api.cargoPackage;
 export const check = api.check;
 export const conda = api.conda;
 export const daily = api.daily;
@@ -779,7 +774,6 @@ export const file = api.file;
 export const hook = api.hook;
 export const hostPath = api.hostPath;
 export const identity = api.identity;
-export const image = api.image;
 export const lit = api.lit;
 export const literalText = api.literalText;
 export const managedBlock = api.managedBlock;
@@ -789,7 +783,8 @@ export const outputPath = api.outputPath;
 export const pkg = api.pkg;
 export const profile = api.profile;
 export const provider = api.provider;
-export const recipe = api.recipe;
+export const source = api.source;
+export const service = api.service;
 export const repoFile = api.repoFile;
 export const runBash = api.runBash;
 export const schedule = api.schedule;
@@ -807,9 +802,9 @@ export type {
   BashBody,
   BashBuilder,
   BashCommandBuilder,
-  CargoPackageSpec,
   CheckSpec,
   CondaEnvironmentSource,
+  WheelSource,
   CondaEnvironmentSpec,
   CondaSystemRequirements,
   HostRuntimeSpec,
@@ -823,19 +818,20 @@ export type {
   Fetch,
   HookSpec,
   HostFacts,
-  ImageConfig,
-  ImageDestination,
-  ImageOwner,
-  ImageSpec,
   PackageLayout,
   PackageSpec,
+  PackageSource,
+  PackageSourceSpec,
+  ServiceSpec,
+  ServicePort,
+  ServiceVolume,
+  ServiceEnvironmentValue,
+  ServiceHealth,
   PixiLockSource,
   PixiLockSpec,
   ProbeBuilder,
   ProbeKind,
   ProfileSpec,
-  RecipeExecution,
-  RecipeSpec,
   RunBashSpec,
   ScheduleSpec,
   Span,
@@ -1035,84 +1031,6 @@ export function asStep(value: WorkspaceStepValue, where: string): WorkspaceStep 
 }
 export function lockKey(value: WorkspaceMutationLock): string { return `${value.scope}\0${value.key}`; }
 "#),
-    ("src/workspace/cargo.ts", r#"/** Cargo over an immutable source tree and a digest-pinned official Rust image.
- * The source includes Cargo.lock and its vendored dependency/configuration tree.
- * No helper step resolves dependencies, downloads tools, or invokes a shell. */
-import type { Fetch } from "../fetch.ts";
-import type { Span } from "../span.ts"
-import type { PackageNode, RecipeNode, WorkspaceArg, WorkspaceOutput, WorkspacePlatform, WorkspaceStepValue } from "./ir.ts";
-import { rejectUnknownFields } from "../fields.ts";
-import { exec, lit, outputPath, sourcePath } from "./commands.ts";
-import { pkg, recipe } from "./outputs.ts";
-import { asPlatform } from "./target.ts";
-import { asName, asRecord, asSelector, freezeDeep, nodeSpan } from "./validate.ts";
-
-export interface CargoPackageSpec {
-  source: Fetch;
-  /** Digest-pinned official Rust image, including Cargo/rustup and native linker tools. */
-  toolchain: string;
-  /** Linux architecture and explicit gnu/musl ABI; no implicit cross compilation. */
-  target: WorkspacePlatform;
-  /** Public command name -> Cargo binary target name. */
-  binaries: Record<string, string>;
-  runtime?: string[];
-  checks?: string[];
-  span?: Span;
-}
-
-/** Spread the returned producer/package pair into workspace.outputs. */
-export function cargoPackage(
-  name: string,
-  spec: CargoPackageSpec,
-): readonly [WorkspaceOutput<RecipeNode>, WorkspaceOutput<PackageNode>] {
-  const what = `cargoPackage("${name}")`;
-  asName(name, `${what}: name`);
-  asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["source", "toolchain", "target", "binaries", "runtime", "checks", "span"]);
-  const span = nodeSpan(spec.span, what);
-  const target = asPlatform(spec.target, `${what}: target`);
-  if (target.os !== "linux" || (target.abi !== "gnu" && target.abi !== "musl")) {
-    throw new Error(`${what}: select a Linux target with an explicit gnu or musl ABI`);
-  }
-  const triple = `${target.arch}-unknown-linux-${target.abi}`;
-  const commands: Record<string, string> = Object.create(null);
-  const binaries = new Set<string>();
-  for (const [command, value] of Object.entries(asRecord(spec.binaries, `${what}: binaries`))) {
-    asName(command, `${what}: command name`);
-    const binary = asSelector(value, `${what}: binary target`);
-    if (binary === "." || binary.includes("/")) throw new Error(`${what}: a Cargo binary target is one path component`);
-    commands[command] = `bin/${binary}`;
-    binaries.add(binary);
-  }
-  if (binaries.size === 0) throw new Error(`${what}: declare at least one exported binary target`);
-  const environment: Record<string, WorkspaceArg> = {
-    CARGO_HOME: outputPath(".cargo-home"),
-    CARGO_TARGET_DIR: outputPath(".cargo-target"),
-    RUSTUP_HOME: lit("/usr/local/rustup"),
-    RUSTC: lit("/usr/local/cargo/bin/rustc"),
-    RUSTDOC: lit("/usr/local/cargo/bin/rustdoc"),
-  };
-  const common = ["--release", "--frozen", "--offline", "--target", triple].map(lit);
-  const steps: WorkspaceStepValue[] = [
-    // Testing is in the ordered producer path, so it cannot be pruned from the
-    // exported state even if it creates no application file.
-    exec({ span, argv: [lit("/usr/local/cargo/bin/cargo"), lit("test"), lit("--all-targets"), ...common], env: environment, cwd: sourcePath() }),
-    exec({ span, argv: [lit("/usr/local/cargo/bin/cargo"), lit("build"), lit("--bins"), ...common], env: environment, cwd: sourcePath() }),
-  ];
-  for (const binary of binaries) {
-    steps.push(exec({ span, argv: [lit("install"), lit("-D"), outputPath(`.cargo-target/${triple}/release/${binary}`), outputPath(`bin/${binary}`)] }));
-  }
-  steps.push(exec({ span, argv: [lit("rm"), lit("-rf"), outputPath(".cargo-target"), outputPath(".cargo-home")] }));
-  const producer = `${name}.build`;
-  return freezeDeep([
-    recipe(producer, { source: spec.source, target, span, output_kind: "tree", steps,
-      execution: { kind: "isolated_linux", worker: "buildkit", platform: target, toolchain: { reference: spec.toolchain } },
-      ...(spec.checks ? { checks: spec.checks } : {}),
-    }),
-    pkg(name, { producer, commands, target, span, layout: { kind: "relocatable" }, ...(spec.runtime ? { runtime: spec.runtime } : {}) }),
-  ] as const);
-}
-"#),
     ("src/workspace/commands.ts", r#"/** Immutable exec/runBash commands, typed arguments and dedent maps. */
 
 import { rejectUnknownFields } from "../fields.ts";
@@ -1277,43 +1195,32 @@ function dedent(body: string, span: Span): { text: string; lineMap?: number[] } 
   };
 }
 
-/** Capture the opening source line of a literal Bash template.
- *  Values in a JS interpolation are evaluated before this tag is
- *  called, so only literal text belongs here; static authoring checks
- *  must still guard potentially effectful expressions. */
-export function bashBody(parts: TemplateStringsArray, ...values: unknown[]): BashBody {
-  const span = nodeSpan(undefined, "bashBody`...`");
+/** Literal Bash authoring. JavaScript substitutions are never command
+ * bindings: use typed env values instead. Decode template delimiters
+ * (\` and \${) and their preceding escape pairs, not shell escapes. */
+export function bash(parts: TemplateStringsArray, ...values: never[]): BashBuilder {
+  const span = nodeSpan(undefined, "bash`...`");
   if (values.length !== 0 || parts.raw.length !== 1) {
     const before = parts.raw[0] ?? "";
     const line = span.line + before.split("\n").length - 1;
     throw new DiagnosticError({
       code: diagnosticCodes.invalidWorkspaceValue,
       severity: "error",
-      message: "bashBody: interpolation is not a literal Bash body",
-      labels: [{ span: { file: span.file, line }, note: "interpolation evaluated here" }],
+      message: "bash: JavaScript interpolation is not a literal Bash body",
+      labels: [{ span: { file: span.file, line }, note: "interpolation rejected here" }],
       help: "pass dynamic values through typed env/argv bindings",
     });
   }
-  const text = parts.raw[0]!;
-  rejectBashInterpolation(text, span, "bashBody`...`");
-  return freezeDeep({ text, span });
-}
-
-function rejectBashInterpolation(body: string, span: Span, where: string): void {
-  const site = body.indexOf("${");
-  if (site === -1) return;
-  const line = span.line + body.slice(0, site).split("\n").length - 1;
-  throw new DiagnosticError({
-    code: diagnosticCodes.invalidWorkspaceValue,
-    severity: "error",
-    message: `${where}: body is literal text — "\${" interpolation is rejected`,
-    labels: [{ span: { file: span.file, line }, note: "interpolation rejected here" }],
-    help: "pass dynamic values through typed env/argv bindings",
-  });
+  // At a template delimiter, JS requires 2n+1 backslashes to author n
+  // literal backslashes plus the delimiter. Elsewhere retain raw shell bytes.
+  const text = parts.raw[0]!.replace(/(\\+)(`|\$\{)/g, (match, slashes: string, delimiter: string) =>
+    slashes.length % 2 === 1 ? slashes.slice(0, (slashes.length - 1) / 2) + delimiter : match
+  );
+  return Object.freeze(new LiteralBash(text, freezeDeep(span)));
 }
 
 /** A literal Bash body run under a pinned package interpreter. The
- *  command is a DESCRIPTION; the enclosing recipe/task/check/hook
+ *  command is a DESCRIPTION; the enclosing task/check/hook
  *  admits the execution context. */
 export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
   const what = "runBash(...)";
@@ -1328,7 +1235,7 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
     if (body.includes("\n")) {
       throw errorAt(
         diagnosticCodes.invalidWorkspaceValue,
-        `${what}: multiline body needs bashBody\`...\` to preserve original source lines`,
+        `${what}: multiline body needs bash\`...\` to preserve original source lines`,
         span,
         "body declared here",
       );
@@ -1340,7 +1247,6 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
     body = source.text;
     bodySpan = asSpan(source.span, `${what}: body`);
   }
-  rejectBashInterpolation(body, bodySpan, what);
   const interpreter = asArg(spec.interpreter, `${what}: interpreter`);
   if (interpreter.kind !== "package_command") {
     throw errorAt(
@@ -1366,9 +1272,30 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
   return freezeDeep(node);
 }
 
-/** A body is required before a Bash command can be constructed. */
-export interface BashBuilder {
-  body(body: RunBashSpec["body"]): BashCommandBuilder;
+/** Literal text is usable in object form; bind an interpreter for fluent form. */
+export interface BashBuilder extends BashBody {
+  interpreter(command: WorkspacePackageCommand): BashCommandBuilder;
+}
+
+class LiteralBash implements BashBuilder {
+  constructor(readonly text: string, readonly span: Span) {}
+
+  interpreter(command: WorkspacePackageCommand): BashCommandBuilder {
+    const pin = asArg(command, "bash`...`.interpreter");
+    if (pin.kind !== "package_command") {
+      throw errorAt(
+        diagnosticCodes.badWorkspaceContext,
+        "bash`...`.interpreter requires a declared packageCommand — ambient host shells are never discovered (A1-03)",
+        this.span,
+        "Bash literal declared here",
+      );
+    }
+    return bashCommandBuilder({
+      interpreter: freezeDeep(pin),
+      body: { text: this.text, span: this.span },
+      span: this.span,
+    });
+  }
 }
 
 /** Immutable Bash command authoring after a literal body is supplied. */
@@ -1381,35 +1308,15 @@ export interface BashCommandBuilder {
 function bashCommandBuilder(spec: RunBashSpec): BashCommandBuilder {
   return Object.freeze({
     env(name: string, value: WorkspaceArg): BashCommandBuilder {
-      const key = asName(name, "bash(...).env(name)");
-      const entry = asEnv({ [key]: value }, "bash(...).env")!;
+      const key = asName(name, "bash`...`.env(name)");
+      const entry = asEnv({ [key]: value }, "bash`...`.env")!;
       return bashCommandBuilder({ ...spec, env: { ...spec.env, ...freezeDeep(entry) } });
     },
     cwd(path: WorkspacePath): BashCommandBuilder {
-      return bashCommandBuilder({ ...spec, cwd: freezeDeep(asPath(path, "bash(...).cwd")) });
+      return bashCommandBuilder({ ...spec, cwd: freezeDeep(asPath(path, "bash`...`.cwd")) });
     },
     build(): WorkspaceRunBashCommand {
       return runBash(spec);
-    },
-  });
-}
-/** Start a Bash command with a declared package interpreter, never a
- *  host-shell name. `body(...).build()` lowers through `runBash({…})`. */
-export function bash(interpreter: WorkspacePackageCommand): BashBuilder {
-  const span = nodeSpan(undefined, "bash(...)");
-  const pin = asArg(interpreter, "bash(interpreter)");
-  if (pin.kind !== "package_command") {
-    throw errorAt(
-      diagnosticCodes.badWorkspaceContext,
-      "bash(interpreter) requires a declared packageCommand — ambient host shells are never discovered (A1-03)",
-      span,
-      "interpreter declared here",
-    );
-  }
-  const stablePin = freezeDeep(pin);
-  return Object.freeze({
-    body(body: RunBashSpec["body"]): BashCommandBuilder {
-      return bashCommandBuilder({ interpreter: stablePin, body: freezeDeep(body), span });
     },
   });
 }
@@ -1417,7 +1324,7 @@ export function bash(interpreter: WorkspacePackageCommand): BashBuilder {
     ("src/workspace/emit.ts", r#"/** Current workspace emission: named references, role admission and cycles. */
 
 import type { HostFacts } from "../facts.ts";
-export const IR_VERSION = 9;
+export const IR_VERSION = 10;
 import type { Span } from "../span.ts"
 import type {
   PackageNode,
@@ -1437,13 +1344,13 @@ import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
 import { checkTargetsAndLayouts } from "./target.ts";
 import { asInput } from "./bindings.ts";
 import { rejectUnknownFields } from "../fields.ts";
-import { checkImageSelection } from "./image.ts";
 import { checkFileBindings } from "./file-checks.ts";
+import { serviceNames, serviceProperties } from "./services.ts";
 
 /** Catalog roles never conflate publication checks or retention with
  * production closure. Ordered local commands are intra-output and
  * keep their list order; no catalog `ordering` edge is fabricated. */
-type EdgeRole = "production" | "build_input" | "runtime" | "task_prereq" | "validation" | "retention";
+type EdgeRole = "runtime" | "task_prereq" | "validation" | "retention";
 
 interface Edge {
   from: string;
@@ -1454,14 +1361,11 @@ interface Edge {
 }
 
 function isDependency(role: EdgeRole): boolean {
-  return role === "production" || role === "build_input" ||
-    role === "runtime" || role === "task_prereq";
+  return role === "runtime" || role === "task_prereq";
 }
 
-/** Outputs whose artifacts an `artifact` reference may address —
- *  recipes and packages carry artifacts; images (and every consumer
- *  kind) do not (0052 §2.2). */
-const ARTIFACT_KINDS: readonly WorkspaceOutputKind[] = ["recipe", "package"];
+/** Only packages carry artifacts addressable by artifact references. */
+const ARTIFACT_KINDS: readonly WorkspaceOutputKind[] = ["package"];
 
 /** Selector admission at emit: constructors guard their own values,
  *  but hand-built nodes reach the emitter unchecked — reject escapes
@@ -1548,14 +1452,7 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
     }
   };
   switch (node.kind) {
-    case "recipe":
-      for (const step of node.steps ?? []) stepEdges(step, node.name, node.span, "build_input", edges);
-      names(node.checks, ["check"], "validation");
-      break;
     case "package":
-      if (node.producer.kind === "recipe") {
-        names([node.producer.recipe], ["recipe"], "production");
-      }
       names(node.runtime, ["package"], "runtime");
       break;
     case "environment":
@@ -1568,9 +1465,14 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
         }
       }
       break;
+    case "service":
+      serviceProperties(node, `service '${node.name}'`);
+      names(node.depends_on, ["service"], "runtime");
+      break;
     case "task":
       for (const step of node.steps) stepEdges(step, node.name, node.span, "runtime", edges);
       names(node.deps, ["task"], "task_prereq");
+      names(serviceNames(node.services, `task '${node.name}' services`), ["service"], "runtime");
       names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "runtime");
       names(node.checks, ["check"], "validation");
       break;
@@ -1579,13 +1481,7 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
       break;
     case "check":
       commandEdges(node.run, node.name, "runtime", edges);
-      names([node.subject], ["recipe", "package", "environment", "task", "schedule", "check", "image", "profile", "hook"], "validation");
-      break;
-    case "image":
-      names(node.packages, ["package"], "runtime");
-      for (const argument of node.config.entrypoint) {
-        if (argument.kind === "package_command") names([argument.package], ["package"], "runtime");
-      }
+      names([node.subject], ["package", "environment", "service", "task", "schedule", "check", "profile", "hook"], "validation");
       break;
     case "profile":
       for (const f of node.files ?? []) {
@@ -1617,8 +1513,8 @@ function orList(kinds: readonly string[]): string {
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the IR9 envelope —
- *  `{ir_version: 9, host, workspace}`. Admission mirrors the decoded core:
+/** Serialize a workspace value as the IR10 envelope —
+ *  `{ir_version: 10, host, workspace}`. Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
  *  paths, environment values are data only, producer/consumer OS,
@@ -1735,12 +1631,11 @@ export function emitWorkspaceIr(
         }
       }
     }
-    if (node.kind === "recipe" || node.kind === "task") {
+    if (node.kind === "task") {
       for (const step of node.steps ?? []) if ("command" in step) collectCommandKeys(step.command);
     }
     if (node.kind === "check" || node.kind === "hook") collectCommandKeys(node.run);
     if (node.kind === "environment") collectArgKeys(Object.values(node.env ?? {}), node.span);
-    if (node.kind === "image") collectArgKeys(node.config.entrypoint, node.span);
   }
   for (const { pkg: target, command, span } of commandKeys) {
     if (!Object.hasOwn(target.commands, command)) {
@@ -1755,13 +1650,8 @@ export function emitWorkspaceIr(
     }
   }
   checkTargetsAndLayouts(catalog);
-  for (const node of catalog.values()) {
-    if (node.kind === "image") checkImageSelection(node, catalog);
-  }
 
-  // dependency cycles over production/build edges only — validation
-  // edges (a recipe gated by a check on the package it produces) may
-  // legitimately close a loop
+  // Validation and retention edges may legitimately close a dependency loop.
   const adj = new Map<string, Edge[]>();
   for (const e of depEdges) {
     const list = adj.get(e.from) ?? [];
@@ -1843,11 +1733,11 @@ export function checkFileBindings(catalog: ReadonlyMap<string, WorkspaceOutputNo
     }
   }
   for (const output of catalog.values()) {
-    if (output.kind === "recipe" || output.kind === "task") {
+    if (output.kind === "task") {
       for (const name of output.checks ?? []) {
         if (attached.has(name)) {
           throw errorAt(diagnosticCodes.badWorkspaceContext,
-            "a profile-bound file check cannot serve as a recipe validator or task postcondition",
+            "a profile-bound file check cannot serve as a task postcondition",
             output.span, "check consumed in a different lifecycle here");
         }
       }
@@ -2020,99 +1910,6 @@ export function file(spec: WorkspaceFileSpec): WorkspaceFile {
   return freezeDeep(asFile(node, what));
 }
 "#),
-    ("src/workspace/image.ts", r#"import type { ImageConfig, ImageDestination, ImageNode, ImageOwner, ImageSpec, PackageNode, WorkspaceOutputNode } from "./ir.ts";
-import { DiagnosticError, diagnosticCodes } from "../diagnostic.ts";
-import { rejectUnknownFields } from "../fields.ts";
-import { asArg, asName, asNames, asRecord } from "./validate.ts";
-import { asImageReference, asInstallPrefix, asPlatform } from "./target.ts";
-
-type ImageProperties = Pick<ImageNode, "packages" | "target" | "base" | "destinations" | "config">;
-
-export function imageProperties(spec: ImageSpec, where: string): ImageProperties {
-  const packages = asNames(spec.packages, `${where}: packages`) ?? [];
-  const target = asPlatform(spec.target, `${where}: target`);
-  if (target.os !== "linux") throw new Error(`${where}: OCI production requires a Linux target`);
-  const destinations: Record<string, ImageDestination> = Object.create(null);
-  for (const [name, raw] of Object.entries(asRecord(spec.destinations ?? {}, `${where}: destinations`))) {
-    asName(name, `${where}: destination package`);
-    const value = asRecord(raw, `${where}: destination ${name}`);
-    rejectUnknownFields(`${where}: destination ${name}`, value, ["path", "owner"]);
-    destinations[name] = {
-      path: asInstallPrefix(value.path, `${where}: destination ${name}`),
-      owner: owner(value.owner, `${where}: destination ${name} owner`),
-    };
-  }
-  const config = asRecord(spec.config ?? {}, `${where}: config`);
-  rejectUnknownFields(`${where}: config`, config, ["entrypoint", "args", "env", "cwd", "user"]);
-  if (config.entrypoint !== undefined && !Array.isArray(config.entrypoint)) throw new Error(`${where}: entrypoint must be an argv array`);
-  const entrypoint: NonNullable<ImageConfig["entrypoint"]> = [];
-  for (const [index, raw] of ((config.entrypoint ?? []) as unknown[]).entries()) {
-    const argument = asArg(raw, `${where}: entrypoint[${index}]`);
-    if (argument.kind !== "literal" && argument.kind !== "package_command") throw new Error(`${where}: image arguments cannot refer to host or production paths`);
-    if (argument.kind === "literal" && index === 0) absolutePath(argument.value, `${where}: entrypoint executable`);
-    if (argument.kind === "package_command" && !packages.includes(argument.package)) throw new Error(`${where}: image command package must be selected explicitly`);
-    entrypoint.push(argument);
-  }
-  const env: Record<string, string> = Object.create(null);
-  for (const [key, value] of Object.entries(asRecord(config.env ?? {}, `${where}: environment`))) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || typeof value !== "string" || value.includes("\0")) throw new Error(`${where}: invalid image environment binding ${key}`);
-    env[key] = value;
-  }
-  if (config.args !== undefined && !Array.isArray(config.args)) throw new Error(`${where}: image args must be an array`);
-  const args = ((config.args ?? []) as unknown[]).map((value) => {
-    if (typeof value !== "string" || value.includes("\0")) throw new Error(`${where}: image args must be NUL-free strings`);
-    return value;
-  });
-  return {
-    packages, target,
-    ...(spec.base === undefined ? {} : { base: asImageReference(spec.base, `${where}: base`) }),
-    ...(Object.keys(destinations).length ? { destinations } : {}),
-    config: { entrypoint, args, env, cwd: absolutePath(config.cwd ?? "/", `${where}: cwd`), user: owner(config.user, `${where}: user`) },
-  };
-}
-
-function owner(value: unknown, where: string): ImageOwner {
-  if (value === undefined) return { uid: 0, gid: 0 };
-  const record = asRecord(value, where);
-  rejectUnknownFields(where, record, ["uid", "gid"]);
-  for (const key of ["uid", "gid"] as const) {
-    if (!Number.isInteger(record[key]) || (record[key] as number) < 0 || (record[key] as number) > 0xffffffff) throw new Error(`${where}.${key} must be an unsigned 32-bit integer`);
-  }
-  return { uid: record.uid as number, gid: record.gid as number };
-}
-function absolutePath(value: unknown, where: string): string {
-  return value === "/" ? "/" : asInstallPrefix(value, where);
-}
-
-/** Destination authority follows runtime packages only, never build tools. */
-export function checkImageSelection(image: ImageNode, catalog: Map<string, WorkspaceOutputNode>): void {
-  const pending = [...image.packages];
-  const selected = new Set<string>();
-  const placements: Record<string, PackageNode> = Object.create(null);
-  while (pending.length) {
-    const name = pending.pop()!;
-    if (selected.has(name)) continue;
-    selected.add(name);
-    const value = catalog.get(name);
-    if (value?.kind !== "package") continue; // reference admission diagnoses this
-    pending.push(...(value.runtime ?? []));
-    const prefix = image.destinations?.[name]?.path ?? `/opt/gripsack/${name}`;
-    asInstallPrefix(prefix, `image '${image.name}' destination for '${name}'`);
-    if (value.layout.kind === "fixed_prefix" && image.destinations?.[name]?.path !== value.layout.prefix) {
-      throw new DiagnosticError({ code: diagnosticCodes.badWorkspaceContext, severity: "error", message: "fixed-prefix image package requires its exact destination", labels: [{ span: image.span, note: "image selection" }, { span: value.span, note: "fixed-prefix package" }] });
-    }
-    for (const [otherPrefix, other] of Object.entries(placements)) {
-      if (prefix === otherPrefix || prefix.startsWith(otherPrefix + "/") || otherPrefix.startsWith(prefix + "/")) {
-        throw new DiagnosticError({ code: diagnosticCodes.badWorkspaceContext, severity: "error", message: `image package destinations overlap: ${prefix} and ${otherPrefix}`, labels: [{ span: image.span, note: "image selection" }, { span: value.span, note: "package placement" }, { span: other.span, note: "conflicting package placement" }] });
-      }
-    }
-    placements[prefix] = value;
-  }
-  for (const name of Object.keys(image.destinations ?? {})) {
-    if (!selected.has(name)) throw new DiagnosticError({ code: diagnosticCodes.unknownWorkspaceRef, severity: "error", message: `image destination names unselected runtime package '${name}'`, labels: [{ span: image.span, note: "image selection" }] });
-  }
-}
-"#),
     ("src/workspace/ir.ts", r#"/** The current workspace wire types; the core admits exactly this contract. */
 
 import type { FactView } from "../conditions.ts";
@@ -2122,7 +1919,7 @@ import type { Span } from "../span.ts"
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v9.json $defs)
+// shared wire fragments (schema/ir/v10.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -2172,19 +1969,13 @@ export interface WorkspaceOsVersion {
   minor: number;
   patch?: number;
 }
-export type WorkspaceAbi = "gnu" | "musl" | "darwin";
+export type WorkspaceAbi = "gnu" | "musl";
 export interface WorkspacePlatform {
-  os: "linux" | "macos";
-  arch: "x86_64" | "aarch64";
+  os: "linux";
+  arch: "x86_64";
   abi?: WorkspaceAbi;
   minimum_os?: WorkspaceOsVersion;
 }
-
-/** A recipe may declare host access honestly or require B2's isolated
- *  Linux worker; no implicit native or ambient-host fallback. */
-export type RecipeExecution =
-  | { kind: "host"; access: "unconfined" }
-  | { kind: "isolated_linux"; worker: "buildkit"; platform: WorkspacePlatform; toolchain: { reference: string } };
 
 export type PackageLayout =
   | { kind: "relocatable" }
@@ -2204,11 +1995,13 @@ export interface CondaSystemRequirements {
 }
 
 // ---------------------------------------------------------------------------
-// Current acquisition sources (schema/ir/v8.json; retained in-memory V6 family)
+// Current acquisition sources (schema/ir/v10.json)
 // ---------------------------------------------------------------------------
 
 /** Archive/git/github/file/plugin acquisition with declaration provenance. */
 export interface FetchSource { kind: "fetch"; fetch: Fetch; span: Span }
+/** An exact binary wheel request; no dependency solve or source build is implied. */
+export interface WheelSource { name: string; version: string; url: string; sha256: string }
 /** A coherent binary Conda environment solved through Rattler. `platforms`
  *  omitted means resolved per requesting consumer platform. */
 export interface CondaEnvironmentSource {
@@ -2217,6 +2010,7 @@ export interface CondaEnvironmentSource {
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
   system_requirements?: CondaSystemRequirements;
+  wheels?: readonly WheelSource[];
   span: Span;
 }
 /** An explicit Pixi lock import: `manifest`/`lock` are workspace INPUT
@@ -2228,8 +2022,16 @@ export interface PixiLockSource {
   environment: string;
   span: Span;
 }
-/** How a current recipe or provider package obtains its payload. */
-export type AcquisitionSource = FetchSource | CondaEnvironmentSource | PixiLockSource;
+
+/** A pre-imported portable package selected by its canonical signed manifest digest. */
+export interface PackageSource {
+  kind: "package";
+  manifest: string;
+  span: Span;
+}
+export interface PackageSourceSpec { manifest: string }
+/** How a provider package obtains its payload. */
+export type AcquisitionSource = FetchSource | CondaEnvironmentSource | PixiLockSource | PackageSource;
 
 export interface WorkspaceExecCommand {
   kind: "exec";
@@ -2303,29 +2105,11 @@ export type WorkspaceCalendar =
   | { kind: "weekly"; weekday: WorkspaceWeekday; time: string };
 
 // ---------------------------------------------------------------------------
-// output nodes (wire shape: schema/ir/v7.json $defs/*Output)
+// output nodes (wire shape: schema/ir/v10.json $defs/*Output)
 // ---------------------------------------------------------------------------
 
-export interface RecipeNode {
-  name: string;
-  span: Span;
-  kind: "recipe";
-  /** The recipe's acquisition source (`acquisitionSource` in the schema).
-   *  The legacy bare `{fetch,span}` shape is not admitted. */
-  source: AcquisitionSource;
-  execution: RecipeExecution;
-  output_kind: "file" | "tree";
-  target: WorkspacePlatform;
-  steps?: WorkspaceStep[];
-  checks?: string[];
-}
-
-/** Where a package comes from (A1-12 resolution/acquisition
- *  separation): a recipe output reference, or a direct provider-backed
- *  acquisition carrying its own provenance — no synthetic recipe. */
-export type WorkspaceProducer =
-  | { kind: "recipe"; recipe: string }
-  | { kind: "provider"; provider: AcquisitionSource };
+/** A direct provider-backed acquisition carrying its own provenance. */
+export type WorkspaceProducer = { kind: "provider"; provider: AcquisitionSource };
 
 
 export interface RepoTreeSelection {
@@ -2372,6 +2156,43 @@ export interface TaskNode {
   deps?: string[];
   environment?: string;
   checks?: string[];
+  services?: string[];
+}
+
+/** Managed OCI services have a persistent lifecycle separate from finite tasks. */
+export interface ServicePort { host: number; container: number; address: string }
+export interface ServiceVolume { name: string; target: string }
+export type ServiceEnvironmentValue =
+  | { kind: "literal"; value: string }
+  | { kind: "inherited"; name: string };
+export interface ServiceHealth {
+  kind: "command";
+  argv: string[];
+  interval_seconds: number;
+  timeout_seconds: number;
+  retries: number;
+}
+export interface ServiceSpec {
+  image: string;
+  ports?: ServicePort[];
+  volumes?: ServiceVolume[];
+  env?: Record<string, ServiceEnvironmentValue>;
+  command?: string[];
+  health: ServiceHealth;
+  depends_on?: string[];
+  span?: Span;
+}
+export interface ServiceNode {
+  kind: "service";
+  name: string;
+  span: Span;
+  image: string;
+  ports: ServicePort[];
+  volumes: ServiceVolume[];
+  env: Record<string, ServiceEnvironmentValue>;
+  command: string[];
+  health: ServiceHealth;
+  depends_on: string[];
 }
 
 export interface ScheduleNode {
@@ -2389,36 +2210,6 @@ export interface CheckNode {
   kind: "check";
   run: WorkspaceCommand;
   subject: string;
-}
-
-export interface ImageOwner {
-  uid: number;
-  gid: number;
-}
-
-export interface ImageDestination {
-  /** Absolute installation prefix inside the image, never a host destination. */
-  path: string;
-  owner?: ImageOwner;
-}
-
-export interface ImageConfig {
-  entrypoint?: Extract<WorkspaceArg, { kind: "literal" | "package_command" }>[];
-  args?: string[];
-  env?: Record<string, string>;
-  cwd?: string;
-  user?: ImageOwner;
-}
-
-export interface ImageNode {
-  name: string;
-  span: Span;
-  kind: "image";
-  packages: string[];
-  target: WorkspacePlatform;
-  base?: string;
-  destinations?: Record<string, ImageDestination>;
-  config: Required<ImageConfig>;
 }
 
 export interface ProfileNode {
@@ -2441,13 +2232,12 @@ export interface HookNode {
 }
 
 export type WorkspaceOutputNode =
-  | RecipeNode
   | PackageNode
   | EnvironmentNode
+  | ServiceNode
   | TaskNode
   | ScheduleNode
   | CheckNode
-  | ImageNode
   | ProfileNode
   | HookNode;
 
@@ -2457,7 +2247,7 @@ export type WorkspaceOutputKind = WorkspaceOutputNode["kind"];
 // values and specs
 // ---------------------------------------------------------------------------
 
-/** A constructed output — the value the nine constructors return and
+/** A constructed output — the value the output constructors return and
  *  {@link workspace} collects. The brand distinguishes real output
  *  values from stray objects (a plain field, like ModuleValue's). */
 export interface WorkspaceOutput<N extends WorkspaceOutputNode = WorkspaceOutputNode> {
@@ -2478,20 +2268,6 @@ export interface WorkspaceValue {
   };
 }
 
-export interface RecipeSpec {
-  /** A `Fetch` (wrapped as `{"kind":"fetch",…}`), a plain
-   *  {@link CondaEnvironmentSpec}/{@link PixiLockSpec}, or a pre-built
-   *  `conda.environment(...)`/`pixi.fromLock(...)` source value. */
-  source: Fetch | CondaEnvironmentSpec | PixiLockSpec | AcquisitionSource;
-  execution: RecipeExecution;
-  output_kind: "file" | "tree";
-  target: WorkspacePlatform;
-  steps?: readonly WorkspaceStepValue[];
-  /** Publication gates — names of `check` outputs. */
-  checks?: string[];
-  span?: Span;
-}
-
 /** Authoring spec for a Conda environment source — see
  *  `conda.environment(...)`. Channels are names/URLs in priority order;
  *  packages map a lowercase name to a version MatchSpec (`"*"` allowed). */
@@ -2500,6 +2276,8 @@ export interface CondaEnvironmentSpec {
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
   systemRequirements?: CondaSystemRequirements;
+  /** HTTPS binary wheels, each pinned by its lowercase SHA256 digest. */
+  wheels?: readonly WheelSource[];
 }
 
 /** Authoring spec for an explicit Pixi lock import — see
@@ -2511,9 +2289,8 @@ export interface PixiLockSpec {
 }
 
 export interface PackageSpec {
-  /** A recipe output name (sugar for the recipe ref), or a direct
-   *  `provider(fetch(...))` acquisition. */
-  producer: string | WorkspaceProducer;
+  /** A direct `provider(...)` acquisition. */
+  producer: WorkspaceProducer;
   /** Command name → payload-relative path. */
   commands: Record<string, string>;
   /** Explicit runtime closure — names of other `package` outputs. */
@@ -2542,6 +2319,8 @@ export interface TaskSpec {
   /** Unordered prerequisites — names of `task` outputs, verified
    *  successful within one invocation. */
   deps?: string[];
+  /** Managed services that must become ready before the task starts. */
+  services?: string[];
   /** Name of the `environment` output the task runs in. */
   environment?: string;
   /** Per-invocation postconditions — names of `check` outputs. */
@@ -2562,16 +2341,6 @@ export interface CheckSpec {
   run: WorkspaceCommand;
   /** Name of the output this check validates. */
   subject: string;
-  span?: Span;
-}
-
-export interface ImageSpec {
-  packages: string[];
-  target: WorkspacePlatform;
-  /** Digest-pinned registry image; omitted means scratch. Base config is not inherited. */
-  base?: string;
-  destinations?: Record<string, ImageDestination>;
-  config?: ImageConfig;
   span?: Span;
 }
 
@@ -2609,7 +2378,7 @@ export interface BashBody {
 }
 
 export interface RunBashSpec {
-  /** Literal text ONLY. Use bashBody`...` for multiline scripts so
+  /** Literal text ONLY. Use bash`...` for multiline scripts so
    *  dedented lines point back to the actual template location.
    *  A plain string is supported for single-line bodies only. */
   body: string | BashBody;
@@ -2652,7 +2421,7 @@ export interface WorkspaceContext extends FactView {
 
 export type WorkspaceFn = (ctx: WorkspaceContext) => WorkspaceValue;
 "#),
-    ("src/workspace/outputs.ts", r#"/** v8 named-output constructors: pure, frozen values with source spans. */
+    ("src/workspace/outputs.ts", r#"/** v10 named-output constructors: pure, frozen values with source spans. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -2667,14 +2436,12 @@ import type {
   EnvironmentSpec,
   HookNode,
   HookSpec,
-  ImageNode,
-  ImageSpec,
   PackageNode,
   PackageSpec,
+  PackageSource,
+  PackageSourceSpec,
   ProfileNode,
   ProfileSpec,
-  RecipeNode,
-  RecipeSpec,
   ScheduleNode,
   ScheduleSpec,
   TaskNode,
@@ -2710,9 +2477,9 @@ import {
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
-import { asExecution, asInstallPrefix, asLayout, asPlatform } from "./target.ts";
+import { serviceNames } from "./services.ts";
+import { asInstallPrefix, asLayout, asPlatform } from "./target.ts";
 import { asInput, asLock, asStep, asTaskContext, lockKey } from "./bindings.ts";
-import { imageProperties } from "./image.ts";
 
 
 /** A per-output build/target platform. */
@@ -2726,7 +2493,7 @@ export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
  *  wire shape, stamping `span` on freshly wrapped variants. */
 function asSourceValue(source: unknown, span: Span, where: string): AcquisitionSource {
   const rec = asRecord(source, where);
-  if (rec.kind === "fetch" || rec.kind === "conda_environment" || rec.kind === "pixi_lock") {
+  if (rec.kind === "fetch" || rec.kind === "conda_environment" || rec.kind === "pixi_lock" || rec.kind === "package") {
     return asAcquisitionSource(source, where);
   }
   if (typeof rec.kind === "string" && rec.kind !== "") {
@@ -2734,7 +2501,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
     return asAcquisitionSource({ kind: "fetch", fetch: source, span }, where);
   }
   if (rec.channels !== undefined || rec.packages !== undefined) {
-    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements"]);
+    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements", "wheels"]);
     const conda = source as CondaEnvironmentSpec;
     return asAcquisitionSource({
       kind: "conda_environment",
@@ -2744,6 +2511,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
       ...(conda.systemRequirements !== undefined
         ? { system_requirements: asSystemRequirements(conda.systemRequirements, `${where}.systemRequirements`) }
         : {}),
+      ...(conda.wheels !== undefined ? { wheels: conda.wheels } : {}),
       span,
     }, where);
   }
@@ -2759,7 +2527,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
 }
 
 /** A coherent binary Conda environment source, solved through Rattler —
- *  usable directly as `recipe({ source })` or inside `provider(...)`. */
+ *  usable inside `provider(...)`. */
 export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSource {
   const span = callerSpan();
   if (!span) {
@@ -2768,7 +2536,7 @@ export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSo
     );
   }
   const rec = asRecord(spec, "conda.environment(...)");
-  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements"]);
+  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements", "wheels"]);
   return freezeDeep(asSourceValue(spec, span, "conda.environment(...)") as CondaEnvironmentSource);
 }
 
@@ -2786,9 +2554,20 @@ export function pixiFromLock(spec: PixiLockSpec): PixiLockSource {
   return freezeDeep(asSourceValue(spec, span, "pixi.fromLock(...)") as PixiLockSource);
 }
 
+/** Select an imported portable package; transport and trust stay core-owned. */
+export function packageSource(spec: PackageSourceSpec): PackageSource {
+  const what = "source.package(...)";
+  const rec = asRecord(spec, what);
+  rejectUnknownFields(what, rec, ["manifest"]);
+  const span = nodeSpan(undefined, what);
+  return freezeDeep(asAcquisitionSource({
+    kind: "package", manifest: spec.manifest, span,
+  }, what) as PackageSource);
+}
+
 /** A direct provider-backed acquisition for `pkg({ producer })` —
  *  the package resolves through the declared provider with its own
- *  provenance, no synthetic recipe output. Accepts a `Fetch` (wrapped as
+ *  provenance. Accepts a `Fetch` (wrapped as
  *  `{"kind":"fetch",…}`) or a `conda.environment(...)`/`pixi.fromLock(...)`
  *  source value. */
 export function provider(source: Fetch | AcquisitionSource): WorkspaceProducer {
@@ -2812,49 +2591,12 @@ export function weekly(weekday: WorkspaceWeekday, time: string): WorkspaceCalend
   return freezeDeep(asCalendar({ kind: "weekly", weekday, time }, "weekly(...)"));
 }
 
-/** Brand + deep-freeze a constructed node — all nine output
- *  constructors share this exact behavior. */
+/** Brand + deep-freeze a constructed node — all output constructors share this behavior. */
 function makeOutput<N extends WorkspaceOutputNode>(node: N): WorkspaceOutput<N> {
   return Object.freeze({ __gripsack: "workspace_output", ir: freezeDeep(node) });
 }
 
-/** A recipe: an ordered local command list over a fetched source,
- *  producing a file or tree artifact for one target platform. */
-export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNode> {
-  const what = `recipe("${name}")`;
-  asName(name, `${what}: name`);
-  asRecord(spec, what);
-  rejectUnknownFields(what, spec, [
-    "source", "execution", "output_kind", "target", "steps", "checks", "span",
-  ]);
-  const span = nodeSpan(spec.span, what);
-  const source = asSourceValue(spec.source, span, `${what}: source`);
-  const target = asPlatform(spec.target, `${what}: target`);
-  if (source.kind === "conda_environment" && source.system_requirements !== undefined && target.os !== "linux") {
-    throw new Error(`${what}: Conda systemRequirements require a Linux target`);
-  }
-  if (spec.output_kind !== "file" && spec.output_kind !== "tree") {
-    throw new Error(`${what}: output_kind must be "file" or "tree"`);
-  }
-  const steps = spec.steps?.length
-    ? spec.steps.map((c, i) => asStep(c, `${what}: steps[${i}]`))
-    : undefined;
-  const checks = asNames(spec.checks, `${what}: checks`);
-  const node: RecipeNode = {
-    name,
-    span,
-    kind: "recipe",
-    source,
-    execution: asExecution(spec.execution, `${what}: execution`),
-    output_kind: spec.output_kind,
-    target,
-    ...(steps ? { steps } : {}),
-    ...(checks ? { checks } : {}),
-  };
-  return makeOutput(node);
-}
-
-/** A package: named commands over a recipe's artifact, with an
+/** A package: named commands over an acquired artifact, with an
  *  explicit runtime closure and a layout contract. (`pkg` because
  *  `package` is a reserved word.) */
 export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNode> {
@@ -2939,7 +2681,7 @@ export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
   const what = `task("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["steps", "context", "locks", "deps", "environment", "checks", "span"]);
+  rejectUnknownFields(what, spec, ["steps", "context", "locks", "deps", "services", "environment", "checks", "span"]);
   const span = nodeSpan(spec.span, what);
   if (!Array.isArray(spec.steps) || spec.steps.length === 0) throw new Error(`${what}: steps must be nonempty`);
   const steps = spec.steps.map((step, index) => asStep(step, `${what}: steps[${index}]`));
@@ -2947,6 +2689,7 @@ export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
   if (spec.locks !== undefined && !Array.isArray(spec.locks)) throw new Error(`${what}: locks must be an array`);
   const locks = spec.locks?.map((lock, index) => asLock(lock, `${what}: locks[${index}]`));
   const deps = asNames(spec.deps, `${what}: deps`);
+  const services = serviceNames(spec.services, `${what}: services`);
   const envName = spec.environment !== undefined
     ? asName(spec.environment, `${what}: environment`)
     : undefined;
@@ -2959,6 +2702,7 @@ export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
     context,
     ...(locks?.length ? { mutation_locks: locks } : {}),
     ...(deps ? { deps } : {}),
+    ...(services.length ? { services } : {}),
     ...(envName !== undefined ? { environment: envName } : {}),
     ...(checks ? { checks } : {}),
   };
@@ -2999,22 +2743,6 @@ export function check(name: string, spec: CheckSpec): WorkspaceOutput<CheckNode>
     kind: "check",
     run: asCommand(spec.run, `${what}: run`),
     subject: asName(spec.subject, `${what}: subject`),
-  };
-  return makeOutput(node);
-}
-
-/** A runtime package composition exported as an OCI image. */
-export function image(name: string, spec: ImageSpec): WorkspaceOutput<ImageNode> {
-  const what = `image("${name}")`;
-  asName(name, `${what}: name`);
-  asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["packages", "target", "base", "destinations", "config", "span"]);
-  const span = nodeSpan(spec.span, what);
-  const node: ImageNode = {
-    name,
-    span,
-    kind: "image",
-    ...imageProperties(spec, what),
   };
   return makeOutput(node);
 }
@@ -3105,8 +2833,8 @@ export function workspace(spec: WorkspaceSpec): WorkspaceValue {
     if (!o) continue;
     if (typeof o !== "object" || o.__gripsack !== "workspace_output") {
       throw new Error(
-        `workspace(...): outputs entries must be recipe()/pkg()/environment()/task()/` +
-          `schedule()/check()/image()/profile()/hook() values — got ${
+        `workspace(...): outputs entries must be pkg()/environment()/task()/` +
+          `schedule()/check()/profile()/hook()/service() values — got ${
             JSON.stringify(Array.isArray(o) ? "an array" : typeof o)
           }`,
       );
@@ -3151,7 +2879,7 @@ export function workspace(spec: WorkspaceSpec): WorkspaceValue {
  *
  * ```ts
  * // gripsack.ts
- * import { defineWorkspace, workspace, pkg, recipe } from "@gripsack/core";
+ * import { defineWorkspace, workspace, pkg, provider } from "@gripsack/core";
  *
  * export default defineWorkspace((ctx) => workspace({
  *   outputs: [tools, toolsBin],
@@ -3165,14 +2893,125 @@ export function defineWorkspace(fn: WorkspaceFn): WorkspaceFn {
   return fn;
 }
 "#),
-    ("src/workspace/target.ts", r#"/** v5 per-output execution, platform and prefix admission (0052 A1-02).
+    ("src/workspace/services.ts", r#"/** Pure managed-service declarations; Docker lifecycle and trust remain core-owned. */
+import { rejectUnknownFields } from "../fields.ts";
+import type { ServiceNode, ServiceSpec, WorkspaceOutput } from "./ir.ts";
+import { asName, asNames, asRecord, freezeDeep, nodeSpan } from "./validate.ts";
+import { asInstallPrefix } from "./target.ts";
+
+const MAX_BINDINGS = 128;
+const MAX_ARGUMENTS = 1024;
+const MAX_VALUE_BYTES = 65536;
+const utf8 = new TextEncoder();
+
+export function serviceNames(value: unknown, where: string): string[] {
+  const names = asNames(value, where) ?? [];
+  if (names.length > MAX_BINDINGS) throw new Error(`${where} exceeds ${MAX_BINDINGS} entries`);
+  return names;
+}
+
+function positiveInteger(value: unknown, maximum: number, where: string): void {
+  if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > maximum) {
+    throw new Error(`${where} must be an integer in 1..${maximum}`);
+  }
+}
+function strings(value: unknown, where: string): asserts value is string[] {
+  if (!Array.isArray(value) || value.length > MAX_ARGUMENTS || value.some((part) => typeof part !== "string" || part.includes("\0") || utf8.encode(part).length > MAX_VALUE_BYTES)) {
+    throw new Error(`${where} must have at most ${MAX_ARGUMENTS} NUL-free arguments of at most ${MAX_VALUE_BYTES} bytes each`);
+  }
+}
+function loopback(value: unknown): boolean {
+  if (value === "::1") return true;
+  if (typeof value !== "string") return false;
+  const parts = value.split(".");
+  return parts.length === 4 && parts[0] === "127" && parts.every((part) =>
+    /^(0|[1-9][0-9]{0,2})$/.test(part) && Number(part) <= 255);
+}
+
+/** Validate constructor values and hand-built wire nodes at the same boundary. */
+export function serviceProperties(spec: ServiceSpec, where: string): Omit<ServiceNode, "name" | "span" | "kind"> {
+  if (typeof spec.image !== "string" || !/^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$/.test(spec.image) || spec.image.includes("//")) {
+    throw new Error(`${where}: image must be an immutable name@sha256 OCI reference`);
+  }
+  const imageName = spec.image.slice(0, spec.image.indexOf("@"));
+  if (imageName.length > 255 || imageName.endsWith("/") || imageName.endsWith(":")) {
+    throw new Error(`${where}: image name must be at most 255 characters and cannot end with / or :`);
+  }
+  const ports = spec.ports === undefined ? [] : spec.ports;
+  if (!Array.isArray(ports) || ports.length > MAX_BINDINGS) throw new Error(`${where}: ports must be an array of at most ${MAX_BINDINGS} entries`);
+  const bindings = new Set<string>();
+  for (const port of ports) {
+    const record = asRecord(port, `${where}: port`);
+    rejectUnknownFields(`${where}: port`, record, ["host", "container", "address"]);
+    positiveInteger(port.host, 65535, `${where}: host port`);
+    positiveInteger(port.container, 65535, `${where}: container port`);
+    if (!loopback(port.address)) throw new Error(`${where}: port address must be canonical loopback`);
+    const binding = `${port.address}:${port.host}`;
+    if (bindings.has(binding)) throw new Error(`${where}: duplicate host port binding`);
+    bindings.add(binding);
+  }
+  const volumes = spec.volumes === undefined ? [] : spec.volumes;
+  if (!Array.isArray(volumes) || volumes.length > MAX_BINDINGS) throw new Error(`${where}: volumes must be an array of at most ${MAX_BINDINGS} entries`);
+  const names = new Set<string>();
+  const targets = new Set<string>();
+  for (const volume of volumes) {
+    const record = asRecord(volume, `${where}: volume`);
+    rejectUnknownFields(`${where}: volume`, record, ["name", "target"]);
+    if (typeof volume.name !== "string" || volume.name.length > 255 || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(volume.name)) {
+      throw new Error(`${where}: volume name must be a named volume, not a host path`);
+    }
+    asInstallPrefix(volume.target, `${where}: volume target`);
+    if (names.has(volume.name) || targets.has(volume.target)) throw new Error(`${where}: duplicate volume name or target`);
+    names.add(volume.name);
+    targets.add(volume.target);
+  }
+  const env = spec.env === undefined ? {} : spec.env;
+  asRecord(env, `${where}: env`);
+  if (Object.keys(env).length > MAX_BINDINGS) throw new Error(`${where}: too many environment entries`);
+  for (const [name, binding] of Object.entries(env)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`${where}: invalid environment name`);
+    const record = asRecord(binding, `${where}: env.${name}`);
+    if (binding.kind === "literal") {
+      rejectUnknownFields(`${where}: env.${name}`, record, ["kind", "value"]);
+      if (typeof binding.value !== "string" || binding.value.includes("\0") || utf8.encode(binding.value).length > MAX_VALUE_BYTES) throw new Error(`${where}: environment literal must be NUL-free and at most ${MAX_VALUE_BYTES} bytes`);
+    } else if (binding.kind === "inherited") {
+      rejectUnknownFields(`${where}: env.${name}`, record, ["kind", "name"]);
+      if (typeof binding.name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(binding.name)) throw new Error(`${where}: invalid inherited environment name`);
+    } else throw new Error(`${where}: environment binding must be literal or inherited`);
+  }
+  const command = spec.command === undefined ? [] : spec.command;
+  strings(command, `${where}: command`);
+  const health = spec.health;
+  const healthRecord = asRecord(health, `${where}: health`);
+  rejectUnknownFields(`${where}: health`, healthRecord, ["kind", "argv", "interval_seconds", "timeout_seconds", "retries"]);
+  if (health.kind !== "command") throw new Error(`${where}: health kind must be command`);
+  strings(health.argv, `${where}: health argv`);
+  if (!health.argv.length || !health.argv[0]) throw new Error(`${where}: health argv must name an executable`);
+  for (const field of ["interval_seconds", "timeout_seconds", "retries"] as const) {
+    positiveInteger(health[field], field === "retries" ? 100 : 3600, `${where}: health.${field}`);
+  }
+  const depends_on = serviceNames(spec.depends_on, `${where}: depends_on`);
+  return { image: spec.image, ports, volumes, env, command, health, depends_on };
+}
+
+export function service(name: string, spec: ServiceSpec): WorkspaceOutput<ServiceNode> {
+  const where = `service("${name}")`;
+  asName(name, `${where}: name`);
+  const record = asRecord(spec, where);
+  rejectUnknownFields(where, record, ["image", "ports", "volumes", "env", "command", "health", "depends_on", "span"]);
+  const span = nodeSpan(spec.span, where);
+  return Object.freeze({ __gripsack: "workspace_output", ir: freezeDeep({
+    kind: "service", name, span, ...serviceProperties(spec, where),
+  } as ServiceNode) });
+}
+"#),
+    ("src/workspace/target.ts", r#"/** v10 per-output platform and prefix admission.
  *  Declared producer requirements are checked against consumers, not
  *  against the machine evaluating the workspace. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type {
   PackageLayout,
-  RecipeExecution,
   WorkspaceOsVersion,
   WorkspaceOutputNode,
   WorkspacePlatform,
@@ -3196,50 +3035,20 @@ function asVersion(value: unknown, where: string): WorkspaceOsVersion {
 export function asPlatform(value: unknown, where: string): WorkspacePlatform {
   const target = asRecord(value, where);
   rejectUnknownFields(where, target, ["os", "arch", "abi", "minimum_os"]);
-  if (target.os !== "linux" && target.os !== "macos") {
-    throw new Error(`${where}.os must be "linux" or "macos"`);
+  if (target.os !== "linux") {
+    throw new Error(`${where}.os must be "linux"`);
   }
-  if (target.arch !== "x86_64" && target.arch !== "aarch64") {
-    throw new Error(`${where}.arch must be "x86_64" or "aarch64"`);
+  if (target.arch !== "x86_64") {
+    throw new Error(`${where}.arch must be "x86_64"`);
   }
   if (target.abi !== undefined) {
-    const allowed = target.os === "linux" ? ["gnu", "musl"] : ["darwin"];
+    const allowed = ["gnu", "musl"];
     if (!allowed.includes(target.abi as string)) {
       throw new Error(`${where}.abi is incompatible with ${target.os}; expected ${allowed.join(" or ")}`);
     }
   }
   if (target.minimum_os !== undefined) asVersion(target.minimum_os, `${where}.minimum_os`);
   return value as WorkspacePlatform;
-}
-
-export function asExecution(value: unknown, where: string): RecipeExecution {
-  const execution = asRecord(value, where);
-  if (execution.kind === "host") {
-    rejectUnknownFields(where, execution, ["kind", "access"]);
-    if (execution.access !== "unconfined") {
-      throw new Error(`${where}.access must explicitly be "unconfined" (host filesystem/kernel/network access)`);
-    }
-  } else if (execution.kind === "isolated_linux") {
-    rejectUnknownFields(where, execution, ["kind", "worker", "platform", "toolchain"]);
-    if (execution.worker !== "buildkit") throw new Error(`${where}.worker must be "buildkit"`);
-    const platform = asPlatform(execution.platform, `${where}.platform`);
-    if (platform.os !== "linux") throw new Error(`${where}.platform must be Linux`);
-    const toolchain = asRecord(execution.toolchain, `${where}.toolchain`);
-    rejectUnknownFields(`${where}.toolchain`, toolchain, ["reference"]);
-    asImageReference(toolchain.reference, `${where}.toolchain.reference`);
-  } else {
-    throw new Error(`${where}.kind must be "host" or "isolated_linux"; native acquisition uses a provider-backed package`);
-  }
-  return value as RecipeExecution;
-}
-
-export function asImageReference(value: unknown, where: string): string {
-  if (typeof value !== "string" ||
-    !/^[a-z0-9][a-z0-9._:/-]*\/[a-z0-9._:/-]+@sha256:[a-f0-9]{64}$/.test(value) ||
-    value.includes("//")) {
-    throw new Error(`${where} must be a normalized digest-pinned OCI image`);
-  }
-  return value;
 }
 
 export function asInstallPrefix(value: unknown, where: string): string {
@@ -3318,30 +3127,18 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
     if ("target" in node) {
       guard(node, () => void asPlatform(node.target, `${node.kind} '${node.name}' target`));
     }
-    if (node.kind === "recipe") {
-      guard(node, () => void asExecution(node.execution, `recipe '${node.name}' execution`));
-    }
     if (node.kind === "package") {
       guard(node, () => void asLayout(node.layout, `package '${node.name}' layout`));
-      if (node.producer.kind === "recipe") {
-        const recipe = catalog.get(node.producer.recipe)!;
-        if (recipe.kind === "recipe") {
-          requireCompatibleTarget(`package '${node.name}' producer target mismatch`, node, recipe);
-          if (node.archive_root !== undefined && recipe.source.kind !== "fetch") {
-            guard(node, () => { throw new Error(`package '${node.name}': archiveRoot requires a native relocatable package`); });
-          }
-        }
-      }
     }
     if (node.kind === "environment" && node.prefix !== undefined) {
       guard(node, () => void asInstallPrefix(node.prefix, `environment '${node.name}' prefix`));
     }
-    if (node.kind === "environment" || node.kind === "image") {
+    if (node.kind === "environment") {
       for (const name of node.packages) {
         const selected = catalog.get(name)!;
         if (selected.kind !== "package") continue; // reference pass rejected this
         requireCompatibleTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
-        const prefix = node.kind === "image" ? node.destinations?.[name]?.path : node.prefix;
+        const prefix = node.prefix;
         if (selected.layout.kind === "fixed_prefix" && prefix !== selected.layout.prefix) {
           throw new DiagnosticError({
             code: diagnosticCodes.unknownWorkspaceRef,
@@ -3360,7 +3157,7 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
   }
 }
 "#),
-    ("src/workspace/validate.ts", r#"/** Runtime structural guards for current workspace authoring values. */
+    ("src/workspace/validate.ts", r##"/** Runtime structural guards for current workspace authoring values. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import { DiagnosticError, diagnosticCodes } from "../diagnostic.ts";
@@ -3777,12 +3574,7 @@ export function asCalendar(v: unknown, where: string): WorkspaceCalendar {
 }
 
 export function asProducer(v: unknown, where: string): WorkspaceProducer {
-  if (typeof v === "string") return { kind: "recipe", recipe: asName(v, where) };
   const rec = asRecord(v, where);
-  if (rec.kind === "recipe") {
-    rejectUnknownFields(where, rec, ["kind", "recipe"]);
-    return { kind: "recipe", recipe: asName(rec.recipe, `${where}.recipe`) };
-  }
   if (rec.kind === "provider") {
     rejectUnknownFields(where, rec, ["kind", "provider"]);
     return {
@@ -3790,7 +3582,7 @@ export function asProducer(v: unknown, where: string): WorkspaceProducer {
       provider: asAcquisitionSource(rec.provider, `${where}.provider`),
     };
   }
-  throw new Error(`${where}: producer must be a recipe output name or provider(fetch(...))`);
+  throw new Error(`${where}: producer must be a provider(...) acquisition`);
 }
 
 export function asFetch(v: unknown, where: string): Fetch {
@@ -3845,10 +3637,17 @@ export function asHostRuntime(v: unknown, where: string): HostRuntimeRequirement
   return { library_directories: [...directories] };
 }
 
-/** An acquisition source — the tagged union behind `RecipeNode.source`
- * and the provider branch of {@link WorkspaceProducer}. */
+/** An acquisition source for a provider-backed package. */
 export function asAcquisitionSource(v: unknown, where: string): AcquisitionSource {
   const rec = asRecord(v, where);
+  if (rec.kind === "package") {
+    rejectUnknownFields(where, rec, ["kind", "manifest", "span"]);
+    if (typeof rec.manifest !== "string" || !/^[a-f0-9]{64}$/.test(rec.manifest)) {
+      throw new Error(`${where}.manifest must be a lowercase 64-hex SHA256 digest`);
+    }
+    asSpan(rec.span, where);
+    return v as AcquisitionSource;
+  }
   if (rec.kind === "fetch") {
     rejectUnknownFields(where, rec, ["kind", "fetch", "span"]);
     asFetch(rec.fetch, `${where}.fetch`);
@@ -3856,7 +3655,7 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
     return v as AcquisitionSource;
   }
   if (rec.kind === "conda_environment") {
-    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "span"]);
+    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "wheels", "span"]);
     const channels = rec.channels;
     if (!Array.isArray(channels) || channels.length === 0 ||
       channels.some((c) => typeof c !== "string" || c === "")) {
@@ -3887,6 +3686,41 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
     if (rec.system_requirements !== undefined) {
       asSystemRequirements(rec.system_requirements, `${where}.system_requirements`);
     }
+    if (rec.wheels !== undefined) {
+      if (!Array.isArray(rec.wheels)) throw new Error(`${where}.wheels must be an array`);
+      const names = new Set<string>();
+      const urls = new Set<string>();
+      const hashes = new Set<string>();
+      for (const [index, wheel] of rec.wheels.entries()) {
+        const site = `${where}.wheels[${index}]`;
+        const request = asRecord(wheel, site);
+        rejectUnknownFields(site, request, ["name", "version", "url", "sha256"]);
+        if (typeof request.name !== "string" || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(request.name)) {
+          throw new Error(`${site}.name must be a canonical lowercase PEP503 name`);
+        }
+        if (typeof request.version !== "string" || request.version.length > 256 || !/^[A-Za-z0-9.!+_-]+$/.test(request.version)) {
+          throw new Error(`${site}.version must be 1..256 ASCII version characters without whitespace or slashes`);
+        }
+        if (typeof request.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(request.sha256)) {
+          throw new Error(`${site}.sha256 must be a lowercase 64-hex SHA256 digest`);
+        }
+        if (typeof request.url !== "string" || /[\u0000-\u0020\u007f-\u009f]/.test(request.url) || !URL.canParse(request.url)) {
+          throw new Error(`${site}.url must be an HTTPS wheel URL`);
+        }
+        const url = new URL(request.url);
+        const filename = url.pathname.slice(url.pathname.lastIndexOf("/") + 1);
+        if (url.protocol !== "https:" || !url.hostname || url.username || url.password ||
+          request.url.includes("?") || request.url.includes("#") || !/^[A-Za-z0-9_.+-]+\.whl$/.test(filename)) {
+          throw new Error(`${site}.url must be an HTTPS wheel URL without credentials, query, fragment or encoded filename`);
+        }
+        if (names.has(request.name) || urls.has(request.url) || hashes.has(request.sha256)) {
+          throw new Error(`${site}: duplicate wheel name, URL or hash`);
+        }
+        names.add(request.name);
+        urls.add(request.url);
+        hashes.add(request.sha256);
+      }
+    }
     asSpan(rec.span, where);
     return v as AcquisitionSource;
   }
@@ -3898,7 +3732,7 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
     asSpan(rec.span, where);
     return v as AcquisitionSource;
   }
-  throw new Error(`${where}: source kind must be "fetch", "conda_environment" or "pixi_lock"`);
+  throw new Error(`${where}: source kind must be "fetch", "conda_environment", "pixi_lock" or "package"`);
 }
 
 /** Deep copy + freeze: the returned value shares no mutable state
@@ -3931,11 +3765,11 @@ export function duplicateError(name: string, first: Span, again: Span): Diagnost
     ],
   });
 }
-"#),
+"##),
     ("src/workspace.ts", r#"/** Pure workspace constructors for named outputs, commands and profile files.
  *
  * Root `gripsack.ts` returns a {@link WorkspaceValue}; the explicit compiler
- * entrypoint emits the strict current schema (`schema/ir/v9.json`).
+ * entrypoint emits the strict current schema (`schema/ir/v10.json`).
  * Declarations carry provenance, reject unknown fields and stay deeply frozen.
  * Construction declares work; only the core admits and performs effects.
  *
@@ -3943,11 +3777,10 @@ export function duplicateError(name: string, first: Span, again: Span): Diagnost
  * value/target admission, commands, files, outputs and emission.
  */
 
-export { artifact, bash, bashBody, exec, hostPath, lit, packageCommand, runBash, sourcePath, outputPath } from "./workspace/commands.ts";
+export { artifact, bash, exec, hostPath, lit, packageCommand, runBash, sourcePath, outputPath } from "./workspace/commands.ts";
 export type { BashBuilder, BashCommandBuilder, ExecBuilder } from "./workspace/commands.ts";
 export { ensureArtifact, input, inputDirectory, inputFile, lock } from "./workspace/bindings.ts";
-export { cargoPackage } from "./workspace/cargo.ts";
-export type { CargoPackageSpec } from "./workspace/cargo.ts";
+export { service } from "./workspace/services.ts";
 export {
   artifactFile,
   artifactTree,
@@ -3969,6 +3802,7 @@ export type {
   BashBody,
   CheckSpec,
   CondaEnvironmentSource,
+  WheelSource,
   CondaEnvironmentSpec,
   CondaSystemRequirements,
   HostRuntimeSpec,
@@ -3976,17 +3810,18 @@ export type {
   EnvironmentSpec,
   ExecSpec,
   HookSpec,
-  ImageConfig,
-  ImageDestination,
-  ImageOwner,
-  ImageSpec,
   PackageLayout,
   PackageSpec,
+  PackageSource,
+  PackageSourceSpec,
+  ServiceSpec,
+  ServicePort,
+  ServiceVolume,
+  ServiceEnvironmentValue,
+  ServiceHealth,
   PixiLockSource,
   PixiLockSpec,
   ProfileSpec,
-  RecipeExecution,
-  RecipeSpec,
   FetchSource,
   RunBashSpec,
   ScheduleSpec,
@@ -4034,11 +3869,9 @@ export {
   defineWorkspace,
   environment,
   hook,
-  image,
   pkg,
   profile,
   provider,
-  recipe,
   schedule,
   targetPlatform,
   task,
@@ -4046,12 +3879,14 @@ export {
   workspace,
 } from "./workspace/outputs.ts";
 
-import { condaEnvironment as condaEnvironmentImpl, pixiFromLock as pixiFromLockImpl } from "./workspace/outputs.ts";
+import { condaEnvironment as condaEnvironmentImpl, pixiFromLock as pixiFromLockImpl, packageSource } from "./workspace/outputs.ts";
 
 /** Conda acquisition namespace: `conda.environment({ channels, packages, platforms? })`. */
 export const conda = { environment: condaEnvironmentImpl };
 /** Explicit import of an existing Pixi lockfile. */
 export const pixi = { fromLock: pixiFromLockImpl };
+/** Portable package acquisition by an already imported signed manifest digest. */
+export const source = { package: packageSource };
 "#),
     ("deno.json", r#"{
   "imports": {
@@ -4065,8 +3900,8 @@ export const pixi = { fromLock: pixiFromLockImpl };
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.50.0",
-  "description": "gripsack TypeScript workspace SDK — typed declarations, emits IR9",
+  "version": "0.51.0",
+  "description": "gripsack TypeScript workspace SDK — typed declarations, emits IR10",
   "license": "MIT",
   "type": "module",
   "main": "./dist/src/index.js",

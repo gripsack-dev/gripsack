@@ -250,7 +250,6 @@ def assemble(source, candidate_path, evidence_root, destination):
             shutil.copyfile(outputs[original], target)
             role = "auxiliary"
             for component, expected in (("core", f"gripsack-{compatibility['core']}-{TARGET}.tar.gz"),
-                                        ("bridge", f"grip-buildkit-bridge-{compatibility['bridge']}-{TARGET}"),
                                         ("conda", f"gripsack-conda-{compatibility['conda']}-{TARGET}")):
                 if name == expected:
                     role = component

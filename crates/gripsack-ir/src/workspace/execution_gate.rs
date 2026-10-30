@@ -28,8 +28,8 @@ impl std::fmt::Display for WorkspaceOperation {
 }
 
 pub(crate) fn execution_error(ir: &Ir, operation: WorkspaceOperation) -> Option<Diagnostic> {
-    if ir.ir_version != crate::IR_VERSION {
-        return Some(crate::parse::version_error(u64::from(ir.ir_version)));
+    if let Err(diagnostic) = crate::authoring::admit(ir) {
+        return Some(diagnostic);
     }
     // These consumers admit their selected closure. Unselected catalog entries
     // must neither acquire effects nor block a supported selected output.
@@ -40,21 +40,16 @@ pub(crate) fn execution_error(ir: &Ir, operation: WorkspaceOperation) -> Option<
         return None;
     }
     let workspace = &ir.workspace;
-    if workspace.outputs.iter().any(|output| {
-        matches!(output, WorkspaceOutput::Profile(profile) if profile.schedules.is_empty())
-    }) {
+    if workspace
+        .outputs
+        .iter()
+        .any(|output| matches!(output, WorkspaceOutput::Profile(_)))
+    {
         return None;
     }
     let output = workspace.outputs.first();
     let span = output.map(WorkspaceOutput::span).unwrap_or(&workspace.span);
-    let message = match output {
-        Some(WorkspaceOutput::Profile(_) | WorkspaceOutput::Schedule(_)) => {
-            "schedule registration is not available"
-        }
-        _ => {
-            "select a profile output; packages and images use build, environments and tasks use run"
-        }
-    };
+    let message = "select a profile output; packages use build, environments use run, tasks use task, and services use up";
     Some(
         Diagnostic::error(
             codes::WORKSPACE_EXEC_UNAVAILABLE,

@@ -9,7 +9,6 @@ pub(crate) mod hooks;
 mod image;
 mod inputs;
 pub(crate) mod integrity;
-mod lowering;
 mod prepare;
 mod realize;
 pub use consumer::{
@@ -18,22 +17,27 @@ pub use consumer::{
     read_task_log, read_task_report, run_task,
 };
 pub use consumer::{ConsumerOutcome, ConsumerRequest, consume, run_package_command};
+pub(crate) use realize::Realization;
 pub use realize::{BuildOptions, BuildResult, BuiltOutput, build_workspace};
 mod content;
 mod declarations;
 mod definitions;
+pub(crate) use definitions::captured_definitions;
 mod directory_changes;
-mod pins;
+pub(crate) mod pins;
 mod preview;
 mod profile;
 mod profile_checks;
 mod profile_launchers;
 mod profile_preparation;
 mod retained;
-pub(crate) use profile::prepare_apply;
+pub(crate) use profile::{prepare_apply, prepare_apply_in_session};
 pub(crate) mod roots;
-mod selection;
-mod solve;
+pub mod schedules;
+pub(crate) mod selection;
+mod service_pins;
+pub(crate) use service_pins::admit as admit_service_pins;
+pub mod sharing;
 mod stage;
 pub(crate) mod update;
 

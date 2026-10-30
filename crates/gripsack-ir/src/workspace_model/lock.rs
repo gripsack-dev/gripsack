@@ -6,8 +6,10 @@
 pub mod conda;
 mod decode;
 mod platform;
+mod wire;
 use super::identity::DefinitionDigest;
 use super::source::LockedSource;
+pub use super::wheel::LockedWheel;
 pub use conda::{
     BytecodePolicy, ChannelPriority, LockedCondaEnvironment, LockedCondaPackage,
     LockedCondaSystemRequirements, LockedNoArch, LockedRunExports, LockedVirtualPackage,
@@ -17,10 +19,10 @@ pub use platform::{parse_platform_key, platform_key};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// The only `lock_version` this reader admits. Version 2 is the Conda
-/// cutover: location-free locked sources, frozen Conda closure records,
-/// and no unproduced recipe/realized-tree authority fields.
-pub const WORKSPACE_LOCK_VERSION: u32 = 2;
+/// Current lock writer version. Version 2 remains a strict data reader; version
+/// 3 adds imported packages, digest-pinned service images and binary wheel
+/// closures without changing the meaning or bytes of retained version-2 pins.
+pub const WORKSPACE_LOCK_VERSION: u32 = 3;
 
 /// A versioned, platform-partitioned resolution record.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -151,8 +153,7 @@ impl WorkspaceLock {
     /// Fail-closed reader: JSON error → `Corrupt`; wrong version →
     /// `UnsupportedVersion`; then full pin validation.
     pub fn from_json(text: &str) -> Result<WorkspaceLock, WorkspaceLockError> {
-        let lock: WorkspaceLock =
-            serde_json::from_str(text).map_err(|e| WorkspaceLockError::Corrupt(e.to_string()))?;
+        let lock = wire::decode(text)?;
         lock.validate()?;
         Ok(lock)
     }
@@ -160,7 +161,7 @@ impl WorkspaceLock {
     /// Full semantic validation, run by `from_json` after the version
     /// gate (and available to producers before persisting).
     pub fn validate(&self) -> Result<(), WorkspaceLockError> {
-        if self.lock_version != WORKSPACE_LOCK_VERSION {
+        if !matches!(self.lock_version, 2 | WORKSPACE_LOCK_VERSION) {
             return Err(WorkspaceLockError::UnsupportedVersion(self.lock_version));
         }
         for name in self.definitions.imports.keys() {
@@ -174,6 +175,33 @@ impl WorkspaceLock {
             let declared = parse_platform_key(platform)?;
             let mut names = std::collections::BTreeSet::new();
             for pin in &resolution.pins {
+                if self.lock_version == 2
+                    && matches!(
+                        pin.source,
+                        LockedSource::Package { .. } | LockedSource::OciImage { .. }
+                    )
+                {
+                    return Err(WorkspaceLockError::InvalidPin(
+                        "version-2 locks cannot contain package or OCI image sources".into(),
+                    ));
+                }
+                if let LockedSource::CondaEnvironment(source) = &pin.source {
+                    if self.lock_version == 2 && !source.wheels.is_empty() {
+                        return Err(WorkspaceLockError::InvalidPin(
+                            "version-2 locks cannot contain wheel requests".into(),
+                        ));
+                    }
+                    super::wheel::validate_sources(&source.wheels)
+                        .map_err(|message| WorkspaceLockError::InvalidPin(message.into()))?;
+                }
+                if let Some(environment) = &pin.conda
+                    && self.lock_version == 2
+                    && !environment.wheels.is_empty()
+                {
+                    return Err(WorkspaceLockError::InvalidPin(
+                        "version-2 locks cannot contain wheels".into(),
+                    ));
+                }
                 if pin.output.is_empty()
                     || pin.output.chars().any(char::is_control)
                     || !names.insert(&pin.output)
@@ -191,6 +219,27 @@ impl WorkspaceLock {
                 require_hex64_opt("resolved.sha256", &pin.resolved.sha256)?;
                 require_hex64_opt("resolved.tree256", &pin.resolved.tree256)?;
                 require_hex64_opt("resolved.repo256", &pin.resolved.repo256)?;
+                if let LockedSource::Package { manifest } = &pin.source {
+                    require_hex64("package manifest", manifest)?;
+                }
+                if let LockedSource::OciImage { reference } = &pin.source {
+                    let digest = reference.rsplit_once("@sha256:").map(|(_, digest)| digest);
+                    if !super::valid_service_image(reference)
+                        || pin.resolved.sha256.as_deref() != digest
+                        || pin.resolved.tree256.is_some()
+                        || pin.resolved.repo256.is_some()
+                        || pin.resolved.api_url.is_some()
+                        || pin
+                            .resolved
+                            .url
+                            .as_deref()
+                            .is_some_and(|url| url != reference)
+                    {
+                        return Err(WorkspaceLockError::InvalidPin(
+                            "OCI image pins must bind the exact declared image digest".into(),
+                        ));
+                    }
+                }
                 validate_conda_pin(platform, &declared, pin)?;
             }
             let mut transitive = std::collections::BTreeSet::new();
@@ -305,6 +354,49 @@ fn validate_conda_pin(
                 "conda package {:?} subdir does not match its environment",
                 package.name
             )));
+        }
+    }
+    let mut previous_wheel: Option<&str> = None;
+    let mut wheel_urls = std::collections::BTreeSet::new();
+    let mut wheel_hashes = std::collections::BTreeSet::new();
+    for wheel in &environment.wheels {
+        wheel
+            .validate()
+            .map_err(|message| WorkspaceLockError::InvalidPin(message.into()))?;
+        if previous_wheel.is_some_and(|name| name >= wheel.name.as_str())
+            || !wheel_urls.insert(&wheel.url)
+            || !wheel_hashes.insert(&wheel.sha256)
+        {
+            return Err(WorkspaceLockError::InvalidPin(
+                "wheel closure must have canonical unique names, URLs and hashes".into(),
+            ));
+        }
+        previous_wheel = Some(&wheel.name);
+    }
+    if let LockedSource::CondaEnvironment(source) = &pin.source {
+        if source.wheels.is_empty() && !environment.wheels.is_empty() {
+            return Err(WorkspaceLockError::InvalidPin(
+                "native Conda source did not request a wheel closure".into(),
+            ));
+        }
+        for requested in &source.wheels {
+            let admitted = match environment
+                .wheels
+                .binary_search_by(|wheel| wheel.name.cmp(&requested.name))
+            {
+                Ok(index) => Some(&environment.wheels[index]),
+                Err(_) => None,
+            };
+            if !admitted.is_some_and(|wheel| {
+                wheel.version == requested.version
+                    && wheel.url == requested.url
+                    && wheel.sha256 == requested.sha256
+            }) {
+                return Err(WorkspaceLockError::InvalidPin(format!(
+                    "declared wheel {:?} is absent or differs from its frozen record",
+                    requested.name,
+                )));
+            }
         }
     }
     let mut previous_requirement: Option<&str> = None;
@@ -459,6 +551,7 @@ mod tests {
                     features: None,
                 },
             ],
+            wheels: Vec::new(),
             materializer: MaterializerPolicy {
                 bytecode: BytecodePolicy::Suppress,
                 receipt: ReceiptPolicy::NormalizedCondaMeta,
@@ -692,5 +785,86 @@ mod tests {
             WorkspaceLock::from_json(&unknown.to_string()),
             Err(WorkspaceLockError::Corrupt(_))
         ));
+    }
+
+    fn wheel() -> LockedWheel {
+        LockedWheel {
+            name: "example".into(),
+            version: "1.0".into(),
+            filename: "example-1.0-py3-none-any.whl".into(),
+            url: "https://files.example.test/example-1.0-py3-none-any.whl".into(),
+            sha256: hex('a'),
+            size: Some(123),
+            requires_python: Some(">=3.10".into()),
+            requires_dist: vec!["dependency>=1".into()],
+        }
+    }
+
+    fn wheel_lock_json() -> serde_json::Value {
+        let mut environment = closure();
+        environment.wheels.push(wheel());
+        let mut value = conda_lock_json();
+        value["lock_version"] = serde_json::json!(3);
+        let pin = &mut value["resolutions"]["linux-x86_64"]["pins"][0];
+        pin["source"]["wheels"] = serde_json::json!([{
+            "name":"example","version":"1.0","url":wheel().url,"sha256":hex('a')
+        }]);
+        pin["resolved"]["sha256"] = serde_json::json!(
+            super::super::identity::conda_closure_digest(&environment).to_string()
+        );
+        pin["conda"] = serde_json::to_value(environment).unwrap();
+        value
+    }
+
+    #[test]
+    fn wheels_require_v3_and_preserve_empty_v2_field_inventory() {
+        let value = wheel_lock_json();
+        let lock = WorkspaceLock::from_json(&value.to_string()).unwrap();
+        assert_eq!(
+            lock.resolutions["linux-x86_64"].pins[0]
+                .conda
+                .as_ref()
+                .unwrap()
+                .wheels,
+            vec![wheel()]
+        );
+        assert_eq!(serde_json::to_value(&lock).unwrap(), value);
+        let mut retained = value;
+        retained["lock_version"] = serde_json::json!(2);
+        assert!(WorkspaceLock::from_json(&retained.to_string()).is_err());
+        for owner in ["source", "conda"] {
+            let mut value = conda_lock_json();
+            value["resolutions"]["linux-x86_64"]["pins"][0][owner]["wheels"] =
+                serde_json::json!([]);
+            assert!(WorkspaceLock::from_json(&value.to_string()).is_err());
+        }
+        assert!(WorkspaceLock::from_json(&conda_lock_json().to_string()).is_ok());
+    }
+
+    #[test]
+    fn wheel_metadata_and_request_changes_cannot_reuse_frozen_identity() {
+        let value = wheel_lock_json();
+        for (field, replacement) in [
+            ("sha256", serde_json::json!(hex('b'))),
+            (
+                "filename",
+                serde_json::json!("different-1.0-py3-none-any.whl"),
+            ),
+            ("requires_python", serde_json::json!(">=3.13")),
+            ("requires_dist", serde_json::json!(["dependency>=2"])),
+            ("size", serde_json::json!(124)),
+        ] {
+            let mut changed = value.clone();
+            changed["resolutions"]["linux-x86_64"]["pins"][0]["conda"]["wheels"][0][field] =
+                replacement;
+            assert!(
+                WorkspaceLock::from_json(&changed.to_string()).is_err(),
+                "{field}"
+            );
+        }
+        let mut missing = value;
+        missing["resolutions"]["linux-x86_64"]["pins"][0]["source"]["wheels"][0]["version"] =
+            serde_json::json!("2.0");
+        assert!(WorkspaceLock::from_json(&missing.to_string()).is_err());
     }
 }

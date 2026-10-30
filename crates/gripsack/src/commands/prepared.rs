@@ -45,6 +45,25 @@ impl PreparedEvaluation {
         host: Option<String>,
         sink: &mut DiagnosticSink,
     ) -> Result<Self, ExitCode> {
+        Self::capture_with(repo, host, sink, false)
+    }
+
+    /// Saved execution may inspect existing evaluator identities but never
+    /// provision a runtime/frontend or execute the evaluator.
+    pub(super) fn capture_existing(
+        repo: &Path,
+        host: Option<String>,
+        sink: &mut DiagnosticSink,
+    ) -> Result<Self, ExitCode> {
+        Self::capture_with(repo, host, sink, true)
+    }
+
+    fn capture_with(
+        repo: &Path,
+        host: Option<String>,
+        sink: &mut DiagnosticSink,
+        existing_only: bool,
+    ) -> Result<Self, ExitCode> {
         reject_blanket_bypass()?;
         // Preserve host admission before provisioning or host-derived IO. This
         // preliminary live read grants nothing; all effective config is read
@@ -70,13 +89,25 @@ impl PreparedEvaluation {
                 .map_err(operational)?;
         let environment = OperatorEnvironment::capture().map_err(operational)?;
         let home = std::path::absolute(gripsack_store::gripsack_home()).map_err(operational)?;
-        let frontend = gripsack_exec::ensure_ts_frontend(&home, env!("CARGO_PKG_VERSION"))
-            .map_err(operational)?
-            .ok_or_else(|| {
-                operational(io::Error::other(
-                    "this binary has no embedded TypeScript frontend",
-                ))
-            })?;
+        let frontend = if existing_only {
+            let path = home
+                .join("frontend")
+                .join(format!("ts-{}", env!("CARGO_PKG_VERSION")));
+            if !path.join(".complete").is_file() {
+                return Err(operational(io::Error::other(
+                    "saved apply requires the captured frontend; run explicit live planning",
+                )));
+            }
+            path
+        } else {
+            gripsack_exec::ensure_ts_frontend(&home, env!("CARGO_PKG_VERSION"))
+                .map_err(operational)?
+                .ok_or_else(|| {
+                    operational(io::Error::other(
+                        "this binary has no embedded TypeScript frontend",
+                    ))
+                })?
+        };
         let pin_relative = Path::new("node_modules/@gripsack/core");
         // An editor-only SDK exclusion must precede metadata/canonicalization:
         // it is not an alternative way to admit the external package root.
@@ -126,13 +157,20 @@ impl PreparedEvaluation {
         ));
         // Only the core-selected runtime is provisioned before approval. Repo
         // fetcher provisioning belongs to the later authorized path.
-        let deno = gripsack_exec::ensure_deno(&home, &provisioning).map_err(operational)?;
+        let deno = if existing_only {
+            gripsack_exec::saved_plan::SavedPlan::existing_runtime(&home)
+        } else {
+            gripsack_exec::ensure_deno(&home, &provisioning)
+        }
+        .map_err(operational)?;
         let runtime_access =
             runtime::access(&sources, &environment, &deno, &home).map_err(operational)?;
         let evaluator_cache = home.join("deno-cache");
         let evaluator_tmp = home.join("eval-tmp");
-        std::fs::create_dir_all(&evaluator_cache).map_err(operational)?;
-        std::fs::create_dir_all(&evaluator_tmp).map_err(operational)?;
+        if !existing_only {
+            std::fs::create_dir_all(&evaluator_cache).map_err(operational)?;
+            std::fs::create_dir_all(&evaluator_tmp).map_err(operational)?;
+        }
         let environment = environment
             .with_evaluator_cache(&evaluator_cache)
             .and_then(|environment| environment.with_evaluator_temp(&evaluator_tmp))

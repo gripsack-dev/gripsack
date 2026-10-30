@@ -20,6 +20,28 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         return Err(ExecError::Gate(diagnostic));
     }
     let (session, native) = crate::workspace::prepare_apply(ir, ctx)?;
+    apply_prepared(ctx, session, native)
+}
+
+pub(crate) fn apply_in_session(
+    ir: &Ir,
+    ctx: &Ctx,
+    session: crate::LifecycleSession,
+) -> Result<ApplyResult, ExecError> {
+    if let Some(diagnostic) =
+        ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Apply)
+    {
+        return Err(ExecError::Gate(diagnostic));
+    }
+    let (session, native) = crate::workspace::prepare_apply_in_session(ir, ctx, session)?;
+    apply_prepared(ctx, session, native)
+}
+
+fn apply_prepared(
+    ctx: &Ctx,
+    session: crate::LifecycleSession,
+    native: crate::workspace::NativeProfiles,
+) -> Result<ApplyResult, ExecError> {
     // crash recovery (0019): a previous run killed between a deploy
     // mutation and the flip left uncommitted journal entries — the
     // filesystem sits between generations. Restore the priors before
@@ -207,6 +229,11 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             }
         }
     }
+    intents.extend(crate::workspace::schedules::lifecycle::removal_intents(
+        prev_manifest.as_ref(),
+        &deployments,
+    ));
+    crate::workspace::schedules::lifecycle::registration_intents(&deployments, &mut intents);
     let activation = match store::activation::prepare(ctx.home_dir()?, &selection, intents) {
         Ok(activation) => activation,
         Err(error) => {

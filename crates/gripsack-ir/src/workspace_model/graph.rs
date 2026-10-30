@@ -257,6 +257,7 @@ impl<'a> Collector<'a> {
             WorkspaceOutput::Task(value) => {
                 self.steps(edges, &value.steps, GraphRole::Runtime, None);
                 self.named(edges, &value.deps, kind_names(Kinds::Task), &value.span, GraphRole::TaskPrereq, None);
+                self.named(edges, &value.services, kind_names(Kinds::Service), &value.span, GraphRole::Runtime, None);
                 self.named(edges, &value.checks, kind_names(Kinds::Check), &value.span, GraphRole::Validation, None);
                 if let Some(environment) = &value.environment {
                     self.edge(edges, environment, kind_names(Kinds::Environment), &value.span, GraphRole::Runtime, None);
@@ -292,6 +293,8 @@ impl<'a> Collector<'a> {
                 proof { assert(value.files@.take(value.files@.len() as int) =~= value.files@); }
             }
             WorkspaceOutput::Hook(value) => self.command(edges, &value.run, GraphRole::Runtime, None),
+            WorkspaceOutput::Service(value) => self.named(edges, &value.depends_on,
+                kind_names(Kinds::Service), &value.span, GraphRole::Runtime, None),
         }
     }
 }

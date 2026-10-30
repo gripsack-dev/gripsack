@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Consume a private Linux candidate; never publish or substitute public assets."""
+"""Consume exact core, Conda and SDK candidates using private native CLI consumers.
+
+Checksums, compiled Conda pins, static binaries and package metadata are required;
+BuildKit backend qualification is not part of the active product contract.
+Never publish or substitute public assets.
+"""
 from __future__ import annotations
 
 import argparse
@@ -70,7 +75,6 @@ class Consumer:
                 "Private non-publishing candidate, not a signed or promoted release.",
                 "Linux/WSL x86_64 only; no ARM, macOS, Windows, private el9 kernel or glibc hardware qualification.",
                 "No fuzz engine or corpus replay (REL-FUZZ-2026-09-27).",
-                "Bridge bytes/static admission only here; protected BuildKit solves belong to their separate gate.",
                 "Tool-image/build caches may be retained; every command below executes anew in fresh consumer homes.",
             ],
         }
@@ -139,7 +143,7 @@ class Consumer:
         self.receipt["source"] = {"commit": commit, "tool_image": image, "contracts": {}}
         for relative in ("Cargo.toml", "Cargo.lock", "typescript/package.json", "typescript/package-lock.json",
                          "tools/conda-helper/Cargo.toml", "tools/conda-helper/Cargo.lock",
-                         "crates/gripsack-fetch/src/conda_pins.rs", "crates/gripsack-fetch/src/bridge_pins.rs",
+                         "crates/gripsack-fetch/src/conda_pins.rs",
                          "scripts/local_artifact_consumers.py", "scripts/local_ci_conda_consumer.py", ".ci/pilot.json"):
             self.receipt["source"]["contracts"][relative] = sha(ROOT / relative)
         for tool in ("python3", "node", "npm", "deno", "rustc", "git", "readelf", "zstd"):
@@ -166,28 +170,23 @@ class Consumer:
         projection.write_text(
             '#![allow(dead_code)]\nmod host { #[derive(Debug)] pub enum AssetTarget { LinuxX86_64Musl } }\n'
             + f'#[path={json.dumps(str(ROOT / "crates/gripsack-fetch/src/conda_pins.rs"))}] mod conda;\n'
-            + f'#[path={json.dumps(str(ROOT / "crates/gripsack-fetch/src/bridge_pins.rs"))}] mod bridge;\n'
-            + 'fn main() { println!("{:?}", conda::CONDA_VERSION); println!("{:?}", bridge::BRIDGE_VERSION); '
-            + 'for (name, pins) in [("conda", conda::CONDA_SHA256), ("bridge", bridge::BRIDGE_SHA256)] {'
-            + 'for (slot, hash) in pins { println!("[\\\"{}\\\",\\\"{:?}\\\",{:?}]", name, slot, hash); } } }\n')
+            + 'fn main() { println!("{:?}", conda::CONDA_VERSION); '
+            + 'for (slot, hash) in conda::CONDA_SHA256 { println!("[\\\"{:?}\\\",{:?}]", slot, hash); } }\n')
         self.run(["rustc", "--edition=2024", projection, "-o", self.work / "pins"])
         rows = self.run([self.work / "pins"]).splitlines()
         require(json.loads(rows[0]) == version, "helper source pin version differs")
-        bridge_version = json.loads(rows[1])
         pins = {}
-        for row in rows[2:]:
-            kind, slot, digest = json.loads(row)
-            require((kind, slot) not in pins, "duplicate source pin")
-            pins[kind, slot] = digest
-        require(set(pins) == {("conda", "LinuxX86_64Musl"), ("bridge", "LinuxX86_64Musl")}, "unexpected helper target inventory")
+        for row in rows[1:]:
+            slot, digest = json.loads(row)
+            require(slot not in pins, "duplicate source pin")
+            pins[slot] = digest
+        require(set(pins) == {"LinuxX86_64Musl"}, "unexpected helper target inventory")
         core = f"gripsack-{version}-{TARGET}.tar.gz"
         helper = f"gripsack-conda-{version}-{TARGET}"
-        require(bridge_version == version, "bridge release namespace differs from core")
-        bridge = f"grip-buildkit-bridge-{bridge_version}-{TARGET}"
         sdk = f"gripsack-core-{sdk_version}.tgz"
         notices = {"LICENSE-pixi": "pixi_git/LICENSE", "LICENSE-UV-MIT": "pixi_git/LICENSE-UV-MIT",
                    "LICENSE-rattler": "rattler_package_streaming/LICENSE"}
-        expected = {core, helper, bridge, sdk, *(f"{name}.sha256" for name in (core, helper, bridge)),
+        expected = {core, helper, sdk, *(f"{name}.sha256" for name in (core, helper)),
                     f"{helper}.manifest.json", *(f"{helper}.{suffix}" for suffix in notices)}
         actual = {path.name for path in dist.iterdir()}
         require(actual == expected, f"DIST inventory mismatch: missing={expected - actual}, unexpected={actual - expected}")
@@ -195,10 +194,9 @@ class Consumer:
             path = dist / name
             require(path.is_file() and not path.is_symlink(), f"not a regular artifact: {name}")
             self.receipt["artifacts"][name] = {"sha256": sha(path), "bytes": path.stat().st_size}
-        for name in (core, helper, bridge):
+        for name in (core, helper):
             require((dist / f"{name}.sha256").read_text() == f"{sha(dist / name)}  {name}\n", f"checksum sidecar mismatch: {name}")
-        for kind, name in (("conda", helper), ("bridge", bridge)):
-            require(sha(dist / name) == pins[kind, "LinuxX86_64Musl"], f"{kind} differs from compiled source pin")
+        require(sha(dist / helper) == pins["LinuxX86_64Musl"], "conda differs from compiled source pin")
         # Transported artifacts are immutable data, not executable files.
         # Install the exact verified helper into this private consumer home.
         self.helper = self.work / helper
@@ -215,8 +213,11 @@ class Consumer:
         for key, value in {"schema": 1, "version": version, "target": TARGET, "asset": helper,
                            "sha256": sha(dist / helper), "bytes": (dist / helper).stat().st_size,
                            "lock_sha256": sha(ROOT / "tools/conda-helper/Cargo.lock"),
-                           "reproducible_rounds": 2, "build_image": package.LINUX_IMAGE}.items():
+                           "source_sha256": package.source_digest(ROOT / "tools/conda-helper"),
+                           "build_image": package.LINUX_IMAGE}.items():
             require(manifest.get(key) == value, f"helper manifest {key} mismatch")
+        rounds = manifest.get("reproducible_rounds")
+        require(type(rounds) is int and rounds in (1, 2), "helper manifest build rounds mismatch")
         require(manifest["compiler"].startswith(f"rustc {package.COMPILER} "), "helper compiler identity mismatch")
         require(set(manifest["licenses"]) == {f"{helper}.{suffix}" for suffix in notices}, "helper license inventory mismatch")
         for suffix, relative in notices.items():
@@ -236,7 +237,7 @@ class Consumer:
         self.grip.parent.mkdir(parents=True)
         shutil.copy2(extracted / f"gripsack-{version}-{TARGET}/grip", self.grip)
         self.grip.chmod(0o755)
-        for binary in (self.grip, self.helper, dist / bridge):
+        for binary in (self.grip, self.helper):
             with binary.open("rb") as stream:
                 header = stream.read(20)
             require(header[:6] == b"\x7fELF\x02\x01" and header[18:20] == b"\x3e\x00",
@@ -247,7 +248,6 @@ class Consumer:
         require(self.run([self.grip, "--version"]).strip() == f"grip {version}", "installed core version mismatch")
         self.env["GRIPSACK_BIN"] = str(self.grip)
         self.env["GRIPSACK_CONDA_HELPER_MIRROR"] = str(dist)
-        self.env["GRIPSACK_BRIDGE_MIRROR"] = str(dist)
         self.sdk = prepare_sdk(dist / sdk, self.work, sdk_version)
         try:
             prepare_sdk(dist / sdk, self.work / "sdk-negative", "invalid-candidate-version")
@@ -271,7 +271,7 @@ class Consumer:
                  cwd=npm_project)
         self.sdk = installed
         self.receipt["components"] = {"core": version, "helper": helper_version, "sdk": sdk_version,
-                                      "bridge": bridge_version, "installed_core_sha256": sha(self.grip)}
+                                      "installed_core_sha256": sha(self.grip)}
         self.sdk_tar = dist / sdk
 
     def journeys(self):
@@ -289,7 +289,7 @@ class Consumer:
         # Fault-control tests remain mandatory in the debug flow gate; the
         # installed release intentionally does not contain those controls.
         self.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-                  "-m", "not requires_fault_controls",
+                  "-m", "not requires_fault_controls and not native_integration",
                   f"--basetemp={self.work / 'flows'}", f"--junitxml={junit}",
                   *(ROOT / "e2e" / name for name in cases)])
         suites = ET.parse(junit).getroot()

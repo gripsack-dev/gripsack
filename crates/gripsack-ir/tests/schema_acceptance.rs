@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 fn schema() -> jsonschema::Validator {
     jsonschema::validator_for(
-        &serde_json::from_str::<Value>(include_str!("../schema-v9.json")).unwrap(),
+        &serde_json::from_str::<Value>(include_str!("../schema-v10.json")).unwrap(),
     )
     .unwrap()
 }
@@ -17,12 +17,13 @@ fn command() -> Value {
 }
 fn document() -> Value {
     let target = json!({"os":"linux","arch":"x86_64"});
-    json!({"ir_version":9,"host":target,"workspace":{"span":span(1),"outputs":[
-        {"kind":"recipe","name":"build","span":span(2),
-         "source":{"kind":"fetch","fetch":{"kind":"file","path":"src"},"span":span(12)},
-         "execution":{"kind":"host","access":"unconfined"},"output_kind":"tree","target":target,
+    json!({"ir_version":10,"host":target,"workspace":{"span":span(1),"outputs":[
+        {"kind":"task","name":"build","span":span(2),
+         "context":{"kind":"host","mutable_paths":[]},
          "steps":[{"command":command()}]},
-        {"kind":"package","name":"tool","span":span(3),"producer":{"kind":"recipe","recipe":"build"},
+        {"kind":"package","name":"tool","span":span(3),
+         "producer":{"kind":"provider","provider":{"kind":"fetch",
+             "fetch":{"kind":"file","path":"src"},"span":span(12)}},
          "commands":{"tool":"bin/tool"},"target":target,"layout":{"kind":"relocatable"}},
         {"kind":"environment","name":"dev","span":span(4),"packages":["tool"],"target":target},
         {"kind":"task","name":"test","span":span(5),"context":{"kind":"host","mutable_paths":[]},
@@ -30,7 +31,9 @@ fn document() -> Value {
         {"kind":"check","name":"smoke","span":span(6),"subject":"tool","run":command()},
         {"kind":"schedule","name":"daily","span":span(7),"task":"test","scope":"user",
          "trigger":{"kind":"daily","time":"03:30"}},
-        {"kind":"image","name":"image","span":span(8),"packages":["tool"],"target":target},
+        {"kind":"service","name":"database","span":span(8),
+         "image":format!("docker.io/library/postgres@sha256:{}", "a".repeat(64)),
+         "health":{"kind":"command","argv":["pg_isready"],"interval_seconds":5,"timeout_seconds":2,"retries":3}},
         {"kind":"hook","name":"refresh","span":span(9),"trigger":"post_activate","run":command()},
         {"kind":"profile","name":"home","span":span(10),"environment":"dev","hooks":["refresh"],
          "schedules":["daily"],"files":[{"span":span(11),"source":{"kind":"repo_file","path":"config"},
@@ -70,7 +73,7 @@ fn source_and_command_unions_preserve_schema_parser_parity() {
         json!({"kind":"plugin","name":"custom","args":{"channel":"stable"}}),
     ] {
         let mut doc = document();
-        doc["workspace"]["outputs"][0]["source"]["fetch"] = fetch;
+        doc["workspace"]["outputs"][1]["producer"]["provider"]["fetch"] = fetch;
         admitted(&validator, &doc);
     }
     for source in [
@@ -151,9 +154,9 @@ fn unknown_fields_and_missing_provenance_never_grant_authority() {
         rejected(&validator, &doc);
     }
     for (pointer, line) in [
-        ("/workspace/outputs/0/source", 12),
-        ("/workspace/outputs/0/source/fetch", 12),
-        ("/workspace/outputs/0/execution", 2),
+        ("/workspace/outputs/1/producer/provider", 12),
+        ("/workspace/outputs/1/producer/provider/fetch", 12),
+        ("/workspace/outputs/0/context", 2),
         ("/workspace/outputs/0/steps/0/command", 20),
         ("/workspace/outputs/0/steps/0/command/argv/0", 20),
         ("/workspace/outputs/1/producer", 3),
@@ -177,7 +180,7 @@ fn unknown_fields_and_missing_provenance_never_grant_authority() {
     }
     for pointer in [
         "/workspace",
-        "/workspace/outputs/0/source",
+        "/workspace/outputs/1/producer/provider",
         "/workspace/outputs/0/steps/0/command",
         "/workspace/outputs/8/files/0",
     ] {
@@ -199,8 +202,8 @@ fn malformed_envelopes_and_removed_surfaces_are_rejected() {
         json!([]),
         json!(true),
         json!({}),
-        json!({"ir_version":9,"modules":{}}),
-        json!({"ir_version":9,"host":{},"workspace":null}),
+        json!({"ir_version":10,"modules":{}}),
+        json!({"ir_version":10,"host":{},"workspace":null}),
     ] {
         rejected(&validator, &doc);
     }
@@ -209,7 +212,13 @@ fn malformed_envelopes_and_removed_surfaces_are_rejected() {
         doc.as_object_mut().unwrap().remove(field);
         rejected(&validator, &doc);
     }
-    for version in [json!(null), json!("9"), json!(-1), json!(4294967296u64)] {
+    for version in [
+        json!(9),
+        json!(null),
+        json!("10"),
+        json!(-1),
+        json!(4294967296u64),
+    ] {
         let mut doc = document();
         doc["ir_version"] = version;
         rejected(&validator, &doc);
@@ -223,21 +232,27 @@ fn malformed_envelopes_and_removed_surfaces_are_rejected() {
         ("/host", json!(null)),
         ("/workspace/outputs", json!({})),
         (
-            "/workspace/outputs/0/source",
+            "/workspace/outputs/1/producer/provider",
             json!({"fetch":{"kind":"file","path":"p"},"span":span(12)}),
         ),
         (
-            "/workspace/outputs/0/source/fetch",
+            "/workspace/outputs/1/producer/provider/fetch",
             json!({"kind":"pixi","package":"tool"}),
         ),
         (
-            "/workspace/outputs/0/source/fetch",
+            "/workspace/outputs/1/producer/provider/fetch",
             json!({"kind":"brew","formula":"tool"}),
         ),
         ("/workspace/outputs/0/kind", json!("widget")),
         ("/workspace/outputs/1/layout", json!("relocatable")),
         ("/workspace/outputs/1/target/os", json!("windows")),
         ("/workspace/outputs/1/target/arch", json!("unknown")),
+        ("/workspace/outputs/1/target/os", json!("macos")),
+        ("/workspace/outputs/1/target/arch", json!("aarch64")),
+        (
+            "/workspace/outputs/1/target",
+            json!({"os":"linux","arch":"x86_64","abi":"darwin"}),
+        ),
         ("/workspace/outputs/5/scope", json!("system")),
         ("/workspace/outputs/0/span/line", json!("2")),
         ("/workspace/outputs/0/span/line", json!(-1)),
@@ -247,7 +262,7 @@ fn malformed_envelopes_and_removed_surfaces_are_rejected() {
         *doc.pointer_mut(pointer).unwrap() = value;
         rejected(&validator, &doc);
     }
-    for malformed in ["", "{", "null trailing", "{\"ir_version\":9,}"] {
+    for malformed in ["", "{", "null trailing", "{\"ir_version\":10,}"] {
         assert!(parse(malformed).is_err());
     }
 }
@@ -281,11 +296,6 @@ fn authored_value_constraints_are_enforced_by_schema_and_semantics() {
             json!("25:00"),
             codes::INVALID_WORKSPACE_VALUE,
         ),
-        (
-            "/workspace/outputs/1/target",
-            json!({"os":"linux","arch":"x86_64","abi":"darwin"}),
-            codes::INVALID_WORKSPACE_VALUE,
-        ),
     ] {
         let mut doc = document();
         *doc.pointer_mut(pointer).unwrap() = value;
@@ -300,7 +310,7 @@ fn authored_value_constraints_are_enforced_by_schema_and_semantics() {
 }
 
 #[test]
-fn file_content_destination_and_execution_unions_round_trip() {
+fn file_content_destination_and_schedule_unions_round_trip() {
     let validator = schema();
     for (source, content) in [
         (
@@ -347,35 +357,24 @@ fn file_content_destination_and_execution_unions_round_trip() {
         }
     }
     let mut doc = document();
-    doc["workspace"]["outputs"][0]["execution"] = json!({
-        "kind":"isolated_linux","worker":"buildkit","platform":{"os":"linux","arch":"x86_64"},
-        "toolchain":{"reference":format!("docker.io/library/toolchain@sha256:{}", "a".repeat(64))}
-    });
     doc["workspace"]["outputs"][1]["layout"] = json!({"kind":"fixed_prefix","prefix":"/opt/tool"});
     doc["workspace"]["outputs"][2]["prefix"] = json!("/opt/tool");
     doc["workspace"]["outputs"][5]["trigger"] =
         json!({"kind":"weekly","weekday":"mon","time":"03:30"});
     admitted(&validator, &doc);
-    for field in ["platform", "toolchain"] {
-        let mut missing = doc.clone();
-        missing["workspace"]["outputs"][0]["execution"]
-            .as_object_mut()
-            .unwrap()
-            .remove(field);
-        rejected(&validator, &missing);
-    }
 }
 
 #[test]
 fn schema_patterns_remain_authoring_constraints_not_guessed_parser_rules() {
     let validator = schema();
     let mut doc = document();
-    doc["workspace"]["outputs"][0]["source"]["fetch"] = json!({
+    doc["workspace"]["outputs"][1]["producer"]["provider"]["fetch"] = json!({
         "kind":"tarball","url":"https://example.test/src.tgz","sha256":"not-hex"
     });
     assert!(!validator.is_valid(&doc));
     parse(&doc.to_string()).unwrap();
     check(&doc.to_string()).unwrap();
-    doc["workspace"]["outputs"][0]["source"]["fetch"]["sha256"] = json!("a".repeat(64));
+    doc["workspace"]["outputs"][1]["producer"]["provider"]["fetch"]["sha256"] =
+        json!("a".repeat(64));
     admitted(&validator, &doc);
 }

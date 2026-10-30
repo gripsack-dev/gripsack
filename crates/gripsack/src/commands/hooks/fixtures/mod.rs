@@ -358,14 +358,7 @@ pub fn effect(root: &Path, case: FixtureCase) -> io::Result<()> {
 }
 
 fn current_image() -> io::Result<File> {
-    #[cfg(target_os = "linux")]
-    {
-        File::open("/proc/self/exe")
-    }
-    #[cfg(target_os = "macos")]
-    {
-        File::open(std::env::current_exe()?)
-    }
+    File::open("/proc/self/exe")
 }
 fn hash_image(source: &mut File) -> io::Result<Sha256Digest> {
     copy_image(source, &mut io::sink())

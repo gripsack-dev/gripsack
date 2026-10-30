@@ -839,6 +839,70 @@ verification are part of the release, not optional follow-up work.
   that same explicit owner decision; the implementing agent cannot
   invent the exception. This plan itself authorizes no publication.
 
+### Owner product and practical-check amendment — 2026-10-28
+
+The owner explicitly amended current scope as
+`PRODUCT-LINUX-NATIVE-2026-10-28` and
+`REL-PRACTICAL-051-2026-10-28` (practical qualification authority
+`LOCAL-PRACTICAL-QUALIFICATION-2026-10-28`). This is an owner decision,
+not an agent-created exception or evidence substitution. It supersedes earlier
+Mac/Homebrew/BuildKit and mandatory deep-assurance release prerequisites for the
+current Linux/WSL2 x86_64 handover and release. Historical decisions, release
+records, normative inventories, proof catalogs, reports and fingerprints remain
+unchanged.
+
+- **Product retirement:** all edition-5 B0–B6 deliveries; A0-01 and A4-01–03
+  Homebrew work; A7-01–02 BuildKit-dependent source-to-Conda work; and the earlier
+  Mac-only retirements. Mixed A/C/D/E requirements retain applicable native
+  task, ownership, retention, recovery, trust and consumer semantics while
+  removing only builder/source-production/bottle/image-production portions.
+  Unsupported-target refusals and preserved historical readers are not new
+  platform support promises.
+- **OCI distinction:** OCI Distribution artifact sharing, real private registry
+  interoperability and running existing images remain required and distinct.
+  Retiring BuildKit and Gripsack image production does not retire generic OCI
+  transport, artifact integrity or native consumption.
+- **Essential default:** Rust, TypeScript, ordinary flows, audits, packaging,
+  installed consumers, source inventory validation and real smokes for changed
+  behavior. Selected wrong/missing evidence still rejects; no failed native
+  behavior may be renamed optional to obtain a pass.
+- **Owner-optional assurance:** deep formal/model/fuzz, exhaustive persistence
+  and clean-build reproducibility campaigns run only on explicit owner request.
+  Unrun means unrun, not passed. Ordinary deterministic safety, parser,
+  crash/recovery and behavioral regressions remain essential. A smoke or
+  regression never claims to discharge an optional proof. The full original
+  178-row closure proof is not a release prerequisite.
+- **Native timing assurance clarification:** disruptive sleep/wake, logout/login,
+  reboot and clock/DST campaigns likewise require an explicit owner request.
+  In the frozen edition-5 inventory this projects E5-01 case index1 to optional,
+  retains ordinary observations from its mixed case index2, and excludes the
+  `platform-time` lane on E5-01/E5-03. E5-03 closure wording follows that split.
+  Actual systemd registration, calendar invocation, update, disable, rollback,
+  GC and unsupported timing-policy admission remain essential; no portable or
+  exactly-once timing guarantee is claimed. Original cases/statuses remain
+  intact, and no disruptive campaign is requested or represented as passing.
+- **Completion reporting:** report selected product completion separately from
+  optional assurance and actual release publication. Preserve pending native
+  cases until parent obtains actual source-bound evidence; historical B0-01
+  qualification stays recorded but cannot count toward the retired product.
+- **Separate owner addition:** `SERVICES-FIRST-2026-10-28` adds native services
+  after Bash/task QoL and before calendar scheduling. Services are distinct from
+  finite tasks and timers, not a retroactive edition-5 requirement. This addition
+  is outside the original 178-row inventory; plan0055 owns implementation and
+  parent qualification. Scope metadata records `implemented_unverified`, not a
+  native service-manager pass.
+
+Plan0049's current projection notes and `scripts/delivery_scope.py` give exact
+requirement IDs, indexed mixed cases and retired prerequisite application.
+`verification/delivery.json` appends the two amendments and separate service
+addition without changing original rows or source fingerprints. The existing
+checker rejects forged amendments and empty/retired completion claims.
+The practical gate profile is the authority for selected release checks;
+delivery checker calibration itself is optional, not a hidden essential gate.
+No build, test, lint, formatter, inventory validation or calibration was executed
+as part of recording this amendment. Parent owns integrated evidence and
+publication; this entry authorizes no fabricated result or automatic release.
+
 ### Owner scope amendment PLATFORM-LINUX-WSL-2026-10-08
 
 On 2026-10-08 the owner explicitly removed macOS from product scope: Linux

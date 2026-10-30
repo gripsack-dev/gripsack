@@ -5,6 +5,7 @@
 use super::command::{TaskContext, WorkspaceArg, WorkspaceCommand, WorkspaceStep};
 use super::file::WorkspaceFile;
 use super::image::ImageOutput;
+use super::service::ServiceOutput;
 use super::source::AcquisitionSource;
 use crate::span::Span;
 use crate::workspace::{
@@ -75,8 +76,8 @@ pub enum MutationLockScope {
     Store,
 }
 
-/// One declared catalog output. The `kind` tag is closed by the
-/// versioned tagged-field pass before constructing this shared model.
+/// A workspace wire output shared with retained generation readers. Recipe and
+/// image variants are historical data only: current authoring refuses them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceOutput {
@@ -89,6 +90,7 @@ pub enum WorkspaceOutput {
     Image(ImageOutput),
     Profile(ProfileOutput),
     Hook(HookOutput),
+    Service(ServiceOutput),
 }
 
 impl WorkspaceOutput {
@@ -114,12 +116,13 @@ impl WorkspaceOutput {
             WorkspaceOutput::Image(o) => &o.span,
             WorkspaceOutput::Profile(o) => &o.span,
             WorkspaceOutput::Hook(o) => &o.span,
+            WorkspaceOutput::Service(o) => &o.span,
         }
     }
 }
 
-/// A build description: source bytes plus an ordered local step list,
-/// producing a file or tree artifact for one target platform.
+/// Historical recipe data for retained identities and receipts, never current
+/// authoring or permission to rebuild a retained artifact.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecipeOutput {
     pub name: String,
@@ -138,7 +141,7 @@ pub struct RecipeOutput {
     pub checks: Vec<String>,
 }
 
-/// A recipe declares its host or isolated Linux execution boundary.
+/// Historical execution identity retained in recipe and artifact receipts.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RecipeExecution {
@@ -205,7 +208,7 @@ pub enum ArchiveRootPolicy {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceProducer {
-    /// Name of the `recipe` output that builds this package (sema E126).
+    /// Historical producer reference; refused by current authoring admission.
     Recipe { recipe: String },
     /// A direct provider acquisition — the v6 source grammar with
     /// mandatory provenance. A provider-backed package needs no
@@ -264,6 +267,9 @@ pub struct TaskOutput {
     /// Names of `task` outputs (sema E126).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deps: Vec<String>,
+    /// Services must already be healthy; tasks never acquire startup authority.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub services: Vec<String>,
     /// Name of an `environment` output (sema E126).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<String>,

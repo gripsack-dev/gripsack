@@ -1,6 +1,6 @@
 //! Independent Conda relocation. Binary suffixes shift inside each C string;
-//! zero padding belongs at its end. Expected bytes stream into a comparator or
-//! a private native-signing reconstruction, never a patched cache hardlink.
+//! zero padding belongs at its end. Expected bytes stream into a comparator,
+//! never a patched cache hardlink.
 use memchr::{memchr, memmem::Finder};
 use std::borrow::Cow;
 use std::io::{self, Read, Write};
