@@ -259,6 +259,30 @@ completion or release evidence is claimed by this execution map.
   refuses; no other build, container, volume or daemon was interrupted. Safe
   offline VHDX compaction remains separate from guest-cache deletion, and no
   successful new candidate or release is claimed.
+- The full ordinary development flow run completed with 698 passes and nine
+  failures. It found one real cold-store regression: apply tried to reuse an
+  absent previous semantic artifact before publishing its fresh capture.
+  Only the optional reuse path now treats an explicitly absent store/root as a
+  miss; history/audit readers and existing malformed, incomplete, nonprivate,
+  symlinked or incorrectly bound artifacts remain strict. The remaining failures
+  were stale lock-format/example/platform/capability assumptions and a fixture
+  which corrupted the first store object instead of the deployed payload.
+- Integrated recovery core SHA-256
+  `fa7cb1d1a81f6380194bce0bcf9ab6be069eafdae2985ab1e8802483afe1250b`
+  passed formatting, strict workspace clippy and all workspace Rust tests in
+  the pinned container. Its six cold-store/journey/repair cases and a separate
+  26-command semantic/saved-plan smoke passed; 21 migrated diagnostic/example
+  cases also passed. The full ordinary-flow rerun remains separate. Compilation
+  used the Docker-managed `gripsack-dev-rust198-musl` volume, not a host target
+  bind. The measured helper's source-input digest is unchanged.
+- The completed profiler fixture was archived to Seagate before removal.
+  An initial Drvfs readback failed with ENOMEM; no source was removed then.
+  Native Windows file I/O subsequently verified all 80,109 archived entries
+  against a fresh paused-container export, including hashes, modes, links and
+  modification times. Archive SHA-256:
+  `e0eeb4729a61587e13fb4d1a680f58f8b8fc4e6d28540577e06b3c870282c771`.
+  Verification inventories and the deliberate teardown receipt accompany it;
+  bind-mounted evidence remains separately retained.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer

@@ -188,7 +188,7 @@ fn retain_semantic_evidence(
     native: &mut NativeProfiles,
     realization: Option<&super::realize::Realization<'_>>,
 ) -> Result<(), ExecError> {
-    use crate::semantic::{capture_profile, retention};
+    use crate::semantic::{SnapshotError, capture_profile, retention};
     let pins = super::pins::WorkspacePins::read(&ctx.repository)?;
     let previous = gripsack_store::generations::current(&ctx.home)?
         .map(|id| gripsack_store::generations::admit_manifest(&ctx.home, id))
@@ -200,7 +200,15 @@ fn retain_semantic_evidence(
             .as_ref()
             .and_then(|generation| generation.deployments.get(name));
         let retained = previous
-            .map(|deployment| retention::read_profile(&ctx.home, name, deployment))
+            .map(
+                |deployment| match retention::read_profile(&ctx.home, name, deployment) {
+                    // Reuse is optional after fresh source admission and realization.
+                    // A cold store has no old evidence to reuse; publish only the
+                    // new capture. Existing-but-invalid evidence still fails closed.
+                    Err(SnapshotError::MissingArtifact) => Ok(None),
+                    result => result,
+                },
+            )
             .transpose()
             .map_err(|error| super::file_failure(&profile.span, error))?
             .flatten();

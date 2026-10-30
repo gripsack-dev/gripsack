@@ -42,6 +42,9 @@ User-visible changes per release. Design archaeology lives in
   scope, binding current policy, receipts, budgets and retained input snapshots.
   Shared cyclic closures no longer exhaust descriptors; changed evidence
   invalidates reuse instead of inheriting a previous operation's approval.
+- Applying unchanged approved sources can re-realize a cold store and publish
+  fresh semantic review evidence. Missing historical evidence is never invented;
+  incomplete, corrupt, nonprivate or symlinked retained artifacts still refuse.
 
 ### Removed
 

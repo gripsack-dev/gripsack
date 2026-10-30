@@ -21,6 +21,8 @@ pub enum SnapshotError {
     Version(u32),
     #[error("invalid semantic snapshot: {0}")]
     Invalid(&'static str),
+    #[error("retained semantic artifact is absent")]
+    MissingArtifact,
     #[error("malformed semantic snapshot JSON")]
     Json(#[from] serde_json::Error),
     #[error("semantic snapshot I/O failed: {0}")]

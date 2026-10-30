@@ -162,10 +162,10 @@ def test_target_mismatch_reports_both_sites_on_both_surfaces(sandbox):
         'targetPlatform } from "@gripsack/core";\n'
         'const tool = pkg("tool", { producer: provider(fileFetch("tool.bin")),\n'
         '  commands: { tool: "bin/tool" },\n'
-        '  target: targetPlatform({ os: "macos", arch: "aarch64" }),\n'
+        '  target: targetPlatform({ os: "linux", arch: "x86_64", abi: "gnu" }),\n'
         '  layout: { kind: "relocatable" } });\n'
         'const env = environment("myenv", { packages: ["tool"], '
-        'target: targetPlatform({ os: "linux", arch: "x86_64" }) });\n'
+        'target: targetPlatform({ os: "linux", arch: "x86_64", abi: "musl" }) });\n'
         "export default defineWorkspace(() => workspace({ outputs: [tool, env] }));\n",
     )
     terminal, doc = check_both(repo)
@@ -236,23 +236,11 @@ def test_decoded_diagnostic_span_cannot_read_outside_repo(sandbox):
     private.write_text("must never appear in a diagnostic\n")
     repo = sandbox / "outside"
     repo.mkdir()
-    package = {
-        "kind": "package", "name": "shell", "span": {"file": "gripsack.ts", "line": 2},
-        "producer": {"kind": "provider", "provider": {
-            "kind": "fetch", "fetch": {"kind": "file", "path": "shell.bin"},
-            "span": {"file": "gripsack.ts", "line": 2},
-        }},
-        "commands": {"bash": "bin/bash"},
-        "target": {"os": "linux", "arch": "x86_64"},
-        "layout": {"kind": "relocatable"},
-    }
     task = {
         "kind": "task", "name": "bad", "span": {"file": "gripsack.ts", "line": 3},
         "steps": [{"command": {
-            "kind": "run_bash", "span": {"file": str(private), "line": 1},
-            "options": ["-e", "-u", "-o", "pipefail"],
-            "interpreter": {"kind": "package_command", "package": "shell", "command": "bash"},
-            "body": "echo ${HOME}",
+            "kind": "exec", "span": {"file": str(private), "line": 1},
+            "argv": [{"kind": "literal", "value": "true\u0000"}],
         }}],
         "context": {"kind": "host", "mutable_paths": []},
     }
@@ -261,16 +249,18 @@ def test_decoded_diagnostic_span_cannot_read_outside_repo(sandbox):
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {
             "span": {"file": "gripsack.ts", "line": 1},
-            "outputs": [package, task],
+            "outputs": [task],
         },
     }
     path = repo / "workspace.ir.json"
     path.write_text(json.dumps(doc))
     result = grip("plan", "--ir", str(path), cwd=repo)
     assert result.returncode != 0
-    assert "E130" in result.stderr
-    assert str(private) in result.stderr
-    assert "must never appear in a diagnostic" not in result.stderr
+    assert "error[E130]" in result.stderr, result.stderr
+    assert f"{private}:1" in result.stderr
+    assert "must never appear in a diagnostic" not in result.stdout + result.stderr
+    assert "E124" not in result.stderr, "invalid command precedes executor refusal"
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_check_success_json_lists_the_named_outputs(sandbox):
@@ -300,38 +290,6 @@ def test_check_success_json_lists_the_named_outputs(sandbox):
 
 
 
-
-def test_schedule_registration_is_refused_before_effects(sandbox):
-    repo = sandbox / "inert-schedule"
-    repo.mkdir()
-    task = {
-        "kind": "task", "name": "build", "span": {"file": "tasks.ts", "line": 8},
-        "steps": [{"command": {
-            "kind": "exec", "span": {"file": "tasks.ts", "line": 9},
-            "argv": [{"kind": "literal", "value": "true"}],
-        }}],
-        "context": {"kind": "host", "mutable_paths": []},
-    }
-    schedule = {
-        "kind": "schedule", "name": "daily", "span": {"file": "schedule.ts", "line": 4},
-        "task": "build", "trigger": {"kind": "daily", "time": "03:30"}, "scope": "user",
-    }
-    document = {
-        "ir_version": 10,
-        "host": {"os": "linux", "arch": "x86_64"},
-        "workspace": {
-            "span": {"file": "gripsack.ts", "line": 1},
-            "outputs": [schedule, task],
-        },
-    }
-    path = repo / "schedule.ir.json"
-    path.write_text(json.dumps(document))
-    inert = grip("plan", "--ir", str(path), cwd=repo)
-    assert inert.returncode != 0
-    assert "E124" in inert.stderr and "schedule registration" in inert.stderr
-    assert "schedule.ts:4" in inert.stderr
-
-    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_invalid_decoded_command_coordinates_keep_labels_without_reading_source(sandbox):

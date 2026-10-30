@@ -109,6 +109,98 @@ fn publication_deduplicates_exact_private_tree_and_profile_binding() {
 }
 
 #[test]
+fn absent_artifacts_require_fresh_publication_not_historical_reconstruction() {
+    for remove_store in [false, true] {
+        let home = tempfile::tempdir().unwrap();
+        let session = LifecycleSession::acquire(home.path()).unwrap();
+        let old = publish_profile(&session, "one", snapshot("one", b"old evidence")).unwrap();
+        let state = deployment(home.path(), vec![old.clone()]);
+        let id = generation(
+            home.path(),
+            1,
+            BTreeMap::from([("one".into(), state.clone())]),
+        );
+        let before = serde_json::to_value(capture_generation(home.path(), id).unwrap()).unwrap();
+        std::fs::remove_dir_all(if remove_store {
+            home.path().join("store")
+        } else {
+            old.clone()
+        })
+        .unwrap();
+
+        assert!(matches!(
+            read_profile(home.path(), "one", &state),
+            Err(SnapshotError::MissingArtifact)
+        ));
+        assert!(matches!(
+            capture_generation(home.path(), id),
+            Err(SnapshotError::MissingArtifact)
+        ));
+        assert!(audit_root(home.path(), &old).is_err());
+        // A generation which never retained declarations still has unknown
+        // evidence, unlike one whose bound artifact has disappeared.
+        assert!(
+            read_profile(home.path(), "legacy", &deployment(home.path(), vec![]))
+                .unwrap()
+                .is_none()
+        );
+
+        let fresh = snapshot("one", b"fresh evidence");
+        let new = publish_profile(&session, "one", fresh.clone()).unwrap();
+        assert_ne!(new, old);
+        let captured = read_profile(home.path(), "one", &deployment(home.path(), vec![new]))
+            .unwrap()
+            .unwrap();
+        assert!(same_desired_state(&captured, &fresh));
+        // New evidence cannot silently repair the old generation's binding.
+        assert!(matches!(
+            capture_generation(home.path(), id),
+            Err(SnapshotError::MissingArtifact)
+        ));
+        // Independently captured identical bytes do recover the exact old
+        // content address, so the generation's frozen meaning is unchanged.
+        let identical = publish_profile(&session, "one", snapshot("one", b"old evidence")).unwrap();
+        assert_eq!(identical, old);
+        assert_eq!(
+            serde_json::to_value(capture_generation(home.path(), id).unwrap()).unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
+fn incomplete_or_nonprivate_artifacts_are_not_absent() {
+    let home = tempfile::tempdir().unwrap();
+    let session = LifecycleSession::acquire(home.path()).unwrap();
+    let evidence = snapshot("one", b"frozen");
+    let root = publish_profile(&session, "one", evidence.clone()).unwrap();
+    let state = deployment(home.path(), vec![root.clone()]);
+    let id = generation(
+        home.path(),
+        1,
+        BTreeMap::from([("one".into(), state.clone())]),
+    );
+    for path in [&root, &root.join(RECORD)] {
+        let original = std::fs::metadata(path).unwrap().permissions();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(matches!(
+            read_profile(home.path(), "one", &state),
+            Err(SnapshotError::Invalid(_))
+        ));
+        assert!(capture_generation(home.path(), id).is_err());
+        assert!(publish_profile(&session, "one", evidence.clone()).is_err());
+        std::fs::set_permissions(path, original).unwrap();
+    }
+    std::fs::remove_file(root.join(RECORD)).unwrap();
+    assert!(matches!(
+        read_profile(home.path(), "one", &state),
+        Err(SnapshotError::Invalid(_))
+    ));
+    assert!(capture_generation(home.path(), id).is_err());
+    assert!(publish_profile(&session, "one", evidence).is_err());
+}
+
+#[test]
 fn corruption_and_extra_members_never_fall_back_or_deduplicate() {
     let home = tempfile::tempdir().unwrap();
     let session = LifecycleSession::acquire(home.path()).unwrap();
@@ -132,6 +224,12 @@ fn root_and_record_symlinks_are_not_artifact_authority() {
     let state = deployment(home.path(), vec![root.clone()]);
     let moved = home.path().join("outside");
     std::fs::rename(&root, &moved).unwrap();
+    symlink(home.path().join("absent"), &root).unwrap();
+    assert!(matches!(
+        read_profile(home.path(), "one", &state),
+        Err(SnapshotError::Io(_))
+    ));
+    std::fs::remove_file(&root).unwrap();
     symlink(&moved, &root).unwrap();
     assert!(read_profile(home.path(), "one", &state).is_err());
     std::fs::remove_file(&root).unwrap();

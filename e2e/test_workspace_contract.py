@@ -94,23 +94,22 @@ def test_native_catalog_admits_from_one_offline_workspace(sandbox):
 
 
 @pytest.mark.parametrize(
-    ("example", "outputs"),
+    ("example", "kinds"),
     [
-        pytest.param("01-dotfiles", [("dotfiles", "profile")], id="dotfiles-only"),
+        pytest.param("01-dotfiles", {"profile"}, id="dotfiles-only"),
         pytest.param(
             "02-native-tool",
-            [("formatter", "package"), ("development", "environment"), ("personal", "profile")],
+            {"package", "environment", "profile"},
             id="native-tool-and-profile",
         ),
         pytest.param(
             "04-scheduled-task",
-            [("formatter", "package"), ("dev", "environment"), ("format-now", "task"),
-             ("format-nightly", "task"), ("nightly", "schedule"), ("personal", "profile")],
+            {"package", "environment", "task", "schedule", "profile"},
             id="manual-and-scheduled-task",
         ),
     ],
 )
-def test_graduated_examples_validate_without_realization(sandbox, example, outputs):
+def test_graduated_examples_validate_without_realization(sandbox, example, kinds):
     source = Path(__file__).parent.parent / "examples" / "workspaces" / example
     repo = sandbox / example
     shutil.copytree(source, repo)
@@ -118,20 +117,14 @@ def test_graduated_examples_validate_without_realization(sandbox, example, outpu
     assert checked.returncode == 0, checked.stdout + checked.stderr
     document = json.loads(checked.stdout)
     assert document["ok"] is True
-    assert {(output["name"], output["kind"]) for output in document["outputs"]} == set(outputs)
-    if example in {"01-dotfiles", "02-native-tool"}:
-        planned = grip("plan", cwd=repo)
-        assert planned.returncode == 0, planned.stdout + planned.stderr
-        assert not (sandbox / ".config/editor/config.toml").exists()
-        assert not (sandbox / ".config/formatter/config.toml").exists()
-        assert not (sandbox / ".local/share/gripsack/store").exists()
-        assert not (sandbox / ".local/share/gripsack/buildkit").exists()
-    else:
-        # Catalog-only planning and schedule registration remain separate
-        # unavailable operations, not evidence that packages cannot realize.
-        planned = grip("plan", cwd=repo)
-        assert planned.returncode != 0
-        assert "E124" in planned.stderr, planned.stderr
+    assert document["diagnostics"] == []
+    assert {output["kind"] for output in document["outputs"]} == kinds
+    planned = grip("plan", cwd=repo)
+    assert planned.returncode == 0, planned.stdout + planned.stderr
+    assert not (sandbox / ".config/editor/config.toml").exists()
+    assert not (sandbox / ".config/formatter/config.toml").exists()
+    assert not (sandbox / ".local/share/gripsack/store").exists()
+    assert not (sandbox / ".config/systemd/user").exists()
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 

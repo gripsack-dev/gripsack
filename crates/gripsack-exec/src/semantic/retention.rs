@@ -115,14 +115,29 @@ fn validate_binding(
     Ok(())
 }
 
+/// Only a wholly absent artifact can be re-created from a fresh capture.
+/// Missing members inside an existing root remain corruption, not cache misses.
+fn open_retained_directory(
+    parent: &gripsack_fs::Dir,
+    name: &Path,
+) -> Result<gripsack_fs::Dir, SnapshotError> {
+    match gripsack_fs::open_dir_nofollow(parent, name) {
+        Ok(directory) => Ok(directory),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(SnapshotError::MissingArtifact)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn read_record(home: &Path, root: &Path) -> Result<Record, SnapshotError> {
     gripsack_store::paths::validate_store_root(home, root)?;
     if !is_root(root) {
         return Err(SnapshotError::Invalid("semantic artifact namespace"));
     }
     let home_dir = gripsack_fs::open(home)?;
-    let store = gripsack_fs::open_dir_nofollow(&home_dir, Path::new("store"))?;
-    let directory = gripsack_fs::open_dir_nofollow(
+    let store = open_retained_directory(&home_dir, Path::new("store"))?;
+    let directory = open_retained_directory(
         &store,
         Path::new(
             root.file_name()
