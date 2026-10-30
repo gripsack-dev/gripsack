@@ -4,7 +4,7 @@ User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
 
-## [Unreleased] — Native workspaces (0.51.0)
+## [0.51.0] — Native workspaces
 
 ### Added
 
@@ -35,6 +35,13 @@ User-visible changes per release. Design archaeology lives in
   refusing malformed comparisons, unfrozen host facts and incomplete extras.
   Wheel ZIP handling uses patched ZIP 9 in both the core and standalone helper,
   retaining strict filename decoding and archive-bound checks.
+
+### Fixed
+
+- Repeated native dependency admission shares one operation-local authority
+  scope, binding current policy, receipts, budgets and retained input snapshots.
+  Shared cyclic closures no longer exhaust descriptors; changed evidence
+  invalidates reuse instead of inheriting a previous operation's approval.
 
 ### Removed
 

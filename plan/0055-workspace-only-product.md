@@ -178,16 +178,53 @@ completion or release evidence is claimed by this execution map.
   `ee1a49a2769a24a596afc1c20cb33748d2769586`; the compatible helper Tokio update
   removes its separately reported I/O-safety warning. New source qualification
   and helper measurement are required, not a reused successful candidate.
-- The 26-node shared-DAG runtime journey remains a release blocker after the
-  initial graph-predicate fix. A preserved cold update was profiled, not merely
-  retried: 4,103 CPU samples over 45 seconds identify repeated signature and
-  payload verification. Operation-local admission reuse must preserve receipt,
-  trust, target and budget authority; no larger timeout or empty-command bypass
-  is accepted as a fix.
+- The 26-node shared-DAG timeout was repaired after profiling a preserved cold
+  update: 4,103 CPU samples identified repeated signature/payload verification.
+  Operation-local reuse binds the home, policy revision, receipt, target,
+  budgets and retained input snapshots; mutations poison the scope and a new
+  operation admits afresh. Shared snapshot roots avoid exhausting descriptors
+  on a 256-member runtime cycle. The preserved cold update completed in 23.871
+  seconds under its unchanged 120-second deadline, and all 13 projection
+  journeys passed, including independent graph orderings and non-root exports.
 - Python fixture admission correctly refused missing X11 runtime and an
   omitted GNU ABI. Its actual package request now owns X11 and declares glibc
   2.28/Linux 4.18; the signed runtime and enclosing environment retain that
   requirement. Those errors are not waived or converted to ambient host lookup.
+- Patched helper measurement is 25,189,704 bytes, SHA-256
+  `60d66f94ef93fa36d3de6de7bf9b264b3e4d0ef16fc547791218f8849330ea38`,
+  with source inputs
+  `971f8f393ca26612059d4fd41454687e6bb5ba5107369ff51ec6d97dc43d6d76`
+  and lock SHA-256
+  `b5f7422cf43a5b574f14e44b54ff3df3c0495bade18be489e3fff52dc4b07003`.
+  The core pin matches this single measured build. All eight real offline
+  Conda/native-wheel cases passed with those bytes; this is not a two-build
+  reproducibility claim.
+- The full container Rust/helper gate passed after scoped-readmission changes.
+  The mixed local environment journey passed both independent recipients,
+  executable Python/native/wheel use, profiles, tasks and GC. An unoptimized
+  manual development binary exceeded the external variant's 120-second limit:
+  4,074 CPU samples and a cold file-read trace attributed the cost to SHA-256
+  and distinct archive/tree validation phases. The repository's ordinary e2e
+  profile already retains debug assertions/overflow checks with optimization.
+  The exact optimized candidate binary, SHA-256
+  `6ce06d5b13443a859c3a96a4f890674de7ba921e41a5a1ca5f583827da950c2e`,
+  passed the complete external journey with all original assertions and limits.
+  Its two recipients' first Python commands took 25.020 and 14.032 seconds;
+  the full journey took 276.218 seconds. No additional cache, weaker admission
+  or raised timeout was introduced. Evidence:
+  `release-evidence/gripsack/0.51.0/dag-profile-yr75cf5u/external-release-result.json`.
+- Source `553298f3a6cf2b1c6ec9b07050b807a739a12b30` entered candidate
+  `1a2df07b09fa6b9d441e88d9dc52fc3b96d048dea2950cf3c7dd035e8bef6b10`.
+  Its first ten gates passed; installed-consumer qualification found stale
+  documentation example classifications, so flows remained unrun. The corrected
+  checker removes the retired builder example, admits complete Bash/service
+  examples under IR10, and explicitly classifies partial schedule/provider
+  snippets. The obsolete IR999 mock-emitter echo calibration is removed rather
+  than repinned; real packaged-SDK evaluation, core admission and missing-return
+  refusals remain. All ten complete examples passed those real checks; four
+  fragments are classified, not claimed executed. New complete qualification
+  remains required. Core PR200 and website PR27 remain drafts; no public tag,
+  asset or deployed-site claim follows.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer

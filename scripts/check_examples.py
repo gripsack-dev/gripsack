@@ -192,22 +192,10 @@ def main() -> int:
             print(f"FAIL {e}", file=sys.stderr)
             return 1
 
-
-        failures = selfchecks.pin_canary(ctx)
-        canary_ok = not failures
-        if not canary_ok:
-            failed = True
-
         pkg_version = fixtures.sdk_version_of(ctx["sdk_pkg"])
         print(f"checker: {len(selected)} examples · sdk package "
               f"@gripsack/core@{pkg_version} ({args.sdk}) · driver {sdk_src} · "
               f"grip {ctx['grip']} · deno {ctx['deno']}")
-        if canary_ok:
-            print("  ok pin canary: the installed node_modules package answers "
-                  "(ir_version 999 marker)")
-        else:
-            for f in failures:
-                print(f"  ! {f}")
         for entry in selected:
             block = blocks[entry["id"]]
             if entry["kind"] == "fragment":

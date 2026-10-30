@@ -14,9 +14,15 @@ stored ownership, generation, receipt and rollback readers remain.
 
 Development CLI journeys have exercised literal Bash, PostgreSQL readiness and
 data retention, real systemd255 calendar/lifecycle behavior, and offline semantic
-review/saved-plan application. Portable sharing and native-wheel qualification
-remain in progress; current-source admission, artifacts, public consumers and
-the website must still pass before publication. No 0.51 release is claimed here.
+review/saved-plan application. Independent native transfer, private authenticated
+TLS registry consumption, imported-tool scheduling, all 13 projection cases and
+eight final-helper Conda/native-wheel cases passed. Both mixed local and external
+environment journeys passed; the latter used the exact optimized candidate
+binary without weakening admission or raising command limits. The first ten
+selected gates passed before stale documentation classifications stopped the
+installed-consumer gate; all ten complete examples pass after its repair.
+Current-source admission, final public consumers and the website must still pass
+before publication. No 0.51 release is claimed here.
 
 The owner's `REL-PRACTICAL-051-2026-10-28` amendment selects twelve routine gates.
 Formal/model/mutant/fuzz, exhaustive persistence, duplicate GNU and two-build
