@@ -296,6 +296,15 @@ completion or release evidence is claimed by this execution map.
   preserved `grip 0.51.0` build. The selected helper gate explicitly re-admits
   the unchanged measured tuple rather than compiling identical helper inputs;
   fresh static/protocol/license and installed-consumer admission still apply.
+- Candidate `9f0d7978eb2f772f2607ee171a3dc123e7cd722044388525b4ef1c1e6fa8bbc9`
+  passed all twelve selected gates for source
+  `33cd2c1716f54d0e8b611582af8b61c490fc387f`. Final assembly then found an
+  operator check tied to the parser's former `version != ...` spelling rather
+  than its current equivalent `match`. Only that incidental syntax predicate
+  is removed; public version declarations and the actual IR/consumer gates
+  remain required. The corrected operator assembled and independently admitted
+  the real frozen candidate, and all 141 release-tooling tests passed.
+  The corrected source must be qualified afresh before publication.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer

@@ -244,8 +244,9 @@ def compatible_source(source):
     sdk = load_json(source / "typescript/package.json")["version"]
     reader = (source / "crates/gripsack-ir/src/parse.rs").read_text()
     writer = (source / "typescript/src/workspace/emit.ts").read_text()
+    # Public version declarations bind compatibility metadata. Reader rejection
+    # behavior is exercised by the IR/consumer gates, not a particular branch spelling.
     require(re.search(r"pub const IR_VERSION: u32 = 10;", reader)
-            and "version != u64::from(IR_VERSION)" in reader
             and re.search(r"export const IR_VERSION = 10;", writer), "changed IR reader/writer contract")
     result = {"core": core, "sdk": sdk, "ir": {"writer": 10, "readers": [10]}, "helper_pins": {}}
     for component in ("conda",):
