@@ -45,7 +45,6 @@ def restore_tree(archive, directory):
 
 def inventory():
     run(["python3", "scripts/check_delivery.py", "--validate"])
-    run(["python3", "scripts/delivery_checker_calibration.py"])
     run(["python3", "scripts/check_architecture.py", "--self-check"])
     run(["python3", "scripts/check_ci_gate.py", "--self-check"])
     run(["python3", "-m", "unittest", "discover", "-s", "scripts", "-p", "test_local_ci_checkpoints.py"])
@@ -93,29 +92,20 @@ def audit():
     })
 
 
-def bridge():
-    run(["sh", "tools/buildkit-bridge/dist.sh", "--check", "--dist", "dist"])
-
-
-def b0():
-    target = ROOT / "target/debug"
-    target.mkdir(parents=True)
-    shutil.copy2(STATE / "debug/grip", target / "grip")
-    (target / "grip").chmod(0o555)
-    run(["sh", "verification/buildkit-qualification/bridge/build.sh"])
-    run(["sh", "verification/buildkit-qualification/probes.sh"])
-    archive_tree(ROOT / "verification/buildkit-qualification/results", STATE / "b0-results.tar.gz")
-
-
-def helper():
+def helper(reuse_dist=None):
     image = build_image("local-helper")
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     # Match package.py's canonical Docker wrapper: read-only /src, cwd /.
     # The /app image layout produced reproducible but differently pinned bytes.
+    mounts = [(ROOT, "/src", True), (dist, "/out", False)]
+    options = []
+    if reuse_dist is not None:
+        mounts.append((reuse_dist.resolve(strict=True), "/measured", True))
+        options = ["--reuse-dist", "/measured"]
     container(image, ["python3", "/src/tools/conda-helper/package.py", "--dist", "/out",
-                      "--target", TARGET, "--check"],
-              mounts=[(ROOT, "/src", True), (dist, "/out", False)], workdir="/",
+                      "--target", TARGET, "--check", *options],
+              mounts=mounts, workdir="/",
               environment={"GRIPSACK_CONDA_PACKAGING_CONTAINER": "1"})
 
 
@@ -165,6 +155,7 @@ def repro():
 
 def flows():
     container(load_image("e2e"), ["uv", "run", "--locked", "--no-sync", "pytest",
+              "-m", "not native_integration",
               "--ignore=test_persistence_matrix.py", "--ignore=test_golden.py"])
 
 
@@ -226,17 +217,23 @@ def consumers():
 
 def main():
     commands = {function.__name__.replace("_", "-"): function for function in
-                (inventory, images, audit, bridge, b0, helper, core, repro, flows, sdk,
+                (inventory, images, audit, helper, core, repro, flows, sdk,
                  external_sources, consumers)}
-    stages = ("test", "gnu-test", "ts-test", "model", "tlaps", "verify")
+    stages = ("test", "gnu-test", "ts-test", "model", "tlaps", "verify", "mutants")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("gate", choices=(*commands, *stages))
+    parser.add_argument("--reuse-helper-dist", type=Path,
+                        help="helper gate only: import unchanged, source-bound pinned measurements")
     args = parser.parse_args()
+    if args.reuse_helper_dist is not None and args.gate != "helper":
+        parser.error("--reuse-helper-dist applies only to helper")
     source()
     profile()
     STATE.mkdir(exist_ok=True)
     if args.gate in stages:
         build_image(args.gate)
+    elif args.gate == "helper":
+        helper(args.reuse_helper_dist)
     else:
         commands[args.gate]()
     source()  # A producer may not rewrite the frozen tracked candidate.

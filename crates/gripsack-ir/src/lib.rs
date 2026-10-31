@@ -2,6 +2,7 @@
 //! JSON passes strict current-version decoding, tagged-field admission and
 //! semantic validation before any realization or deployment.
 
+mod authoring;
 pub mod diagnostic;
 pub mod host_name;
 pub mod model;

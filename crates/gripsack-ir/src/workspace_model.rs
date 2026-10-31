@@ -7,7 +7,9 @@ mod host_runtime;
 pub mod identity;
 mod image;
 pub mod lock;
+mod service;
 mod source;
+pub(crate) mod wheel;
 
 pub use crate::workspace::{
     HostAccess, InstallPrefix, LinuxWorker, RecipeOutputKind, WorkspaceCalendar,
@@ -18,7 +20,9 @@ pub use command::*;
 pub use file::*;
 pub use host_runtime::{HostLibraryDirectory, HostRuntimeRequirements};
 pub use image::*;
+pub use service::*;
 pub use source::{
     AcquisitionSource, CondaEnvironmentSource, CondaLibcRequirement, CondaSystemRequirements,
     LockedCondaSource, LockedPixiSource, LockedSource, PixiLockSource,
 };
+pub use wheel::WheelSource;

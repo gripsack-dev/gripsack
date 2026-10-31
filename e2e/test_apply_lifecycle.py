@@ -1,5 +1,6 @@
 """Apply lifecycle: production, publication, source changes and pruning."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -213,8 +214,46 @@ profile("tool", {{ files: [
     target = str(deployed_b.readlink())
     assert target.startswith(str(store)), f"new file deployed from the repo checkout: {target}"
 
-    # cold store: the same captured tree and provider are realized again
+    # Cold store: retained history must not pretend missing evidence is known.
+    # The live apply may instead realize the unchanged, already-approved source.
+    lock = (repo / "gripsack.lock").read_bytes()
+    old_targets = {path: path.readlink() for path in [deployed_a, deployed_b]}
     shutil.rmtree(store)
-    out = grip("apply", "--host", "testhost", cwd=repo)
+    missing_snapshot = sandbox / "missing.snapshot.json"
+    out = grip(
+        "snapshot", "current", "--out", str(missing_snapshot), cwd=repo, approve=False
+    )
+    assert out.returncode != 0, out.stdout + out.stderr
+    assert not missing_snapshot.exists()
+    assert not store.exists()
+    out = grip("apply", "--host", "testhost", cwd=repo, approve=False)
     assert out.returncode == 0, out.stderr
-    assert (sandbox / ".config" / "tool" / "b.conf").exists()
+    assert (repo / "gripsack.lock").read_bytes() == lock
+    for path, content in [(deployed_a, "a\n"), (deployed_b, "b\n")]:
+        assert path.is_symlink()
+        assert path.readlink() == old_targets[path]
+        assert path.read_text() == content
+    assert (sandbox / ".local/bin/tool").read_bytes() == b"#!/bin/sh\n"
+    # Freshly retained evidence is readable without evaluation, and keeps its
+    # privacy boundary rather than repopulating historical declaration gaps.
+    snapshot = sandbox / "recreated.snapshot.json"
+    out = grip("snapshot", "current", "--out", str(snapshot), cwd=repo, approve=False)
+    assert out.returncode == 0, out.stderr
+    document = json.loads(snapshot.read_text())
+    assert "historical_declaration" not in document["completeness"]["unknown_reasons"]
+    assert snapshot.stat().st_mode & 0o777 == 0o600
+
+    # An existing artifact with a missing record is not a cold-store cache miss.
+    # Live apply must not overwrite corruption or advance the selected generation.
+    retained_roots = list(store.glob("*-semantic-review"))
+    assert len(retained_roots) == 1
+    record = retained_roots[0] / "snapshot.json"
+    record.unlink()
+    current = store.parent / "current"
+    selected = current.readlink()
+    out = grip("apply", "--host", "testhost", cwd=repo, approve=False)
+    assert out.returncode != 0, out.stdout + out.stderr
+    assert current.readlink() == selected
+    assert not record.exists()
+    assert deployed_a.read_text() == "a\n"
+    assert deployed_b.read_text() == "b\n"

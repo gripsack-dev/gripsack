@@ -1,123 +1,19 @@
 name: release-core
-run-name: release-request-${{ inputs.request_id }}
 
+# Publication is manual and GitHub-only. This workflow never builds, signs,
+# uploads packages to registries, or promotes a Homebrew formula.
 on:
   workflow_dispatch:
-    inputs:
-      request_id:
-        description: Immutable release request SHA256
-        required: true
-        type: string
-      bundle_url:
-        description: HTTPS location of the nominated immutable local bundle
-        required: true
-        type: string
-      bundle_sha256:
-        description: Exact transport bundle SHA256
-        required: true
-        type: string
-      manifest_sha256:
-        description: Exact release manifest SHA256
-        required: true
-        type: string
-      source_commit:
-        description: Qualified source commit; dispatch on its existing core tag
-        required: true
-        type: string
-      tag:
-        description: Existing immutable core-vX.Y.Z tag
-        required: true
-        type: string
-      candidate_id:
-        description: Source-bound local qualification candidate SHA256
-        required: true
-        type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: release-core
-  cancel-in-progress: false
-
 jobs:
-  signing-publishing:
-    runs-on: ubuntu-24.04
-    # Owner approval applies to the immutable nomination, not to a hosted build.
-    environment: release
-    env:
-      PYTHONDONTWRITEBYTECODE: "1"
-      CANDIDATE_ROOT: ${{ runner.temp }}/gripsack-candidate
-      CANDIDATE_ARCHIVE: ${{ runner.temp }}/gripsack-candidate.tar.gz
-      PREDICATE_PATH: ${{ runner.temp }}/gripsack-predicate.json
-      PUBLICATION_RESULT: ${{ runner.temp }}/gripsack-publication.json
-    permissions:
-      contents: write
-      statuses: read
-      id-token: write
-      attestations: write
+  publication-policy:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - name: Install byte-pinned attestation verifier
-        shell: bash
+      - name: Explain manual publication authority
         run: |
-          ARCHIVE="$RUNNER_TEMP/gh_2.102.0_linux_amd64.tar.gz"
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-            --max-time 300 --max-filesize 100000000 \
-            https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz -o "$ARCHIVE"
-          printf '%s  %s\n' bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386 "$ARCHIVE" | sha256sum --check --strict
-          mkdir -p "$RUNNER_TEMP/release-gh"
-          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP/release-gh" gh_2.102.0_linux_amd64/bin/gh
-          echo "$RUNNER_TEMP/release-gh/gh_2.102.0_linux_amd64/bin" >> "$GITHUB_PATH"
-      - name: Require reviewed attestation verifier capabilities
-        run: python3 -c 'import sys; sys.path.insert(0, "scripts"); from release_consumer import verifier; verifier()'
-      - name: Re-admit exact candidate and independent local-qualification witness
-        id: admission
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BUNDLE_URL: ${{ inputs.bundle_url }}
-          BUNDLE_SHA256: ${{ inputs.bundle_sha256 }}
-          MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
-          SOURCE_COMMIT: ${{ inputs.source_commit }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          CANDIDATE_ID: ${{ inputs.candidate_id }}
-          REQUEST_ID: ${{ inputs.request_id }}
-        run: python3 scripts/release_hosted.py admit --archive "$CANDIDATE_ARCHIVE" --bundle "$CANDIDATE_ROOT" --predicate "$PREDICATE_PATH"
-      - name: Sign release manifest
-        id: attestation
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4; custom predicate, NOT build provenance
-        with:
-          subject-path: ${{ steps.admission.outputs.manifest }}
-          predicate-type: https://gripsack.dev/attestations/local-qualification/v1
-          predicate-path: ${{ env.PREDICATE_PATH }}
-      - name: Verify signed candidate before registry mutations
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ATTESTATION_BUNDLE: ${{ steps.attestation.outputs.bundle-path }}
-        run: python3 scripts/release_hosted.py verify --bundle "$CANDIDATE_ROOT" --signature "$ATTESTATION_BUNDLE"
-      - name: Publish qualified packages
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: python3 scripts/release_publish.py --bundle "$CANDIDATE_ROOT" --result "$PUBLICATION_RESULT"
-      - name: Publish qualified release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ATTESTATION_BUNDLE: ${{ steps.attestation.outputs.bundle-path }}
-        run: python3 scripts/release_hosted.py publish --bundle "$CANDIDATE_ROOT" --publication "$PUBLICATION_RESULT" --signature "$ATTESTATION_BUNDLE"
-      - name: Promote verified source formula
-        env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          test -n "$GH_TOKEN" || { echo 'HOMEBREW_TAP_TOKEN is required for formula promotion' >&2; exit 1; }
-          python3 scripts/release_hosted.py promote --bundle "$CANDIDATE_ROOT"
-      - name: Retain partial publication observation
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: release-publication-${{ inputs.request_id }}
-          path: ${{ env.PUBLICATION_RESULT }}
-          if-no-files-found: ignore
+          echo 'No publication performed.'
+          echo 'Follow verification/release-handoff.md: qualify locally, then explicitly publish the exact unsigned artifacts using gh release create/upload.'
+          echo 'Do not rebuild a qualified candidate or infer signed/hosted qualification from this workflow.'

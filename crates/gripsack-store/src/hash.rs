@@ -200,16 +200,28 @@ pub fn canonical_tree_hash_in(root: &gripsack_fs::Dir) -> std::io::Result<Payloa
     entries.sort();
     let mut hasher = Sha256::new();
     for rel in entries {
-        hasher.update(rel.as_bytes());
-        hasher.update(b"\0");
-        hasher.update(
-            canonical_file_hash_in(root, Path::new(&rel))?
-                .as_str()
-                .as_bytes(),
+        hash_tree_entry(
+            &mut hasher,
+            &rel,
+            canonical_file_hash_in(root, Path::new(&rel))?.as_str(),
         );
-        hasher.update(b"\0");
     }
     Ok(PayloadHash(hex(&hasher.finalize())))
+}
+
+/// The ordinary canonical tree domain for exactly one non-executable regular
+/// file, computed from already bounded, pinned bytes without reopening a path.
+pub fn canonical_single_file_tree_hash(name: &str, bytes: &[u8]) -> PayloadHash {
+    let mut hasher = Sha256::new();
+    hash_tree_entry(&mut hasher, name, canonical_bytes_hash(bytes).as_str());
+    PayloadHash(hex(&hasher.finalize()))
+}
+
+fn hash_tree_entry(hasher: &mut Sha256, name: &str, identity: &str) {
+    hasher.update(name.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(identity.as_bytes());
+    hasher.update(b"\0");
 }
 
 fn collect_entries(

@@ -8,108 +8,119 @@ work. `verification/delivery.json` is its registered inventory: 178
 mandatory delivery IDs across five closure scopes (foundation,
 foundation extensions, tasks/schedules, semantic change, artifact
 sharing). The index seeds the ledger; the specifications' prose remains
-normative. Its repo-local application now includes the explicit owner amendment
-below; the original checksum-covered external bundle is not edited.
+normative for the original edition. Current product acceptance applies the
+explicit owner amendments below without editing the checksum-covered bundle.
 
-## Active application — PLATFORM-LINUX-WSL-2026-10-08
+## Current application — owner amendment 2026-10-28
 
-The owner has removed Mac support indefinitely, not merely waived a release
-test. Plan0048's owner-scope register is the authority for Linux and WSL2-only
-support. All older “Mac blocked / resume on hardware” statements below are
-historical observations, superseded for future active acceptance by this
-amendment. They remain evidence of what did and did not run.
+Authority: plan0048's `PRODUCT-LINUX-NATIVE-2026-10-28` and
+`REL-PRACTICAL-051-2026-10-28`, following the earlier Linux/WSL2 x86_64
+decisions. Mac, Homebrew and BuildKit are retired products, not temporarily
+blocked release lanes. Older requirements and results below describe their
+original edition and historical execution; they do not reinstate retired work
+or make owner-optional assurance a default release prerequisite.
 
-All **178 original IDs and verbatim normative fields** remain protected by the
-existing edition-5 fingerprint. Original lane/case inventories, evidence kinds,
-milestone prerequisite edges and scope membership additionally have a fixed
-application-baseline fingerprint. None of the original requirement statuses,
-status histories or evidence records is rewritten. In particular, retiring a
-row is not a pending/blocked-to-verified transition and is not a completion
-percentage. The explicit `scope_amendments` record is a disposition overlay.
+### Preserved original authority
 
-### Exact retired lane inventory
+All **178 original IDs**, normative fields, original lane/case inventories,
+evidence kinds, prerequisite edges, scope membership, statuses, transitions,
+proof catalogs and historical reports remain intact. The original source
+fingerprint (`7a7c717ddd7ae526efc952a07268345a0333c20abf2abef5a0fcc64f0093c699`)
+and application inventory fingerprint
+(`2993f4d1d521f968f9083c52609ef763c139d5695063f8b92912305598888a2c`)
+are unchanged. `scope_amendments` is an additive disposition overlay; historical
+`closure_rules` are preserved and read subject to the current owner policy.
+Retirement is not verification, and selected completion is not original-edition
+closure or a completion percentage.
 
-Ranges below are inclusive suffix ranges within the named prefix; no whole
-milestone is excluded. `scripts/delivery_scope.py` applies the four exact lane
-names only to the frozen inventory, never a prose regex or caller-supplied
-waiver. All other registered lanes survive.
+### Exact selected product projection
 
-| Retired lane | Original requirement IDs |
+`scripts/delivery_scope.py` is the fixed projection through the existing checker.
+It uses original numeric case positions under the frozen fingerprint, never a
+keyword-based waiver, caller-supplied exclusion or rewritten evidence.
+
+| Disposition | Exact scope |
 |---|---|
-| `macos-arm64` | A1-01 |
-| `macos` | A2-01–07; A2-P-01–05; A3-01–04; A4-01–03; A5-01–07; A6-01–02; B0-03; B3-03,05; B5-02,04,06; B6-02; E1-01–07; E4-02; E5-04–05; C1-01–03,05–06; C2-01–03,05–06; C3-01–04; C4-01–06; C5-01–04; D0-02; D1-03; D2-02–05; D3-01–04; D4-01–06; D5-01–06; D6-01–05 |
-| `macos-vm` | A7-01–02; B0-02–03; B1-01–05; B2-01–07; B3-01–05; B4-01–04; B5-01–06; B6-01,04–05; E4-02–04; E5-04; C4-03–04; C5-01–02; D4-02; D5-03–04; D6-01,03 |
-| `launchd` | E0-02; E2-01–04; E3-01–06; E4-02–04; E5-01–05; C1-05; C2-05; C4-06; C5-04; D4-06; D5-05; D6-05 |
+| Product retirement | A0-01; A4-01–03; A7-01–02; B0-01–04; B1-01–05; B2-01–07; B3-01–05; B4-01–04; B5-01–06; B6-01–05. Earlier wholly Mac E4-02 and D2-03 stay retired. |
+| Retired lanes | Earlier `macos`, `macos-arm64`, `macos-vm`, `launchd`; production-specific `linux-image`, `remote-worker`, `cross-target`, `protocol-fuzz-race`. In this inventory `linux-image` means B-qualified image production, not generic OCI transport. |
+| Mixed A/C/D/E cases | `PRODUCT_CASE_AMENDMENTS` removes only retired builder, source-production, bottle and image-production portions. Native command/task, configuration ownership, retained roots, recovery, current trust, independent recipients and consumer behavior remain conjunctive. Historical readers and invalid-target counterexamples retain their original safety meaning. |
+| Prerequisites | `effective_milestone` omits retired A0/A4/A7/B0–B6 prerequisites. A1 retains H0 directly, formerly reached through A0. Native prerequisites and applicable global gates remain. Direct retired or empty claims reject rather than pass vacuously. |
+| Historical B0 evidence | B0-01's recorded verified qualification and report bytes remain historical, excluded from selected completion. No new retired requirement may be marked verified. |
+| OCI retained | OCI Distribution artifact envelopes, real private-registry/client interoperability, digest/media-type/auth/trust checks and offline sharing remain required. Running existing images remains supported and required independently; neither is retired Gripsack image production. |
 
-Exactly **B0-02** (Mac VM qualification), **E4-02** (native Mac/LaunchAgent
-and Mac-scheduled worker journey), and **D2-03** (native macOS package import)
-are wholly `out_of_scope` under `PLATFORM-LINUX-WSL-2026-10-08`. This also retires
-their supporting `container-gates` portions where registered: those rows are
-Mac requirements, not generic Linux work merely because a parser ran in a
-container. They never count as verified delivery rows. All other 175 rows
-retain active Linux/common requirements; this is an applicability count, not
-a claim that those rows are complete.
+Changed active clauses require evidence naming the selected case; an old report
+does not acquire new coverage because the projection changed. Missing selected
+lane/case/kind, wrong manager evidence, stale source, altered report bytes and
+unapproved amendments still reject. No native behavior is promoted to verified
+by this amendment.
 
-### Mixed and common-lane cases
+### Essential practical admission versus optional assurance
 
-Existing per-lane inventories are authoritative for **E0-02 and E2-01–04**.
-After retiring the launchd lane, E0's Linux probes/install/run/remove/timing
-cases remain unchanged. E2-01's Linux capability admission and E2-03's actual
-systemd invocation remain required. Mac-only LaunchAgent decoder/XML cases
-in E2-02's `pure`/`container-gates` inventories and Mac preview in E2-04's
-common lanes are explicitly removed; systemd independent decoding, hostile
-input, checked-byte staging, mutants, scope checks and read-only behavior
-are not dropped with them.
+Default practical checks cover Rust, TypeScript, ordinary flows, dependency
+audits, packaging, installed consumers and real smokes for changed behavior.
+Source inventory validation remains essential. GatePolicy's exact profile and
+source-bound gate evidence govern practical release admission, not a requirement
+to close the complete original 178-row inventory.
 
-The fixed `CASE_AMENDMENTS` map records exact original case positions and full
-replacement text for mixed clauses in **H0-02, G-05, A0-01, A2-P-04, A3-02,
-A4-03, A5-04, A5-07, A6-01, A7-01, B1-01, B1-03, B3-01, B3-03, B3-05,
-B5-02, B5-04, E2-01–04, E4-04, E5-01–05, C0-02, C3-01, C5-01–02, C5-04,
-D0-02–03, D2-02, D5-02, D6-01, D6-03–05**. A position is safe only because
-the entire original case/lane inventory is fingerprinted; changing or deleting
-an original case invalidates the amendment application rather than shifting
-an exclusion onto a Linux case.
+Deep formal proofs, model checking, fuzz campaigns, exhaustive persistence,
+clean-build reproducibility and disruptive native sleep/wake, logout/login,
+reboot and clock/DST campaigns are **optional on explicit owner request**.
+G-03 and `proofs`/`tlc`/`verus-amd64`/`fuzz`/`platform-time` lanes do not block
+default practical admission. `PRACTICAL_CASE_AMENDMENTS` projects mixed clauses:
+ordinary parser, policy, adversarial-input, crash/recovery and behavioral
+regressions remain required; a practical regression is not a substitute proof.
+Original formal evidence kinds/catalogs and all historical assurance records
+remain preserved. Report selected product completion and optional assurance
+results separately; unrun optional work is **not passing**, and a failed selected
+practical check cannot be excused as optional.
 
-Only wholly Mac portions are removed. Examples: A0's older-Mac positive bottle
-selection retires, but its pure wrong-platform rejection counterexamples and
-all Linux/unknown-tag/architecture/URL/hash checks remain. B1-01 still requires
-real clean-Linux worker provisioning and a complete verified applicable
-runtime/helper/bridge manifest. C/D/E mixed journeys still require their real
-Linux manager, source-built/imported tool, image, independent recipient,
-registry, timing, proof and integrity cases. Mac strings in historical-state
-readers, unsupported-platform rejection, no-silent-fallback or no-host-mutation
-contracts are conservatively retained: they do not require a supported Mac
-runner or excuse weakening an existing safety boundary.
+For the timing split, E5-01 original case index1 is optional; mixed index2 retains
+ordinary OS/version/user-scope and long-running/coalesced-job observations without
+demanding disruptive physical/VM campaigns. E5-01/E5-03 no longer require the
+`platform-time` lane by default, and E5-03 cases0/3 require the ordinary native
+lifecycle rather than unrequested timing campaigns. Actual systemd registration,
+calendar invocation, update, disable, rollback, GC and unsupported timing-policy
+admission remain essential. No portable or exactly-once timing guarantee is
+claimed; synthetic timestamps cannot qualify an optional native campaign.
+Original inventories/statuses remain unchanged. No disruptive campaign was
+requested or run for this clarification.
 
-All registered milestone prerequisites remain because each owns applicable
-Linux/common work. B1 still requires B0 Linux qualification, but B0-02 can no
-longer block it. Global gates and declared runner/formal/review kinds still
-apply. A mixed row can become verified only with every active lane and case;
-historical blocked Mac lane states and receipts are preserved separately.
-Changed case wording requires evidence naming the active case, not automatic
-promotion or rewriting of an old report. Missing/forged/additional amendments,
-dropped Linux inventories, vacuous scope claims and marking Mac-only rows
-verified are rejected. Scope retirement itself supplies no report bytes,
-source identity, executed counts or proof obligations.
+### Separate services owner addition
 
-### Focused validation handoff
+`SERVICES-FIRST-2026-10-28` is recorded in `owner_additions`, outside the original
+178 rows and milestone graph. The owner ordered native Linux/WSL2 x86_64 services
+after Bash/task QoL and before calendar scheduling. Services remain distinct
+from finite tasks and calendar jobs; this is not a retroactive edition-5
+requirement. Current metadata says `implemented_unverified`. Parent-owned
+plan0055 and actual source-bound native/practical evidence determine completion;
+this scope change claims no service-manager or calendar execution.
 
-After integration, from the core checkout:
+### Validation and calibration handoff
+
+After integration, from the core checkout, essential source inventory:
 
 ```sh
 python3 scripts/check_delivery.py --validate
+```
+
+Only when explicitly selected by the owner, the optional admission calibration:
+
+```sh
 python3 scripts/delivery_checker_calibration.py
 ```
 
-The calibration includes authorized Linux manager/common-parser and full B0
-synthetic closure, preserved blocked/stale historical Mac receipts, forged or
-expanded amendments, removed Linux lanes/cases/proof kinds/prerequisites,
-empty scopes, and all three Mac-only rows falsely marked verified. Synthetic
-fixtures are checker calibration, not implementation evidence. These commands
-have **not been run for this amendment while edits are in flight**. Full
-persistence/fuzz/corpus/Mac campaigns are not requested. Real H0/B0/foundation
-closure and remaining Linux proof catalogs/evidence stay open; the amendment
-does not resolve them.
+Calibration exercises synthetic native H0/A1 closure without Brew/backend/proof
+prerequisites; every selected case/lane/kind; preserved original fingerprints;
+OCI registry retention; manager-lane substitution; retired/empty claims; forged
+amendments and service completion; report bytes/counts and exact-source binding.
+It no longer pins incidental source text or wiring. Synthetic receipts are
+checker evidence only, never product runtime qualification.
+
+**Neither command has been run for this amendment while edits are in flight.**
+Parent owns integrated essential gate execution and any selected optional checks.
+Full original closure, optional assurance and unobserved native behaviors are not
+silently marked complete.
+
 
 ## H0-01 — live-repository reconciliation
 

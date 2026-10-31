@@ -1,6 +1,6 @@
 //! Selection is an outer consumer closure, not a scheduler for producer steps.
 //! Production, runtime and required-validation references come from the same
-//! decoded projection used by IR admission; BuildKit owns internal scheduling.
+//! decoded projection used by IR admission.
 use crate::ExecError;
 use gripsack_ir::{
     Diagnostic, codes,
@@ -14,8 +14,7 @@ use std::{
     ops::Range,
 };
 
-pub(super) struct Selection<'a> {
-    pub workspace: &'a WorkspaceCatalog,
+pub(crate) struct Selection<'a> {
     pub outputs: BTreeMap<&'a str, &'a WorkspaceOutput>,
     pub required: BTreeSet<&'a str>,
     edges: Vec<Reference<'a>>,
@@ -88,7 +87,6 @@ impl<'a> Selection<'a> {
             }
         }
         Ok(Self {
-            workspace,
             outputs,
             required,
             edges,

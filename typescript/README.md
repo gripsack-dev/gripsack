@@ -34,7 +34,7 @@ the core re-evaluates after binding answers. `when` and `hasTag` are pure helper
 for this injected context.
 
 Only the root `gripsack.ts` is an entrypoint. Host identity does not select a
-TypeScript filename. IR9 emits exactly `{ ir_version: 9, host, workspace }`.
+TypeScript filename. IR10 emits exactly `{ ir_version: 10, host, workspace }`.
 Declaration spans capture the caller's file, line and column for diagnostics.
 Use matching core and SDK versions. A deliberate repository-local SDK pin must
 export both `@gripsack/core` and `@gripsack/core/advanced`; changing frontend identity
@@ -71,12 +71,28 @@ lock, environment })` imports an existing Pixi lock; manifest and lock name
 captured workspace inputs. It does not re-solve or upgrade the external lock.
 Use `inputFile`/`inputDirectory` declarations for captured producer inputs.
 
+Conda sources can additionally declare `wheels: [{ name, version, url, sha256 }]`.
+Each entry names an exact binary distribution: canonical lowercase hyphenated
+PEP503 name, exact version, HTTPS `.whl` URL and lowercase 64-hex SHA256 digest.
+For example, `wheels: [{ name: "my-tool", version: "1.0",
+url: approvedWheelUrl, sha256: approvedWheelDigest }]` selects reviewed wheel bytes.
+Credentials, query strings, fragments, encoded filenames and duplicate names,
+URLs or hashes are rejected. These are not a PyPI dependency solve: source
+distributions, editable installs and build hooks are not admitted. The native
+helper checks wheel metadata against the declared name/version. Wheel entries
+inherit acquisition source provenance. Pixi retains its lockfile-selected wheel
+contract.
+
 Other acquisition constructors are `githubRelease`, `tarball`, `git`, `fileFetch`
-and `pluginFetch`. A `provider(source)` acquires directly; a `recipe` declares
-source, execution policy, target and output kind for source-built artifacts.
-`cargoPackage` provides Cargo-oriented package authoring. A `pkg` names its
-producer, commands, target and installation layout. Select archive roots explicitly
-when an upstream archive has a wrapper directory.
+and `pluginFetch`. A `provider(source)` acquires directly; a `pkg` names its
+producer, commands, Linux x86_64 target and installation layout. Select archive
+roots explicitly when an upstream archive has a wrapper directory.
+Executable recipes, Cargo builds, OCI image production and macOS/Homebrew
+authoring are not supported.
+
+`provider(source.package({ manifest }))` selects a previously imported portable
+package by its lowercase 64-hex signed-manifest digest. Import transport and trust
+configuration remain core-owned; consuming the package requires current trust.
 
 Run `grip update` to record selections, then `grip build tools` or
 `grip run --env dev -- rg --version`. Frozen consumers use the recorded selection
@@ -104,22 +120,105 @@ silently overwrite foreign files.
 
 ## Commands, tasks and checks
 
-`exec` builds argv-based commands. `lit`, `hostPath`, `packageCommand`, `sourcePath`,
-`outputPath` and artifact references distinguish literal text from resolved paths.
-`bash`/`bashBody` and `runBash` are explicit shell execution, not implicit string
-interpolation. Command declarations are immutable.
+`exec` builds argv-based commands. `lit`, `hostPath`, `packageCommand` and artifact
+references distinguish literal text from resolved paths. Command declarations are
+immutable; constructing one does not execute it.
+
+Use the `bash` tag for literal scripts, then bind an explicitly declared package
+interpreter. For example, with a package named `shell` exporting `bash`:
+
+```ts
+import {
+  bash, check, hook, hostPath, lit, packageCommand, runBash, task,
+} from "@gripsack/core";
+
+const interpreter = packageCommand("shell", "bash");
+const body = bash`
+  printf '%s\n' "\${MESSAGE:-ready}"
+`;
+const command = body.interpreter(interpreter)
+  .env("MESSAGE", lit("two words; not shell code"))
+  .cwd(hostPath("/tmp"))
+  .build();
+
+const hello = task("hello", { steps: [command] });
+// "personal" is a separately declared profile/check subject.
+const ready = check("ready", { subject: "personal", run: command });
+const activated = hook("activated", { trigger: "post_link", run: command });
+
+// Object form lowers through exactly the same command constructor.
+const same = runBash({
+  interpreter, body,
+  env: { MESSAGE: lit("two words; not shell code") },
+  cwd: hostPath("/tmp"),
+});
+```
+
+The interpreter is resolved from the package's pinned artifact, never discovered
+from `PATH`; `packageCommand` can additionally require an executable SHA-256.
+Bash always receives `-e -u -o pipefail`. Options cannot silently override these
+strict defaults. Typed environment values and cwd paths remain typed until native
+execution; env values are not pasted into the script.
+
+Leading-newline literals are dedented, with each generated line mapped to its
+original source line. Shell escapes such as `\n` remain verbatim. Escape the
+JavaScript template delimiters: `\${NAME}` authors Bash `${NAME}`, and an escaped
+backtick authors a shell backtick. Immediately before either template delimiter,
+write `2n+1` backslashes to retain `n` shell backslashes (for example,
+`\\\${NAME}` emits `\${NAME}`). Elsewhere backslashes are unchanged.
+`$NAME`, `$(command)`, quoting, heredocs and parameter expansion are Bash syntax,
+not JavaScript interpolation.
+
+JavaScript substitutions (`${expression}` without the template escape) are type
+errors and are rejected with a source-located diagnostic at runtime. JavaScript
+evaluates substitution expressions **before** calling any tag: this API does not
+sandbox those expressions or authorize their effects. Use literal scripts and
+typed `.env(...)` bindings instead. Plain object-form strings support one-line
+scripts; use `bash` for multiline bodies so diagnostics retain their source map.
 
 `task` declares steps, prerequisites, optional environment, mutation locks and
 postcondition checks. `check` names a subject and command. `hook` declares a
 lifecycle command; external side effects must be idempotent across replay.
-`schedule` targets a task with `daily`/`weekly` calendar triggers. `image` composes
-packages into an OCI image with explicit target and destination policy. Authoring
-a declaration does not grant execution authority: the core validates references,
+`schedule` targets a task with `daily`/`weekly` calendar triggers. Authoring a
+declaration does not grant execution authority: the core validates references,
 platform constraints and required approvals before effects.
 
-See [workspace examples](../examples/workspaces/) for dotfiles, native tools,
-source-built packages and scheduled tasks. The exported TypeScript interfaces are
-the full field-level reference.
+See [workspace examples](../examples/workspaces/) for dotfiles, native tools and
+scheduled tasks. The exported TypeScript interfaces are the full field-level
+reference.
+
+## Managed services
+
+`service(name, spec)` declares a persistent OCI service, not a finite task or
+calendar trigger. Its image must be an immutable `name@sha256:<64 lowercase hex>`
+reference. Declare loopback-only `ports: [{ address, host, container }]`, named
+`volumes: [{ name, target }]` and an explicit command health check:
+
+```ts
+const database = service("database", {
+  image: approvedPostgresImage,
+  ports: [{ address: "127.0.0.1", host: 5432, container: 5432 }],
+  volumes: [{ name: "postgres-data", target: "/var/lib/postgresql/data" }],
+  env: {
+    POSTGRES_PASSWORD: { kind: "inherited", name: "POSTGRES_PASSWORD" },
+  },
+  health: {
+    kind: "command", argv: ["pg_isready"],
+    interval_seconds: 2, timeout_seconds: 5, retries: 20,
+  },
+});
+```
+
+Import `service` from `@gripsack/core`; `approvedPostgresImage` is your reviewed
+digest-pinned image reference, not a mutable tag. Environment bindings are explicit
+`{ kind: "literal", value }` or `{ kind: "inherited", name }` values.
+`depends_on` names other services. Optional `command` supplies an argv override.
+
+Start services explicitly with `grip up`. A task's `services: ["database"]`
+requires an already healthy service; it does not authorize automatic startup.
+Profiles do not autostart services. Bind mounts, host networking, privileged
+containers and restart policy are not authoring options. Stopping a service does
+not delete its data volume; database data has no implicit rollback guarantee.
 
 ## Compiler interface
 

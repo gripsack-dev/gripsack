@@ -4,6 +4,69 @@ User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
 
+## [0.51.0] — Native workspaces
+
+### Added
+
+- Literal `bash` template blocks with an explicit pinned interpreter, typed
+  environment/cwd bindings, strict shell options and source-mapped diagnostics.
+  The same body works with `runBash`; JavaScript interpolation is rejected.
+- Workspace-owned OCI services through the Docker Engine API: digest-pinned
+  images, loopback ports, retained named volumes, explicit health commands and
+  dependency ordering. `up`, `down` and service status/log commands manage only
+  recorded owned resources. Tasks can require healthy services without starting
+  them implicitly. Inherited environment values stay out of retained declarations.
+- Captured user schedules on qualified systemd 255 managers. Manual and timed
+  tasks share command admission, mutation locks, postconditions and bounded logs.
+  Registration participates in profile activation, update, removal and rollback;
+  stale revisions cannot begin execution, while an already admitted run may finish.
+- Offline semantic snapshots and comparisons, bounded JSON/TOML/byte configuration
+  views, structured planning, and private saved deployment plans. Saved apply
+  rejects stale bindings; redacted or missing evidence remains explicitly unknown.
+- Signed passive native package bundles, complete independently signed dependency
+  closures, OCI registry transport, and recipient-authored package/environment
+  consumption. Compatibility is checked against declared Linux ABI, kernel and
+  CPU requirements; import itself installs no task, schedule or profile.
+- Original-archive Conda reconstruction and explicitly hash-pinned binary wheels,
+  including supported selected Pixi wheel records. The pinned helper uses the
+  maintained UV installer offline; source distributions, editable packages,
+  package-owned build scripts and silent dependency resolution are not supported.
+  Wheel closure admission accepts deterministic platform-string markers while
+  refusing malformed comparisons, unfrozen host facts and incomplete extras.
+  Wheel ZIP handling uses patched ZIP 9 in both the core and standalone helper,
+  retaining strict filename decoding and archive-bound checks.
+
+### Fixed
+
+- Repeated native dependency admission shares one operation-local authority
+  scope, binding current policy, receipts, budgets and retained input snapshots.
+  Shared cyclic closures no longer exhaust descriptors; changed evidence
+  invalidates reuse instead of inheriting a previous operation's approval.
+- Applying unchanged approved sources can re-realize a cold store and publish
+  fresh semantic review evidence. Missing historical evidence is never invented;
+  incomplete, corrupt, nonprivate or symlinked retained artifacts still refuse.
+
+### Removed
+
+- macOS/Homebrew authoring and the BuildKit source-build/image-production backend,
+  worker provisioning, bridge assets and obsolete backend-only verification code.
+  Existing Docker images for services and OCI transport for passive bundles are
+  separate features, not a replacement source builder.
+- Obsolete current-runtime recipe planning and empty realization maps. Historical
+  receipts and ownership/rollback/GC readers remain data boundaries, not authoring
+  compatibility paths.
+
+### Compatibility and verification
+
+- Current core and SDK use IR10; current lock writers use version 3 and the Conda
+  helper uses protocol 4. Retained version-2 locks remain readable; explicit
+  `update` migrates their format while preserving unselected pins.
+- Routine qualification selects twelve practical gates. Formal/model, mutation,
+  fuzz, exhaustive persistence, duplicate GNU, two-build reproducibility and
+  disruptive timing campaigns are optional on explicit owner request. An unrun
+  check is not a passing claim. Release qualification and public artifact
+  verification are recorded separately from these source changes.
+
 ## [0.50.0] — One workspace
 
 - **One authoring surface:** `gripsack.ts` describes packages, environments,

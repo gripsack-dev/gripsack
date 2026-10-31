@@ -4,6 +4,57 @@ One row per plan. Current work and priorities live in the numbered plans;
 historical decisions remain here rather than on the product website.
 Update this ledger in the same change as the plan it tracks.
 
+## Native workspaces 0.51 — implementation and qualification evidence
+
+[0055's active continuation](0055-workspace-only-product.md#active-continuation--2026-10-28)
+targets coordinated core/SDK/helper 0.51.0, current IR10, lock3 and helper
+protocol4. Mac/Homebrew/BuildKit authoring and execution are retired, including
+the obsolete B0 harness and worker/session proof dispatcher entries. Actual
+stored ownership, generation, receipt and rollback readers remain.
+
+Literal Bash, Docker Engine services, captured systemd255 schedules, semantic
+review/saved plans and passive native sharing are implemented. Candidate
+`8c0bc53c...` passed all twelve selected gates, including 706 ordinary flows and
+227 installed-release cases. Its packaged `8ddc3ba7...` core passed all twelve
+marked native cases plus PostgreSQL persistence/readiness/foreign-owner refusal,
+private TLS registry, independent-filesystem transfer and imported-tool scheduling.
+The scheduler fixture now waits for its terminal receipt as well as postcondition
+effects; its corrected real-manager journey passed without changing deadlines
+or scheduler behavior. The owner selected the fully qualified `3332429...` artifact
+for release and a scoped admin merge of only the verified smoke fix and evidence/docs.
+The tag/status stay bound to that source; the later head has no fabricated passing
+candidate, and the physical storage guard remains unchanged.
+
+See the [release record](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.51.0)
+for final source, publication/readback, public-consumer and website evidence.
+Local qualification alone is not a claim of public or signed release.
+
+The owner's `REL-PRACTICAL-051-2026-10-28` amendment selects twelve routine gates.
+Formal/model/mutant/fuzz, exhaustive persistence, duplicate GNU and two-build
+reproducibility, and disruptive timing campaigns are explicit opt-ins—not
+passing results or automatic release prerequisites. The
+[release handoff](../verification/release-handoff.md) supersedes historical
+all-gates language below while preserving those original evidence records.
+
+`STORAGE-HYGIENE-2026-10-30` authorizes bounded inactive-cache cleanup and
+verified Seagate archive relocation without repeated capacity approvals.
+Old compiler-cache removal restored Ubuntu headroom while preserving source,
+release evidence and active editor libraries. Docker-data compaction restored
+headroom; subsequent qualification used some of that reserve. The owner's
+`STORAGE-FAST-96-2026-10-31` amendment temporarily sets only the current B:
+physical floor to 96 GiB, keeping all gates and the other floors unchanged.
+Restore B:'s 128-GiB floor when commissioning the 4-TB replacement.
+The [storage flow](../verification/release-handoff.md#storage-hygiene-and-archive-relocation)
+records copy verification, protected data, Docker bind-mount placement and
+the separate offline-compaction requirement.
+Docker startup after maintenance was recovered without a reset: normal-user
+bootstrap ACL access, the original daemon identity and retained CLI bytes were
+verified. The storage handoff now separates elevated maintenance from ordinary
+Docker startup. The owner's planned 4-TB USB4 fast-tier replacement keeps
+Seagate as the archive; the future HP-mini verifier/signer is not yet provisioned
+and does not change current release authority.
+
+
 ## Workspace-only 0.50 — published 2026-10-28
 
 [0.50.0 is public/latest](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.50.0),

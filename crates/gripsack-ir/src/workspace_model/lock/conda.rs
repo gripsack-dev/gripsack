@@ -33,6 +33,10 @@ pub struct LockedCondaEnvironment {
     /// Complete transitive closure, canonical order (name, then the
     /// full record identity); enforced by the lock reader.
     pub packages: Vec<LockedCondaPackage>,
+    /// Complete binary PyPI closure in canonical normalized-name order.
+    /// Absent in retained v2 records; explicit wheel data requires lock v3.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wheels: Vec<super::LockedWheel>,
     pub materializer: MaterializerPolicy,
 }
 

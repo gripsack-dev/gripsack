@@ -49,7 +49,19 @@ fn source(value: &AcquisitionSource, target: &WorkspacePlatform, out: &mut Vec<D
     span(value.span(), out);
     match value {
         AcquisitionSource::Fetch(_) => {}
+        AcquisitionSource::Package { manifest, span } => {
+            if crate::workspace_model::identity::ArtifactDigest::parse(manifest).is_err() {
+                invalid(
+                    out,
+                    span,
+                    "package manifest must be a lowercase SHA256 digest",
+                );
+            }
+        }
         AcquisitionSource::CondaEnvironment(source) => {
+            if let Err(message) = crate::workspace_model::wheel::validate_sources(&source.wheels) {
+                invalid(out, &source.span, message);
+            }
             if source.channels.is_empty()
                 || source
                     .channels
@@ -123,13 +135,19 @@ fn source(value: &AcquisitionSource, target: &WorkspacePlatform, out: &mut Vec<D
 fn admissible_text(value: &str) -> bool {
     !value.is_empty() && value.trim() == value && !value.chars().any(char::is_control)
 }
-/// Layout/source coherence (A3): Conda-backed packages materialize at a
-/// derived prefix; no other producer may claim prefix materialization.
+/// Ecosystem closures require derived prefixes. Imported packages bind their
+/// exact signed layout later, at receipt admission, rather than at authoring.
 fn layout(value: &PackageOutput, out: &mut Vec<Diagnostic>) {
     let conda = matches!(
         &value.producer,
         WorkspaceProducer::Provider {
             provider: AcquisitionSource::CondaEnvironment(_) | AcquisitionSource::PixiLock(_)
+        }
+    );
+    let imported = matches!(
+        &value.producer,
+        WorkspaceProducer::Provider {
+            provider: AcquisitionSource::Package { .. }
         }
     );
     match &value.layout {
@@ -156,11 +174,11 @@ fn layout(value: &PackageOutput, out: &mut Vec<Diagnostic>) {
                 "conda-backed packages are prefix-materialized, not relocatable",
             );
         }
-        CatalogPackageLayout::PrefixMaterialized if !conda => {
+        CatalogPackageLayout::PrefixMaterialized if !conda && !imported => {
             invalid(
                 out,
                 &value.span,
-                "only conda-backed provider packages are prefix-materialized",
+                "prefix materialization requires a Conda/Pixi closure or imported package",
             );
         }
         _ => {}
@@ -216,10 +234,8 @@ pub(super) fn check(workspace: &WorkspaceCatalog, out: &mut Vec<Diagnostic>) {
             );
         }
         let target = match output {
-            WorkspaceOutput::Recipe(value) => Some(&value.target),
             WorkspaceOutput::Package(value) => Some(&value.target),
             WorkspaceOutput::Environment(value) => Some(&value.target),
-            WorkspaceOutput::Image(value) => Some(&value.target),
             _ => None,
         };
         if target.is_some_and(|target| !target.valid_abi()) {
@@ -230,30 +246,12 @@ pub(super) fn check(workspace: &WorkspaceCatalog, out: &mut Vec<Diagnostic>) {
             );
         }
         match output {
-            WorkspaceOutput::Recipe(value) => {
-                source(&value.source, &value.target, out);
-                if let RecipeExecution::IsolatedLinux {
-                    platform,
-                    toolchain,
-                    ..
-                } = &value.execution
-                {
-                    if platform.os != PlatformOs::Linux || !platform.valid_abi() {
-                        invalid(
-                            out,
-                            &value.span,
-                            "isolated execution requires an explicit compatible Linux platform",
-                        );
-                    }
-                    if !image_reference(&toolchain.reference) {
-                        invalid(
-                            out,
-                            &value.span,
-                            "toolchain image requires a normalized registry path and lowercase SHA-256 digest",
-                        );
-                    }
-                }
-                steps(&value.steps, out);
+            WorkspaceOutput::Recipe(_) | WorkspaceOutput::Image(_) => {
+                invalid(
+                    out,
+                    output.span(),
+                    "recipe and source-image authoring is retired",
+                );
             }
             WorkspaceOutput::Package(value) => {
                 if let WorkspaceProducer::Provider { provider } = &value.producer {
@@ -289,6 +287,7 @@ pub(super) fn check(workspace: &WorkspaceCatalog, out: &mut Vec<Diagnostic>) {
                 environment(&value.env, &value.span, out);
             }
             WorkspaceOutput::Task(value) => {
+                super::service::references(&value.services, &value.span, out);
                 if value.steps.is_empty() {
                     invalid(out, &value.span, "a task requires at least one local step");
                 }
@@ -328,7 +327,7 @@ pub(super) fn check(workspace: &WorkspaceCatalog, out: &mut Vec<Diagnostic>) {
                     profile_file(file, out);
                 }
             }
-            WorkspaceOutput::Image(value) => super::image::check(value, out),
+            WorkspaceOutput::Service(value) => super::service::check(value, out),
         }
     }
     crate::sema::workspace::destinations::check_declarations(
@@ -504,7 +503,6 @@ fn command(value: &WorkspaceCommand, out: &mut Vec<Diagnostic>) {
         WorkspaceCommand::RunBash {
             interpreter,
             options,
-            body,
             env,
             cwd,
             line_map,
@@ -524,18 +522,6 @@ fn command(value: &WorkspaceCommand, out: &mut Vec<Diagnostic>) {
                     out,
                     value.span(),
                     "Bash options must be the fixed strict set -e -u -o pipefail",
-                );
-            }
-            if let Some(offset) = body.find("${") {
-                let generated = body[..offset].bytes().filter(|byte| *byte == b'\n').count();
-                let mut at = value.span().clone();
-                if let Some(line) = line_map.get(generated) {
-                    at.line = *line;
-                }
-                invalid(
-                    out,
-                    &at,
-                    "Bash bodies are literal; bind dynamic values through typed argv/environment arguments",
                 );
             }
             if line_map.contains(&0) {
@@ -569,19 +555,6 @@ fn command(value: &WorkspaceCommand, out: &mut Vec<Diagnostic>) {
             );
         }
     }
-}
-pub(super) fn image_reference(value: &str) -> bool {
-    let Some((name, digest)) = value.rsplit_once("@sha256:") else {
-        return false;
-    };
-    name.contains('/')
-        && !name.starts_with('/')
-        && !name.ends_with('/')
-        && !name.contains("//")
-        && name.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"./_:-".contains(&byte)
-        })
-        && hash(digest)
 }
 
 #[cfg(test)]

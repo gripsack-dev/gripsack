@@ -3,7 +3,7 @@
 //! The core links the bounded protocol and Rattler's canonical record/MatchSpec
 //! parser. Resolving, networking and installation remain out of process:
 //!
-//! * [`protocol`] — the one-shot length-prefixed protocol (v3) spoken with
+//! * [`protocol`] — the one-shot length-prefixed protocol (v4) spoken with
 //!   the out-of-process `gripsack-conda` helper.
 //! * [`client`] — [`client::CondaHelper`], exact executable selection and
 //!   bounded native transactions with version and response-identity admission.
@@ -22,6 +22,8 @@ pub mod provision;
 pub mod receipt;
 pub mod records;
 pub mod virtuals;
+/// Bounded wheel archive admission and independent installed-content expectations.
+pub mod wheels;
 
 pub use channels::{InvalidChannel, canonicalize_channel};
 pub use client::{CondaError, CondaHelper};

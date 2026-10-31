@@ -415,12 +415,7 @@ export function asCalendar(v: unknown, where: string): WorkspaceCalendar {
 }
 
 export function asProducer(v: unknown, where: string): WorkspaceProducer {
-  if (typeof v === "string") return { kind: "recipe", recipe: asName(v, where) };
   const rec = asRecord(v, where);
-  if (rec.kind === "recipe") {
-    rejectUnknownFields(where, rec, ["kind", "recipe"]);
-    return { kind: "recipe", recipe: asName(rec.recipe, `${where}.recipe`) };
-  }
   if (rec.kind === "provider") {
     rejectUnknownFields(where, rec, ["kind", "provider"]);
     return {
@@ -428,7 +423,7 @@ export function asProducer(v: unknown, where: string): WorkspaceProducer {
       provider: asAcquisitionSource(rec.provider, `${where}.provider`),
     };
   }
-  throw new Error(`${where}: producer must be a recipe output name or provider(fetch(...))`);
+  throw new Error(`${where}: producer must be a provider(...) acquisition`);
 }
 
 export function asFetch(v: unknown, where: string): Fetch {
@@ -483,10 +478,17 @@ export function asHostRuntime(v: unknown, where: string): HostRuntimeRequirement
   return { library_directories: [...directories] };
 }
 
-/** An acquisition source — the tagged union behind `RecipeNode.source`
- * and the provider branch of {@link WorkspaceProducer}. */
+/** An acquisition source for a provider-backed package. */
 export function asAcquisitionSource(v: unknown, where: string): AcquisitionSource {
   const rec = asRecord(v, where);
+  if (rec.kind === "package") {
+    rejectUnknownFields(where, rec, ["kind", "manifest", "span"]);
+    if (typeof rec.manifest !== "string" || !/^[a-f0-9]{64}$/.test(rec.manifest)) {
+      throw new Error(`${where}.manifest must be a lowercase 64-hex SHA256 digest`);
+    }
+    asSpan(rec.span, where);
+    return v as AcquisitionSource;
+  }
   if (rec.kind === "fetch") {
     rejectUnknownFields(where, rec, ["kind", "fetch", "span"]);
     asFetch(rec.fetch, `${where}.fetch`);
@@ -494,7 +496,7 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
     return v as AcquisitionSource;
   }
   if (rec.kind === "conda_environment") {
-    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "span"]);
+    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "wheels", "span"]);
     const channels = rec.channels;
     if (!Array.isArray(channels) || channels.length === 0 ||
       channels.some((c) => typeof c !== "string" || c === "")) {
@@ -525,6 +527,41 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
     if (rec.system_requirements !== undefined) {
       asSystemRequirements(rec.system_requirements, `${where}.system_requirements`);
     }
+    if (rec.wheels !== undefined) {
+      if (!Array.isArray(rec.wheels)) throw new Error(`${where}.wheels must be an array`);
+      const names = new Set<string>();
+      const urls = new Set<string>();
+      const hashes = new Set<string>();
+      for (const [index, wheel] of rec.wheels.entries()) {
+        const site = `${where}.wheels[${index}]`;
+        const request = asRecord(wheel, site);
+        rejectUnknownFields(site, request, ["name", "version", "url", "sha256"]);
+        if (typeof request.name !== "string" || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(request.name)) {
+          throw new Error(`${site}.name must be a canonical lowercase PEP503 name`);
+        }
+        if (typeof request.version !== "string" || request.version.length > 256 || !/^[A-Za-z0-9.!+_-]+$/.test(request.version)) {
+          throw new Error(`${site}.version must be 1..256 ASCII version characters without whitespace or slashes`);
+        }
+        if (typeof request.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(request.sha256)) {
+          throw new Error(`${site}.sha256 must be a lowercase 64-hex SHA256 digest`);
+        }
+        if (typeof request.url !== "string" || /[\u0000-\u0020\u007f-\u009f]/.test(request.url) || !URL.canParse(request.url)) {
+          throw new Error(`${site}.url must be an HTTPS wheel URL`);
+        }
+        const url = new URL(request.url);
+        const filename = url.pathname.slice(url.pathname.lastIndexOf("/") + 1);
+        if (url.protocol !== "https:" || !url.hostname || url.username || url.password ||
+          request.url.includes("?") || request.url.includes("#") || !/^[A-Za-z0-9_.+-]+\.whl$/.test(filename)) {
+          throw new Error(`${site}.url must be an HTTPS wheel URL without credentials, query, fragment or encoded filename`);
+        }
+        if (names.has(request.name) || urls.has(request.url) || hashes.has(request.sha256)) {
+          throw new Error(`${site}: duplicate wheel name, URL or hash`);
+        }
+        names.add(request.name);
+        urls.add(request.url);
+        hashes.add(request.sha256);
+      }
+    }
     asSpan(rec.span, where);
     return v as AcquisitionSource;
   }
@@ -536,7 +573,7 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
     asSpan(rec.span, where);
     return v as AcquisitionSource;
   }
-  throw new Error(`${where}: source kind must be "fetch", "conda_environment" or "pixi_lock"`);
+  throw new Error(`${where}: source kind must be "fetch", "conda_environment", "pixi_lock" or "package"`);
 }
 
 /** Deep copy + freeze: the returned value shares no mutable state

@@ -47,3 +47,40 @@ fn receipts_cannot_drop_or_substitute_frozen_dependency_and_layout_authority() {
     honest.extend_from_slice(b"{}");
     assert!(verify(honest.as_slice(), &frozen, &files, "/final prefix").is_err());
 }
+
+#[test]
+fn wheel_receipt_binds_original_requirements_ownership_and_final_prefix() {
+    let wheel: LockedWheel = serde_json::from_value(json!({
+        "name":"fixture-tool","version":"1.0","filename":"fixture_tool-1.0-py3-none-any.whl",
+        "url":"https://example.invalid/fixture_tool-1.0-py3-none-any.whl",
+        "sha256":"b".repeat(64),"size":256,
+        "requires_python":">=3.12","requires_dist":["dependency>=2"]
+    }))
+    .unwrap();
+    let files = BTreeSet::from([
+        "bin/fixture-tool",
+        "lib/python3.12/site-packages/fixture.py",
+    ]);
+    let mut bytes = Vec::new();
+    write_wheel(&mut bytes, &wheel, &files, "/recipient prefix").unwrap();
+    verify_wheel(bytes.as_slice(), &wheel, &files, "/recipient prefix").unwrap();
+    assert_eq!(wheel_path(&wheel), "conda-meta/fixture-tool-1.0-wheel.json");
+    assert!(verify_wheel(bytes.as_slice(), &wheel, &files, "/producer prefix").is_err());
+    let mut changed = wheel.clone();
+    changed.requires_dist.clear();
+    assert!(verify_wheel(bytes.as_slice(), &changed, &files, "/recipient prefix").is_err());
+    changed = wheel.clone();
+    changed.sha256 = "c".repeat(64);
+    assert!(verify_wheel(bytes.as_slice(), &changed, &files, "/recipient prefix").is_err());
+    assert!(
+        verify_wheel(
+            bytes.as_slice(),
+            &wheel,
+            &BTreeSet::from(["bin/fixture-tool"]),
+            "/recipient prefix"
+        )
+        .is_err()
+    );
+    bytes.extend_from_slice(b"{}");
+    assert!(verify_wheel(bytes.as_slice(), &wheel, &files, "/recipient prefix").is_err());
+}

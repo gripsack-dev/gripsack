@@ -1,4 +1,4 @@
-/** v8 named-output constructors: pure, frozen values with source spans. */
+/** v10 named-output constructors: pure, frozen values with source spans. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -13,14 +13,12 @@ import type {
   EnvironmentSpec,
   HookNode,
   HookSpec,
-  ImageNode,
-  ImageSpec,
   PackageNode,
   PackageSpec,
+  PackageSource,
+  PackageSourceSpec,
   ProfileNode,
   ProfileSpec,
-  RecipeNode,
-  RecipeSpec,
   ScheduleNode,
   ScheduleSpec,
   TaskNode,
@@ -56,9 +54,9 @@ import {
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
-import { asExecution, asInstallPrefix, asLayout, asPlatform } from "./target.ts";
+import { serviceNames } from "./services.ts";
+import { asInstallPrefix, asLayout, asPlatform } from "./target.ts";
 import { asInput, asLock, asStep, asTaskContext, lockKey } from "./bindings.ts";
-import { imageProperties } from "./image.ts";
 
 
 /** A per-output build/target platform. */
@@ -72,7 +70,7 @@ export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
  *  wire shape, stamping `span` on freshly wrapped variants. */
 function asSourceValue(source: unknown, span: Span, where: string): AcquisitionSource {
   const rec = asRecord(source, where);
-  if (rec.kind === "fetch" || rec.kind === "conda_environment" || rec.kind === "pixi_lock") {
+  if (rec.kind === "fetch" || rec.kind === "conda_environment" || rec.kind === "pixi_lock" || rec.kind === "package") {
     return asAcquisitionSource(source, where);
   }
   if (typeof rec.kind === "string" && rec.kind !== "") {
@@ -80,7 +78,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
     return asAcquisitionSource({ kind: "fetch", fetch: source, span }, where);
   }
   if (rec.channels !== undefined || rec.packages !== undefined) {
-    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements"]);
+    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements", "wheels"]);
     const conda = source as CondaEnvironmentSpec;
     return asAcquisitionSource({
       kind: "conda_environment",
@@ -90,6 +88,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
       ...(conda.systemRequirements !== undefined
         ? { system_requirements: asSystemRequirements(conda.systemRequirements, `${where}.systemRequirements`) }
         : {}),
+      ...(conda.wheels !== undefined ? { wheels: conda.wheels } : {}),
       span,
     }, where);
   }
@@ -105,7 +104,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
 }
 
 /** A coherent binary Conda environment source, solved through Rattler —
- *  usable directly as `recipe({ source })` or inside `provider(...)`. */
+ *  usable inside `provider(...)`. */
 export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSource {
   const span = callerSpan();
   if (!span) {
@@ -114,7 +113,7 @@ export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSo
     );
   }
   const rec = asRecord(spec, "conda.environment(...)");
-  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements"]);
+  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements", "wheels"]);
   return freezeDeep(asSourceValue(spec, span, "conda.environment(...)") as CondaEnvironmentSource);
 }
 
@@ -132,9 +131,20 @@ export function pixiFromLock(spec: PixiLockSpec): PixiLockSource {
   return freezeDeep(asSourceValue(spec, span, "pixi.fromLock(...)") as PixiLockSource);
 }
 
+/** Select an imported portable package; transport and trust stay core-owned. */
+export function packageSource(spec: PackageSourceSpec): PackageSource {
+  const what = "source.package(...)";
+  const rec = asRecord(spec, what);
+  rejectUnknownFields(what, rec, ["manifest"]);
+  const span = nodeSpan(undefined, what);
+  return freezeDeep(asAcquisitionSource({
+    kind: "package", manifest: spec.manifest, span,
+  }, what) as PackageSource);
+}
+
 /** A direct provider-backed acquisition for `pkg({ producer })` —
  *  the package resolves through the declared provider with its own
- *  provenance, no synthetic recipe output. Accepts a `Fetch` (wrapped as
+ *  provenance. Accepts a `Fetch` (wrapped as
  *  `{"kind":"fetch",…}`) or a `conda.environment(...)`/`pixi.fromLock(...)`
  *  source value. */
 export function provider(source: Fetch | AcquisitionSource): WorkspaceProducer {
@@ -158,49 +168,12 @@ export function weekly(weekday: WorkspaceWeekday, time: string): WorkspaceCalend
   return freezeDeep(asCalendar({ kind: "weekly", weekday, time }, "weekly(...)"));
 }
 
-/** Brand + deep-freeze a constructed node — all nine output
- *  constructors share this exact behavior. */
+/** Brand + deep-freeze a constructed node — all output constructors share this behavior. */
 function makeOutput<N extends WorkspaceOutputNode>(node: N): WorkspaceOutput<N> {
   return Object.freeze({ __gripsack: "workspace_output", ir: freezeDeep(node) });
 }
 
-/** A recipe: an ordered local command list over a fetched source,
- *  producing a file or tree artifact for one target platform. */
-export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNode> {
-  const what = `recipe("${name}")`;
-  asName(name, `${what}: name`);
-  asRecord(spec, what);
-  rejectUnknownFields(what, spec, [
-    "source", "execution", "output_kind", "target", "steps", "checks", "span",
-  ]);
-  const span = nodeSpan(spec.span, what);
-  const source = asSourceValue(spec.source, span, `${what}: source`);
-  const target = asPlatform(spec.target, `${what}: target`);
-  if (source.kind === "conda_environment" && source.system_requirements !== undefined && target.os !== "linux") {
-    throw new Error(`${what}: Conda systemRequirements require a Linux target`);
-  }
-  if (spec.output_kind !== "file" && spec.output_kind !== "tree") {
-    throw new Error(`${what}: output_kind must be "file" or "tree"`);
-  }
-  const steps = spec.steps?.length
-    ? spec.steps.map((c, i) => asStep(c, `${what}: steps[${i}]`))
-    : undefined;
-  const checks = asNames(spec.checks, `${what}: checks`);
-  const node: RecipeNode = {
-    name,
-    span,
-    kind: "recipe",
-    source,
-    execution: asExecution(spec.execution, `${what}: execution`),
-    output_kind: spec.output_kind,
-    target,
-    ...(steps ? { steps } : {}),
-    ...(checks ? { checks } : {}),
-  };
-  return makeOutput(node);
-}
-
-/** A package: named commands over a recipe's artifact, with an
+/** A package: named commands over an acquired artifact, with an
  *  explicit runtime closure and a layout contract. (`pkg` because
  *  `package` is a reserved word.) */
 export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNode> {
@@ -285,7 +258,7 @@ export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
   const what = `task("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["steps", "context", "locks", "deps", "environment", "checks", "span"]);
+  rejectUnknownFields(what, spec, ["steps", "context", "locks", "deps", "services", "environment", "checks", "span"]);
   const span = nodeSpan(spec.span, what);
   if (!Array.isArray(spec.steps) || spec.steps.length === 0) throw new Error(`${what}: steps must be nonempty`);
   const steps = spec.steps.map((step, index) => asStep(step, `${what}: steps[${index}]`));
@@ -293,6 +266,7 @@ export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
   if (spec.locks !== undefined && !Array.isArray(spec.locks)) throw new Error(`${what}: locks must be an array`);
   const locks = spec.locks?.map((lock, index) => asLock(lock, `${what}: locks[${index}]`));
   const deps = asNames(spec.deps, `${what}: deps`);
+  const services = serviceNames(spec.services, `${what}: services`);
   const envName = spec.environment !== undefined
     ? asName(spec.environment, `${what}: environment`)
     : undefined;
@@ -305,6 +279,7 @@ export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
     context,
     ...(locks?.length ? { mutation_locks: locks } : {}),
     ...(deps ? { deps } : {}),
+    ...(services.length ? { services } : {}),
     ...(envName !== undefined ? { environment: envName } : {}),
     ...(checks ? { checks } : {}),
   };
@@ -345,22 +320,6 @@ export function check(name: string, spec: CheckSpec): WorkspaceOutput<CheckNode>
     kind: "check",
     run: asCommand(spec.run, `${what}: run`),
     subject: asName(spec.subject, `${what}: subject`),
-  };
-  return makeOutput(node);
-}
-
-/** A runtime package composition exported as an OCI image. */
-export function image(name: string, spec: ImageSpec): WorkspaceOutput<ImageNode> {
-  const what = `image("${name}")`;
-  asName(name, `${what}: name`);
-  asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["packages", "target", "base", "destinations", "config", "span"]);
-  const span = nodeSpan(spec.span, what);
-  const node: ImageNode = {
-    name,
-    span,
-    kind: "image",
-    ...imageProperties(spec, what),
   };
   return makeOutput(node);
 }
@@ -451,8 +410,8 @@ export function workspace(spec: WorkspaceSpec): WorkspaceValue {
     if (!o) continue;
     if (typeof o !== "object" || o.__gripsack !== "workspace_output") {
       throw new Error(
-        `workspace(...): outputs entries must be recipe()/pkg()/environment()/task()/` +
-          `schedule()/check()/image()/profile()/hook() values — got ${
+        `workspace(...): outputs entries must be pkg()/environment()/task()/` +
+          `schedule()/check()/profile()/hook()/service() values — got ${
             JSON.stringify(Array.isArray(o) ? "an array" : typeof o)
           }`,
       );
@@ -497,7 +456,7 @@ export function workspace(spec: WorkspaceSpec): WorkspaceValue {
  *
  * ```ts
  * // gripsack.ts
- * import { defineWorkspace, workspace, pkg, recipe } from "@gripsack/core";
+ * import { defineWorkspace, workspace, pkg, provider } from "@gripsack/core";
  *
  * export default defineWorkspace((ctx) => workspace({
  *   outputs: [tools, toolsBin],

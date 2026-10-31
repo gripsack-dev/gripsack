@@ -172,8 +172,8 @@ impl CondaHelper {
     /// `materialize`: install the locked closure into `staging_dir`, patched
     /// for `final_prefix`. Advisory; the core re-validates the tree. The
     /// echoes of `lock_digest`, `platform`, and `final_prefix` are validated
-    /// against the request. Returns one `(package name, conda-meta relative
-    /// receipt path)` per installed package.
+    /// against the request. Returns one `(distribution name, relative receipt
+    /// path)` per installed Conda package or wheel.
     pub fn materialize(
         &self,
         attempt: u64,
@@ -203,6 +203,12 @@ impl CondaHelper {
                 .packages
                 .into_iter()
                 .map(|package| (package.name, package.conda_meta))
+                .chain(
+                    response
+                        .wheels
+                        .into_iter()
+                        .map(|wheel| (wheel.name, wheel.wheel_meta)),
+                )
                 .collect()),
             Response::Error(error) => Err(self.helper_error(attempt, error)?),
             _ => Err(CondaError::Echo(

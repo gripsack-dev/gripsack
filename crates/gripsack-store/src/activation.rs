@@ -11,7 +11,7 @@ mod outcome;
 mod pointer;
 mod storage;
 
-pub use inspect::{HookInspection, HookState, inspect};
+pub use inspect::{HookInspection, HookState, inspect, retained_schedule_roots};
 pub use ledger::{
     ActivationBatch, LaunchPermit, ReadyActivation, has_pending, load_pending, prepare,
 };

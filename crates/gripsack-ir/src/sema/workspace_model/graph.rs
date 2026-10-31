@@ -26,9 +26,6 @@ pub(super) fn check<'a>(
     let edges = references(workspace);
     for output in &workspace.outputs {
         check_inputs_and_context(output, catalog, inputs, &attached, out);
-        if let WorkspaceOutput::Image(image) = output {
-            super::image::selection(image, catalog, out);
-        }
     }
     let mut dependencies = vec![Vec::new(); names.len()];
     let mut production = vec![Vec::new(); names.len()];
@@ -210,29 +207,16 @@ fn check_inputs_and_context(
             }
         }
     }
-    let context = if matches!(
-        output,
-        WorkspaceOutput::Recipe(RecipeOutput {
-            execution: RecipeExecution::IsolatedLinux { .. },
-            ..
-        })
-    ) {
-        ExecutionContext::IsolatedLinux
-    } else {
-        ExecutionContext::Host
-    };
+    let context = ExecutionContext::Host;
     let check_owner =
         |check: &crate::workspace_model::CheckOutput| match catalog.get(check.subject.as_str()) {
-            Some(WorkspaceOutput::Recipe(_) | WorkspaceOutput::Package(_)) => {
-                CommandOwner::ImmutableSubject
-            }
+            Some(WorkspaceOutput::Package(_)) => CommandOwner::ImmutableSubject,
             Some(WorkspaceOutput::Profile(_)) if attached.contains(check.name.as_str()) => {
                 CommandOwner::FileSubject
             }
             _ => CommandOwner::Invocation,
         };
     let owner = match output {
-        WorkspaceOutput::Recipe(_) => CommandOwner::Production,
         WorkspaceOutput::Check(check) => check_owner(check),
         _ => CommandOwner::Invocation,
     };
@@ -318,22 +302,6 @@ fn check_inputs_and_context(
         }
     }
     match output {
-        WorkspaceOutput::Recipe(value) => {
-            for step in &value.steps {
-                if let WorkspaceStep::Command(value) = step {
-                    command(value, owner, None, out);
-                }
-            }
-            let target = match &value.execution {
-                RecipeExecution::Host { .. } => &value.target,
-                RecipeExecution::IsolatedLinux { platform, .. } => platform,
-            };
-            for name in &value.checks {
-                if let Some(WorkspaceOutput::Check(check)) = catalog.get(name.as_str()) {
-                    command(&check.run, check_owner(check), Some(target), out);
-                }
-            }
-        }
         WorkspaceOutput::Package(_) => {}
         WorkspaceOutput::Task(value) => {
             for step in &value.steps {

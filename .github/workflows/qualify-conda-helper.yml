@@ -7,11 +7,18 @@ on:
         description: Require committed pins to match (false measures only)
         type: boolean
         default: false
+      reproducible:
+        description: Explicitly request two clean builds and byte comparison
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       check_pins:
         type: boolean
         default: true
+      reproducible:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,13 +46,15 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
-      - name: Rebuild twice, verify dependencies and execute native protocol smoke
+      - name: Package helper, verify dependencies and execute native protocol smoke
         env:
           CHECK_PINS: ${{ inputs.check_pins }}
+          REPRODUCIBLE: ${{ inputs.reproducible }}
           TARGET: ${{ matrix.target }}
         run: |
           args=()
           if [ "$CHECK_PINS" = true ]; then args+=(--check); fi
+          if [ "$REPRODUCIBLE" = true ]; then args+=(--reproducible); fi
           sh tools/conda-helper/dist.sh --dist "$RUNNER_TEMP/conda-dist" --target "$TARGET" "${args[@]}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

@@ -3,7 +3,7 @@
 use std::io;
 
 pub(crate) mod archive;
-pub mod bridge;
+pub mod conda_helper;
 pub(crate) mod file;
 pub(crate) mod git;
 pub(crate) mod plugin;

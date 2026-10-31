@@ -9,12 +9,6 @@ use gripsack_process::terminal::{display, write_output};
 pub struct TaskArgs {
     #[arg(long, global = true)]
     pub repo: Option<String>,
-    #[arg(long, global = true)]
-    pub bridge: Option<PathBuf>,
-    #[arg(long, global = true, default_value = "2")]
-    pub builder_cpus: NonZeroU16,
-    #[arg(long, global = true, default_value = "4096")]
-    pub builder_memory_mib: NonZeroU64,
     /// One total deadline, including realization, prerequisites and verification.
     #[arg(long, global = true, default_value = "1800")]
     pub timeout_seconds: NonZeroU64,
@@ -96,9 +90,6 @@ pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
                 },
                 json: args.json,
             },
-            args.bridge,
-            args.builder_cpus,
-            args.builder_memory_mib,
             args.timeout_seconds,
         ),
         TaskCommand::Status { invocation } | TaskCommand::Log { invocation } => {

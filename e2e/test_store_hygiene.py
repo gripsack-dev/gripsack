@@ -224,20 +224,26 @@ export default profile("demo", { files: [
     # tamper with a store path — verify must catch it, repair must
     # remove it, and the next apply re-fetches
     store = sandbox / ".local/share/gripsack/store"
-    target = next(store.iterdir())
-    for f in target.rglob("*"):
-        if f.is_file() and not f.is_symlink():
-            f.chmod(0o644)  # store payloads are read-only (0016 §D3)
-            f.write_text("tampered\n")
+    payload = (sandbox / ".config/demo/a.txt").resolve()
+    target = next(parent for parent in payload.parents if parent.parent == store)
+    preserved = {
+        path: path.read_bytes()
+        for root in store.iterdir() if root != target
+        for path in root.rglob("*") if path.is_file() and not path.is_symlink()
+    }
+    payload.chmod(0o644)  # store payloads are read-only (0016 §D3)
+    payload.write_text("tampered\n")
     out = grip("store-verify", cwd=repo)
     assert out.returncode != 0
     assert "corrupt" in out.stdout
     out = grip("store-verify", "--repair", cwd=repo)
-    assert "removed corrupt" in out.stdout
-    assert not target.exists()
+    assert not target.exists(), out.stdout + out.stderr
+    assert all(path.read_bytes() == content for path, content in preserved.items())
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert target.exists()
+    assert payload.read_text() == "a\n"
+    assert grip("store-verify", cwd=repo).returncode == 0
 
 
 def native_package_repo(sandbox):
@@ -368,14 +374,30 @@ export default profile("demo", { files: [
     out = grip("store-verify", cwd=repo)
     assert out.returncode == 0, out.stdout + out.stderr
 
-    # repair still collects (unlink needs a writable parent, not file)
-    for f in next(store.iterdir()).rglob("*"):
-        if f.is_file() and not f.is_symlink():
-            os.chmod(f, 0o644)
-            f.chmod(0o644)  # store payloads are read-only (0016 §D3)
-            f.write_text("tampered\n")
+    # Corrupt the deployed payload, not a private semantic-review object.
+    # Repair unlinks through writable parent dirs without touching other roots.
+    target = next(parent for parent in payload.parents if parent.parent == store)
+    preserved = {
+        path: path.read_bytes()
+        for root in store.iterdir() if root != target
+        for path in root.rglob("*") if path.is_file() and not path.is_symlink()
+    }
+    payload.chmod(0o644)
+    payload.write_text("tampered\n")
     out = grip("store-verify", "--repair", cwd=repo)
-    assert "removed corrupt" in out.stdout
+    assert not target.exists(), out.stdout + out.stderr
+    assert all(path.read_bytes() == content for path, content in preserved.items())
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert (sandbox / ".config/demo/a.txt").resolve() == payload
+    assert payload.read_text() == "a\n"
+    assert stat.S_IMODE(payload.stat().st_mode) & 0o222 == 0
+    out = grip("gc", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert payload.read_text() == "a\n", "gc must preserve the active payload"
+    out = grip("store-verify", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
 
 
 def test_store_verify_merge_and_template_hashes(sandbox):

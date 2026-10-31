@@ -179,6 +179,10 @@ fn rollback_intents(
             }
         }
     }
+    intents.extend(crate::workspace::schedules::lifecycle::removal_intents(
+        current,
+        &target.deployments,
+    ));
     intents
 }
 

@@ -268,21 +268,18 @@ impl Context {
     }
 
     pub(super) fn realization<'a>(&'a self, home: &Path) -> Result<Realization<'a>, ExecError> {
-        let mut loaded = BTreeMap::new();
-        let mut visiting = BTreeSet::new();
+        let mut admission = crate::workspace::sharing::ReadmissionScope::new(
+            home,
+            gripsack_fetch::FetchLimits::default(),
+        );
+        let mut restoration =
+            artifact::hook::ReceiptRestoration::new(&self.receipts, &mut admission);
         let mut packages = BTreeMap::new();
         for (name, identity) in &self.packages {
-            let package = artifact::hook::restore(
-                home,
-                *identity,
-                &self.receipts,
-                &mut loaded,
-                &mut visiting,
-            )?;
+            let package = restoration.restore(*identity)?;
             packages.insert(name.as_str(), package);
         }
         Ok(Realization {
-            recipes: BTreeMap::new(),
             inputs: BTreeMap::new(),
             packages,
         })

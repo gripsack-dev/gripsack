@@ -421,4 +421,71 @@ mod tests {
         null["version"] = serde_json::Value::Null;
         assert!(serde_json::from_value::<Generation>(null).is_err());
     }
+
+    #[test]
+    fn schedule_authority_requires_owned_units_and_retained_runner() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path();
+        let mut generation = mk_gen(home, 1);
+        let state = generation.deployments.get_mut("helix").unwrap();
+        let job = crate::jobs::JobId::parse(&"a".repeat(64)).unwrap();
+        let unit_directory = home.join("units");
+        let runner_root = home.join("store/runner");
+        let template = state.entries[0].clone();
+        state.entries = ["service", "timer"]
+            .into_iter()
+            .map(|extension| {
+                let name = format!("gripsack-job-{job}.{extension}");
+                let mut entry = template.clone();
+                entry.from = name.clone().into();
+                entry.to = unit_directory.join(name).to_string_lossy().into_owned();
+                entry
+            })
+            .collect();
+        state.build_closure.push(runner_root.clone());
+        state.intents.push(IntentRecord {
+            trigger: crate::ActivationTrigger::PostActivate,
+            action: crate::activation::ActivationAction::ScheduledJob {
+                job,
+                revision: crate::jobs::JobRevision::parse(&"b".repeat(64)).unwrap(),
+                capture: state.store_path.join("job.json"),
+                runner: runner_root.join("grip"),
+                unit_directory,
+                enabled: true,
+                closure: vec![runner_root.clone()],
+            },
+        });
+        assert!(admission::validate(&generation, generation.number, home).is_ok());
+        let mut missing_runner = generation.clone();
+        missing_runner
+            .deployments
+            .get_mut("helix")
+            .unwrap()
+            .build_closure
+            .clear();
+        assert!(admission::validate(&missing_runner, missing_runner.number, home).is_err());
+        let mut missing_unit = generation.clone();
+        missing_unit
+            .deployments
+            .get_mut("helix")
+            .unwrap()
+            .entries
+            .pop();
+        assert!(admission::validate(&missing_unit, missing_unit.number, home).is_err());
+        let mut outside_capture = generation.clone();
+        if let crate::activation::ActivationAction::ScheduledJob { capture, .. } =
+            &mut outside_capture
+                .deployments
+                .get_mut("helix")
+                .unwrap()
+                .intents[0]
+                .action
+        {
+            *capture = home.join("arbitrary.json");
+        }
+        assert!(admission::validate(&outside_capture, outside_capture.number, home).is_err());
+        let wire = serde_json::to_value(&generation).unwrap();
+        assert_eq!(wire["version"], 2);
+        assert!(serde_json::from_value::<Generation>(wire["generation"].clone()).is_err());
+    }
 }

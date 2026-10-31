@@ -2,9 +2,7 @@
 //! bounded, capability-read and admitted before deletion planning. A vanished
 //! supervisor is not proof that every descendant is dead: unconfirmed process
 //! roots remain until an explicitly confirmed cleanup operation removes them.
-mod recovery;
 use crate::{ExecError, LifecycleSession};
-pub use recovery::{BuildRecovery, recover_builder_roots};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
@@ -17,6 +15,7 @@ const MAX_ROOT_BYTES: u64 = 1024 * 1024;
 const ROOT_DIRECTORY: &str = "roots";
 const MAX_ROOT_ENTRIES: usize = 100_000;
 const MAX_RETAINED_OBJECTS: usize = 100_000;
+/// Private native command projections retain the historical directory spelling.
 pub(super) const BUILD_STAGING_DIRECTORY: &str = "workspace-staging";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,18 +61,75 @@ impl From<RootId> for String {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Retire a private native invocation projection only after its caller has
+/// established that no supervised process still needs these inputs.
+pub(super) fn remove_native_staging(home: &gripsack_fs::Dir, id: &RootId) -> Result<(), ExecError> {
+    let parent = match gripsack_fs::open_dir_nofollow(home, Path::new(BUILD_STAGING_DIRECTORY)) {
+        Ok(parent) => parent,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    match parent.remove_dir_all(id.as_str()) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    gripsack_fs::fsync_pinned_dir(&parent, Path::new("."))?;
+    Ok(())
+}
+
+// Historical build metadata is admitted only for conservative retention.
+// These records cannot confer worker control or authorize cleanup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RetainedWorker {
-    scope: gripsack_buildkit::worker::WorkerScope,
-    binding: gripsack_buildkit::protocol::WorkerBinding,
+struct RetainedWorkerScope {
+    home: gripsack_process::Sha256Digest,
+    owner: gripsack_process::Sha256Digest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct BuildAttempt {
-    pub identity: gripsack_buildkit::identity::AttemptIdentity,
-    pub worker: Option<RetainedWorker>,
+struct RetainedWorkerBinding {
+    instance: gripsack_process::Sha256Digest,
+    epoch: std::num::NonZeroU64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetainedWorker {
+    scope: RetainedWorkerScope,
+    binding: RetainedWorkerBinding,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetainedAttemptIdentity {
+    #[serde(deserialize_with = "retained_session")]
+    session: String,
+    attempt: std::num::NonZeroU64,
+    epoch: std::num::NonZeroU64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BuildAttempt {
+    identity: RetainedAttemptIdentity,
+    worker: Option<RetainedWorker>,
+}
+
+fn retained_session<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<String, D::Error> {
+    let value = String::deserialize(decoder)?;
+    if value.is_empty()
+        || value.len() > 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(serde::de::Error::custom(
+            "session must be 1..=64 ASCII letters, digits, '-' or '_'",
+        ));
+    }
+    Ok(value)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -221,14 +277,9 @@ pub struct ProcessLease {
     home: PathBuf,
     id: RootId,
     lock: gripsack_fs::FlockGuard,
-    build: Option<BuildAttempt>,
 }
 impl ProcessLease {
-    pub fn register(
-        session: &LifecycleSession,
-        closure: &RetentionSet,
-        build: Option<BuildAttempt>,
-    ) -> Result<Self, ExecError> {
+    pub fn register(session: &LifecycleSession, closure: &RetentionSet) -> Result<Self, ExecError> {
         let mut nonce = [0; 32];
         getrandom::fill(&mut nonce).map_err(std::io::Error::other)?;
         let id = RootId::from_identity(&nonce);
@@ -237,41 +288,15 @@ impl ProcessLease {
             .ok_or_else(|| error("created process root directory is absent"))?;
         let lock = gripsack_fs::FlockGuard::try_acquire_in(&directory, id.as_str())?
             .ok_or_else(|| error("new process root identity is already leased"))?;
-        write_root(session, RootKind::Process, &id, closure, build.as_ref())?;
+        write_root(session, RootKind::Process, &id, closure, None)?;
         Ok(Self {
             home: session.home().to_owned(),
             id,
             lock,
-            build,
         })
     }
     pub fn id(&self) -> &RootId {
         &self.id
-    }
-    pub fn bind_worker(
-        &mut self,
-        session: &LifecycleSession,
-        closure: &RetentionSet,
-        lease: &gripsack_buildkit::worker::WorkerLease,
-    ) -> Result<(), ExecError> {
-        let worker = RetainedWorker {
-            scope: lease.scope(),
-            binding: gripsack_buildkit::protocol::WorkerBinding {
-                instance: gripsack_buildkit::identity::WorkerInstanceId::parse(
-                    lease.instance_id(),
-                )?,
-                epoch: lease.epoch(),
-            },
-        };
-        let build = self
-            .build
-            .as_mut()
-            .ok_or_else(|| error("native invocation cannot acquire worker authority"))?;
-        if build.worker.is_some_and(|previous| previous != worker) {
-            return Err(error("build root already belongs to another worker epoch"));
-        }
-        build.worker = Some(worker);
-        self.retain(session, closure)
     }
     pub fn duplicate_handle(&self) -> std::io::Result<std::fs::File> {
         self.lock.duplicate_handle()
@@ -280,28 +305,12 @@ impl ProcessLease {
     /// have no process receipt to manufacture. Callers must not use this after
     /// handing a duplicate to process supervision, including failed launches.
     pub fn release_unlaunched(self, session: &LifecycleSession) -> Result<(), ExecError> {
-        if self.home != session.home() || self.build.is_some() {
+        if self.home != session.home() {
             return Err(error(
                 "unlaunched release requires this home's native invocation lease",
             ));
         }
         remove_root(session, RootKind::Process, &self.id)
-    }
-    pub fn retain(
-        &self,
-        session: &LifecycleSession,
-        closure: &RetentionSet,
-    ) -> Result<(), ExecError> {
-        if self.home != session.home() {
-            return Err(error("process root belongs to another home"));
-        }
-        write_root(
-            session,
-            RootKind::Process,
-            &self.id,
-            closure,
-            self.build.as_ref(),
-        )
     }
     /// Only the confirmed native completion path calls this. Drop alone leaves
     /// evidence intact, including after panic, crash or unknown cleanup.
@@ -313,42 +322,11 @@ impl ProcessLease {
         if self.home != session.home() {
             return Err(error("process root belongs to another home"));
         }
-        if self.build.is_some() {
-            return Err(error(
-                "build retention requires a completed export, not only native process exit",
-            ));
-        }
         if receipt.disposition == gripsack_process::ProcessDisposition::CleanupFailure {
             return Err(error(
                 "native cleanup is unconfirmed; process retention remains",
             ));
         }
-        remove_root(session, RootKind::Process, &self.id)
-    }
-    pub fn release_build(
-        self,
-        session: &LifecycleSession,
-        completed: &gripsack_buildkit::transport::CompletedExport,
-    ) -> Result<(), ExecError> {
-        if self.home != session.home() {
-            return Err(error("build root belongs to another home"));
-        }
-        let build = self
-            .build
-            .as_ref()
-            .ok_or_else(|| error("native root has no build attempt"))?;
-        if &build.identity != completed.identity()
-            || build.worker
-                != Some(RetainedWorker {
-                    scope: completed.scope(),
-                    binding: completed.worker(),
-                })
-        {
-            return Err(error(
-                "completed export belongs to another retained attempt or worker epoch",
-            ));
-        }
-        remove_build_staging(&gripsack_fs::open(session.home())?, &self.id)?;
         remove_root(session, RootKind::Process, &self.id)
     }
 }
@@ -456,26 +434,41 @@ fn read_record(
     Ok(Some(record))
 }
 
-pub(super) fn remove_build_staging(home: &gripsack_fs::Dir, id: &RootId) -> Result<(), ExecError> {
-    let parent = match gripsack_fs::open_dir_nofollow(home, Path::new(BUILD_STAGING_DIRECTORY)) {
-        Ok(parent) => parent,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.into()),
-    };
-    let stage = match gripsack_fs::open_dir_nofollow(&parent, Path::new(id.as_str())) {
-        Ok(stage) => stage,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.into()),
-    };
-    use gripsack_fs::cap_std::fs::MetadataExt;
-    let metadata = stage.metadata(".")?;
-    // SAFETY: geteuid has no memory or pointer preconditions.
-    if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o077 != 0 {
-        return Err(error(
-            "abandoned build staging is not an owned private directory",
-        ));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn historical_build_roots_preserve_strict_metadata_admission() {
+        let digest = "a".repeat(64);
+        let build = json!({
+            "identity": {"session": "old-session_1", "attempt": 1, "epoch": 2},
+            "worker": {
+                "scope": {"home": digest, "owner": digest},
+                "binding": {"instance": digest, "epoch": 3}
+            }
+        });
+        let admitted: BuildAttempt = serde_json::from_value(build.clone()).unwrap();
+        assert_eq!(serde_json::to_value(admitted).unwrap(), build);
+
+        for (path, invalid) in [
+            ("/identity/session", json!("../escape")),
+            ("/identity/attempt", json!(0)),
+            ("/identity/epoch", json!(0)),
+            ("/worker/binding/epoch", json!(0)),
+            ("/worker/binding/instance", json!("not-a-digest")),
+            ("/worker/scope/home", json!("A".repeat(64))),
+        ] {
+            let mut corrupt = build.clone();
+            *corrupt.pointer_mut(path).unwrap() = invalid;
+            assert!(
+                serde_json::from_value::<BuildAttempt>(corrupt).is_err(),
+                "{path}"
+            );
+        }
+        let mut unknown = build;
+        unknown["worker"]["control"] = json!("start");
+        assert!(serde_json::from_value::<BuildAttempt>(unknown).is_err());
     }
-    parent.remove_dir_all(id.as_str())?;
-    gripsack_fs::fsync_pinned_dir(&parent, Path::new(BUILD_STAGING_DIRECTORY))?;
-    Ok(())
 }

@@ -2,6 +2,7 @@
 #   docker compose run --build --rm test      # fmt + clippy + cargo test
 #   docker compose run --build --rm ts-test   # deno test on the frontend
 #   docker compose run --build --rm e2e       # flow tests (offline)
+# Deep campaigns below are optional and run only when explicitly selected.
 #   docker compose run --build --rm model     # TLC model gate via scripts/check_models.sh
 #   docker compose run --build --rm tlaps     # transaction induction + semantic calibration (amd64)
 #   docker compose run --build --rm verify    # Verus proofs + mutant calibration (amd64 only)
@@ -22,6 +23,7 @@ services:
     command: 'echo "gate passed: fmt + clippy -D warnings + cargo test"'
 
   gnu-test:
+    profiles: [optional]
     build:
       context: .
       dockerfile: Dockerfile
@@ -36,6 +38,7 @@ services:
     command: 'echo "gate passed: typescript frontend tests (deno test)"'
 
   model:
+    profiles: [optional]
     build:
       context: .
       dockerfile: Dockerfile
@@ -44,6 +47,7 @@ services:
     command: 'echo "gate passed: model checks via scripts/check_models.sh (TLC, positive + calibrated negative configs)"'
 
   tlaps:
+    profiles: [optional]
     platform: linux/amd64
     build:
       context: .
@@ -51,14 +55,23 @@ services:
       target: tlaps
     command: 'echo "gate passed: transaction induction and calibrated TLAPS/TLC failures"'
 
-  # amd64-only: Verus ships x86-linux/x86-macos/arm64-macos prebuilts.
+  # Optional x86_64 Linux verification campaign.
   verify:
+    profiles: [optional]
     build:
       context: .
       dockerfile: Dockerfile
       target: verify
     # proofs + calibration run at image-build time; the image existing IS the gate.
     command: 'echo "gate passed: cargo verus verify -p gripsack-policy + seeded-mutant calibration (scripts/check_verus.sh)"'
+
+  mutants:
+    profiles: [optional]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: mutants
+    command: 'echo "gate passed: mutation campaigns"'
 
   build:
     build:
@@ -104,6 +117,7 @@ services:
     # stages' caches are reused — `--build` after source changes.
 
   fuzz:
+    profiles: [optional]
     build:
       context: .
       dockerfile: Dockerfile
@@ -128,6 +142,7 @@ services:
   # Do not give this service a cached target dir or a shared volume for
   # /tmp: cleanliness of both builds is the point of the gate.
   repro:
+    profiles: [optional]
     build:
       context: .
       dockerfile: Dockerfile

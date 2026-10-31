@@ -84,6 +84,9 @@ impl NativeProfiles {
                 for path in profile_launchers::destinations(profile)? {
                     launcher_destinations.push((profile.name.as_str(), &profile.span, path));
                 }
+                for (_, path) in super::schedules::lifecycle::destinations(home, profile)? {
+                    launcher_destinations.push((profile.name.as_str(), &profile.span, path));
+                }
             }
         }
         // Selection never hides a physical alias in another declared profile.
@@ -203,6 +206,18 @@ impl NativeProfiles {
                     ));
                 }
             }
+            if readonly
+                && let Some(gripsack_ir::workspace_model::WorkspaceOutput::Profile(profile)) =
+                    outputs.get(output.name()).copied()
+            {
+                for (schedule, path) in super::schedules::lifecycle::destinations(home, profile)? {
+                    deferred.push(preview::DeferredFile::schedule(
+                        path,
+                        profile.span.clone(),
+                        &schedule,
+                    ));
+                }
+            }
             let deferred_environment = output.environment().filter(|_| readonly).map(str::to_owned);
             let deferred_hooks = if readonly {
                 output.hooks().to_vec()
@@ -260,12 +275,40 @@ impl NativeProfiles {
                 )?
             };
             prepared_hooks.extend(prepared_checks.hooks);
+            let prepared_jobs = if !readonly
+                && let Some(gripsack_ir::workspace_model::WorkspaceOutput::Profile(profile)) =
+                    outputs.get(output.name()).copied()
+                && !profile.schedules.is_empty()
+            {
+                super::schedules::lifecycle::prepare(
+                    ir,
+                    repository,
+                    home,
+                    realization.ok_or_else(|| {
+                        file_failure(output.span(), "schedules require protected realization")
+                    })?,
+                    profile,
+                    &stage,
+                    deadline,
+                    &mut files,
+                )?
+            } else {
+                Vec::new()
+            };
+            let build_closure = prepared_jobs
+                .iter()
+                .flat_map(|job| job.closure.iter().cloned())
+                .collect();
             let tree = store::canonical_tree_hash(&stage)?;
             let store_path = store::content_path(home, "workspace-files", tree.as_str());
-            let intents = prepared_hooks
+            let mut intents: Vec<_> = prepared_hooks
                 .into_iter()
                 .map(|hook| hook.record(&store_path))
                 .collect();
+            intents.extend(super::schedules::lifecycle::records(
+                &prepared_jobs,
+                &store_path,
+            )?);
             profiles.insert(
                 output.name().to_owned(),
                 PreparedProfile {
@@ -275,7 +318,7 @@ impl NativeProfiles {
                     tree,
                     files,
                     env,
-                    build_closure: Vec::new(),
+                    build_closure,
                     deferred,
                     deferred_environment,
                     deferred_hooks,

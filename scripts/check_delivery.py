@@ -37,7 +37,7 @@ from delivery_evidence import (
     source_binding_violations,
     source_fingerprint,
 )
-from delivery_scope import effective_requirement, scope_violations
+from delivery_scope import effective_milestone, effective_requirement, scope_violations
 
 # Bundle edition 5's 178 immutable rows: id, owner, scope, source,
 # deliverable and required evidence. Active scope is projected separately;
@@ -106,6 +106,10 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
     global_ids = set(ledger.get("global_gate_ids", []))
     if len(global_ids) != 8 or {r["id"] for r in reqs if r["owner_milestone"] == "global"} != global_ids:
         v.add("ledger", "global gate inventory differs from the eight required IDs")
+    active_milestone_ids = {
+        item["id"] for item in ledger.get("milestones", [])
+        if not scope_active or effective_milestone(item) is not None
+    }
     for req in reqs:
         rid = req["id"]
         if req.get("owner_milestone") not in milestone_ids | {"global"}:
@@ -166,7 +170,7 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
             if not active_records:
                 v.add(rid, "verified without evidence records: a handwritten pass flag is not evidence")
             if req["owner_milestone"] == "global":
-                for mid in sorted(milestone_ids):
+                for mid in sorted(active_milestone_ids):
                     selected = [ev for ev in active_records if ev.get("milestone") == mid]
                     coverage_violations(active, selected, v, active_lanes, mid)
             else:
@@ -181,12 +185,13 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
         ]
         if unresolved:
             v.add("H0-02", f"complete support/case/proof/evidence-kind inventory missing for {len(unresolved)} rows: {unresolved[:12]}")
-        for req in reqs:
-            if scope_active and effective_requirement(req) is None:
+        for original in reqs:
+            req = effective_requirement(original) if scope_active else original
+            if req is None:
                 continue
             if proof_row(req):
                 if req["owner_milestone"] == "global":
-                    for mid in sorted(milestone_ids):
+                    for mid in sorted(active_milestone_ids):
                         proof_catalog_violations(req, v, mid)
                 else:
                     proof_catalog_violations(req, v)
@@ -218,21 +223,32 @@ def close_claim(ledger: dict, milestone: str | None, scope: str | None, release:
         fingerprints[release] = source_fingerprint(root, release)
     if not fingerprints.get(release or ""):
         v.add("claim", "release has no tracked source tree to bind evidence to")
-    milestones = {m["id"]: m for m in ledger["milestones"]}
+    registered_milestones = {m["id"]: m for m in ledger["milestones"]}
+    milestones = {}
+    for item in ledger["milestones"]:
+        active = effective_milestone(item)
+        if active is not None:
+            milestones[active["id"]] = active
     if milestone:
-        if milestone not in milestones:
+        if milestone not in registered_milestones:
             raise SystemExit(f"unknown milestone {milestone!r}")
+        if milestone not in milestones:
+            v.add("claim", f"retired milestone {milestone!r} cannot be claimed as qualified")
+            return v
         claimed = {milestone}
         label = f"milestone {milestone}"
     elif scope:
         if scope not in ledger.get("closure_scopes", {}):
             raise SystemExit(f"unknown closure scope {scope!r}")
-        claimed = set(ledger["closure_scopes"][scope])
+        claimed = set(ledger["closure_scopes"][scope]) & milestones.keys()
+        if not claimed:
+            v.add("claim", f"closure scope {scope!r} has no active milestones")
+            return v
         label = f"closure scope {scope}"
     else:
         raise SystemExit("closure claim needs --close-milestone or --close-scope")
-    # All registered milestone prerequisites survive: each owns Linux/common
-    # requirements. Retired Mac-only rows within them are not prerequisites.
+    # Traverse only the owner-amended active prerequisites. Historical retired
+    # milestones remain in inventory, but cannot require new attestations.
     pending = list(claimed)
     while pending:
         current = milestones[pending.pop()]
@@ -300,7 +316,7 @@ def main() -> int:
         # CI validates inventory on every PR and any declared completion
         # claim. Future pending scopes never block an unrelated release.
         for item in ledger["milestones"]:
-            if item.get("status") == "verified":
+            if item.get("status") == "verified" and effective_milestone(item) is not None:
                 closure = close_claim(
                     ledger, item["id"], None, item.get("closure_revision"), args.ledger.parent
                 )

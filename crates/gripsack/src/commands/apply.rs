@@ -89,9 +89,11 @@ fn apply_evaluated(
     let ctx = Ctx {
         home: store::gripsack_home(),
         home_dir: Default::default(),
-        repository: gripsack_exec::Repository::evaluated(
+        repository: gripsack_exec::Repository::evaluated_with_inputs(
             std::sync::Arc::clone(&outcome.sources),
             outcome.receipt,
+            outcome.host_inputs.facts,
+            outcome.host_inputs.probes,
         ),
         only: opts.profiles,
         host: outcome.host.clone(),

@@ -27,9 +27,18 @@ def put(path, value):
     path.write_bytes(release.canonical(value) + b"\n")
 
 
-def fixture(root):
+def fixture(root, *, persistence=False):
     profile = release.load_json(ROOT / ".ci/pilot.json")
     profile["external_inputs"]["authority"] = release.POLICY
+    if persistence:
+        profile["gates"].append({
+            "id": "persistence-96", "argv": ["python3", "scripts/local_ci_persistence.py"],
+            "timeout_seconds": 0, "inputs": [],
+            "outputs": [f"local-ci/persistence/reports/{name}/{name}.json"
+                        for scenario in PERSISTENCE_SCENARIOS for fault in ("error", "kill")
+                        for shard in range(PERSISTENCE_SHARDS)
+                        for name in (f"Linux-{scenario}-{fault}-{shard}",)],
+        })
     core = profile["version"]
     sdk = profile["external_inputs"]["sdk"]["version"]
     inputs = {"repository": "https://github.com/gripsack-dev/gripsack.git", "commit": SOURCE, "tree": TREE,
@@ -49,7 +58,7 @@ def fixture(root):
         "packages": packages, "metadata": [release.file_record(root / metadata_path, metadata_path)]})
     reports = {}
     partitions = []
-    for scenario in PERSISTENCE_SCENARIOS:
+    for scenario in (PERSISTENCE_SCENARIOS if persistence else ()):
         for fault in ("error", "kill"):
             for shard in range(PERSISTENCE_SHARDS):
                 name = f"Linux-{scenario}-{fault}-{shard}"
@@ -70,7 +79,6 @@ def fixture(root):
         path.write_bytes(("synthetic artifact " + original).encode())
         role = "auxiliary"
         for component, expected in (("core", f"gripsack-{core}-{release.TARGET}.tar.gz"),
-                                    ("bridge", f"grip-buildkit-bridge-{core}-{release.TARGET}"),
                                     ("conda", f"gripsack-conda-{core}-{release.TARGET}")):
             if path.name == expected:
                 role = component
@@ -114,8 +122,8 @@ def fixture(root):
         "qualification_sha256": release.digest(root / "evidence/qualification.json"),
         "recipe_sha256": hashlib.sha256(release.canonical(profile)).hexdigest(), "platform": "linux-x86_64",
         "signer": {"workflow": release.WORKFLOW, "ref": "refs/tags/core-v" + core},
-        "compatible": {"core": core, "sdk": sdk, "bridge": core, "conda": core,
-                       "ir": {"writer": 9, "readers": [9]}, "helper_pins": pins},
+        "compatible": {"core": core, "sdk": sdk, "conda": core,
+                       "ir": {"writer": 10, "readers": [10]}, "helper_pins": pins},
         "gates": gates, "partitions": partitions, "exclusions": release.EXCLUSIONS,
         "provenance": {"builder": "local", "hosted_build": False}, "artifacts": artifacts,
         "packages": packages, "evidence": []}
@@ -161,21 +169,61 @@ class ManifestAdmissionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exact source workspace"):
                 release.validate_bundle(self.root, ROOT)
 
-    def test_missing_foreign_duplicate_gate_partition_and_artifact(self):
-        for inventory in ("gates", "partitions", "artifacts"):
-            for change in ("missing", "duplicate", "foreign"):
-                with self.subTest(inventory=inventory, change=change):
-                    value = copy.deepcopy(self.manifest)
-                    if change == "missing":
-                        value[inventory].pop(0)
-                    elif change == "duplicate":
-                        value[inventory].append(value[inventory][0])
-                    elif inventory == "artifacts":
-                        value[inventory][0]["path"] = "artifacts/foreign.tar.gz"
-                    else:
-                        value[inventory][0]["id"] = "foreign"
-                    with self.assertRaises(ValueError):
-                        release.validate_manifest(value)
+    def test_profile_required_gates_cannot_be_missing_foreign_or_duplicated(self):
+        for change in ("missing", "duplicate", "foreign"):
+            with self.subTest(change=change):
+                value = copy.deepcopy(self.manifest)
+                if change == "missing":
+                    value["gates"].pop(0)
+                elif change == "duplicate":
+                    value["gates"].append(value["gates"][0])
+                else:
+                    value["gates"][0]["id"] = "foreign"
+                refresh(self.root, value)
+                with self.assertRaises(ValueError):
+                    release.validate_bundle(self.root)
+
+    def test_selected_gate_failure_is_not_optional_success(self):
+        gate = self.manifest["gates"][0]
+        path = self.root / f"evidence/gates/{gate['id']}.json"
+        for outcome, returncode in (("failed", 1), ("skipped", 0), ("passed", 1)):
+            with self.subTest(outcome=outcome, returncode=returncode):
+                receipt = release.load_json(path)
+                receipt.update(outcome=outcome, returncode=returncode)
+                put(path, receipt)
+                refresh(self.root, self.manifest)
+                with self.assertRaisesRegex(ValueError, "foreign or failed gate"):
+                    release.validate_bundle(self.root)
+
+    def test_optional_persistence_is_absent_not_faked(self):
+        self.assertEqual(self.manifest["partitions"], [])
+        release.validate_bundle(self.root)
+        value = copy.deepcopy(self.manifest)
+        value["partitions"] = [{"id": "Linux-apply-deploy-error-0", "sha256": "a" * 64}]
+        with self.assertRaisesRegex(ValueError, "unselected partition"):
+            release.validate_manifest(value)
+
+    def test_explicit_persistence_requires_complete_campaign(self):
+        root = Path(self.temporary.name) / "deep"
+        root.mkdir()
+        value = fixture(root, persistence=True)
+        release.validate_bundle(root)
+        value["partitions"].pop()
+        with self.assertRaisesRegex(ValueError, "partition"):
+            release.validate_manifest(value)
+
+    def test_missing_foreign_duplicate_artifact_is_refused(self):
+        for change in ("missing", "duplicate", "foreign"):
+            with self.subTest(change=change):
+                value = copy.deepcopy(self.manifest)
+                if change == "missing":
+                    value["artifacts"].pop(0)
+                elif change == "duplicate":
+                    value["artifacts"].append(value["artifacts"][0])
+                else:
+                    value["artifacts"][0]["path"] = "artifacts/foreign.tar.gz"
+                with self.assertRaises(ValueError):
+                    release.validate_manifest(value)
 
     def test_foreign_source_and_changed_recipe_are_refused(self):
         for field in ("source", "recipe_sha256"):

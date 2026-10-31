@@ -49,6 +49,7 @@ fn declaration_comparison_preserves_source_kind_and_conda_requirements() {
     let original = LockedCondaSource {
         channels: vec!["conda-forge".into()],
         packages: BTreeMap::from([("nodejs".into(), "=26.10.0".into())]),
+        wheels: vec![],
         platforms: vec![],
     };
     let mut changed = original.clone();

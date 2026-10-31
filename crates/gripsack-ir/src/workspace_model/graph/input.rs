@@ -28,7 +28,7 @@ pub fn argument_input_reference<'a>(arg: &'a WorkspaceArg, at: &'a Span) -> (val
 }
 pub open spec fn source_inputs_spec<'a>(source: &'a AcquisitionSource, at: &'a Span) -> Seq<Option<InputView<'a>>> {
     match source {
-        AcquisitionSource::Fetch(_) | AcquisitionSource::CondaEnvironment(_) => seq![None, None],
+        AcquisitionSource::Fetch(_) | AcquisitionSource::CondaEnvironment(_) | AcquisitionSource::Package { .. } => seq![None, None],
         AcquisitionSource::PixiLock(value) => seq![
             Some(InputView { to: value.manifest@, at, site: InputSite::PixiManifest }),
             Some(InputView { to: value.lock@, at, site: InputSite::PixiLock })],
@@ -38,7 +38,7 @@ pub fn source_input_references<'a>(source: &'a AcquisitionSource, at: &'a Span) 
     ensures values@.map_values(|v: Option<InputReference<'a>>| input_view(v)) =~= source_inputs_spec(source, at),
 {
     match source {
-        AcquisitionSource::Fetch(_) | AcquisitionSource::CondaEnvironment(_) => [None, None],
+        AcquisitionSource::Fetch(_) | AcquisitionSource::CondaEnvironment(_) | AcquisitionSource::Package { .. } => [None, None],
         AcquisitionSource::PixiLock(value) => [
             Some(InputReference { to: &value.manifest, at, site: InputSite::PixiManifest }),
             Some(InputReference { to: &value.lock, at, site: InputSite::PixiLock })],
@@ -53,7 +53,7 @@ pub open spec fn output_source_inputs_spec<'a>(output: &'a WorkspaceOutput) -> S
         },
         WorkspaceOutput::Environment(_) | WorkspaceOutput::Task(_) | WorkspaceOutput::Schedule(_)
         | WorkspaceOutput::Check(_) | WorkspaceOutput::Image(_) | WorkspaceOutput::Profile(_)
-        | WorkspaceOutput::Hook(_) => seq![None, None],
+        | WorkspaceOutput::Hook(_) | WorkspaceOutput::Service(_) => seq![None, None],
     }
 }
 pub fn output_source_input_references(output: &WorkspaceOutput) -> (values: [Option<InputReference<'_>>; 2])
@@ -67,7 +67,7 @@ pub fn output_source_input_references(output: &WorkspaceOutput) -> (values: [Opt
         },
         WorkspaceOutput::Environment(_) | WorkspaceOutput::Task(_) | WorkspaceOutput::Schedule(_)
         | WorkspaceOutput::Check(_) | WorkspaceOutput::Image(_) | WorkspaceOutput::Profile(_)
-        | WorkspaceOutput::Hook(_) => [None, None],
+        | WorkspaceOutput::Hook(_) | WorkspaceOutput::Service(_) => [None, None],
     }
 }
 }

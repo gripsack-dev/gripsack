@@ -1,7 +1,7 @@
 name: repro
 
-# Manual investigation only; local qualification retains the required
-# reproducibility gate. Shipping a core tag must not rebuild its product.
+# Optional manual investigation only; routine qualification does not require
+# reproducibility. Shipping a core tag must not rebuild its product.
 
 # Two-clean-build reproducibility comparison (plan/0042 F): the release
 # target compiled twice from scratch with every input held fixed — same

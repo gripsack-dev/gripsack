@@ -206,34 +206,3 @@ def test_workspace_golden_rejects_a_changed_typed_command_input(sandbox):
     assert actual == expected, "golden drift must be attributable to the changed command input"
 
 
-def test_source_example_alternate_producer_uses_only_injected_platform(sandbox):
-    deno = find_deno()
-    if not deno:
-        pytest.skip("deno not installed (the e2e gate image ships it)")
-    frontend = materialize_frontend(sandbox)
-    source = Path(__file__).parent.parent / "examples/workspaces/03-source-built"
-    repo = sandbox / "source-example"
-    shutil.copytree(source, repo)
-
-    host = strip_provenance(evaluate(deno, frontend, repo, sandbox)["ir"])
-    alternate_inputs = {
-        **INPUTS,
-        "facts": {**INPUTS["facts"], "arch": "aarch64"},
-    }
-    alternate = strip_provenance(
-        evaluate(deno, frontend, repo, sandbox, alternate_inputs)["ir"]
-    )
-    host_package = next(
-        output for output in host["workspace"]["outputs"] if output["name"] == "greeter"
-    )
-    alternate_package = next(
-        output for output in alternate["workspace"]["outputs"] if output["name"] == "greeter"
-    )
-    assert host_package["producer"] == {"kind": "recipe", "recipe": "build-greeter"}
-    assert alternate_package["producer"]["kind"] == "provider"
-    assert alternate_package["producer"]["provider"]["fetch"]["path"] == (
-        "downloads/greeter.tar.gz"
-    )
-    alternate_package["producer"] = host_package["producer"]
-    alternate["host"]["arch"] = host["host"]["arch"]
-    assert alternate == host, "only the injected arch fact and selected producer may differ"

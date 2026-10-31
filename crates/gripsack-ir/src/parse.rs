@@ -1,8 +1,8 @@
-//! Parse one current workspace, rejecting obsolete versions before decoding.
+//! Strict current authoring. Stored generations and receipts have their own readers.
 
 use crate::{Diagnostic, Ir, codes};
 
-pub const IR_VERSION: u32 = 9;
+pub const IR_VERSION: u32 = 10;
 
 pub(crate) fn version_error(version: u64) -> Diagnostic {
     Diagnostic::error(
@@ -15,14 +15,26 @@ pub(crate) fn version_error(version: u64) -> Diagnostic {
 /// Tagged-field admission runs before serde can discard unknown enum fields.
 /// Move admitted values into the model; re-decode only errors for JSON locations.
 pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
+    let ir = decode(json)?;
+    crate::authoring::admit(&ir)?;
+    Ok(ir)
+}
+
+fn decode(json: &str) -> Result<Ir, Diagnostic> {
     let value: serde_json::Value = serde_json::from_str(json).map_err(|error| {
         Diagnostic::error(codes::MALFORMED, format!("invalid IR JSON: {error}"))
     })?;
-    if let Some(version) = value.get("ir_version").and_then(serde_json::Value::as_u64)
-        && version != u64::from(IR_VERSION)
-    {
-        return Err(version_error(version));
+    match value.get("ir_version").and_then(serde_json::Value::as_u64) {
+        Some(version) if version == u64::from(IR_VERSION) => decode_value(value, json),
+        Some(version) => Err(version_error(version)),
+        None => Err(Diagnostic::error(
+            codes::MALFORMED,
+            "missing or invalid ir_version",
+        )),
     }
+}
+
+fn decode_value(value: serde_json::Value, json: &str) -> Result<Ir, Diagnostic> {
     let mut diagnostics = Vec::new();
     crate::tagged::check(&value, &mut diagnostics);
     if let Some(diagnostic) = diagnostics.into_iter().next() {

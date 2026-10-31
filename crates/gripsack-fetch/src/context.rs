@@ -49,7 +49,7 @@ impl FetchContext {
         }
     }
 
-    /// The context for grip's own Deno, BuildKit and Conda helper downloads:
+    /// The context for grip's own Deno and Conda helper downloads:
     /// bound to operator env only, never the repo-declared build env this
     /// context may carry.
     pub fn provisioning(&self) -> &FetchContext {

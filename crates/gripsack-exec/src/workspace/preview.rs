@@ -37,6 +37,24 @@ impl DeferredFile {
         }
     }
 
+    pub fn schedule(path: String, span: gripsack_ir::Span, schedule: &str) -> Self {
+        Self {
+            entry: store::DeploymentEntry {
+                from: String::new(),
+                to: path,
+                mode: Ownership::TrackedCopy,
+                vars: Default::default(),
+                marker: None,
+                span: Some(span),
+            },
+            block: None,
+            tree: false,
+            output: format!(
+                "user schedule {schedule:?}; local calendar, Persistent=false; captured revision and registration resolved at apply"
+            ),
+        }
+    }
+
     pub fn new(file: &gripsack_ir::workspace_model::WorkspaceFile) -> Result<Self, ExecError> {
         use gripsack_ir::{workspace::WorkspaceDestination, workspace_model::WorkspaceSource};
         let (path, mode, block) = match &file.destination {

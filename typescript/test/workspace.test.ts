@@ -7,7 +7,6 @@ import {
   artifact,
   artifactFile,
   bash,
-  bashBody,
   check,
   conda,
   daily,
@@ -17,7 +16,6 @@ import {
   hook,
   hostPath,
   identity,
-  image,
   lit,
   literalText,
   managedBlock,
@@ -26,7 +24,6 @@ import {
   pixi,
   profile,
   provider,
-  recipe,
   repoFile,
   runBash,
   schedule,
@@ -46,7 +43,6 @@ import { fileURLToPath } from "node:url";
 
 const facts: HostFacts = { os: "linux", arch: "x86_64", libc: "glibc-2.36", hostname: "box" };
 const linux = { os: "linux", arch: "x86_64" } as const;
-const hostExecution = { kind: "host", access: "unconfined" } as const;
 const relocatable = { kind: "relocatable" } as const;
 const fixedTools = { kind: "fixed_prefix", prefix: "/opt/tools" } as const;
 
@@ -55,36 +51,14 @@ const emit = (value: WorkspaceValue, tags: string[] = []) =>
 
 /** The full kitchen sink: every output kind wired through typed refs. */
 function kitchenSink(): WorkspaceValue {
-  const bashSrc = recipe("bash-src", {
-    source: tarball("https://example.invalid/bash.tar.gz"),
-    execution: hostExecution,
-    output_kind: "tree",
-    target: linux,
-  });
   const bash = pkg("bash", {
-    producer: "bash-src",
+    producer: provider(tarball("https://example.invalid/bash.tar.gz")),
     commands: { bash: "bin/bash" },
     target: linux,
     layout: relocatable,
   });
-  const tools = recipe("tools", {
-    source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
-    execution: hostExecution,
-    output_kind: "tree",
-    target: linux,
-    steps: [
-      runBash({
-        interpreter: packageCommand("bash", "bash"),
-        body: "make install",
-        env: { PREFIX: lit("/usr") },
-        cwd: hostPath("/tmp"),
-      }),
-      exec({ argv: [lit("cp"), artifact("bash", "share/doc"), lit("share/doc")] }),
-    ],
-    checks: ["tools-ok"],
-  });
   const toolsBin = pkg("tools-bin", {
-    producer: "tools",
+    producer: provider(githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" })),
     commands: { tools: "bin/tools" },
     runtime: ["bash"],
     target: linux,
@@ -94,9 +68,7 @@ function kitchenSink(): WorkspaceValue {
     run: exec({ argv: [packageCommand("tools-bin", "tools"), lit("--version")] }),
     subject: "tools-bin",
   });
-  // This environment selects relocatable Bash. A fixed-prefix
-  // package needs a matching environment prefix; images cannot
-  // materialize one until B4 owns their location contract.
+  // This environment selects relocatable Bash.
   const dev = environment("dev", {
     packages: ["bash"],
     target: linux,
@@ -132,12 +104,9 @@ function kitchenSink(): WorkspaceValue {
     schedules: ["nightly"],
     hooks: ["reload"],
   });
-  const ci = image("ci", { packages: ["bash"], target: linux });
   return workspace({
     outputs: [
-      bashSrc,
       bash,
-      tools,
       toolsBin,
       toolsOk,
       dev,
@@ -146,20 +115,14 @@ function kitchenSink(): WorkspaceValue {
       nightly,
       reload,
       me,
-      ci,
     ],
   });
 }
 
 
 Deno.test("duplicate output names throw at declaration with both sites", () => {
-  const a = recipe("same", {
-    source: tarball("https://example.invalid/a.tar.gz"),
-    execution: hostExecution,
-    output_kind: "file",
-    target: linux,
-  });
-  const b = image("same", { packages: [], target: linux });
+  const a = profile("same", {});
+  const b = profile("same", {});
   const diagnostic = thrownDiagnostic(
     () => workspace({ outputs: [a, b] }),
     "E125",
@@ -174,12 +137,7 @@ Deno.test("duplicate output names throw at declaration with both sites", () => {
 });
 
 Deno.test("duplicate output names throw at emit for hand-built values", () => {
-  const a = recipe("same", {
-    source: tarball("https://example.invalid/a.tar.gz"),
-    execution: hostExecution,
-    output_kind: "file",
-    target: linux,
-  });
+  const a = profile("same", {});
   const node = JSON.parse(JSON.stringify(a.ir));
   const fake = {
     __gripsack: "workspace",
@@ -192,33 +150,47 @@ Deno.test("duplicate output names throw at emit for hand-built values", () => {
   assert.equal(diagnostic.labels.length, 2, "both declaration spans labeled");
 });
 
-Deno.test("Bash body interpolation rejects the literal at its source line", async () => {
+Deno.test("Bash rejects JavaScript interpolation at its source line", async () => {
   const file = (await Deno.readTextFile(new URL(import.meta.url))).split("\n");
-  const site = file.findIndex((line) => line.trim() === "echo \\${HOME} && true") + 1;
+  const evaluated = thrownDiagnostic(
+    // @ts-expect-error JavaScript substitutions are not typed command bindings.
+    () => bash`echo ${"dynamic"}`,
+    "E130",
+  );
+  const site = file.findIndex((line) => line.includes('() => bash`echo ${"dynamic"}`')) + 1;
   assert.ok(site > 0);
-  const tagged = thrownDiagnostic(
-    () => bashBody`
+  assert.equal(evaluated.labels[0]?.span?.file, fileURLToPath(import.meta.url));
+  assert.equal(evaluated.labels[0]?.span?.line, site);
+  const multiline = thrownDiagnostic(
+    () => bash`
       echo before
-      echo \${HOME} && true
+      ${"dynamic" as never}
     `,
     "E130",
   );
-  assert.equal(tagged.labels[0]?.span?.file, fileURLToPath(import.meta.url));
-  assert.equal(tagged.labels[0]?.span?.line, site, "label points at the interpolation line");
-  // a REAL evaluated interpolation is rejected at its own source line
-  const evaluated = thrownDiagnostic(
-    () => bashBody`echo ${"dynamic"}`,
-    "E130",
+  const multilineSite = file.findIndex((line) => line.trim() === '${"dynamic" as never}') + 1;
+  assert.equal(multiline.labels[0]?.span?.line, multilineSite);
+});
+
+Deno.test("Bash preserves shell syntax and decodes only template delimiters", () => {
+  const body = bash`printf '%s\n' "\${VALUE:-fallback}" "$(printf ok)" \`printf backtick\``;
+  const interpreter = packageCommand("bash", "bash");
+  const command = body.interpreter(interpreter).build();
+  assert.equal(command.body, 'printf \'%s\\n\' "${VALUE:-fallback}" "$(printf ok)" `printf backtick`');
+  assert.deepEqual(command.options, ["-e", "-u", "-o", "pipefail"]);
+  assert.equal(
+    runBash({ interpreter, body: 'printf \'%s\\n\' "${VALUE:-fallback}" "$(printf ok)" `printf backtick`' }).body,
+    command.body,
   );
-  const evaluatedSite =
-    file.findIndex((line) => line.includes('() => bashBody`echo ${"dynamic"}`')) + 1;
-  assert.ok(evaluatedSite > 0);
-  assert.equal(evaluated.labels[0]?.span?.line, evaluatedSite);
-  const inline = thrownDiagnostic(
-    () => runBash({ interpreter: packageCommand("bash", "bash"), body: "echo ${HOME}" }),
-    "E130",
-  );
-  assert.ok(inline.labels[0]?.span?.file.endsWith("workspace.test.ts"));
+  assert.equal(bash`printf '\\n'`.text, "printf '\\\\n'");
+  assert.equal(bash`printf '%s' "\\\${VALUE}"`.text, 'printf \'%s\' "\\${VALUE}"');
+  assert.equal(bash`printf '%s' "\\\`"`.text, 'printf \'%s\' "\\`"');
+  const heredoc = bash`
+    cat <<'EOF'
+    \${literal} \n
+    EOF
+  `.interpreter(interpreter).build();
+  assert.equal(heredoc.body, "cat <<'EOF'\n${literal} \\n\nEOF");
 });
 
 Deno.test("run_bash requires a declared package interpreter", () => {
@@ -236,7 +208,7 @@ Deno.test("run_bash requires a declared package interpreter", () => {
 });
 
 Deno.test("run_bash maps dedented lines to the original template, not the call", async () => {
-  const body = bashBody`
+  const body = bash`
       echo one
       echo two
     `;
@@ -247,25 +219,25 @@ Deno.test("run_bash maps dedented lines to the original template, not the call",
   assert.deepEqual(cmd.line_map, [originalLine("echo one"), originalLine("echo two")]);
   assert.ok(cmd.line_map![0]! < cmd.span.line, "body location precedes command construction");
   assert.match(cmd.span.file, /workspace\.test\.ts$/);
-  const withoutDedent = bashBody`echo top
+  const withoutDedent = bash`echo top
 echo bottom`;
   const raw = runBash({ interpreter: packageCommand("bash", "bash"), body: withoutDedent });
-  const openingLine = file.findIndex((line) => line.trim().startsWith("const withoutDedent = bashBody`echo top")) + 1;
+  const openingLine = file.findIndex((line) => line.trim().startsWith("const withoutDedent = bash`echo top")) + 1;
   assert.ok(openingLine > 0 && file[openingLine]!.trim().startsWith("echo bottom"));
   assert.deepEqual(raw.line_map, [openingLine, openingLine + 1]);
   assert.throws(
     () => runBash({ interpreter: packageCommand("bash", "bash"), body: "\n  echo one" }),
-    /multiline body needs bashBody/,
+    /multiline body needs bash/,
   );
   assert.throws(
     () => runBash({ interpreter: packageCommand("bash", "bash"), body: "echo one\necho two" }),
-    /multiline body needs bashBody/,
+    /multiline body needs bash/,
   );
 });
 
 Deno.test("Bash fluent and object forms normalize without sharing mutable state", () => {
-  const source = bashBody`echo "ready"`;
-  const base = bash(packageCommand("bash", "bash")).body(source);
+  const source = bash`echo "ready"`;
+  const base = source.interpreter(packageCommand("bash", "bash"));
   const fluent = base
     .env("Z", lit("two words"))
     .env("A", artifact("payload", "src"))
@@ -281,8 +253,24 @@ Deno.test("Bash fluent and object forms normalize without sharing mutable state"
   assert.equal(JSON.stringify(fluent), JSON.stringify(object));
   assert.equal(base.build().env, undefined);
   assert.deepEqual(Object.keys(fluent.env ?? {}), ["A", "Z"]);
-  const ambient = thrownDiagnostic(() => bash(lit("bash") as never), "E128");
+  const ambient = thrownDiagnostic(() => bash`true`.interpreter(lit("bash") as never), "E128");
   assert.ok(ambient.labels[0]?.span?.file.endsWith("workspace.test.ts"));
+  assert.throws(() => base.env("COMMAND", packageCommand("tools", "jq")), /environment values are/);
+  assert.throws(() => runBash({
+    interpreter: packageCommand("bash", "bash"), body: "true", options: [],
+  } as never), /unknown field "options"/);
+  assert.ok(Object.isFrozen(source) && Object.isFrozen(source.span));
+  assert.ok(Object.isFrozen(fluent) && Object.isFrozen(fluent.env));
+  const elsewhere = runBash({
+    interpreter: packageCommand("bash", "bash"),
+    body: source,
+    env: { A: artifact("payload", "src"), Z: lit("two words") },
+    cwd: hostPath("/tmp/build"),
+    span: { file: "elsewhere.ts", line: 100 },
+  });
+  const { span: _fluentSpan, ...fluentIdentity } = fluent;
+  const { span: _elsewhereSpan, ...elsewhereIdentity } = elsewhere;
+  assert.deepEqual(fluentIdentity, elsewhereIdentity);
 });
 
 Deno.test("fluent exec and object form emit the same command, preserving branches", () => {
@@ -389,7 +377,8 @@ Deno.test("emit rejects unknown output references with the reference span", () =
 Deno.test("emit rejects wrong-kind references naming both sites", () => {
   const dev = environment("dev", { packages: [], target: linux });
   const p = pkg("p", {
-    producer: "dev",
+    producer: provider(tarball("https://example.invalid/p.tar.gz")),
+    runtime: ["dev"],
     commands: { p: "bin/p" },
     target: linux,
     layout: relocatable,
@@ -399,21 +388,13 @@ Deno.test("emit rejects wrong-kind references naming both sites", () => {
     "E126",
   );
   assert.equal(diagnostic.labels.length, 2, "reference and declaration spans labeled");
-  assert.equal(diagnostic.labels[0]?.note, "referenced here");
-  assert.match(diagnostic.labels[1]?.note ?? "", /'dev' declared here/);
   assert.ok(diagnostic.labels[0]?.span?.line !== diagnostic.labels[1]?.span?.line);
 });
 
 
 Deno.test("emit rejects package_command refs to unknown commands", () => {
-  const src = recipe("src", {
-    source: tarball("https://example.invalid/x.tar.gz"),
-    execution: hostExecution,
-    output_kind: "tree",
-    target: linux,
-  });
   const p = pkg("p", {
-    producer: "src",
+    producer: provider(tarball("https://example.invalid/x.tar.gz")),
     commands: { tool: "bin/tool" },
     target: linux,
     layout: relocatable,
@@ -423,7 +404,7 @@ Deno.test("emit rejects package_command refs to unknown commands", () => {
     subject: "p",
   });
   const noCommand = thrownDiagnostic(
-    () => emitWorkspaceIr(workspace({ outputs: [src, p, c] }), facts),
+    () => emitWorkspaceIr(workspace({ outputs: [p, c] }), facts),
     "E126",
   );
   assert.match(noCommand.help ?? "", /provides: tool/);
@@ -444,46 +425,6 @@ Deno.test("emit rejects task dependency cycles", () => {
   assert.ok(cycle.labels.every((label) => label.span?.file.endsWith("workspace.test.ts")));
 });
 
-Deno.test("emit rejects producer/artifact cycles but admits validation loops", () => {
-  // recipe artifact-refs the package it produces: a real cycle
-  const cyc = recipe("cyc", {
-    source: tarball("https://example.invalid/x.tar.gz"),
-    execution: hostExecution,
-    output_kind: "tree",
-    target: linux,
-    steps: [exec({ argv: [artifact("p", "bin/p")] })],
-  });
-  const p = pkg("p", {
-    producer: "cyc",
-    commands: { p: "bin/p" },
-    target: linux,
-    layout: relocatable,
-  });
-  const failure = thrownDiagnostic(
-    () => emitWorkspaceIr(workspace({ outputs: [cyc, p] }), facts),
-    "E127",
-  );
-  assert.equal(failure.labels.length, 2);
-
-  // a recipe gated by a check on the package it produces is legitimate
-  const tools = recipe("tools", {
-    source: tarball("https://example.invalid/t.tar.gz"),
-    execution: hostExecution,
-    output_kind: "tree",
-    target: linux,
-    checks: ["ok"],
-  });
-  const bin = pkg("bin", {
-    producer: "tools",
-    commands: { t: "bin/t" },
-    target: linux,
-    layout: relocatable,
-  });
-  const ok = check("ok", { run: exec({ argv: [lit("true")] }), subject: "bin" });
-  const ir = emit(workspace({ outputs: [tools, bin, ok] }));
-  assert.equal(ir.workspace.outputs.length, 3);
-});
-
 Deno.test("a provider-backed package needs no synthetic recipe", () => {
   const jq = pkg("jq", {
     producer: provider(githubRelease({ repo: "jqlang/jq", asset: "jq-{version}.tar.gz" })),
@@ -501,20 +442,6 @@ Deno.test("a provider-backed package needs no synthetic recipe", () => {
   assert.match(producer.provider.span.file, /workspace\.test\.ts$/);
 });
 
-Deno.test("recipe sources emit the current tagged fetch wrapper", () => {
-  const tools = recipe("tools", {
-    source: tarball("https://example.invalid/t.tar.gz"),
-    execution: hostExecution,
-    output_kind: "tree",
-    target: linux,
-  });
-  const ir = emit(workspace({ outputs: [tools] }));
-  const source = ir.workspace.outputs[0].source;
-  assert.equal(source.kind, "fetch");
-  assert.equal(source.fetch.kind, "tarball");
-  assert.ok(source.span.line >= 1, "fetch wrapper carries provenance");
-});
-
 Deno.test("conda.environment emits the conda_environment wire and rejects bad specs", () => {
   const env = conda.environment({
     channels: ["conda-forge"],
@@ -526,17 +453,17 @@ Deno.test("conda.environment emits the conda_environment wire and rejects bad sp
   assert.equal(env.platforms, undefined, "platforms omitted unless declared");
   assert.match(env.span.file, /workspace\.test\.ts$/);
 
-  const src = recipe("env-src", {
-    source: conda.environment({
+  const src = pkg("env-src", {
+    producer: provider(conda.environment({
       channels: ["conda-forge"],
       packages: { python: "3.12.*" },
       platforms: [{ os: "linux", arch: "x86_64" }],
-    }),
-    execution: hostExecution,
-    output_kind: "tree",
+    })),
+    commands: {},
+    layout: { kind: "prefix_materialized" },
     target: linux,
   });
-  const source = emit(workspace({ outputs: [src] })).workspace.outputs[0].source;
+  const source = emit(workspace({ outputs: [src] })).workspace.outputs[0].producer.provider;
   assert.equal(source.kind, "conda_environment");
   assert.deepEqual(source.platforms, [{ os: "linux", arch: "x86_64" }]);
 
@@ -570,7 +497,7 @@ Deno.test("v7 Conda solve baselines lower strictly and inherit source provenance
     target: linux, layout: { kind: "prefix_materialized" },
   });
   const envelope = emit(workspace({ outputs: [output] }));
-  assert.equal(envelope.ir_version, 9);
+  assert.equal(envelope.ir_version, 10);
   const wire = envelope.workspace.outputs[0].producer.provider;
   assert.deepEqual(wire.system_requirements, systemRequirements);
   assert.equal("systemRequirements" in wire, false);
@@ -579,32 +506,9 @@ Deno.test("v7 Conda solve baselines lower strictly and inherit source provenance
   systemRequirements.libc!.version = "2.39";
   assert.equal(source.system_requirements!.libc!.version, "2.28");
   assert.ok(Object.isFrozen(source.system_requirements!.libc));
-  const plain = recipe("baseline", {
-    source: { channels: ["conda-forge"], packages: { python: "*" },
-      systemRequirements: { linux: "5.14" } },
-    execution: hostExecution, output_kind: "tree", target: linux,
-    span: { file: "baseline.ts", line: 8 },
-  });
-  assert.deepEqual(plain.ir.source.span, plain.ir.span);
-  assert.deepEqual(
-    emit(workspace({ outputs: [plain] })).workspace.outputs[0].source.system_requirements,
-    { linux: "5.14" },
-  );
   assert.equal("system_requirements" in conda.environment({
     channels: ["conda-forge"], packages: { python: "*" },
   }), false);
-  assert.throws(() => conda.environment({
-    channels: ["conda-forge"], packages: { python: "*" }, systemRequirements: {},
-    platforms: [{ os: "macos", arch: "aarch64" }],
-  }), /only Linux platforms/);
-  assert.throws(() => pkg("nonlinux", {
-    producer: provider(source), commands: {}, layout: { kind: "prefix_materialized" },
-    target: { os: "macos", arch: "aarch64" },
-  }), /require a Linux target/);
-  assert.throws(() => recipe("nonlinux", {
-    source, execution: hostExecution, output_kind: "tree",
-    target: { os: "macos", arch: "aarch64" },
-  }), /require a Linux target/);
   assert.deepEqual(conda.environment({
     channels: ["conda-forge"], packages: { python: "*" }, systemRequirements: {},
   }).system_requirements, {});
@@ -657,8 +561,7 @@ Deno.test("v7 host runtime authority is ordered package policy, never producer d
   ]) {
     assert.throws(() => pkg("invalid", { ...spec, hostRuntime: invalid as HostRuntimeSpec }));
   }
-  for (const target of [linux, { ...linux, abi: "musl" } as const,
-    { os: "macos", arch: "x86_64", abi: "darwin" } as const]) {
+  for (const target of [linux, { ...linux, abi: "musl" } as const]) {
     assert.throws(() => pkg("invalid", {
       ...spec, target, hostRuntime: { libraryDirectories: ["/opt/lib"] },
     }), /explicit Linux GNU target/);
@@ -698,34 +601,24 @@ Deno.test("a conda provider package materializes its prefix", () => {
 
 Deno.test("no import-order registry: repeated evals in one process emit identical IR", () => {
   function build(): WorkspaceValue {
-    const tools = recipe("tools", {
-      source: tarball("https://example.invalid/t.tar.gz"),
-      execution: hostExecution,
-      output_kind: "tree",
-      target: linux,
-    });
     const bin = pkg("bin", {
-      producer: "tools",
+      producer: provider(tarball("https://example.invalid/t.tar.gz")),
       commands: { t: "bin/t" },
       target: linux,
       layout: relocatable,
     });
-    return workspace({ outputs: [tools, bin] });
+    return workspace({ outputs: [bin] });
   }
   const first = emitWorkspaceIr(build(), facts);
   // interleave unrelated constructions and a second, different workspace
   kitchenSink();
-  image("unrelated", { packages: [], target: linux });
+  profile("unrelated", {});
   const second = emitWorkspaceIr(build(), facts);
   assert.equal(second, first, "same declarations, same bytes — no registry state");
 });
 
 Deno.test("constructed values are deeply frozen", () => {
-  const out = recipe("tools", {
-    source: tarball("https://example.invalid/t.tar.gz"),
-    execution: hostExecution,
-    output_kind: "tree",
-    target: linux,
+  const out = task("tools", {
     steps: [exec({ argv: [lit("make")] })],
   });
   const step = out.ir.steps![0]!;
@@ -745,15 +638,10 @@ Deno.test("constructed values are deeply frozen", () => {
 });
 
 Deno.test("stray objects and empty catalogs are rejected", () => {
-  const tools = recipe("tools", {
-    source: tarball("https://example.invalid/t.tar.gz"),
-    execution: hostExecution,
-    output_kind: "tree",
-    target: linux,
-  });
+  const tools = profile("tools", {});
   assert.throws(
     () => workspace({ outputs: [tools, {} as never] }),
-    /outputs entries must be recipe\(\)\/pkg\(\).* values — got "object"/,
+    /outputs entries must be pkg\(\).* values — got "object"/,
   );
   assert.throws(
     () => workspace({ outputs: [false, null, undefined] }),
@@ -768,9 +656,7 @@ Deno.test("stray objects and empty catalogs are rejected", () => {
 Deno.test("spans are mandatory: hand-built nodes without one are rejected", () => {
   const node = {
     name: "x",
-    kind: "image",
-    packages: [],
-    target: { os: "linux", arch: "x86_64" },
+    kind: "profile",
   };
   const fake = {
     __gripsack: "workspace",
@@ -779,9 +665,7 @@ Deno.test("spans are mandatory: hand-built nodes without one are rejected", () =
   assert.throws(() => emitWorkspaceIr(fake, facts), /span/);
 
   // explicit span override works for factory wrappers
-  const out = image("x", {
-    packages: [],
-    target: linux,
+  const out = profile("x", {
     span: { file: "factory.ts", line: 7 },
   });
   const ir = emit(workspace({ outputs: [out], span: { file: "factory.ts", line: 3 } }));
@@ -794,17 +678,14 @@ Deno.test("enum and calendar boundaries reject out-of-grammar values", () => {
   assert.throws(() => weekly("funday" as never, "10:00"), /weekday/);
   assert.throws(
     () => targetPlatform({ os: "windows" } as never),
-    /os must be "linux" or "macos"/,
+    /os must be "linux"/,
   );
-  assert.throws(
-    () =>
-      recipe("x", {
-        source: tarball("https://example.invalid/x.tar.gz"),
-        execution: { kind: "quantum" } as never,
-        output_kind: "tree",
-        target: linux,
-      }),
-    /execution\.kind must be "host" or "isolated_linux"/,
-  );
+  for (const target of [
+    { os: "macos", arch: "x86_64" },
+    { os: "linux", arch: "aarch64" },
+    { os: "linux", arch: "x86_64", abi: "darwin" },
+  ]) {
+    assert.throws(() => targetPlatform(target as never));
+  }
 });
 

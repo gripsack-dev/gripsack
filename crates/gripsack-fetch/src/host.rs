@@ -1,4 +1,4 @@
-//! Linux/WSL x86_64 asset resolution for Deno, BuildKit and Conda helpers.
+//! Linux/WSL x86_64 asset resolution for Deno and Conda helpers.
 //!
 //! Each bundled tool release is pinned per platform — a version plus
 //! one sha256 per supported asset. Verification stays exact: a
@@ -107,20 +107,6 @@ pub const DENO_RELEASE: ToolRelease = ToolRelease {
     )],
 };
 
-/// The BuildKit bridge helper this core's workspace solves speak
-/// (protocol must match exactly). The helper rides THIS core's release
-/// tag: the url resolves under the same `core-v<version>` assets as the
-/// core tarballs, and the pins are measured from the deterministic
-/// artifact build (`tools/buildkit-bridge/dist.sh`), embedded here
-/// before the core release build — a fetched checksum manifest would
-/// authenticate nothing. Until the pins land, resolution fails closed
-/// for every platform and only an explicit `--bridge` override builds.
-pub const BRIDGE_RELEASE: ToolRelease = ToolRelease {
-    version: crate::bridge_pins::BRIDGE_VERSION,
-    url_template: "https://github.com/gripsack-dev/gripsack/releases/download/core-v{version}/grip-buildkit-bridge-{version}-{triple}",
-    sha256: crate::bridge_pins::BRIDGE_SHA256,
-};
-
 /// Standalone Conda helper assets, measured before the core release build.
 /// Linux/WSL x86_64 assets are musl-static.
 pub const CONDA_RELEASE: ToolRelease = ToolRelease {
@@ -169,29 +155,5 @@ mod tests {
         assert!(url.contains("deno-"));
         assert!(url.ends_with(".zip"));
         assert_eq!(sha.len(), 64);
-    }
-
-    #[test]
-    fn bridge_release_fails_closed_until_pinned() {
-        // Any committed bridge pin must be a real measured sha256 —
-        // the table is empty while the helper source is unstable, and
-        // resolve() must refuse with the actionable reason.
-        for (_, sha) in BRIDGE_RELEASE.sha256 {
-            assert_eq!(sha.len(), 64);
-            assert!(sha.bytes().all(|byte| byte.is_ascii_hexdigit()));
-        }
-        let target = AssetTarget::current().unwrap();
-        if !BRIDGE_RELEASE.sha256.iter().any(|(t, _)| *t == target) {
-            let error = resolve(&BRIDGE_RELEASE).unwrap_err();
-            assert!(error.to_string().contains("no pinned hash"), "{error}");
-        } else {
-            let (url, sha) = resolve(&BRIDGE_RELEASE).unwrap();
-            assert!(url.ends_with(&format!(
-                "grip-buildkit-bridge-{}-{}",
-                BRIDGE_RELEASE.version,
-                target.triple()
-            )));
-            assert_eq!(sha.len(), 64);
-        }
     }
 }

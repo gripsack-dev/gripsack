@@ -65,6 +65,9 @@ pub struct HookInspection<'a> {
     pub pending: bool,
     pub identity_origin: IdentityOrigin,
     pub action_sha256: Sha256Digest,
+    /// Available to trusted retention adapters, never serialized into diagnostics.
+    #[serde(skip)]
+    pub action: &'a super::ActivationAction,
     pub contributors: &'a [Contributor],
     pub state: HookState,
     pub processes: &'a [ProcessReceipt],
@@ -116,6 +119,7 @@ pub fn inspect(
                     pending: true,
                     identity_origin: IdentityOrigin::LegacyIdentityUnavailable,
                     action_sha256,
+                    action: &declaration.action,
                     contributors: &contributors,
                     state: HookState::LegacyAmbiguous,
                     processes: &[],
@@ -186,6 +190,7 @@ fn emit(
             pending,
             identity_origin: batch.plan.identity_origin,
             action_sha256: intent.action_digest,
+            action: &intent.action,
             contributors: &intent.contributors,
             state: HookState::Current(*state),
             processes,
@@ -193,4 +198,95 @@ fn emit(
         })?;
     }
     Ok(())
+}
+
+/// A terminal adapter error does not prove that the native manager retired its
+/// old callback. Keep its immutable payload and runtime closure using the same
+/// durable outcome ledger, even after the owning generation is pruned. These
+/// conservative roots are not discharged by age or by an unrelated successful
+/// activation; only qualified reconciliation can establish retirement.
+pub fn retained_schedule_roots(
+    home: &Dir,
+    home_path: &Path,
+) -> io::Result<std::collections::BTreeSet<std::path::PathBuf>> {
+    let mut roots = std::collections::BTreeSet::new();
+    inspect(home, |inspection| {
+        retain_schedule_roots(home_path, inspection.action, inspection.state, &mut roots)
+    })?;
+    Ok(roots)
+}
+
+fn retain_schedule_roots(
+    home: &Path,
+    action: &super::ActivationAction,
+    state: HookState,
+    roots: &mut std::collections::BTreeSet<std::path::PathBuf>,
+) -> io::Result<()> {
+    if matches!(state, HookState::Current(IntentState::Succeeded { .. })) {
+        return Ok(());
+    }
+    let super::ActivationAction::ScheduledJob {
+        capture, closure, ..
+    } = action
+    else {
+        return Ok(());
+    };
+    let payload = capture.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "schedule capture has no retained payload",
+        )
+    })?;
+    crate::paths::validate_store_root(home, payload)?;
+    roots.insert(payload.to_owned());
+    for root in closure {
+        crate::paths::validate_store_root(home, root)?;
+        roots.insert(root.clone());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod schedule_retention_tests {
+    use super::*;
+
+    #[test]
+    fn failed_or_unknown_retirement_keeps_payload_and_complete_runtime_roots() {
+        let home = Path::new("/home/fixture");
+        let payload = home.join("store/profile");
+        let closure = vec![
+            home.join("store/runner"),
+            home.join("store/interpreter"),
+            home.join("store/tool"),
+        ];
+        let action = super::super::ActivationAction::ScheduledJob {
+            job: crate::jobs::JobId::parse(&"a".repeat(64)).unwrap(),
+            revision: crate::jobs::JobRevision::parse(&"b".repeat(64)).unwrap(),
+            capture: payload.join("job.json"),
+            runner: closure[0].join("grip"),
+            unit_directory: "/owned/systemd/user".into(),
+            closure: closure.clone(),
+            enabled: false,
+        };
+        let attempt = gripsack_policy::activation::AttemptNumber::first();
+        for state in [
+            HookState::Current(IntentState::Failed { attempt }),
+            HookState::Current(IntentState::Started { attempt }),
+            HookState::Current(IntentState::Pending),
+        ] {
+            let mut roots = std::collections::BTreeSet::new();
+            retain_schedule_roots(home, &action, state, &mut roots).unwrap();
+            assert!(roots.contains(&payload));
+            assert!(closure.iter().all(|root| roots.contains(root)));
+        }
+        let mut roots = std::collections::BTreeSet::new();
+        retain_schedule_roots(
+            home,
+            &action,
+            HookState::Current(IntentState::Succeeded { attempt }),
+            &mut roots,
+        )
+        .unwrap();
+        assert!(roots.is_empty());
+    }
 }

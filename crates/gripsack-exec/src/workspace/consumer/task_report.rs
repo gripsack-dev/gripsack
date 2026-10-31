@@ -116,6 +116,12 @@ pub struct TaskNodeReport {
     pub completed_checks: usize,
     pub processes: Vec<ProcessReceipt>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScheduledInvocation {
+    pub job: gripsack_store::jobs::JobId,
+    pub revision: gripsack_store::jobs::JobRevision,
+}
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskReport {
@@ -125,6 +131,8 @@ pub struct TaskReport {
     pub revision: TaskRevision,
     pub execution_binding: Option<TaskExecutionBinding>,
     pub task: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<ScheduledInvocation>,
     pub status: TaskStatus,
     pub nodes: Vec<TaskNodeReport>,
     pub process_root: Option<String>,
@@ -141,6 +149,7 @@ impl TaskReport {
             revision,
             execution_binding: None,
             task: task.into(),
+            schedule: None,
             status: TaskStatus::Indeterminate,
             nodes: Vec::new(),
             process_root: None,

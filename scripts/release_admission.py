@@ -14,7 +14,7 @@ import tempfile
 
 import release_manifest as schema
 
-CONTEXT = "local-qualification"
+CONTEXT = "local-practical-qualification"
 REPOSITORY_ID = 1342976637
 CREATOR_ID = 19335185
 MAX_STATUS_PAGES = 10
@@ -54,7 +54,7 @@ def validate_context_status(binding, repository, statuses, expected):
                    and all(isinstance(item, dict) and isinstance(item.get("context"), str)
                            for item in statuses), "invalid witness status response")
     matching = [item for item in statuses if item["context"] == expected["context"]]
-    schema.require(matching, "missing local-qualification witness")
+    schema.require(matching, "missing local-practical-qualification witness")
     latest = matching[0]
     identifier = latest.get("id")
     schema.require(type(identifier) is int and identifier > 0
@@ -64,9 +64,9 @@ def validate_context_status(binding, repository, statuses, expected):
                    "witness belongs to another source")
     creator = latest.get("creator")
     schema.require(isinstance(creator, dict) and type(creator.get("id")) is int and creator["id"] == CREATOR_ID,
-                   "foreign local-qualification witness creator")
+                   "foreign local-practical-qualification witness creator")
     schema.require(all(latest.get(key) == value for key, value in expected.items()),
-                   "latest local-qualification witness is pending, failed, stale or mismatched")
+                   "latest local-practical-qualification witness is pending, failed, stale or mismatched")
     return latest
 
 
@@ -86,7 +86,7 @@ def fetch_context_status(binding, expected, api):
         statuses.extend(rows)
         if any(isinstance(row, dict) and row.get("context") == expected["context"] for row in rows) or len(rows) < 100:
             return validate_context_status(binding, repository, statuses, expected)
-    raise ValueError("local-qualification witness search exceeds bounded history")
+    raise ValueError("local-practical-qualification witness search exceeds bounded history")
 
 
 def private_installation(state):

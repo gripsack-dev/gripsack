@@ -19,8 +19,6 @@ export const inputDirectory = api.inputDirectory;
 export const inputFile = api.inputFile;
 export const lock = api.lock;
 export const bash = api.bash;
-export const bashBody = api.bashBody;
-export const cargoPackage = api.cargoPackage;
 export const check = api.check;
 export const conda = api.conda;
 export const daily = api.daily;
@@ -31,7 +29,6 @@ export const file = api.file;
 export const hook = api.hook;
 export const hostPath = api.hostPath;
 export const identity = api.identity;
-export const image = api.image;
 export const lit = api.lit;
 export const literalText = api.literalText;
 export const managedBlock = api.managedBlock;
@@ -41,7 +38,8 @@ export const outputPath = api.outputPath;
 export const pkg = api.pkg;
 export const profile = api.profile;
 export const provider = api.provider;
-export const recipe = api.recipe;
+export const source = api.source;
+export const service = api.service;
 export const repoFile = api.repoFile;
 export const runBash = api.runBash;
 export const schedule = api.schedule;
@@ -59,9 +57,9 @@ export type {
   BashBody,
   BashBuilder,
   BashCommandBuilder,
-  CargoPackageSpec,
   CheckSpec,
   CondaEnvironmentSource,
+  WheelSource,
   CondaEnvironmentSpec,
   CondaSystemRequirements,
   HostRuntimeSpec,
@@ -75,19 +73,20 @@ export type {
   Fetch,
   HookSpec,
   HostFacts,
-  ImageConfig,
-  ImageDestination,
-  ImageOwner,
-  ImageSpec,
   PackageLayout,
   PackageSpec,
+  PackageSource,
+  PackageSourceSpec,
+  ServiceSpec,
+  ServicePort,
+  ServiceVolume,
+  ServiceEnvironmentValue,
+  ServiceHealth,
   PixiLockSource,
   PixiLockSpec,
   ProbeBuilder,
   ProbeKind,
   ProfileSpec,
-  RecipeExecution,
-  RecipeSpec,
   RunBashSpec,
   ScheduleSpec,
   Span,

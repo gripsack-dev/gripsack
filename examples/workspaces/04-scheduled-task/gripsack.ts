@@ -1,5 +1,5 @@
 import {
-  daily, defineWorkspace, environment, exec, fileFetch, lit,
+  daily, defineWorkspace, environment, exec, fileFetch, lit, lock,
   packageCommand, pkg, profile, provider, schedule, targetPlatform,
   task, workspace,
 } from "@gripsack/core";
@@ -11,13 +11,17 @@ const formatter = pkg("formatter", {
   target: linux, layout: { kind: "relocatable" },
 });
 const dev = environment("dev", { packages: ["formatter"], target: linux });
-const manual = task("format-now", { steps: [exec(packageCommand("formatter", "format")).arg(lit("docs")).build()], environment: "dev", });
-const nightly = task("format-nightly", { steps: [exec(packageCommand("formatter", "format")).arg(lit("docs")).build()], environment: "dev", deps: ["format-now"], });
-const timer = schedule("nightly", { task: "format-nightly", trigger: daily("03:30") });
+const documents = lock("store", "format-documents");
+const format = task("format", {
+  steps: [exec(packageCommand("formatter", "format")).arg(lit("docs")).build()],
+  environment: "dev",
+  locks: [documents],
+});
+const timer = schedule("nightly", { task: "format", trigger: daily("03:30") });
 const personal = profile("personal", { schedules: ["nightly"] });
 
-// A1 checks references and calendar syntax only; E1/E3 own execution
-// and registration. Merely declaring this schedule activates nothing.
+// `grip task run format` and the timer invoke this same finite task.
+// Only applying personal installs it; imports and previews activate nothing.
 export default defineWorkspace(() => workspace({
-  outputs: [formatter, dev, manual, nightly, timer, personal],
+  outputs: [formatter, dev, format, timer, personal],
 }));

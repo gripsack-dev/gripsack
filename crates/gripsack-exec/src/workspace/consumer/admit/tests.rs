@@ -134,9 +134,12 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
         elf::admit(
             image,
             &payload.join("program"),
-            &payload,
-            &package,
-            None,
+            elf::ImageOwner {
+                package: &package,
+                payload: &payload,
+                declared_abi: None,
+            },
+            &RuntimeScope::new(&package, None),
             &host,
             &span,
         )
@@ -190,9 +193,12 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
         elf::admit(
             metadata,
             &payload.join("program"),
-            &payload,
-            &package,
-            Some(BinaryAbi::Gnu),
+            elf::ImageOwner {
+                package: &package,
+                payload: &payload,
+                declared_abi: Some(BinaryAbi::Gnu),
+            },
+            &RuntimeScope::new(&package, None),
             &host,
             &span,
         )
@@ -325,4 +331,32 @@ fn dynamic_library(needed: &str) -> Vec<u8> {
     bytes[0x118..0x120].copy_from_slice(&1u64.to_le_bytes());
     bytes[0x801..0x801 + needed.len()].copy_from_slice(needed.as_bytes());
     bytes
+}
+
+#[test]
+fn imported_environment_values_are_command_scoped_not_profile_exports() {
+    let mut plan = EnvironmentPlan::empty();
+    plan.entries = vec![
+        (
+            OsString::from("IMPORTED_ONLY"),
+            OsString::from("literal $value"),
+        ),
+        (OsString::from("SHARED"), OsString::from("publisher")),
+        (OsString::from("SHARED"), OsString::from("recipient")),
+    ];
+    plan.profile_entries_start = 2;
+    let contributions = serde_json::to_value(plan.profile_env().unwrap()).unwrap();
+    let encoded = serde_json::to_string(&contributions).unwrap();
+    assert!(!encoded.contains("IMPORTED_ONLY"));
+    assert!(!encoded.contains("publisher"));
+    assert!(encoded.contains("recipient"));
+    let overlay = EnvironmentOverlay::admit(plan.entries.iter().cloned(), [], []).unwrap();
+    assert_eq!(
+        overlay.entries()[std::ffi::OsStr::new("SHARED")],
+        "recipient"
+    );
+    assert_eq!(
+        overlay.entries()[std::ffi::OsStr::new("IMPORTED_ONLY")],
+        "literal $value"
+    );
 }

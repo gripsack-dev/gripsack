@@ -16,7 +16,7 @@ use std::{collections::BTreeMap, io::Read, path::Path};
 const WORKSPACE_LOCK: &str = "gripsack.lock";
 const MAX_WORKSPACE_LOCK_BYTES: u64 = 16 * 1024 * 1024;
 
-pub(super) struct WorkspacePins {
+pub(crate) struct WorkspacePins {
     pub lock: Option<WorkspaceLock>,
     captured_bytes: Option<Sha256Digest>,
 }
@@ -79,6 +79,7 @@ impl WorkspacePins {
     pub fn take_for_update(&mut self, definitions: DefinitionPins) -> WorkspaceLock {
         match self.lock.take() {
             Some(mut lock) => {
+                lock.lock_version = WORKSPACE_LOCK_VERSION;
                 lock.definitions = definitions;
                 lock
             }

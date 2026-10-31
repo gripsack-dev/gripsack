@@ -1,4 +1,5 @@
-//! OCI consumers select retained runtime packages; they do not own production.
+//! Historical source-image declarations retained for data/identity readers.
+//! Current authoring uses services with pinned OCI images, never this builder.
 use super::{InstallPrefix, WorkspaceArg, WorkspacePlatform};
 use crate::Span;
 use serde::{Deserialize, Serialize};

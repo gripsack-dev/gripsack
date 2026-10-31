@@ -22,15 +22,27 @@ pub(super) struct Runtime {
     pub directories: Vec<PathBuf>,
     pub gnu_loader: Option<&'static str>,
 }
+/// The image's own prefix and ABI authority, distinct from the selected runtime
+/// scope that may supply libraries across an aggregate or nested environment.
+pub(super) struct ImageOwner<'a> {
+    pub package: &'a Package,
+    pub payload: &'a Path,
+    pub declared_abi: Option<BinaryAbi>,
+}
+
 pub(super) fn admit(
     metadata: &ExecutableMetadata,
     path: &Path,
-    payload: &Path,
-    package: &Package,
-    declared_abi: Option<BinaryAbi>,
+    owner: ImageOwner<'_>,
+    runtime_closure: &super::RuntimeScope<'_>,
     host: &HostTarget,
     span: &Span,
 ) -> Result<Runtime, ExecError> {
+    let ImageOwner {
+        package,
+        payload,
+        declared_abi,
+    } = owner;
     header(metadata, host, true, span)?;
     if !metadata.elf_loader_extensions.is_empty() {
         return Err(gate(
@@ -83,7 +95,10 @@ pub(super) fn admit(
         }
         None
     };
-    let mut closure = Closure::new(package, host, span)?;
+    // A pinned interpreter's image owner supplies origin/prefix policy, but
+    // its libraries come from the caller's complete selected runtime closure.
+    // In particular an SCC base is finite evidence, not a truncated runtime.
+    let mut closure = Closure::new(runtime_closure, host, span)?;
     let mut objects = vec![Object {
         metadata: Cow::Borrowed(metadata),
         rpaths: origin_paths(
@@ -360,9 +375,13 @@ struct Closure<'a> {
     host: &'a HostTarget,
 }
 impl<'a> Closure<'a> {
-    fn new(package: &Package, host: &'a HostTarget, span: &Span) -> Result<Self, ExecError> {
-        let ordered_runtime = package.host_dependent();
-        let mut packages = vec![package];
+    fn new(
+        scope: &super::RuntimeScope<'_>,
+        host: &'a HostTarget,
+        span: &Span,
+    ) -> Result<Self, ExecError> {
+        let ordered_runtime = scope.packages().any(Package::host_dependent);
+        let mut packages: Vec<_> = scope.packages().collect();
         let mut roots: Vec<RetainedRuntimeRoot> = Vec::new();
         let mut visited = BTreeSet::new();
         let mut index = 0;

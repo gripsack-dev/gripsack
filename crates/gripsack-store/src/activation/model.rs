@@ -12,6 +12,12 @@ use std::{fmt, io};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActivationId(pub(super) TransactionId);
 
+impl ActivationId {
+    pub fn matches_selection(self, selection: &SelectionIdentity) -> bool {
+        selection.transaction_id() == Some(&self.0)
+    }
+}
+
 impl fmt::Display for ActivationId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         TransactionText(&self.0).fmt(formatter)

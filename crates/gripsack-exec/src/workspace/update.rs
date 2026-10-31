@@ -14,7 +14,7 @@ use gripsack_ir::{
     Ir, Severity,
     workspace_model::{
         AcquisitionSource, WorkspaceOutput, WorkspaceProducer,
-        lock::{LockedPin, PlatformResolution, platform_key},
+        lock::{LockedPin, PlatformResolution, WORKSPACE_LOCK_VERSION, platform_key},
     },
 };
 
@@ -49,9 +49,17 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
         .as_ref()
         .is_none_or(|lock| lock.definitions != definitions);
     let had_definitions = pins.lock.is_some();
+    let previous_format = pins
+        .lock
+        .as_ref()
+        .map(|lock| lock.lock_version)
+        .filter(|version| *version != WORKSPACE_LOCK_VERSION);
     let mut lock = pins.take_for_update(definitions);
-    let mut reports =
-        SurveyReports::new(selection.required.len() + usize::from(changed_definitions));
+    let mut reports = SurveyReports::new(
+        selection.required.len()
+            + usize::from(changed_definitions)
+            + usize::from(previous_format.is_some()),
+    );
     if changed_definitions {
         reports.push(UpdateReport {
             output: "workspace frontend/import pins".into(),
@@ -62,10 +70,48 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
             layout: Default::default(),
         })?;
     }
+    if let Some(version) = previous_format {
+        reports.push(UpdateReport {
+            output: "workspace lock format".into(),
+            status: UpdateStatus::Bumped {
+                old: Some(format!("v{version}")),
+                new: format!("v{WORKSPACE_LOCK_VERSION}"),
+            },
+            layout: Default::default(),
+        })?;
+    }
     for name in &selection.required {
         let declaration = selection.outputs[name];
+        if let WorkspaceOutput::Service(service) = declaration {
+            let next = super::service_pins::pin(service)?;
+            let resolution = lock
+                .resolutions
+                .entry(platform_key(&super::service_pins::platform()))
+                .or_insert_with(|| PlatformResolution {
+                    pins: Vec::new(),
+                    transitive: Vec::new(),
+                });
+            let previous = resolution.pins.iter().position(|pin| pin.output == *name);
+            let status = if previous.is_some_and(|index| resolution.pins[index] == next) {
+                UpdateStatus::Unchanged
+            } else {
+                let old = previous.map(|index| pin_label(&resolution.pins[index]));
+                let new = pin_label(&next);
+                if let Some(index) = previous {
+                    resolution.pins[index] = next;
+                } else {
+                    resolution.pins.push(next);
+                }
+                UpdateStatus::Bumped { old, new }
+            };
+            reports.push(UpdateReport {
+                output: (*name).to_owned(),
+                status,
+                layout: Default::default(),
+            })?;
+            continue;
+        }
         let source = match declaration {
-            WorkspaceOutput::Recipe(recipe) => Some((&recipe.source, &recipe.target)),
             WorkspaceOutput::Package(package) => match &package.producer {
                 WorkspaceProducer::Provider { provider } => Some((provider, &package.target)),
                 _ => None,
@@ -165,8 +211,51 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
                         Err(error) => return Err(error),
                     }
                 }
+            } else if let AcquisitionSource::Package { manifest, .. } = source {
+                let acquired = if mode == UpdateMode::Publish {
+                    super::sharing::acquire(ctx, &session, manifest, ctx.fetch.limits())
+                } else {
+                    super::sharing::inspect_source(&ctx.home, manifest, ctx.fetch.limits())
+                        .and_then(|source| source.ok_or_else(|| super::file_failure(
+                            declaration.span(), "package projection is not retained; run grip update to acquire it",
+                        )))
+                };
+                match acquired {
+                    Ok(acquired) => {
+                        let next = LockedPin {
+                            output: (*name).to_owned(),
+                            source: source.locked(),
+                            resolved: acquired.resolved,
+                            conda: None,
+                        };
+                        let resolution =
+                            lock.resolutions
+                                .entry(key)
+                                .or_insert_with(|| PlatformResolution {
+                                    pins: Vec::new(),
+                                    transitive: Vec::new(),
+                                });
+                        let previous = resolution.pins.iter().position(|pin| pin.output == *name);
+                        if previous.is_some_and(|index| resolution.pins[index] == next) {
+                            UpdateStatus::Unchanged
+                        } else {
+                            let old = previous.map(|index| pin_label(&resolution.pins[index]));
+                            let new = pin_label(&next);
+                            if let Some(index) = previous {
+                                resolution.pins[index] = next;
+                            } else {
+                                resolution.pins.push(next);
+                            }
+                            UpdateStatus::Bumped { old, new }
+                        }
+                    }
+                    Err(error) if mode == UpdateMode::Check => UpdateStatus::Failed {
+                        error: Box::new(error),
+                    },
+                    Err(error) => return Err(error),
+                }
             } else {
-                unreachable!("v6 sources are fetch or conda lanes")
+                unreachable!("all acquisition lanes handled")
             }
         } else {
             UpdateStatus::Skipped {

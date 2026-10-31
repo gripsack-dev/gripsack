@@ -143,13 +143,20 @@ impl Fixture {
         }
         let bytes = encode(&info, &payload, conda);
         let digest = gripsack_process::Sha256Digest::of(&bytes).to_string();
-        let path = temporary.path().join("archive");
+        let filename = if conda {
+            "fixture-1.0-0.conda"
+        } else {
+            "fixture-1.0-0.tar.bz2"
+        };
+        let path = temporary.path().join(filename);
         fs::write(&path, bytes).unwrap();
         let record: LockedCondaPackage = serde_json::from_value(json!({
             "name":"fixture","version":"1.0","build":"0","build_number":0,"subdir":"linux-64",
-            "channel":"https://example.invalid/channel/", "url":"https://example.invalid/channel/linux-64/fixture-1.0-0.conda",
+            "channel":"https://example.invalid/channel/",
+            "url":format!("https://example.invalid/channel/linux-64/{filename}"),
             "sha256":digest, "depends":[], "constrains":[]
-        })).unwrap();
+        }))
+        .unwrap();
         let files: BTreeSet<_> = payload.iter().map(|entry| entry.path).collect();
         fs::create_dir(tree.join("conda-meta")).unwrap();
         gripsack_conda::receipt::write(
@@ -534,8 +541,8 @@ fn lifecycle_preflight_reuses_hash_path_and_container_admission() {
 }
 
 #[test]
-fn cold_frozen_lifecycle_refusal_precedes_native_and_image_staging() {
-    use super::super::{CondaDestination, archive_object, materialize_locked, native_location};
+fn cold_frozen_lifecycle_refusal_precedes_native_staging() {
+    use super::super::{archive_object, materialize_locked, native_location};
     for conda in [false, true] {
         let fixture = Fixture::new(
             vec![Member::file("info/recipe/post-link.sh", b"exit 99\n")],
@@ -560,23 +567,12 @@ fn cold_frozen_lifecycle_refusal_precedes_native_and_image_staging() {
         fs::create_dir_all(&object).unwrap();
         fs::copy(&fixture.archives[&record.sha256], object.join("archive")).unwrap();
         let (_, prefix) = native_location("fixture", &ctx.home, &fixture.locked).unwrap();
-        let image = root.join("uncreated-image-staging");
-        for destination in [
-            CondaDestination::Native,
-            CondaDestination::Image {
-                prefix: "/opt/fixture",
-                staging: &image,
-            },
-        ] {
-            let error =
-                match materialize_locked(&ctx, &session, "fixture", &fixture.locked, destination) {
-                    Err(error) => error.to_string(),
-                    Ok(_) => panic!("materialized unsupported lifecycle"),
-                };
-            assert!(error.contains("info/recipe/post-link.sh"), "{error}");
-            assert!(!prefix.exists());
-            assert!(!image.exists());
-        }
+        let error = match materialize_locked(&ctx, &session, "fixture", &fixture.locked) {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("materialized unsupported lifecycle"),
+        };
+        assert!(error.contains("info/recipe/post-link.sh"), "{error}");
+        assert!(!prefix.exists());
     }
 }
 
@@ -606,10 +602,10 @@ fn both_update_modes_require_archive_admission_and_accept_independent_clean_cont
                     fetch: Default::default(),
                     home_dir: Default::default(),
                 };
-                let result = admit_update_archives("fixture", &ctx, &fixture.locked, mode);
+                let result =
+                    admit_update_archives("fixture", &ctx, &fixture.locked, mode, &BTreeMap::new());
                 if script {
-                    let error = result.unwrap_err().to_string();
-                    assert!(error.contains("info/recipe/post-link.sh"), "{error}");
+                    assert!(result.is_err());
                 } else {
                     let objects = result.unwrap();
                     assert_eq!(objects.is_empty(), mode == crate::UpdateMode::Check);

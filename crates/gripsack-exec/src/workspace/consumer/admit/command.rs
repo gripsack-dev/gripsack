@@ -15,6 +15,14 @@ use std::{
     path::Path,
 };
 
+/// Native target/argument resolution is recursive; environment composition is
+/// owned by the enclosing selected activation, never by incidental export owners.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::workspace) enum EnvironmentResolution {
+    ApplySelected,
+    DeferToEnclosing,
+}
+
 /// Verify one exported package command against its publication receipt:
 /// the bytes must hash to the recorded digest and the layout must be one of
 /// the declared supported native runtime layouts. The user's relocatable
@@ -26,6 +34,27 @@ pub(in crate::workspace::consumer) fn admit_command(
     context: &NativeContext<'_>,
     span: &Span,
 ) -> Result<AdmittedCommand, ExecError> {
+    admit_command_in_scope(
+        package,
+        selector,
+        executable,
+        context,
+        span,
+        None,
+        EnvironmentResolution::ApplySelected,
+    )
+}
+
+pub(in crate::workspace::consumer) fn admit_command_in_scope(
+    package: &Package,
+    selector: &str,
+    executable: &ExecutableDigest,
+    context: &NativeContext<'_>,
+    span: &Span,
+    parent: Option<&super::RuntimeScope<'_>>,
+    environment: EnvironmentResolution,
+) -> Result<AdmittedCommand, ExecError> {
+    let scope = super::RuntimeScope::new(package, parent);
     let bytecode = context.admit_package_closure(package, span)?;
     let host = &context.target;
     let declared_abi = package.target.abi.as_ref().map(|abi| match abi {
@@ -51,15 +80,33 @@ pub(in crate::workspace::consumer) fn admit_command(
             "exported command bytes differ from their publication receipt",
         ));
     }
+    if matches!(
+        package.layout,
+        gripsack_ir::workspace_model::CatalogPackageLayout::PrefixMaterialized
+    ) && package.conda.is_none()
+    {
+        return crate::workspace::sharing::admit_projected_command(
+            context.home,
+            package,
+            selector,
+            context,
+            span,
+            &scope,
+            environment,
+        );
+    }
     let runtime = match metadata.format {
-        Some(ExecutableFormat::Script) => admit_script(&metadata, package, context, span)?,
+        Some(ExecutableFormat::Script) => admit_script(&metadata, package, &scope, context, span)?,
         Some(ExecutableFormat::Elf) => CommandRuntime {
             elf: elf::admit(
                 &metadata,
                 &canonical,
-                &payload,
-                package,
-                declared_abi,
+                elf::ImageOwner {
+                    package,
+                    payload: &payload,
+                    declared_abi,
+                },
+                &scope,
                 host,
                 span,
             )?,
@@ -83,6 +130,9 @@ pub(in crate::workspace::consumer) fn admit_command(
             .transpose()?,
         interpreter: runtime.interpreter,
         bytecode,
+        entries: Vec::new(),
+        arguments: Vec::new(),
+        imported: None,
     })
 }
 
@@ -95,6 +145,7 @@ struct CommandRuntime {
 fn admit_script(
     metadata: &gripsack_process::executable::ExecutableMetadata,
     package: &Package,
+    scope: &super::RuntimeScope<'_>,
     context: &NativeContext<'_>,
     span: &Span,
 ) -> Result<CommandRuntime, ExecError> {
@@ -112,7 +163,7 @@ fn admit_script(
             format!("script interpreter does not resolve: {error}"),
         )
     })?;
-    let mut packages = vec![package];
+    let mut packages: Vec<_> = scope.packages().collect();
     let mut visited = BTreeSet::new();
     let mut index = 0;
     while index < packages.len() {
@@ -131,9 +182,18 @@ fn admit_script(
                 gripsack_ir::workspace::PlatformAbi::Darwin => BinaryAbi::Darwin,
             });
             let runtime = match metadata.format {
-                Some(ExecutableFormat::Elf) => {
-                    elf::admit(&metadata, &canonical, &payload, owner, abi, host, span)?
-                }
+                Some(ExecutableFormat::Elf) => elf::admit(
+                    &metadata,
+                    &canonical,
+                    elf::ImageOwner {
+                        package: owner,
+                        payload: &payload,
+                        declared_abi: abi,
+                    },
+                    scope,
+                    host,
+                    span,
+                )?,
                 _ => {
                     return Err(gate(
                         span,

@@ -9,13 +9,19 @@ pub mod env;
 pub mod facts;
 pub mod frontend;
 pub mod gc;
+mod http_client;
 pub mod managed_blocks;
 pub mod ops;
 pub mod report;
 mod repository;
-pub use repository::Repository;
+pub use repository::{EvaluationInputs, Repository};
 pub mod rollback;
+pub mod saved_plan;
+pub mod semantic;
+pub mod services;
 mod source;
+mod source_rebinding;
+pub use source_rebinding::rebind_captured_ir;
 pub mod template;
 pub mod update;
 pub mod util;
@@ -37,7 +43,6 @@ pub use source::preflight::{
 };
 pub use update::{UpdateMode, update};
 pub use util::LifecycleSession;
-pub use workspace::roots::{BuildRecovery, recover_builder_roots};
 pub use workspace::{
     AttemptId, BusyPolicy, InvocationId, TaskExecutionBinding, TaskNodeReport, TaskOutputMode,
     TaskPlan, TaskReport, TaskRevision, TaskRunPolicy, TaskStatus, TaskStdin, plan_task,
@@ -45,6 +50,7 @@ pub use workspace::{
 };
 pub use workspace::{BuildOptions, BuildResult, BuiltOutput, build_workspace};
 pub use workspace::{ConsumerOutcome, ConsumerRequest, consume, run_package_command};
+pub use workspace::{schedules, sharing};
 
 use gripsack_ir::Ir;
 

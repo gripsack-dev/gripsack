@@ -1,7 +1,7 @@
 """Real standalone installer with offline HTTP and an explicit verifier double.
 
 These tests prove admission/control flow and preservation, NOT cryptographic
-success. Release promotion additionally requires real-gh signed-candidate smoke.
+success. Signed installation is separate from manual unsigned publication.
 """
 import os
 from pathlib import Path
@@ -44,7 +44,7 @@ def test_valid_candidate_installs_verified_payload_without_executing_it(installe
 
 
 @pytest.mark.parametrize("mutation", ["wrong-repo", "wrong-workflow", "wrong-ref", "wrong-source", "wrong-policy",
-                                      "incompatible-helper", "incompatible-ir", "incompatible-sdk", "missing-gate",
+                                      "incompatible-helper", "incompatible-ir", "incompatible-sdk", "missing-gate", "retired-bridge",
                                       "missing-signature", "invalid-signature", "tampered-asset", "missing-asset", "extra-asset",
                                       "corrupt-extraction"])
 def test_rejected_candidate_preserves_old_installation(installer, mutation):
@@ -61,6 +61,7 @@ def test_rejected_candidate_preserves_old_installation(installer, mutation):
         "incompatible-ir": lambda m: m["compatible"]["ir"].update(writer=99),
         "incompatible-sdk": lambda m: m["packages"][0].update(version="0.0.1"),
         "missing-gate": lambda m: m["gates"].pop(),
+        "retired-bridge": lambda m: m["compatible"].update(bridge="9.9.9"),
     }
     if mutation in changes:
         server.mutate_manifest("9.9.9", changes[mutation])
@@ -71,9 +72,9 @@ def test_rejected_candidate_preserves_old_installation(installer, mutation):
     elif mutation == "extra-asset":
         assets["unqualified"] = b"extra"
     elif mutation == "missing-asset":
-        del assets["grip-buildkit-bridge-9.9.9-x86_64-unknown-linux-musl"]
+        del assets["gripsack-conda-9.9.9-x86_64-unknown-linux-musl"]
     elif mutation == "tampered-asset":
-        assets["grip-buildkit-bridge-9.9.9-x86_64-unknown-linux-musl"] = b"BRIDGE"
+        assets["gripsack-conda-9.9.9-x86_64-unknown-linux-musl"] = b"TAMPERED"
     elif mutation == "corrupt-extraction":
         server.serve("9.9.9", b"not a tar archive")
     result = run()

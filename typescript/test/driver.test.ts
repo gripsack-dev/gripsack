@@ -65,16 +65,16 @@ const baseInputs = {
 };
 
 
-const WORKSPACE = `import { defineWorkspace, workspace, recipe, pkg, targetPlatform, githubRelease } from "@gripsack/core";
+const WORKSPACE = `import { defineWorkspace, workspace, provider, pkg, targetPlatform, githubRelease } from "@gripsack/core";
 
-const tools = recipe("tools", {
-  source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
-  execution: { kind: "host", access: "unconfined" },
-  output_kind: "tree",
+const tools = pkg("tools", {
+  producer: provider(githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" })),
+  commands: {},
+  layout: { kind: "relocatable" },
   target: targetPlatform({ os: "linux", arch: "x86_64" }),
 });
 const bin = pkg("tools-bin", {
-  producer: "tools",
+  producer: provider(githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" })),
   commands: { tools: "bin/tools" },
   target: targetPlatform({ os: "linux", arch: "x86_64" }),
   layout: { kind: "relocatable" },
@@ -93,7 +93,7 @@ Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () 
     assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
     const envelope = JSON.parse(r.stdout);
     assert.deepEqual(Object.keys(envelope.ir), ["ir_version", "host", "workspace"]);
-    assert.equal(envelope.ir.ir_version, 9);
+    assert.equal(envelope.ir.ir_version, 10);
     assert.equal(envelope.ir.modules, undefined, "workspace envelope never carries modules");
     assert.equal(envelope.ir.host.os, "linux");
     assert.equal("hostname" in envelope.ir.host, false);
@@ -101,9 +101,9 @@ Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () 
 
     const outputs = envelope.ir.workspace.outputs;
     assert.equal(outputs.length, 1, "unbound probe gates tools-bin out");
-    assert.equal(outputs[0].kind, "recipe");
-    assert.equal(outputs[0].source.kind, "fetch");
-    assert.equal(outputs[0].source.fetch.kind, "github_release");
+    assert.equal(outputs[0].kind, "package");
+    assert.equal(outputs[0].producer.provider.kind, "fetch");
+    assert.equal(outputs[0].producer.provider.fetch.kind, "github_release");
     assert.match(outputs[0].span.file, /gripsack\.ts$/);
     assert.match(envelope.ir.workspace.span.file, /gripsack\.ts$/);
     assert.deepEqual(

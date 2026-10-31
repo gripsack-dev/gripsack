@@ -162,43 +162,32 @@ function dedent(body: string, span: Span): { text: string; lineMap?: number[] } 
   };
 }
 
-/** Capture the opening source line of a literal Bash template.
- *  Values in a JS interpolation are evaluated before this tag is
- *  called, so only literal text belongs here; static authoring checks
- *  must still guard potentially effectful expressions. */
-export function bashBody(parts: TemplateStringsArray, ...values: unknown[]): BashBody {
-  const span = nodeSpan(undefined, "bashBody`...`");
+/** Literal Bash authoring. JavaScript substitutions are never command
+ * bindings: use typed env values instead. Decode template delimiters
+ * (\` and \${) and their preceding escape pairs, not shell escapes. */
+export function bash(parts: TemplateStringsArray, ...values: never[]): BashBuilder {
+  const span = nodeSpan(undefined, "bash`...`");
   if (values.length !== 0 || parts.raw.length !== 1) {
     const before = parts.raw[0] ?? "";
     const line = span.line + before.split("\n").length - 1;
     throw new DiagnosticError({
       code: diagnosticCodes.invalidWorkspaceValue,
       severity: "error",
-      message: "bashBody: interpolation is not a literal Bash body",
-      labels: [{ span: { file: span.file, line }, note: "interpolation evaluated here" }],
+      message: "bash: JavaScript interpolation is not a literal Bash body",
+      labels: [{ span: { file: span.file, line }, note: "interpolation rejected here" }],
       help: "pass dynamic values through typed env/argv bindings",
     });
   }
-  const text = parts.raw[0]!;
-  rejectBashInterpolation(text, span, "bashBody`...`");
-  return freezeDeep({ text, span });
-}
-
-function rejectBashInterpolation(body: string, span: Span, where: string): void {
-  const site = body.indexOf("${");
-  if (site === -1) return;
-  const line = span.line + body.slice(0, site).split("\n").length - 1;
-  throw new DiagnosticError({
-    code: diagnosticCodes.invalidWorkspaceValue,
-    severity: "error",
-    message: `${where}: body is literal text — "\${" interpolation is rejected`,
-    labels: [{ span: { file: span.file, line }, note: "interpolation rejected here" }],
-    help: "pass dynamic values through typed env/argv bindings",
-  });
+  // At a template delimiter, JS requires 2n+1 backslashes to author n
+  // literal backslashes plus the delimiter. Elsewhere retain raw shell bytes.
+  const text = parts.raw[0]!.replace(/(\\+)(`|\$\{)/g, (match, slashes: string, delimiter: string) =>
+    slashes.length % 2 === 1 ? slashes.slice(0, (slashes.length - 1) / 2) + delimiter : match
+  );
+  return Object.freeze(new LiteralBash(text, freezeDeep(span)));
 }
 
 /** A literal Bash body run under a pinned package interpreter. The
- *  command is a DESCRIPTION; the enclosing recipe/task/check/hook
+ *  command is a DESCRIPTION; the enclosing task/check/hook
  *  admits the execution context. */
 export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
   const what = "runBash(...)";
@@ -213,7 +202,7 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
     if (body.includes("\n")) {
       throw errorAt(
         diagnosticCodes.invalidWorkspaceValue,
-        `${what}: multiline body needs bashBody\`...\` to preserve original source lines`,
+        `${what}: multiline body needs bash\`...\` to preserve original source lines`,
         span,
         "body declared here",
       );
@@ -225,7 +214,6 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
     body = source.text;
     bodySpan = asSpan(source.span, `${what}: body`);
   }
-  rejectBashInterpolation(body, bodySpan, what);
   const interpreter = asArg(spec.interpreter, `${what}: interpreter`);
   if (interpreter.kind !== "package_command") {
     throw errorAt(
@@ -251,9 +239,30 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
   return freezeDeep(node);
 }
 
-/** A body is required before a Bash command can be constructed. */
-export interface BashBuilder {
-  body(body: RunBashSpec["body"]): BashCommandBuilder;
+/** Literal text is usable in object form; bind an interpreter for fluent form. */
+export interface BashBuilder extends BashBody {
+  interpreter(command: WorkspacePackageCommand): BashCommandBuilder;
+}
+
+class LiteralBash implements BashBuilder {
+  constructor(readonly text: string, readonly span: Span) {}
+
+  interpreter(command: WorkspacePackageCommand): BashCommandBuilder {
+    const pin = asArg(command, "bash`...`.interpreter");
+    if (pin.kind !== "package_command") {
+      throw errorAt(
+        diagnosticCodes.badWorkspaceContext,
+        "bash`...`.interpreter requires a declared packageCommand — ambient host shells are never discovered (A1-03)",
+        this.span,
+        "Bash literal declared here",
+      );
+    }
+    return bashCommandBuilder({
+      interpreter: freezeDeep(pin),
+      body: { text: this.text, span: this.span },
+      span: this.span,
+    });
+  }
 }
 
 /** Immutable Bash command authoring after a literal body is supplied. */
@@ -266,35 +275,15 @@ export interface BashCommandBuilder {
 function bashCommandBuilder(spec: RunBashSpec): BashCommandBuilder {
   return Object.freeze({
     env(name: string, value: WorkspaceArg): BashCommandBuilder {
-      const key = asName(name, "bash(...).env(name)");
-      const entry = asEnv({ [key]: value }, "bash(...).env")!;
+      const key = asName(name, "bash`...`.env(name)");
+      const entry = asEnv({ [key]: value }, "bash`...`.env")!;
       return bashCommandBuilder({ ...spec, env: { ...spec.env, ...freezeDeep(entry) } });
     },
     cwd(path: WorkspacePath): BashCommandBuilder {
-      return bashCommandBuilder({ ...spec, cwd: freezeDeep(asPath(path, "bash(...).cwd")) });
+      return bashCommandBuilder({ ...spec, cwd: freezeDeep(asPath(path, "bash`...`.cwd")) });
     },
     build(): WorkspaceRunBashCommand {
       return runBash(spec);
-    },
-  });
-}
-/** Start a Bash command with a declared package interpreter, never a
- *  host-shell name. `body(...).build()` lowers through `runBash({…})`. */
-export function bash(interpreter: WorkspacePackageCommand): BashBuilder {
-  const span = nodeSpan(undefined, "bash(...)");
-  const pin = asArg(interpreter, "bash(interpreter)");
-  if (pin.kind !== "package_command") {
-    throw errorAt(
-      diagnosticCodes.badWorkspaceContext,
-      "bash(interpreter) requires a declared packageCommand — ambient host shells are never discovered (A1-03)",
-      span,
-      "interpreter declared here",
-    );
-  }
-  const stablePin = freezeDeep(pin);
-  return Object.freeze({
-    body(body: RunBashSpec["body"]): BashCommandBuilder {
-      return bashCommandBuilder({ interpreter: stablePin, body: freezeDeep(body), span });
     },
   });
 }

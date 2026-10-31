@@ -1,38 +1,22 @@
 use gripsack_ir::{check, codes};
 
 fn workspace() -> serde_json::Value {
-    serde_json::json!({"ir_version":9,"host":{"os":"linux","arch":"x86_64"},"workspace":{
+    serde_json::json!({"ir_version":10,"host":{"os":"linux","arch":"x86_64"},"workspace":{
     "span":{"file":"gripsack.ts","line":1},"outputs":[
-        {"kind":"recipe","name":"build","span":{"file":"gripsack.ts","line":2},
-         "source":{"kind":"fetch","fetch":{"kind":"file","path":"src"},"span":{"file":"gripsack.ts","line":2}},
-         "execution":{"kind":"isolated_linux","worker":"buildkit","platform":{"os":"linux","arch":"x86_64"},
-            "toolchain":{"reference":format!("docker.io/library/toolchain@sha256:{}", "a".repeat(64))}},
-         "output_kind":"tree","target":{"os":"linux","arch":"x86_64"},"checks":["verify"]},
+        {"kind":"package","name":"build","span":{"file":"gripsack.ts","line":2},
+         "producer":{"kind":"provider","provider":{"kind":"fetch","fetch":{"kind":"file","path":"src"},"span":{"file":"gripsack.ts","line":2}}},
+         "commands":{},"target":{"os":"linux","arch":"x86_64"},"layout":{"kind":"relocatable"}},
         {"kind":"check","name":"verify","span":{"file":"checks.ts","line":4},"subject":"build",
          "run":{"kind":"exec","span":{"file":"checks.ts","line":5},"argv":[{"kind":"literal","value":"/bin/true"}]}}
     ]}})
 }
 
 #[test]
-fn required_check_cannot_smuggle_a_live_host_directory_into_isolated_production() {
+fn standalone_host_checks_remain_valid_without_recipe_execution() {
     let mut declaration = workspace();
-    check(&declaration.to_string()).unwrap();
     declaration["workspace"]["outputs"][1]["run"]["cwd"] =
         serde_json::json!({"kind":"host","path":"/tmp/live-checkout"});
-    let rejected = check(&declaration.to_string()).unwrap_err();
-    assert!(
-        rejected
-            .iter()
-            .any(|error| error.code == codes::BAD_WORKSPACE_CONTEXT
-                && error.labels.iter().any(|label| label
-                    .span
-                    .as_ref()
-                    .is_some_and(|span| span.file == "checks.ts" && span.line == 5)))
-    );
-    // A standalone host check remains a valid declaration. Context comes from
-    // the required-check use site, not a blanket ban on shared commands.
-    declaration["workspace"]["outputs"][0]["checks"] = serde_json::json!([]);
-    assert!(check(&declaration.to_string()).is_ok());
+    check(&declaration.to_string()).unwrap();
 }
 
 #[test]
@@ -82,7 +66,7 @@ fn assert_binding_refused(declaration: &serde_json::Value) {
 }
 
 #[test]
-fn recipe_subject_checks_resolve_source_but_never_grant_staging() {
+fn provider_subject_checks_resolve_source_but_never_grant_staging() {
     for directory in [false, true] {
         let mut declaration = workspace();
         declaration["workspace"]["outputs"][1]["run"] = binding_command("source", directory);
@@ -96,7 +80,7 @@ fn recipe_subject_checks_resolve_source_but_never_grant_staging() {
 fn task_checks_resolve_provider_package_subject_without_a_recipe_owner() {
     for directory in [false, true] {
         let mut declaration = workspace();
-        let source = declaration["workspace"]["outputs"][0]["source"].clone();
+        let source = declaration["workspace"]["outputs"][0]["producer"]["provider"].clone();
         declaration["workspace"]["outputs"][0] = serde_json::json!({
             "kind":"package","name":"data","span":{"file":"gripsack.ts","line":2},
             "producer":{"kind":"provider","provider":source},
@@ -163,4 +147,20 @@ fn task_subject_postconditions_do_not_acquire_artifact_bindings() {
             assert_binding_refused(&declaration);
         }
     }
+}
+
+#[test]
+fn literal_bash_parameter_expansion_is_not_javascript_interpolation() {
+    let mut declaration = workspace();
+    declaration["workspace"]["outputs"][0]["commands"] = serde_json::json!({"bash":"bin/bash"});
+    declaration["workspace"]["outputs"][1]["run"] = serde_json::json!({
+        "kind":"run_bash","span":{"file":"checks.ts","line":5},
+        "interpreter":{"kind":"package_command","package":"build","command":"bash"},
+        "options":["-e","-u","-o","pipefail"],
+        "body":"printf '%s\\n' \"${HOME}\" \"${VALUE:-default}\"",
+        "line_map":[5]
+    });
+    check(&declaration.to_string()).unwrap();
+    declaration["workspace"]["outputs"][1]["run"]["line_map"] = serde_json::json!([0]);
+    assert!(check(&declaration.to_string()).is_err());
 }

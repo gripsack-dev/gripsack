@@ -2,15 +2,15 @@ use gripsack_ir::{
     check, codes,
     workspace_model::{
         WorkspaceContent, WorkspaceOutput, WorkspaceSource, graph,
-        identity::{self, DefinitionDigest, PlanDigest, RecipeDigest},
-        lock::DefinitionPins,
+        identity::{self, DefinitionDigest, PlanDigest},
+        lock::{DefinitionPins, ResolvedPinFields},
     },
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 fn document() -> Value {
-    json!({"ir_version":9,"host":{"os":"linux","arch":"x86_64"},"workspace":{
+    json!({"ir_version":10,"host":{"os":"linux","arch":"x86_64"},"workspace":{
         "span":{"file":"ergonomics.ts","line":1},"outputs":[
             {"kind":"package","name":"tool","span":{"file":"ergonomics.ts","line":2},
              "producer":{"kind":"provider","provider":{"kind":"fetch","fetch":{"kind":"file","path":"payload"},"span":{"file":"ergonomics.ts","line":2}}},
@@ -231,15 +231,16 @@ fn archive_root_is_native_relocatable_authority_and_changes_package_identity() {
     let WorkspaceOutput::Package(mut package) = ir.workspace.outputs.remove(0) else {
         panic!("package")
     };
-    package.producer = gripsack_ir::workspace_model::WorkspaceProducer::Recipe {
-        recipe: "build".into(),
+    let resolved = ResolvedPinFields {
+        tree256: Some("b".repeat(64)),
+        ..Default::default()
     };
-    let recipe = RecipeDigest::parse(&"b".repeat(64)).unwrap();
-    let selected = identity::recipe_package_digest(&package, recipe, &BTreeMap::new()).unwrap();
+    let selected =
+        identity::provider_package_digest(&package, &resolved, &BTreeMap::new()).unwrap();
     package.archive_root = None;
     assert_ne!(
         selected,
-        identity::recipe_package_digest(&package, recipe, &BTreeMap::new()).unwrap()
+        identity::provider_package_digest(&package, &resolved, &BTreeMap::new()).unwrap()
     );
     doc["workspace"]["outputs"][0]["layout"] = json!({"kind":"fixed_prefix","prefix":"/opt/tool"});
     assert_error_at(&doc, codes::INVALID_WORKSPACE_VALUE, 2);
@@ -248,18 +249,6 @@ fn archive_root_is_native_relocatable_authority_and_changes_package_identity() {
         "kind":"conda_environment","channels":["conda-forge"],"packages":{"tool":"==1"},
         "span":{"file":"ergonomics.ts","line":2}
     });
-    assert_error_at(&doc, codes::INVALID_WORKSPACE_VALUE, 2);
-    let source = doc["workspace"]["outputs"][0]["producer"]["provider"].clone();
-    doc["workspace"]["outputs"][0]["layout"] = json!({"kind":"relocatable"});
-    doc["workspace"]["outputs"][0]["producer"] = json!({"kind":"recipe","recipe":"build"});
-    doc["workspace"]["outputs"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!({
-            "kind":"recipe","name":"build","span":{"file":"ergonomics.ts","line":6},
-            "source":source,"execution":{"kind":"host","access":"unconfined"},
-            "output_kind":"tree","target":{"os":"linux","arch":"x86_64"}
-        }));
     assert_error_at(&doc, codes::INVALID_WORKSPACE_VALUE, 2);
 }
 

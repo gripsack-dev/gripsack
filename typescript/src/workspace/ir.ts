@@ -7,7 +7,7 @@ import type { Span } from "../span.ts"
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v9.json $defs)
+// shared wire fragments (schema/ir/v10.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -57,19 +57,13 @@ export interface WorkspaceOsVersion {
   minor: number;
   patch?: number;
 }
-export type WorkspaceAbi = "gnu" | "musl" | "darwin";
+export type WorkspaceAbi = "gnu" | "musl";
 export interface WorkspacePlatform {
-  os: "linux" | "macos";
-  arch: "x86_64" | "aarch64";
+  os: "linux";
+  arch: "x86_64";
   abi?: WorkspaceAbi;
   minimum_os?: WorkspaceOsVersion;
 }
-
-/** A recipe may declare host access honestly or require B2's isolated
- *  Linux worker; no implicit native or ambient-host fallback. */
-export type RecipeExecution =
-  | { kind: "host"; access: "unconfined" }
-  | { kind: "isolated_linux"; worker: "buildkit"; platform: WorkspacePlatform; toolchain: { reference: string } };
 
 export type PackageLayout =
   | { kind: "relocatable" }
@@ -89,11 +83,13 @@ export interface CondaSystemRequirements {
 }
 
 // ---------------------------------------------------------------------------
-// Current acquisition sources (schema/ir/v8.json; retained in-memory V6 family)
+// Current acquisition sources (schema/ir/v10.json)
 // ---------------------------------------------------------------------------
 
 /** Archive/git/github/file/plugin acquisition with declaration provenance. */
 export interface FetchSource { kind: "fetch"; fetch: Fetch; span: Span }
+/** An exact binary wheel request; no dependency solve or source build is implied. */
+export interface WheelSource { name: string; version: string; url: string; sha256: string }
 /** A coherent binary Conda environment solved through Rattler. `platforms`
  *  omitted means resolved per requesting consumer platform. */
 export interface CondaEnvironmentSource {
@@ -102,6 +98,7 @@ export interface CondaEnvironmentSource {
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
   system_requirements?: CondaSystemRequirements;
+  wheels?: readonly WheelSource[];
   span: Span;
 }
 /** An explicit Pixi lock import: `manifest`/`lock` are workspace INPUT
@@ -113,8 +110,16 @@ export interface PixiLockSource {
   environment: string;
   span: Span;
 }
-/** How a current recipe or provider package obtains its payload. */
-export type AcquisitionSource = FetchSource | CondaEnvironmentSource | PixiLockSource;
+
+/** A pre-imported portable package selected by its canonical signed manifest digest. */
+export interface PackageSource {
+  kind: "package";
+  manifest: string;
+  span: Span;
+}
+export interface PackageSourceSpec { manifest: string }
+/** How a provider package obtains its payload. */
+export type AcquisitionSource = FetchSource | CondaEnvironmentSource | PixiLockSource | PackageSource;
 
 export interface WorkspaceExecCommand {
   kind: "exec";
@@ -188,29 +193,11 @@ export type WorkspaceCalendar =
   | { kind: "weekly"; weekday: WorkspaceWeekday; time: string };
 
 // ---------------------------------------------------------------------------
-// output nodes (wire shape: schema/ir/v7.json $defs/*Output)
+// output nodes (wire shape: schema/ir/v10.json $defs/*Output)
 // ---------------------------------------------------------------------------
 
-export interface RecipeNode {
-  name: string;
-  span: Span;
-  kind: "recipe";
-  /** The recipe's acquisition source (`acquisitionSource` in the schema).
-   *  The legacy bare `{fetch,span}` shape is not admitted. */
-  source: AcquisitionSource;
-  execution: RecipeExecution;
-  output_kind: "file" | "tree";
-  target: WorkspacePlatform;
-  steps?: WorkspaceStep[];
-  checks?: string[];
-}
-
-/** Where a package comes from (A1-12 resolution/acquisition
- *  separation): a recipe output reference, or a direct provider-backed
- *  acquisition carrying its own provenance — no synthetic recipe. */
-export type WorkspaceProducer =
-  | { kind: "recipe"; recipe: string }
-  | { kind: "provider"; provider: AcquisitionSource };
+/** A direct provider-backed acquisition carrying its own provenance. */
+export type WorkspaceProducer = { kind: "provider"; provider: AcquisitionSource };
 
 
 export interface RepoTreeSelection {
@@ -257,6 +244,43 @@ export interface TaskNode {
   deps?: string[];
   environment?: string;
   checks?: string[];
+  services?: string[];
+}
+
+/** Managed OCI services have a persistent lifecycle separate from finite tasks. */
+export interface ServicePort { host: number; container: number; address: string }
+export interface ServiceVolume { name: string; target: string }
+export type ServiceEnvironmentValue =
+  | { kind: "literal"; value: string }
+  | { kind: "inherited"; name: string };
+export interface ServiceHealth {
+  kind: "command";
+  argv: string[];
+  interval_seconds: number;
+  timeout_seconds: number;
+  retries: number;
+}
+export interface ServiceSpec {
+  image: string;
+  ports?: ServicePort[];
+  volumes?: ServiceVolume[];
+  env?: Record<string, ServiceEnvironmentValue>;
+  command?: string[];
+  health: ServiceHealth;
+  depends_on?: string[];
+  span?: Span;
+}
+export interface ServiceNode {
+  kind: "service";
+  name: string;
+  span: Span;
+  image: string;
+  ports: ServicePort[];
+  volumes: ServiceVolume[];
+  env: Record<string, ServiceEnvironmentValue>;
+  command: string[];
+  health: ServiceHealth;
+  depends_on: string[];
 }
 
 export interface ScheduleNode {
@@ -274,36 +298,6 @@ export interface CheckNode {
   kind: "check";
   run: WorkspaceCommand;
   subject: string;
-}
-
-export interface ImageOwner {
-  uid: number;
-  gid: number;
-}
-
-export interface ImageDestination {
-  /** Absolute installation prefix inside the image, never a host destination. */
-  path: string;
-  owner?: ImageOwner;
-}
-
-export interface ImageConfig {
-  entrypoint?: Extract<WorkspaceArg, { kind: "literal" | "package_command" }>[];
-  args?: string[];
-  env?: Record<string, string>;
-  cwd?: string;
-  user?: ImageOwner;
-}
-
-export interface ImageNode {
-  name: string;
-  span: Span;
-  kind: "image";
-  packages: string[];
-  target: WorkspacePlatform;
-  base?: string;
-  destinations?: Record<string, ImageDestination>;
-  config: Required<ImageConfig>;
 }
 
 export interface ProfileNode {
@@ -326,13 +320,12 @@ export interface HookNode {
 }
 
 export type WorkspaceOutputNode =
-  | RecipeNode
   | PackageNode
   | EnvironmentNode
+  | ServiceNode
   | TaskNode
   | ScheduleNode
   | CheckNode
-  | ImageNode
   | ProfileNode
   | HookNode;
 
@@ -342,7 +335,7 @@ export type WorkspaceOutputKind = WorkspaceOutputNode["kind"];
 // values and specs
 // ---------------------------------------------------------------------------
 
-/** A constructed output — the value the nine constructors return and
+/** A constructed output — the value the output constructors return and
  *  {@link workspace} collects. The brand distinguishes real output
  *  values from stray objects (a plain field, like ModuleValue's). */
 export interface WorkspaceOutput<N extends WorkspaceOutputNode = WorkspaceOutputNode> {
@@ -363,20 +356,6 @@ export interface WorkspaceValue {
   };
 }
 
-export interface RecipeSpec {
-  /** A `Fetch` (wrapped as `{"kind":"fetch",…}`), a plain
-   *  {@link CondaEnvironmentSpec}/{@link PixiLockSpec}, or a pre-built
-   *  `conda.environment(...)`/`pixi.fromLock(...)` source value. */
-  source: Fetch | CondaEnvironmentSpec | PixiLockSpec | AcquisitionSource;
-  execution: RecipeExecution;
-  output_kind: "file" | "tree";
-  target: WorkspacePlatform;
-  steps?: readonly WorkspaceStepValue[];
-  /** Publication gates — names of `check` outputs. */
-  checks?: string[];
-  span?: Span;
-}
-
 /** Authoring spec for a Conda environment source — see
  *  `conda.environment(...)`. Channels are names/URLs in priority order;
  *  packages map a lowercase name to a version MatchSpec (`"*"` allowed). */
@@ -385,6 +364,8 @@ export interface CondaEnvironmentSpec {
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
   systemRequirements?: CondaSystemRequirements;
+  /** HTTPS binary wheels, each pinned by its lowercase SHA256 digest. */
+  wheels?: readonly WheelSource[];
 }
 
 /** Authoring spec for an explicit Pixi lock import — see
@@ -396,9 +377,8 @@ export interface PixiLockSpec {
 }
 
 export interface PackageSpec {
-  /** A recipe output name (sugar for the recipe ref), or a direct
-   *  `provider(fetch(...))` acquisition. */
-  producer: string | WorkspaceProducer;
+  /** A direct `provider(...)` acquisition. */
+  producer: WorkspaceProducer;
   /** Command name → payload-relative path. */
   commands: Record<string, string>;
   /** Explicit runtime closure — names of other `package` outputs. */
@@ -427,6 +407,8 @@ export interface TaskSpec {
   /** Unordered prerequisites — names of `task` outputs, verified
    *  successful within one invocation. */
   deps?: string[];
+  /** Managed services that must become ready before the task starts. */
+  services?: string[];
   /** Name of the `environment` output the task runs in. */
   environment?: string;
   /** Per-invocation postconditions — names of `check` outputs. */
@@ -447,16 +429,6 @@ export interface CheckSpec {
   run: WorkspaceCommand;
   /** Name of the output this check validates. */
   subject: string;
-  span?: Span;
-}
-
-export interface ImageSpec {
-  packages: string[];
-  target: WorkspacePlatform;
-  /** Digest-pinned registry image; omitted means scratch. Base config is not inherited. */
-  base?: string;
-  destinations?: Record<string, ImageDestination>;
-  config?: ImageConfig;
   span?: Span;
 }
 
@@ -494,7 +466,7 @@ export interface BashBody {
 }
 
 export interface RunBashSpec {
-  /** Literal text ONLY. Use bashBody`...` for multiline scripts so
+  /** Literal text ONLY. Use bash`...` for multiline scripts so
    *  dedented lines point back to the actual template location.
    *  A plain string is supported for single-line bodies only. */
   body: string | BashBody;

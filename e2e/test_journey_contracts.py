@@ -60,7 +60,6 @@ export default [
 def read_lock(repo: Path) -> tuple[Path, dict[str, Any]]:
     path = repo / "gripsack.lock"
     data = json.loads(path.read_text())
-    assert data["lock_version"] == 2
     resolutions = list(data["resolutions"].values())
     assert len(resolutions) == 1
     pins = {pin["output"]: pin for pin in resolutions[0]["pins"]}

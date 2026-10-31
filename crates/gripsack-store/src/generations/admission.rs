@@ -65,6 +65,7 @@ pub(super) fn validate(
         }
     }
     let mut destinations: BTreeMap<String, DestinationClaim<'_>> = BTreeMap::new();
+    let mut jobs = BTreeSet::new();
     for (name, state) in &manifest.deployments {
         if state.build_only
             && (!state.entries.is_empty() || !state.intents.is_empty() || !state.env.is_empty())
@@ -92,6 +93,45 @@ pub(super) fn validate(
             {
                 return Err(invalid(format!(
                     "deployment {name:?}: workspace hook context is outside its retained profile"
+                )));
+            }
+        }
+        for intent in &state.intents {
+            if let crate::activation::ActivationAction::ScheduledJob {
+                job,
+                capture,
+                runner,
+                unit_directory,
+                closure,
+                enabled,
+                ..
+            } = &intent.action
+                && (!enabled
+                    || intent.trigger != crate::ActivationTrigger::PostActivate
+                    || !jobs.insert(job)
+                    || capture.parent() != Some(state.store_path.as_path())
+                    || capture.file_name().is_none()
+                    || !runner.is_absolute()
+                    || !state
+                        .build_closure
+                        .iter()
+                        .any(|root| runner.starts_with(root))
+                    || !closure
+                        .iter()
+                        .all(|root| state.build_closure.contains(root))
+                    || !closure.iter().any(|root| runner.starts_with(root))
+                    || !unit_directory.is_absolute()
+                    || ["service", "timer"].iter().any(|extension| {
+                        let filename = format!("gripsack-job-{job}.{extension}");
+                        !state.entries.iter().any(|entry| {
+                            entry.from == Path::new(&filename)
+                                && Path::new(&entry.to) == unit_directory.join(&filename)
+                                && entry.ownership.policy() == crate::Ownership::TrackedCopy
+                        })
+                    }))
+            {
+                return Err(invalid(format!(
+                    "deployment {name:?}: invalid or unretained scheduled job"
                 )));
             }
         }

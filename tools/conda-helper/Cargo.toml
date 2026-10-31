@@ -8,7 +8,7 @@ exclude = [
 
 [package]
 name = "gripsack-conda-helper"
-version = "0.50.0"
+version = "0.51.0"
 edition = "2024"
 license = "MIT"
 publish = false
@@ -18,11 +18,18 @@ name = "gripsack-conda"
 path = "src/main.rs"
 
 [dependencies]
-gripsack-conda = { version = "0.50.0", path = "../../crates/gripsack-conda" }
-gripsack-ir = { version = "0.50.0", path = "../../crates/gripsack-ir" }
+gripsack-conda = { version = "0.51.0", path = "../../crates/gripsack-conda" }
+gripsack-ir = { version = "0.51.0", path = "../../crates/gripsack-ir" }
 serde_json = "1"
 sha2 = "0.11"
 pixi_manifest = { git = "https://github.com/prefix-dev/pixi", rev = "6f71156de33ac6420522a77f21437ff0a331cb09" }
+pixi_pypi_spec = { git = "https://github.com/prefix-dev/pixi", rev = "6f71156de33ac6420522a77f21437ff0a331cb09" }
+pep508_rs = "=0.9.2"
+# Keep the maintained offline installer and its public type family coherent.
+# No resolver, Python subprocess, or package-owned installation hooks are used.
+uv-install-wheel = "=0.0.98"
+uv-distribution-filename = "=0.0.98"
+uv-pypi-types = "=0.0.98"
 rattler_conda_types = { version = "0.55", default-features = false }
 rattler = { version = "0.51", default-features = false, features = ["rustls"] }
 rattler_lock = { version = "0.34", default-features = false }
@@ -32,6 +39,11 @@ rattler_repodata_gateway = { version = "0.34", default-features = false, feature
 rattler_solve = { version = "10", default-features = false, features = ["resolvo"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "gzip", "stream", "http2"] }
 tokio = { version = "1", features = ["rt", "macros"] }
+
+[dev-dependencies]
+base64 = "0.22"
+tempfile = "3"
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # Preserve the complete pinned Git implementation while isolating its prefix
 # guard from pixi_utils' unused CLI/Python authentication dependencies.

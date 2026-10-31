@@ -9,12 +9,11 @@ import {
   exec,
   file,
   identity,
-  image,
   lit,
   packageCommand,
   pkg,
   profile,
-  recipe,
+  provider,
   task,
   trackedCopyTo,
   workspace,
@@ -24,19 +23,16 @@ import { thrownDiagnostic } from "./diagnostic.ts";
 
 const facts = { os: "linux", arch: "x86_64", libc: null, hostname: "builder" } as const;
 const linux = { os: "linux", arch: "x86_64" } as const;
-const mac = { os: "macos", arch: "aarch64" } as const;
-const hostExecution = { kind: "host", access: "unconfined" } as const;
 const relocatable = { kind: "relocatable" } as const;
 
 function built(name = "tool", target: WorkspacePlatform = linux, layout: PackageLayout = relocatable) {
-  const source = recipe(`${name}-src`, {
-    source: tarball(`https://example.invalid/${name}.tar.gz`),
-    execution: hostExecution,
-    output_kind: "tree",
+  const source = pkg(`${name}-src`, {
+    producer: provider(tarball(`https://example.invalid/${name}.tar.gz`)),
+    commands: {}, layout,
     target,
   });
   const packageValue = pkg(name, {
-    producer: `${name}-src`,
+    producer: provider(tarball(`https://example.invalid/${name}.tar.gz`)),
     commands: { tool: "bin/tool" },
     target,
     layout,
@@ -63,12 +59,6 @@ Deno.test("artifact refs require an actual artifact with both sites reported", (
   );
   assert.equal(diagnostic.labels.length, 2, "reference and declaration spans labeled");
   assert.ok(diagnostic.labels[0]?.span?.line !== diagnostic.labels[1]?.span?.line);
-  const img = image("img", { packages: [], target: linux });
-  const consumer = task("consume", { steps: [exec({ argv: [artifact("img", "manifest")] })] });
-  const imageFailure = thrownDiagnostic(() => emit([img, consumer]), "E126");
-  assert.deepEqual(imageFailure.labels.map((label) => label.span?.line), [
-    consumer.ir.span.line, img.ir.span.line,
-  ]);
 });
 
 Deno.test("check subjects resolve rather than silently becoming opaque names", () => {
@@ -112,22 +102,6 @@ Deno.test("environment values are data, never package commands", () => {
   );
 });
 
-Deno.test("targets bind ABI and minimum OS requirements, not the current host", () => {
-  const { source, packageValue } = built("mac-tool", mac);
-  assert.equal(JSON.parse(emit([source, packageValue])).workspace.outputs.length, 2);
-  const mismatched = pkg("wrong", {
-    producer: "mac-tool-src", commands: { tool: "bin/tool" }, target: linux,
-    layout: relocatable,
-  });
-  const producerMismatch = thrownDiagnostic(() => emit([source, mismatched]), "E126");
-  assert.equal(producerMismatch.labels.length, 2, "consumer and provider spans labeled");
-  const env = environment("dev", { packages: ["mac-tool"], target: linux });
-  const selectionMismatch = thrownDiagnostic(() => emit([source, packageValue, env]), "E126");
-  assert.equal(selectionMismatch.labels.length, 2, "consumer and provider spans labeled");
-  const correct = environment("dev", { packages: ["mac-tool"], target: mac });
-  assert.equal(JSON.parse(emit([source, packageValue, correct])).workspace.outputs.length, 3);
-});
-
 Deno.test("fixed-prefix selection needs a matching environment location", () => {
   const { source, packageValue } = built("pinned", linux, { kind: "fixed_prefix", prefix: "/opt/tool" });
   assert.equal(JSON.parse(emit([source, packageValue])).workspace.outputs.length, 2);
@@ -139,9 +113,6 @@ Deno.test("fixed-prefix selection needs a matching environment location", () => 
   const wrong = environment("dev", { packages: ["pinned"], target: linux, prefix: "/other" });
   const wrongPrefix = thrownDiagnostic(() => emit([source, packageValue, wrong]), "E126");
   assert.equal(wrongPrefix.labels.length, 2);
-  const img = image("container", { packages: ["pinned"], target: linux });
-  const imagePrefix = thrownDiagnostic(() => emit([source, packageValue, img]), "E126");
-  assert.equal(imagePrefix.labels.length, 2);
 });
 
 Deno.test("ABI mismatch and incompatible minimum OS reject with both declarations", () => {

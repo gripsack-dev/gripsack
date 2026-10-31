@@ -1,4 +1,4 @@
-//! Conda helper wire protocol v3: one bounded transaction per process.
+//! Conda helper wire protocol v4: one bounded transaction per process.
 //!
 //! Length-prefixed JSON frames over stdio: an 8-byte little-endian `u64`
 //! length followed by that many bytes of UTF-8 JSON. Every message type uses
@@ -19,7 +19,7 @@ use gripsack_ir::workspace_model::lock::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// The only protocol version this crate speaks.
-pub const PROTOCOL_VERSION: u64 = 3;
+pub const PROTOCOL_VERSION: u64 = 4;
 pub const FRAME_HEADER_BYTES: usize = std::mem::size_of::<u64>();
 
 /// Hard cap on one request frame: 32 MiB, i.e. 2× the portable lock cap
@@ -171,6 +171,14 @@ pub struct MaterializedPackage {
     pub conda_meta: String,
 }
 
+/// Advisory installed-wheel receipt, independently reconstructed by the core.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MaterializedWheel {
+    pub name: String,
+    pub wheel_meta: String,
+}
+
 /// `materialized` response. Advisory only: the core re-validates the tree.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -180,6 +188,7 @@ pub struct MaterializedResponse {
     pub platform: String,
     pub final_prefix: String,
     pub packages: Vec<MaterializedPackage>,
+    pub wheels: Vec<MaterializedWheel>,
 }
 
 /// `error` response for a failed request (`attempt` echoes the request when
@@ -419,7 +428,7 @@ mod tests {
 
     #[test]
     fn unknown_fields_are_rejected() {
-        let raw = br#"{"protocol":3,"payload":{"kind":"resolve","attempt":1,"channels":[],"packages":{},"platform":"linux-64","virtual_packages":[],"system_requirements":{},"bogus":1}}"#;
+        let raw = br#"{"protocol":4,"payload":{"kind":"resolve","attempt":1,"channels":[],"packages":{},"platform":"linux-64","virtual_packages":[],"system_requirements":{},"bogus":1}}"#;
         let mut frame = Vec::new();
         frame.extend_from_slice(&(raw.len() as u64).to_le_bytes());
         frame.extend_from_slice(raw);

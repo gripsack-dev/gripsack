@@ -3,7 +3,7 @@
 mod ergonomics;
 mod file_checks;
 mod graph;
-mod image;
+mod service;
 mod values;
 use crate::{Diagnostic, Span, codes, workspace_model::*};
 use std::collections::{BTreeMap, BTreeSet};

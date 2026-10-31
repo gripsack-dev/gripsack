@@ -71,17 +71,14 @@ enum Command {
         /// Overwrite foreign/drifted tracked_copy destinations
         #[arg(long)]
         take_over: bool,
+        /// Execute an exact saved review; never re-evaluate changed source.
+        #[arg(long, conflicts_with_all = ["host", "profiles", "take_over"])]
+        saved_plan: Option<PathBuf>,
     },
-    /// Realize named workspace recipes/packages into the native store.
-    /// Linux production is submitted as one checked BuildKit subgraph.
+    /// Acquire named direct workspace packages into the native store.
     Build(commands::BuildArgs),
-    /// Inspect, stop or clean the recorded owned Linux builder.
-    Builder {
-        #[command(subcommand)]
-        command: commands::BuilderCommand,
-    },
     /// Validate a workspace catalog without host activation.
-    /// The provisioned frontend may be prepared; no builder starts.
+    /// The provisioned frontend may be prepared; no package execution occurs.
     Check {
         /// Workspace lock identity (default: configured host or hostname)
         #[arg(long)]
@@ -105,6 +102,12 @@ enum Command {
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
+        /// Save a private host-bound plan for explicit later application.
+        #[arg(long, conflicts_with = "ir")]
+        save: Option<PathBuf>,
+        /// Emit the same planned operations as a structured JSON report.
+        #[arg(long, conflicts_with = "save")]
+        json: bool,
     },
     /// Flip `current` back to a previous generation
     Rollback {
@@ -117,11 +120,49 @@ enum Command {
     Shell(commands::ShellArgs),
     /// Invoke a named development task once (no generation)
     Task(commands::TaskArgs),
+    /// Start owned, digest-pinned containers and wait for readiness.
+    Up(commands::services::UpArgs),
+    /// Stop/remove owned containers, retaining all named data volumes.
+    Down(commands::services::DownArgs),
+    /// Inspect recorded service state and bounded application logs.
+    Services(commands::services::ServiceArgs),
+    /// Inspect and manage captured systemd user jobs.
+    Jobs(commands::jobs::JobsArgs),
+    /// Inspect, sign and transfer passive portable packages.
+    Package(commands::package::PackageArgs),
+    /// Compare offline captured meaning without evaluation or execution.
+    Diff {
+        before: String,
+        after: String,
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Capture an offline semantic snapshot.
+    Snapshot {
+        selector: String,
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Explain exact configuration byte changes without rewriting either file.
+    DiffConfig {
+        before: PathBuf,
+        after: PathBuf,
+        #[arg(long, value_parser = ["json", "toml", "bytes"])]
+        format: String,
+        #[arg(long)]
+        local_values: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Execute an exact retained package for a generated command projection.
     #[command(name = "__package-command", hide = true)]
     RetainedPackage(commands::PackageCommandArgs),
     /// Update grip itself: tarball installs self-update in place;
-    /// brew/cargo/mise installs get their manager's command
+    /// cargo/mise installs get their manager's command
     SelfUpdate(commands::self_update::SelfUpdateArgs),
     /// Refresh source pins and captured workspace frontend/import pins
     Update {
@@ -195,13 +236,20 @@ fn main() -> ExitCode {
         Command::Adopt { .. } => "Adopt",
         Command::Apply { .. } => "Apply",
         Command::Build(_) => "Build",
-        Command::Builder { .. } => "Builder",
         Command::Check { .. } => "Check",
         Command::Plan { .. } => "Plan",
         Command::Rollback { .. } => "Rollback",
         Command::Run(_) => "Run",
         Command::Shell(_) => "Shell",
         Command::Task(_) => "Task",
+        Command::Up(_) => "Up",
+        Command::Down(_) => "Down",
+        Command::Services(_) => "Services",
+        Command::Jobs(_) => "Jobs",
+        Command::Package(_) => "Package",
+        Command::Diff { .. } => "Diff",
+        Command::Snapshot { .. } => "Snapshot",
+        Command::DiffConfig { .. } => "DiffConfig",
         Command::RetainedPackage(_) => "PackageCommand",
         Command::SelfUpdate(_) => "SelfUpdate",
         Command::Update { .. } => "Update",
@@ -224,6 +272,47 @@ fn main() -> ExitCode {
     let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());
     match command {
         Command::Doctor => commands::doctor(palette),
+        Command::Up(args) => commands::services::up(args, palette),
+        Command::Down(args) => commands::services::down(args),
+        Command::Services(args) => commands::services::services(args),
+        Command::Jobs(args) => commands::jobs::jobs(args),
+        Command::Package(args) => commands::package::package(args),
+        Command::Diff {
+            before,
+            after,
+            repo,
+            json,
+        } => commands::review::diff(&before, &after, &repo, json),
+        Command::Snapshot {
+            selector,
+            repo,
+            out,
+        } => commands::review::capture(&selector, &repo, &out),
+        Command::DiffConfig {
+            before,
+            after,
+            format,
+            local_values,
+            json,
+        } => commands::review::config(&before, &after, &format, local_values, json),
+        Command::Apply {
+            saved_plan: Some(path),
+            repo,
+            ..
+        } => match commands::resolve_repo(repo.as_deref()) {
+            Ok(repo) => commands::saved_plan::apply(&repo, &path, palette),
+            Err(code) => code,
+        },
+        Command::Plan {
+            save: Some(path),
+            host,
+            profiles,
+            repo,
+            ..
+        } => match commands::resolve_repo(repo.as_deref()) {
+            Ok(repo) => commands::saved_plan::save(&repo, host, profiles, &path, palette),
+            Err(code) => code,
+        },
         Command::Adopt {
             path,
             name,
@@ -245,6 +334,7 @@ fn main() -> ExitCode {
             repo,
             profiles,
             take_over,
+            saved_plan: None,
         } => match commands::resolve_repo(repo.as_deref()) {
             Ok(repo) => commands::apply(
                 &repo,
@@ -262,7 +352,6 @@ fn main() -> ExitCode {
             Ok(repo) => commands::build(&repo, args, palette),
             Err(code) => code,
         },
-        Command::Builder { command } => commands::builder(command),
         Command::Check { host, repo, json } => match commands::resolve_repo(repo.as_deref()) {
             Ok(repo) => {
                 let sink = if json {
@@ -316,13 +405,16 @@ fn main() -> ExitCode {
         Command::Plan {
             ir: Some(path),
             profiles,
+            json,
             ..
-        } => commands::plan_ir(&path, &profiles, palette),
+        } => commands::plan_ir(&path, &profiles, palette, json),
         Command::Plan {
             ir: None,
             host,
             profiles,
             repo,
+            save: None,
+            json,
         } => {
             let repo = match commands::resolve_repo(repo.as_deref()) {
                 Ok(r) => r,
@@ -333,9 +425,11 @@ fn main() -> ExitCode {
                 Ok(o) => o,
                 Err(code) => return code,
             };
-            let repository = gripsack_exec::Repository::evaluated(
+            let repository = gripsack_exec::Repository::evaluated_with_inputs(
                 std::sync::Arc::clone(&outcome.sources),
                 outcome.receipt,
+                outcome.host_inputs.facts.clone(),
+                outcome.host_inputs.probes.clone(),
             );
             // the same validation pipeline check/apply run (0033 R5):
             // a plan that succeeds where apply would fail is a lie
@@ -349,6 +443,15 @@ fn main() -> ExitCode {
                 &mut sink,
             ) {
                 return code;
+            }
+            if json {
+                return commands::review::plan(
+                    &ir,
+                    &repository,
+                    &profiles,
+                    outcome.fetch.limits(),
+                    true,
+                );
             }
             // host-inputs header (0013 D6): the facts that went in and
             // the probes the core bound — what keeps hardware-reactive

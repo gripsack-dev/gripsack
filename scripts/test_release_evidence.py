@@ -197,30 +197,20 @@ class EvidenceTests(unittest.TestCase):
         self.log("installer", "updated_version", [self.updated, "--version"], f"grip {self.version}\n")
 
     def setup_helpers(self):
-        conda, bridge = self.root / "conda-consumer", self.root / "bridge-consumer"
+        conda = self.root / "conda-consumer"
         for relative in ("gripsack.ts", "gripsack.lock"):
             self.put("conda-consumer/" + relative, self.external_files["workspaces/conda/" + relative])
-        for relative in ("gripsack.ts", "source/greeter.c"):
-            self.put("bridge-consumer/" + relative, self.recipes["examples/workspaces/03-source-built/" + relative])
         self.surfaces["default_helpers"]["data"] = {"installed": {},
             "conda_lock": evidence.reference(self.root, conda / "gripsack.lock"),
-            "conda_output": self.ref("home/.gs/store/conda/bin/rg", b"synthetic ripgrep output"),
-            "bridge_output": self.ref("home/.gs/store/bridge/bin/greeter", b"synthetic compiled output")}
-        for role, filename in (("conda", "gripsack-conda"), ("bridge", "bridge")):
-            original = next(a for a in self.manifest["artifacts"] if a["role"] == role)
-            namespace = "conda-helper" if role == "conda" else "buildkit-bridge"
-            self.surfaces["default_helpers"]["data"]["installed"][role] = self.ref(
-                f"home/.gs/tools/{namespace}-{self.version}/{filename}", (self.root / original["path"]).read_bytes())
+            "conda_output": self.ref("home/.gs/store/conda/bin/rg", b"synthetic ripgrep output")}
+        original = next(a for a in self.manifest["artifacts"] if a["role"] == "conda")
+        self.surfaces["default_helpers"]["data"]["installed"]["conda"] = self.ref(
+            f"home/.gs/tools/conda-helper-{self.version}/gripsack-conda", (self.root / original["path"]).read_bytes())
         self.approve("default_helpers", "conda", conda)
         report = {"ok": True, "host": {"os": "linux", "arch": "x86_64"}, "outputs": [{"name": "ripgrep", "kind": "package"}]}
         self.log("default_helpers", "conda_check", [self.installed, "check", "--json"], json.dumps(report), cwd=conda)
         self.log("default_helpers", "conda_build", [self.installed, "build", "ripgrep", "--json"], json.dumps({"outputs": [{"name": "ripgrep", "kind": "package", "path": str(self.root / "home/.gs/store/conda")}]}), cwd=conda)
         self.log("default_helpers", "conda_run", [self.installed, "run", "--env", "search", "--", "rg", "^needle$"], "needle\n", cwd=conda)
-        self.approve("default_helpers", "bridge", bridge)
-        self.log("default_helpers", "bridge_lock", [self.installed, "update"], cwd=bridge)
-        self.log("default_helpers", "bridge_build", [self.installed, "build", "greeter", "--json"], json.dumps({"outputs": [{"name": "greeter", "kind": "package", "path": str(self.root / "home/.gs/store/bridge")}]}), cwd=bridge)
-        self.log("default_helpers", "bridge_run", [self.installed, "task", "run", "smoke"], "hello from greeter\n", cwd=bridge)
-        self.log("default_helpers", "bridge_stop", [self.installed, "builder", "stop"], cwd=bridge)
 
     def setup_sdk(self):
         package = self.manifest["packages"][0]
@@ -363,7 +353,7 @@ class EvidenceTests(unittest.TestCase):
             self.verify()
 
     def test_absent_helper_and_packed_sdk_execution_are_rejected(self):
-        self.surfaces["default_helpers"]["data"]["installed"].pop("bridge")
+        self.surfaces["default_helpers"]["data"]["installed"].pop("conda")
         with self.assertRaisesRegex(ValueError, "absent default helper"):
             self.verify()
         self.setup_helpers_reset()
@@ -374,6 +364,20 @@ class EvidenceTests(unittest.TestCase):
     def setup_helpers_reset(self):
         self.surfaces["default_helpers"]["commands"] = []
         self.setup_helpers()
+
+    def test_wrong_default_conda_bytes_are_rejected(self):
+        data = self.surfaces["default_helpers"]["data"]
+        path = self.root / data["installed"]["conda"]["path"]
+        path.write_bytes(b"wrong helper")
+        data["installed"]["conda"] = evidence.reference(self.root, path)
+        with self.assertRaisesRegex(ValueError, "wrong default helper bytes"):
+            self.verify()
+
+    def test_missing_conda_execution_is_rejected(self):
+        surface = self.surfaces["default_helpers"]
+        surface["commands"] = [c for c in surface["commands"] if c["step"] != "conda_run"]
+        with self.assertRaisesRegex(ValueError, "executed consumer steps"):
+            self.verify()
 
     def test_stale_site_binding_is_pending_not_complete(self):
         ref = self.surfaces["site"]["data"]["binding"]

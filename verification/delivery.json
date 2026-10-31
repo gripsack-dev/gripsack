@@ -79,8 +79,509 @@
    "reviewed_without_exclusion": {"A1-07": [1], "A1-08": [5]},
    "retained": "fuzz workspace dependency policy, ordinary schema/type/emitter and deterministic hostile-context regressions, boundary/property, Go race, fault, model, Verus/TLAPS and persistence obligations",
    "meaning": "projected closure is not original fuzz completion; original inventories, historical evidence, runners and corpora remain intact"
+  },
+  {
+   "id": "PRODUCT-LINUX-NATIVE-2026-10-28",
+   "authority": "explicit owner amendment 2026-10-28; plan/0048 owner-scope register",
+   "active_support": [
+    "Linux x86_64",
+    "WSL2 Linux x86_64 execution environment"
+   ],
+   "retired_products": [
+    "Mac",
+    "Homebrew",
+    "BuildKit",
+    "source-to-Conda production",
+    "Gripsack image production"
+   ],
+   "retired_requirements": [
+    "A0-01",
+    "A4-01",
+    "A4-02",
+    "A4-03",
+    "A7-01",
+    "A7-02",
+    "B0-01",
+    "B0-02",
+    "B0-03",
+    "B0-04",
+    "B1-01",
+    "B1-02",
+    "B1-03",
+    "B1-04",
+    "B1-05",
+    "B2-01",
+    "B2-02",
+    "B2-03",
+    "B2-04",
+    "B2-05",
+    "B2-06",
+    "B2-07",
+    "B3-01",
+    "B3-02",
+    "B3-03",
+    "B3-04",
+    "B3-05",
+    "B4-01",
+    "B4-02",
+    "B4-03",
+    "B4-04",
+    "B5-01",
+    "B5-02",
+    "B5-03",
+    "B5-04",
+    "B5-05",
+    "B5-06",
+    "B6-01",
+    "B6-02",
+    "B6-03",
+    "B6-04",
+    "B6-05"
+   ],
+   "retired_milestones": [
+    "A0",
+    "A4",
+    "A7",
+    "B0",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6"
+   ],
+   "retired_lanes": [
+    "cross-target",
+    "linux-image",
+    "protocol-fuzz-race",
+    "remote-worker"
+   ],
+   "prerequisite_projection": {"A1": {"common_prerequisites": ["H0"]}},
+   "case_projection": {
+    "A3-04": {"2": "legacy execution paths retire after native Linux replacement parity; retained-state readers preserve original receipts"},
+    "A5-05": {"0": "legacy Module, fetch/build/install/config, env, activation and preflip verification map to supported native owners and stages or explicit source-located migration refusal, without duplicate runtime"},
+    "E3-02": {
+     "1": "foreign systemd unit collision or drift refuses overwrite/delete; installation never adopts an unrelated manager job",
+     "2": "failed preparation leaves old revision intact; interrupted file publication, systemd registration and reload reconcile to honest active/disabled/unknown state"
+    },
+    "C1-02": {
+     "2": "argv, PATH, overlay, script and array order remain meaningful; unordered maps normalize, and native pin/import/policy changes affect the correct consumers",
+     "3": "native package, portable artifact, selected consumer and exact stored bytes retain distinct typed identities; historical producer identities retain their stored meaning"
+    },
+    "G-04": {
+     "0": "review applicable native A, C, D and E responsibility and dependency direction before calling a slice landed"
+    },
+    "G-05": {
+     "3": "native acquisition, check and preview never bootstrap retired builder components or execute effects merely to present a plan"
+    },
+    "A1-01": {
+     "0": "current schema/Rust/TypeScript writer and reader conform across supported native output kinds; historical strict stored readers preserve original meaning",
+     "4": "unsupported retired production declarations reject before activation or builder bootstrap"
+    },
+    "A1-02": {
+     "0": "decoded package/check/task/output references reject missing and wrong kinds with declaration spans",
+     "2": "runtime and task-prerequisite cycles reject with declaration spans; validation edges remain mandatory publication gates",
+     "3": "package/environment target and ABI mismatches reject with both declaration spans; fixed-prefix consumers declare compatible destinations",
+     "4": "ordered local commands remain distinct from runtime, task prerequisite, validation and retention roles",
+     "5": "versioned native workspace graph adapters preserve required checks through the production policy kernel"
+    },
+    "A1-03": {
+     "4": "native command host access stays explicit and hooks retain post_link/post_activate/on_remove lifecycle semantics"
+    },
+    "A1-04": {
+     "0": "raw archive, canonical tree, native package, workspace lock and OCI artifact envelope use distinct digest domains; provenance locations and labels are not semantic inputs",
+     "1": "native package pins, platform/ABI/layout and enforcement changes invalidate only affected identities",
+     "2": "equivalent declarations and diagnostic-only edits preserve native identities while ordered argv/PATH/action edits do not",
+     "3": "moving a compatible package between project and personal profile or changing deployment path cannot change its immutable identity"
+    },
+    "A1-05": {
+     "0": "versioned workspace lock pins target/platform resolution and imported frontend libraries with complete transitive acquisition and ecosystem records",
+     "2": "transitive package/import pin and captured declaration bytes invalidate affected plan identity; local cache paths and lease state do not",
+     "3": "bounded dirty-worktree/import snapshot binds admitted bytes and facts/probes before effects; development Tasks retain explicit live writable checkout"
+    },
+    "A1-06": {
+     "4": "read-only check/preview starts neither a builder nor a scheduler; unavailable capabilities fail at their declaration with actionable diagnostics"
+    },
+    "A1-07": {
+     "0": "AGENTS, plan STATUS and module ownership agree on current authoring and retained strict historical readers",
+     "3": "current and historical schema/parser acceptance covers supported native output kinds and negative drift; ordinary TypeScript type/emitter regressions remain required",
+     "4": "protected CI runs source inventory validation and architecture checks; selected practical reports bind required cases and lanes to exact source"
+    },
+    "A1-08": {
+     "0": "schema/Rust/TS executable and host-path distinctions share one exec/run_bash grammar for native owners; cwd and typed argv retain distinct roles",
+     "2": "unsupported task or schedule capabilities reject before effects at their declaration; implemented capabilities require actual native evidence",
+     "3": "typed command references imply their artifacts; artifact/package_command references resolve against the catalog with source-aware errors",
+     "4": "package identity, consumer selection and Task invocation remain distinct; consumer/invocation changes cannot grant new production authority",
+     "5": "decoded IR rejects forbidden phase grants and edge roles for native Task, hook, check and schedule owners with declaration spans and deterministic hostile-context regressions"
+    },
+    "A1-09": {
+     "1": "moving an unchanged declaration between modules or changing its diagnostic label preserves native semantics while a real script/action-order edit does not",
+     "2": "ordered command lists, Task prerequisites, package runtime refs, validators and hook intents retain distinct lifecycles",
+     "3": "forged phase/context flags cannot grant Task or host effects; unsupported production variants reject with declaration spans"
+    },
+    "A1-10": {
+     "1": "graduated native TypeScript workspace examples type-check and are admitted by the shipped CLI without hostname shims or executor effects",
+     "2": "ordered local commands remain distinct from named Task prerequisites and checked schedule bindings",
+     "5": "shared command construction preserves native validation, task-postcondition and hook lifecycles plus literal Bash source maps"
+    },
+    "A1-12": {
+     "3": "host mutation exclusion grants no backend, network or credential authority"
+    },
+    "A2-01": {
+     "3": "acquiring a package neither switches a personal generation nor invokes activation hooks or provisions a builder"
+    },
+    "A2-03": {
+     "0": "actual parser/constructor traces cover retained generations, project selections, process leases, typed job roots and unfinished recovery roots"
+    },
+    "A2-07": {
+     "2": "one compatible typed package command serves project and profile consumers without accidental personal activation or builder bootstrap",
+     "3": "generic downloads do not masquerade as coherent Conda environments; A3 retains ecosystem-specific success and rejection obligations"
+    },
+    "A5-02": {
+     "0": "terminal and JSON explain native pins and changed semantic package, command or configuration input from actual plan, lock and durable receipts"
+    },
+    "A5-04": {
+     "1": "graduated dotfiles, downloaded-tool and manual-Task examples are admitted and execute on native Linux x86_64"
+    },
+    "A5-06": {
+     "2": "typed source/rendered-content/destination, stage-aware checks, pure locks and Conda/Pixi providers work through real native project and profile consumers"
+    },
+    "A5-07": {
+     "2": "native journeys work without BuildKit, Lima or a mandatory Gripsack resident daemon; manager ownership limits stay truthful",
+     "3": "installed schedule journeys remain separately required at E3/E5 and are not claimed by manual native runs; source production is retired"
+    },
+    "A6-01": {
+     "3": "source archives and editable records reject; no source-to-Conda builder or silent source execution is offered"
+    },
+    "E0-01": {
+     "1": "inventory applicable native manual-task and calendar scenario families separately from retired source/VM cases"
+    },
+    "E1-02": {
+     "2": "Task artifact needs use the shared native realization API; completed host tasks are not immutable packages"
+    },
+    "E1-03": {
+     "3": "required package validators remain publication gates and cannot be discharged by cached Task success or postconditions"
+    },
+    "E1-06": {
+     "2": "read-only preview cannot fetch, register a job or execute commands; missing inputs and unsupported capabilities diagnose before effects"
+    },
+    "E1-07": {
+     "1": "failure/cancellation prevents successor commands and ordered postconditions; label-only moves preserve native identity while command reordering changes it",
+     "2": "pure scope/key mutation locks deduplicate and conflict with both source sites; namespaces do not alias or grant resource authority",
+     "4": "Task, check and hook owners admit only their own command contexts; forged phase/cache-control IR rejects before effects"
+    },
+    "E3-04": {
+     "3": "cache removal never breaks a retained job; a systemd unit file is not the only durable root record"
+    },
+    "E4-01": {
+     "0": null,
+     "2": "the retained native tool runs after acquisition cache removal; no cached host-task result suppresses a new invocation"
+    },
+    "E4-03": {
+     "1": "failed replacement acquisition or validation retains the old active scheduled job and roots; in-flight runs stay bound to their old revision"
+    },
+    "E4-04": {
+     "0": "typed Task artifact requirements use the common native realization service, without recursive grip or source compilation",
+     "1": "acquisition and validation failures retain declaration and Task provenance; required validators cannot be pruned or replaced by invocation postconditions",
+     "2": "consumers sharing native realization retain independent leases; canceling one Task cannot cancel a still-leased attempt or publish a late canceled result"
+    },
+    "E5-04": {
+     "0": "a retained native Linux maintenance tool runs through actual systemd with per-invocation checks",
+     "3": "no general resident Gripsack daemon, all-formats schedule parser or builder host-task fallback is part of the calendar journey; services are a separate owner addition"
+    },
+    "E5-05": {
+     "2": "only the selected local profile grants registration; package acquisition and Task consumer definitions stay separate and compatible",
+     "3": null,
+     "4": "retained generation/job migration works; examples require only used task/profile/manager concepts with explicit OS limits"
+    },
+    "C0-01": {
+     "1": "map native acquisition, task, ownership and retained-state responsibilities without a second planner, identity or delivery ledger"
+    },
+    "C0-02": {
+     "1": "register Linux x86_64 native comparison lanes; no retired B image-production prerequisite applies"
+    },
+    "C2-01": {
+     "1": "runtime, validation, ordering-only and retention edges produce their documented effects without manufacturing content dependencies"
+    },
+    "C2-02": {
+     "1": "package pin and script changes affect the correct identities; trust/platform changes alter eligibility and validation",
+     "2": "changed package inputs report needs-realization rather than guaranteed execution or cache hit; selected bytes and runtime layout stay separate",
+     "3": "required native validators and unknown evidence remain visible even when no public output file changes"
+    },
+    "C2-05": {
+     "1": "package pin changes may require native realization and a new prepared revision; module-location-only changes stay provenance-only"
+    },
+    "C2-06": {
+     "0": "template-variable and declared native-input edits invalidate rendered consumers; unrelated dotfiles do not rebuild a tool"
+    },
+    "C3-01": {
+     "2": "native diff/plan works with all BuildKit/VM binaries absent; retired image production is not a prerequisite"
+    },
+    "C3-03": {
+     "0": "pure native snapshot comparison performs no repo eval, dependency acquisition, manager operation, host write or activation",
+     "2": "historical snapshots compare without Deno, builder or registry and enforce byte/depth/graph/time/output bounds"
+    },
+    "C4-03": {
+     "0": "artifact-bound plan requires exact admitted manifest/tree/target receipt; unresolved native realization remains explicitly unknown and retains required validators",
+     "2": "unavailable native workload capability fails without secretly granting host mode, force, takeover or bearer authority",
+     "3": "execution uses existing protected publication, transaction, activation and hook replay; arbitrary command or hook effects are not reversible"
+    },
+    "C5-01": {
+     "0": "two real project/worktree selections and an independent profile compare retained and proposed native receipts without a duplicate planner",
+     "1": "captured declaration, transitive pin, environment/PATH-only and runtime library edits yield distinct selected impact and realization explanations",
+     "3": "terminal/JSON predictions agree with executed native package/profile operations, protected receipts and rollback on Linux"
+    },
+    "C5-02": {
+     "1": "native Linux compare cases execute with actual source/result identities"
+    },
+    "C5-03": {
+     "0": "executed CLI/examples explain native/project pin changes, incomplete historical comparisons and actionable migrated old-state behavior",
+     "3": "all applicable native C0-C5 cases and essential global gates need independent evidence before product completion; retired B image cases do not"
+    },
+    "C5-04": {
+     "0": "real native Linux Task and installed job compare old and proposed captured revisions with actual manager/package receipts"
+    },
+    "D0-01": {
+     "0": "record applicable native A/C/E and sharing contracts/revisions without losing generation, store, planner or trust semantics"
+    },
+    "D0-02": {
+     "5": "fixed-prefix exact-match success and different-prefix refusal stay distinct from unrestricted relocation"
+    },
+    "D1-02": {
+     "2": "acquisition-only provenance is not runtime authority; all declared libraries, interpreters, plugins and data remain runtime requirements"
+    },
+    "D2-01": {
+     "2": "spaces and moved-root paths work with producer source, home and cache unavailable"
+    },
+    "D2-04": {
+     "1": null
+    },
+    "D4-01": {
+     "0": "a real signed package on an independent recipient with empty store and inaccessible producer/cache binds exact selected package/check/target policy and receipt",
+     "1": "eligible local trust and verified payload permit native process/project/profile consumption with no local source compilation",
+     "2": "absent or changed publisher authority, missing runtime roots or incompatible results cannot turn a candidate digest into authorization"
+    },
+    "D4-02": {
+     "0": "wrong package pin/lock/result, target/ABI/layout, enforcement, required checks, publisher namespace or current trust refuse substitution",
+     "2": "require-published miss fails explicitly; any permitted native acquisition fallback remains fully declared and validated",
+     "3": "no cache or unsupported platform request silently grants source compilation or weaker host authority"
+    },
+    "D4-03": {
+     "1": "required executable validators run under admitted native consumer policy and cannot be replaced by publisher text or prior Task success"
+    },
+    "D5-03": {
+     "1": null
+    },
+    "D5-04": {
+     "0": "different candidate native results retain distinct tree/result identities and cannot overwrite retained immutable data",
+     "1": "a frozen selected result stays pinned through recipient import/update despite a later candidate",
+     "3": "signing an archive or one clean fixture does not imply arbitrary byte-identical materialized prefixes"
+    },
+    "D6-01": {
+     "5": null
+    },
+    "D6-02": {
+     "0": "one real CLI/JSON semantic report explains selected native acquisition or verified publisher substitution and rejected publisher/layout/target"
+    },
+    "D6-03": {
+     "0": "native Linux and private-registry independent-client jobs run on exact released source with documented dependencies"
+    },
+    "D6-05": {
+     "0": "a retained native Linux tool is imported by independent recipients at different roots with producer store, registry and cache inaccessible"
+    }
+   },
+   "retained": "native task, ownership, retention, trust and consumer semantics; OCI Distribution artifact sharing and running existing images remain required and distinct from retired image production",
+   "history": "all original IDs, fields, statuses, reports and source fingerprints remain unchanged; no retirement is verification"
+  },
+  {
+   "id": "REL-PRACTICAL-051-2026-10-28",
+   "authority": "explicit owner amendment 2026-10-28; LOCAL-PRACTICAL-QUALIFICATION-2026-10-28; plan/0048",
+   "optional_requirements": [
+    "G-03"
+   ],
+   "optional_lanes": [
+    "fuzz",
+    "platform-time",
+    "proofs",
+    "tlc",
+    "verus-amd64"
+   ],
+   "optional_checks": [
+    "formal proofs",
+    "model checking",
+    "fuzz campaigns",
+    "exhaustive persistence campaigns",
+    "clean-build reproducibility campaigns",
+    "delivery checker calibration",
+    "disruptive native sleep/wake, logout/login, reboot and clock/DST campaigns"
+   ],
+   "optional_disposition": "not_required_by_default; run only on explicit owner request; unrun is not passing",
+   "essential_checks": [
+    "Rust",
+    "TypeScript",
+    "ordinary flows",
+    "dependency audits",
+    "packaging",
+    "installed consumers",
+    "real smokes for changed behavior",
+    "source inventory validation"
+   ],
+   "case_projection": {
+    "H0-02": {
+     "2": "pending runtime and optional assurance remain explicit; selected practical closure still requires applicable registry and native-manager cases"
+    },
+    "G-02": {
+     "0": "register each selected practical lane's positive and negative cases and expected execution counts before judging results",
+     "1": "actual selected runner commands, nonempty source-bound reports, pass/fail/skip counts and case coverage agree"
+    },
+    "G-08": {
+     "1": "no pending, blocked or implemented-unverified selected product requirement is reported complete; optional assurance is reported separately"
+    },
+    "A1-01": {
+     "5": null
+    },
+    "A1-02": {
+     "6": "ordinary graph/closure regressions reject lost mandatory validation edges"
+    },
+    "A1-03": {
+     "5": "ordinary normalization regressions check fluent/object equivalence and reject changed command semantics"
+    },
+    "A1-04": {
+     "4": "ordinary schema/serialization/admission regressions preserve native equivalence, invalidation and typed digest boundaries"
+    },
+    "A1-05": {
+     "5": "production lock/plan admission, historical stored locks and source-bound negative regressions remain required"
+    },
+    "A1-06": {
+     "6": "diagnostic registry parity, positive/negative runner reports and selected source-bound CI lanes remain required"
+    },
+    "A1-10": {
+     "6": "ordinary normalization/provenance regressions and protected CI cover the supported authoring surface"
+    },
+    "A1-11": {
+     "9": "ordinary source/content normalization and file-ownership policy regressions exercise actual production operations and trusted boundaries"
+    },
+    "A1-12": {
+     "5": "ordinary lock normalization/admission and typed emitter/parser regressions reject conflicts and incorrect mutation grants"
+    },
+    "A2-02": {
+     "3": null,
+     "4": "real parsed receipts, locks, platforms, prefixes and validators exercise publication admission; ordinary crash/fault regressions reject publication before validation"
+    },
+    "A2-03": {
+     "3": "production root adapters agree with actual parsed receipts; ordinary omitted-runtime-root regressions reject missing retained dependencies"
+    },
+    "A2-06": {
+     "5": "ordinary ownership/merge/graph regressions agree with real emitted operations and reject wrong source origins, cached foreign merges and lost checks"
+    },
+    "A2-P-02": {
+     "3": "ordinary composition/admission regressions reject conflicting operations at their production boundary"
+    },
+    "A2-P-03": {
+     "2": "real process/GC regressions exercise lifetime and publication decisions",
+     "3": "ordinary regressions reject dropped runtime roots, premature release and accidental personal-generation mutation"
+    },
+    "A3-03": {
+     "4": "ordinary helper admission regressions bind success to the live attempt instead of trusting a success flag"
+    },
+    "A5-04": {
+     "0": "all selected native A/A2-P cases and essential global gates require source-bound implementation/runtime evidence; optional assurance is separate"
+    },
+    "E0-01": {
+     "3": "optional production proof targets remain inventoried separately, without asserting they ran"
+    },
+    "E1-05": {
+     "0": "ordinary production task admission regressions cover edges, prerequisite readiness, postcondition gating and lock conflicts",
+     "1": null,
+     "2": "ordinary diamond/parameter/late-event graph and real decoded-IR, scheduler and lock regressions agree",
+     "3": "ordinary negative regressions reject omitted artifact edges, false prerequisites, accepted conflicts and lost failures"
+    },
+    "E1-07": {
+     "5": "ordinary readiness/conflict regressions cover action-list and lock boundaries without a parallel universal Step runtime"
+    },
+    "E3-05": {
+     "0": null,
+     "1": null,
+     "2": "ordinary decoded-job/journal admission, lease and root regressions exercise actual registration and launch boundaries",
+     "3": "ordinary stale-launch, early-root-release, omitted-runtime-root and false-success regressions reject with native manager evidence"
+    },
+    "E5-01": {
+     "1": null,
+     "2": "OS/version/user-scope differences and ordinary long-running/coalesced job observations remain visible; unrun disruptive sleep/wake, logout/login, reboot and clock/DST campaigns remain explicit optional assurance, with no portable or exactly-once timing guarantee"
+    },
+    "E5-02": {
+     "3": "schema, Rust/TS, essential practical gates and native Linux evidence bind exact source without skipped selected cases"
+    },
+    "E5-03": {
+     "0": "all selected native E cases, ordinary systemd manager lifecycle lanes and essential global gates require current-source results",
+     "1": null,
+     "3": "missing selected systemd registration, calendar invocation, update, disable, rollback, GC, unsupported timing-policy admission or exact-byte translation evidence rejects; optional disruptive timing campaigns and proof/fuzz remain separately unrun, not passing"
+    },
+    "C0-02": {
+     "2": "freeze report/JSON/exit completeness, ordinary positive/negative cases and resource budgets; optional proof inventories are separate"
+    },
+    "C1-04": {
+     "0": "ordinary production equivalence/admission regressions check semantic equality, byte-envelope distinction and invalid fields",
+     "2": "ordinary independent semantic regressions cover equivalent forms, order and unknown-as-equal rejection",
+     "3": "parser/field completeness, cryptographic assumptions and arbitrary TypeScript determinism remain explicit limits"
+    },
+    "C1-06": {
+     "3": "ordinary decoder regressions reject wrong source-origin/lock/check semantics without a parallel comparator"
+    },
+    "C2-04": {
+     "0": "ordinary production impact regressions cover typed old/new graph relations",
+     "2": "ordinary dropped-edge/runtime/validator regressions reject at the actual consumer boundary",
+     "3": "graph correctness is not a claim that the filesystem supplied a complete snapshot"
+    },
+    "C4-05": {
+     "0": "ordinary saved-plan admission regressions require reviewed scope and exact identity before effects",
+     "1": null,
+     "2": null,
+     "3": "ordinary source/lock/receipt/session regressions reject stale tokens and changed trust",
+     "4": "filesystem races, hashes and OS durability remain explicit tested/trusted boundaries"
+    },
+    "C5-02": {
+     "0": "fresh essential practical gates and exact-source CI exercise ordinary semantic comparison and saved-plan regressions",
+     "2": "ordinary graph/decoder regressions reject unknown-equal, PATH reorder, removed edges, stale bindings and silent truncation",
+     "4": "missing selected Linux or oversized-data cases remain open; optional proof/fuzz and retired B image work are not substituted passes"
+    },
+    "D0-03": {
+     "4": "register ordinary production-admission, independent interoperability and Linux qualification cases; optional proof catalogs remain separate"
+    },
+    "D1-04": {
+     "0": "ordinary production closure/admission regressions check runtime reachability, DAG and target/layout compatibility with explicit external ABI limits",
+     "2": "ordinary regressions reject dropped runtime roots, build-only-as-runtime and mismatched prefixes",
+     "3": "declared closure validation does not claim discovery of every arbitrary binary dependency"
+    },
+    "D4-05": {
+     "0": "ordinary production binding regressions check current publisher scope, package/result/target/layout/check enforcement and terminal attempt authorization",
+     "2": "ordinary lifetime regressions exercise imports, conflicting results, revocation, cancellation, stale export, crash and GC",
+     "3": null,
+     "4": "ordinary negative regressions reject key-ID authority, wrong payload, missing runtime members, warm trust bypass, omitted validators, canceled publication and lost roots"
+    },
+    "D6-03": {
+     "2": null,
+     "4": "missing selected Linux, independent recipient, registry or supported dynamic fixture stays blocked; optional assurance is separate, never a skipped/mock pass"
+    },
+    "D6-04": {
+     "3": "all selected native D cases, dynamic fixtures, registry and essential global gates require actual evidence before sharing product completion"
+    }
+   },
+   "completion": "selected product completion is separate from optional assurance; original 178-row closure proof is not a release prerequisite"
   }
  ],
+ "owner_additions": [
+  {
+   "id": "SERVICES-FIRST-2026-10-28",
+   "authority": "explicit owner addition 2026-10-28; plan/0055",
+   "sequence": "after Bash/task QoL, before calendar scheduling",
+   "scope": "native Linux/WSL2 x86_64 services; distinct from finite tasks and calendar jobs",
+   "status": "implemented_unverified",
+   "evidence": "parent must record actual source-bound practical and native evidence before claiming completion",
+   "edition_5": "separate owner addition, not a retroactive requirement or an added original delivery row"
+  }
+ ],
+ "current_acceptance_policy": "The 2026-10-28 owner amendments supersede historical closure_rules for selected product admission. Preserve all original rows, fields, reports and fingerprints. Retired product work and unrun optional assurance are not passes; original 178-row closure is not a release prerequisite. Essential practical gates and real changed-behavior/native evidence remain required; services are a separate owner addition.",
  "status_values": [
   "pending",
   "in_progress",

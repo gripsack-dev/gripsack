@@ -183,18 +183,162 @@ fn sha256_is_mandatory_and_authenticated_inputs_are_refused() {
 }
 
 #[test]
-fn named_pypi_and_source_records_are_refused_before_conversion() {
-    let wheel = "https://files.pythonhosted.org/packages/fa/2a/7f3714cbc6356a0efec525ce7a0613d581072ed6eb53eb7b9754f33db807/blinker-1.7.0-py3-none-any.whl";
-    let wheel_lock = format!(
-        "version: 6\nenvironments:\n  default:\n    channels: []\n    packages:\n      linux-64:\n      - pypi: {wheel}\npackages:\n- pypi: {wheel}\n  name: blinker\n  version: 1.7.0\n  sha256: c3f865d4d54db7abc53758a01601cf343fe55b84c1de4e3fa910e420b438d5b9\n  requires_python: '>=3.8'\n"
-    );
-    refuses(request(MANIFEST, wheel_lock), "pypi_package", "blinker");
+fn named_conda_source_records_are_refused_before_conversion() {
     // Upstream tests/data/satisfiability/source-dependency/pixi.lock.
     let source_lock = "version: 6\nenvironments:\n  default:\n    channels:\n    - url: https://prefix.dev/pixi-build-backends/\n    - url: https://prefix.dev/conda-forge/\n    packages:\n      linux-64:\n      - conda: child-package\npackages:\n- conda: child-package\n  name: child-package\n  version: 0.1.0\n  build: ''\n  subdir: noarch\n  noarch: false\n  variants:\n    target_platform: noarch\n";
     refuses(
         request(MANIFEST, source_lock.into()),
         "source_package",
         "child-package",
+    );
+}
+
+// Unmodified upstream wheel-with-correct-tags fixture from the same pinned
+// Pixi revision above: CPython 3.14, abi3 cryptography, cffi and pycparser.
+const WHEEL_MANIFEST: &str = include_str!("fixtures/pixi.toml");
+const WHEEL_LOCK: &str = include_str!("fixtures/pixi.lock");
+
+#[test]
+fn real_wheel_lock_preserves_complete_selected_metadata_and_archives() {
+    let environment = import(request(WHEEL_MANIFEST, WHEEL_LOCK.into()));
+    assert_eq!(
+        environment
+            .wheels
+            .iter()
+            .map(|wheel| wheel.name.as_str())
+            .collect::<Vec<_>>(),
+        ["cffi", "cryptography", "pycparser"]
+    );
+    let cryptography = &environment.wheels[1];
+    assert_eq!(cryptography.version, "46.0.3");
+    assert_eq!(
+        cryptography.sha256,
+        "01ca9ff2885f3acc98c29f1860552e37f6d7c7d013d7334ff2a9de43a449315d"
+    );
+    assert!(cryptography.filename.contains("cp311-abi3"));
+    assert!(cryptography.url.ends_with(&cryptography.filename));
+    assert!(cryptography.requires_python.is_some());
+    assert!(
+        cryptography
+            .requires_dist
+            .iter()
+            .any(|requirement| requirement.starts_with("cffi"))
+    );
+    assert!(
+        cryptography
+            .requires_dist
+            .iter()
+            .any(|requirement| requirement.contains("extra =="))
+    );
+    assert!(
+        environment
+            .packages
+            .iter()
+            .any(|package| package.name == "python" && package.version == "3.14.2")
+    );
+}
+
+#[test]
+fn wheel_hash_source_and_editable_admission_names_the_record() {
+    refuses(
+        request(
+            WHEEL_MANIFEST,
+            WHEEL_LOCK.replace(
+                "  sha256: 01ca9ff2885f3acc98c29f1860552e37f6d7c7d013d7334ff2a9de43a449315d\n",
+                "",
+            ),
+        ),
+        "missing_hash",
+        "cryptography",
+    );
+    let old = "cryptography-46.0.3-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl";
+    refuses(
+        request(
+            WHEEL_MANIFEST,
+            WHEEL_LOCK.replace(old, "cryptography-46.0.3.tar.gz"),
+        ),
+        "source_package",
+        "cryptography",
+    );
+    for editable in [false, true] {
+        let source = format!(
+            "version: 6\nenvironments:\n  default:\n    channels: []\n    packages:\n      linux-64:\n      - pypi: ./foo\npackages:\n- pypi: ./foo\n  name: foo\n  version: 0.1.0\n  editable: {editable}\n"
+        );
+        refuses(request(WHEEL_MANIFEST, source), "source_package", "foo");
+    }
+    refuses(
+        request(
+            &WHEEL_MANIFEST.replace(
+                "cryptography = \">=46.0.3, <47\"",
+                "cryptography = { path = './cryptography', editable = true }",
+            ),
+            WHEEL_LOCK.into(),
+        ),
+        "source_package",
+        "cryptography",
+    );
+}
+
+#[test]
+fn incompatible_wheel_tags_and_python_requirements_refuse() {
+    for (lock, name) in [
+        (
+            WHEEL_LOCK.replace("cffi-2.0.0-cp314-cp314", "cffi-2.0.0-cp313-cp313"),
+            "cffi",
+        ),
+        (
+            WHEEL_LOCK.replace(
+                "manylinux2014_x86_64.manylinux_2_17_x86_64",
+                "macosx_11_0_arm64",
+            ),
+            "cffi",
+        ),
+        (
+            WHEEL_LOCK.replace("requires_python: '>=3.9'", "requires_python: '>=3.15'"),
+            "cffi",
+        ),
+    ] {
+        let failure = import_pixi(request(WHEEL_MANIFEST, lock)).unwrap_err();
+        assert!(failure.message.contains(name), "{}", failure.message);
+    }
+}
+
+#[test]
+fn wheel_roots_transitive_versions_extras_and_indexes_must_satisfy_manifest() {
+    refuses(
+        request(
+            &WHEEL_MANIFEST.replace(">=46.0.3, <47", ">=47"),
+            WHEEL_LOCK.into(),
+        ),
+        "unsatisfied_manifest",
+        "cryptography",
+    );
+    refuses(
+        request(
+            WHEEL_MANIFEST,
+            WHEEL_LOCK.replace("cffi>=2.0.0", "cffi>=3.0.0"),
+        ),
+        "unsatisfied_manifest",
+        "cffi",
+    );
+    refuses(
+        request(
+            &WHEEL_MANIFEST.replace(
+                "cryptography = \">=46.0.3, <47\"",
+                "cryptography = { version = '>=46.0.3, <47', extras = ['ssh'] }",
+            ),
+            WHEEL_LOCK.into(),
+        ),
+        "unsatisfied_manifest",
+        "bcrypt",
+    );
+    refuses(
+        request(
+            &format!("{WHEEL_MANIFEST}\n[pypi-options]\nindex-url='https://example.org/simple'\n"),
+            WHEEL_LOCK.into(),
+        ),
+        "unsatisfied_manifest",
+        "indexes",
     );
 }
 

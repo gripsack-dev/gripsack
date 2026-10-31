@@ -1,6 +1,6 @@
 //! Deterministic conda-meta bytes: complete frozen record, installed paths and
 //! final destination, reconstructed from lock/archive authority, not helper output.
-use gripsack_ir::workspace_model::lock::LockedCondaPackage;
+use gripsack_ir::workspace_model::lock::{LockedCondaPackage, LockedWheel};
 use rattler_conda_types::package::DistArchiveIdentifier;
 use serde::Serialize;
 use std::{
@@ -65,6 +65,53 @@ pub fn verify<S: AsRef<str> + Serialize>(
 ) -> Result<(), ReceiptError> {
     let mut comparison = Comparison(io::BufReader::new(reader));
     write(&mut comparison, record, files, final_prefix)?;
+    let mut extra = [0];
+    if comparison.0.read(&mut extra)? != 0 {
+        return Err(ReceiptError::TrailingBytes);
+    }
+    Ok(())
+}
+
+/// Distinct from Conda package receipts even when distributions share a name.
+/// Names and versions have passed the frozen lock path/encoding admission.
+pub fn wheel_path(record: &LockedWheel) -> String {
+    format!("conda-meta/{}-{}-wheel.json", record.name, record.version)
+}
+
+#[derive(Serialize)]
+struct WheelReceipt<'a, S> {
+    format: u32,
+    wheel: &'a LockedWheel,
+    files: &'a BTreeSet<S>,
+    final_prefix: &'a str,
+}
+
+pub fn write_wheel<S: AsRef<str> + Serialize>(
+    writer: impl Write,
+    wheel: &LockedWheel,
+    files: &BTreeSet<S>,
+    final_prefix: &str,
+) -> Result<(), ReceiptError> {
+    serde_json::to_writer(
+        writer,
+        &WheelReceipt {
+            format: 1,
+            wheel,
+            files,
+            final_prefix,
+        },
+    )?;
+    Ok(())
+}
+
+pub fn verify_wheel<S: AsRef<str> + Serialize>(
+    reader: impl Read,
+    wheel: &LockedWheel,
+    files: &BTreeSet<S>,
+    final_prefix: &str,
+) -> Result<(), ReceiptError> {
+    let mut comparison = Comparison(io::BufReader::new(reader));
+    write_wheel(&mut comparison, wheel, files, final_prefix)?;
     let mut extra = [0];
     if comparison.0.read(&mut extra)? != 0 {
         return Err(ReceiptError::TrailingBytes);

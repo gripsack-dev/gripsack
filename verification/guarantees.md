@@ -7,12 +7,33 @@ trusted, and what evidence backs it. Statuses: `proposed`,
 handoff §8). Rows distinguish checked kernels/protocols from tested
 implementation bridges; a new unqualified proof packet remains explicit.
 
-Active platform scope is **Linux, including WSL2**, under the owner decision
-`PLATFORM-LINUX-WSL-2026-10-08` in [plan0048](../plan/0048-review-response-0.42.0.md).
-Darwin-specific rows, implementations and observations below are historical
-coverage or retained-format context, not current support promises or active
-release prerequisites. Scope retirement is not successful qualification;
-Linux/common proof, integrity and lifecycle obligations remain unchanged.
+Active product scope is **Linux/WSL x86_64**, under
+`PRODUCT-LINUX-NATIVE-2026-10-28` and `REL-PRACTICAL-051-2026-10-28`
+in [plan0048](../plan/0048-review-response-0.42.0.md).
+Mac, Homebrew and BuildKit implementation/qualification records are historical,
+not current support promises. Existing retained data keeps its original meaning.
+The selected essential gates and changed-path runtime scenarios remain required.
+Formal/model, exhaustive persistence, broad mutation/fuzz and reproducibility
+campaigns run only on explicit owner request. A historical `checked` row below
+does not claim fresh verification of the 0.51 source or of a newly changed adapter.
+
+## Current native additions
+
+These implementations are awaiting the integrated evidence recorded in
+[plan0055](../plan/0055-workspace-only-product.md#active-continuation--2026-10-28);
+no new formal theorem, physical power-loss or arbitrary-package safety claim
+is made.
+
+| Boundary | Enforced contract | Explicit limit |
+|---|---|---|
+| Services | Local Docker API, private workspace ownership, exact container identity, pinned images, explicit startup and observed readiness; no volume deletion | Engine administrators can alter resources or inspect container environments; readiness is not future availability; SQL effects are not reversible |
+| Scheduled jobs | Captured revision and retained runner/tools; lifecycle-fenced dispatch; owned unit bytes; common bounded task runner; uncertain outcomes retain roots | systemd owns timing; sleep/reboot/DST and exactly-once external effects are not inferred |
+| Semantic review | Bounded admitted snapshots and old/new dependency graphs; unknown/redacted data stays explicit; configuration views never rewrite files | Structural equality does not prove application equivalence; generic content is not guaranteed secret-free |
+| Saved execution | Private reviewed source/lock/trust/facts/scope/base/ownership binding, rechecked under the existing lifecycle before ordinary apply | No bearer authority from reports, source reevaluation, new takeover grant or atomic exclusion of external filesystem writers |
+| Portable sharing | Exact DSSE manifest authentication, scoped current trust, integrity/layout admission, retained runtime closure and passive imports | A signature authenticates a publisher claim, not benign software; extracted/directly executed programs are outside managed revocation |
+| Binary wheels | Verified original archives, compatible interpreter/tags/dependencies, bounded RECORD/metadata admission and independent installed-tree checks; offline pinned helper effects | No source/editable fallback, online pip resolution or arbitrary prefix relocation |
+
+## Historical source-bound guarantees
 
 | ID | Claim (with exclusions) | Enforcement | Admission boundary | Trusted components | Coverage | Bridges | Calibration | Status |
 |---|---|---|---|---|---|---|---|---|

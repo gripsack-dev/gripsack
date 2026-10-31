@@ -20,11 +20,20 @@ pub enum ActivationAction {
         context: PathBuf,
         sha256: Sha256Digest,
     },
+    ScheduledJob {
+        job: crate::jobs::JobId,
+        revision: crate::jobs::JobRevision,
+        capture: PathBuf,
+        runner: PathBuf,
+        unit_directory: PathBuf,
+        closure: Vec<PathBuf>,
+        enabled: bool,
+    },
 }
 
 impl ActivationAction {
     pub(crate) fn requires_v2(&self) -> bool {
-        matches!(self, Self::WorkspaceHook { .. })
+        matches!(self, Self::WorkspaceHook { .. } | Self::ScheduledJob { .. })
     }
 }
 

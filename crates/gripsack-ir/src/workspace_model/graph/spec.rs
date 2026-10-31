@@ -18,6 +18,11 @@ verus! {
 #[verifier::external_type_specification] pub struct ExImageConfig(ImageRuntimeConfig);
 #[verifier::external_type_specification] pub struct ExProfile(ProfileOutput);
 #[verifier::external_type_specification] pub struct ExHook(HookOutput);
+#[verifier::external_type_specification] pub struct ExService(ServiceOutput);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExServicePort(ServicePort);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExServiceVolume(ServiceVolume);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExServiceEnvValue(ServiceEnvValue);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExServiceHealth(ServiceHealth);
 #[verifier::external_type_specification] pub struct ExArg(WorkspaceArg);
 #[verifier::external_type_specification] pub struct ExCommand(WorkspaceCommand);
 #[verifier::external_type_specification] pub struct ExPath(WorkspacePath);
@@ -41,6 +46,7 @@ verus! {
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExLaunchers(ProfileLaunchers);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExHostRuntimeRequirements(HostRuntimeRequirements);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExCondaSystemRequirements(CondaSystemRequirements);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExWheelSource(WheelSource);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExContext(TaskContext);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExCalendar(WorkspaceCalendar);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExScope(ScheduleScope);
@@ -79,7 +85,7 @@ pub open spec fn artifact_kinds() -> Seq<Seq<char>> { seq!["recipe"@, "package"@
 pub open spec fn package_kinds() -> Seq<Seq<char>> { seq!["package"@] }
 pub open spec fn all_kinds() -> Seq<Seq<char>> {
     seq!["recipe"@, "package"@, "environment"@, "task"@, "schedule"@,
-        "check"@, "image"@, "profile"@, "hook"@]
+        "check"@, "image"@, "profile"@, "hook"@, "service"@]
 }
 pub open spec fn bare<'a>(owner: &'a WorkspaceOutput, name: Seq<char>, kinds: Seq<Seq<char>>,
     at: &'a Span, role: GraphRole, target: Option<&'a WorkspacePlatform>) -> EdgeView<'a> {
@@ -174,6 +180,7 @@ pub open spec fn output_edges<'a>(owner: &'a WorkspaceOutput) -> ISet<EdgeView<'
         WorkspaceOutput::Task(v) =>
             steps_edges(owner, v.steps@, GraphRole::Runtime, None)
                 .union(named_edges(owner, v.deps@, seq!["task"@], &v.span, GraphRole::TaskPrereq, None))
+                .union(named_edges(owner, v.services@, seq!["service"@], &v.span, GraphRole::Runtime, None))
                 .union(named_edges(owner, v.checks@, seq!["check"@], &v.span, GraphRole::Validation, None))
                 .union(match &v.environment {
                     Some(name) => ISet::empty().insert(bare(owner, name@, seq!["environment"@], &v.span, GraphRole::Runtime, None)),
@@ -195,6 +202,8 @@ pub open spec fn output_edges<'a>(owner: &'a WorkspaceOutput) -> ISet<EdgeView<'
                 .union(files_edges(owner, v.files@))
         },
         WorkspaceOutput::Hook(v) => command_edges(owner, &v.run, GraphRole::Runtime, None),
+        WorkspaceOutput::Service(v) => named_edges(owner, v.depends_on@, seq!["service"@],
+            &v.span, GraphRole::Runtime, None),
     }
 }
 pub open spec fn workspace_edges<'a>(outputs: Seq<WorkspaceOutput>) -> ISet<EdgeView<'a>> {

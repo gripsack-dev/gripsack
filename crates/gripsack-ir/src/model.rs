@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-/// The only authoring contract: a current workspace with injected host facts.
+/// The current workspace wire document. Persisted generations and receipts
+/// retain their separate versioned storage contracts.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ir {

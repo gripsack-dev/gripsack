@@ -17,7 +17,7 @@ fn document(version: u32) -> Value {
 
 fn schema() -> jsonschema::Validator {
     jsonschema::validator_for(
-        &serde_json::from_str::<Value>(include_str!("../schema-v9.json")).unwrap(),
+        &serde_json::from_str::<Value>(include_str!("../schema-v10.json")).unwrap(),
     )
     .unwrap()
 }
@@ -47,7 +47,7 @@ fn nested_new_authority_is_closed_and_labels_its_declaring_span() {
         ("repo_tree", "/workspace/outputs/2/files/0/source", 5),
         ("template_file", "/workspace/outputs/2/files/0/content", 5),
     ] {
-        let mut doc = document(9);
+        let mut doc = document(gripsack_ir::IR_VERSION);
         add_authority(&mut doc, authority);
         doc.pointer_mut(pointer).unwrap()["unexpected"] = json!(true);
         assert!(!schema().is_valid(&doc));
@@ -59,7 +59,7 @@ fn nested_new_authority_is_closed_and_labels_its_declaring_span() {
                 .any(|label| { label.span.as_ref().is_some_and(|span| span.line == line) })
         );
     }
-    let mut doc = document(9);
+    let mut doc = document(gripsack_ir::IR_VERSION);
     add_authority(&mut doc, "launchers");
     doc["workspace"]["outputs"][2]["launchers"]["unexpected"] = json!(true);
     assert!(!schema().is_valid(&doc));
@@ -75,7 +75,7 @@ fn nested_new_authority_is_closed_and_labels_its_declaring_span() {
 #[test]
 fn new_declarations_still_require_source_provenance() {
     for authority in ["archive_root", "launchers", "repo_tree", "template_file"] {
-        let mut doc = document(9);
+        let mut doc = document(gripsack_ir::IR_VERSION);
         add_authority(&mut doc, authority);
         let owner = match authority {
             "archive_root" => &mut doc["workspace"]["outputs"][0],
@@ -149,7 +149,7 @@ fn schema_and_core_reject_invalid_policy_values() {
             json!({"kind":"template_file","variables":{},"result_digest":null}),
         ),
     ] {
-        let mut doc = document(9);
+        let mut doc = document(gripsack_ir::IR_VERSION);
         add_authority(&mut doc, authority);
         *doc.pointer_mut(pointer).unwrap() = invalid.clone();
         assert!(
@@ -165,7 +165,7 @@ fn schema_and_core_reject_invalid_policy_values() {
         ("launchers", "/workspace/outputs/2", "environment"),
         ("template_file", "/workspace/outputs/2/files/0", "source"),
     ] {
-        let mut doc = document(9);
+        let mut doc = document(gripsack_ir::IR_VERSION);
         add_authority(&mut doc, authority);
         doc.pointer_mut(pointer)
             .unwrap()

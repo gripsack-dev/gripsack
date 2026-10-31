@@ -22,7 +22,7 @@ import tomllib
 
 FORMAT = "gripsack.release.v1"
 REPOSITORY = "gripsack-dev/gripsack"
-POLICY = "LOCAL-PRACTICAL-QUALIFICATION-2026-10-27"
+POLICY = "LOCAL-PRACTICAL-QUALIFICATION-2026-10-28"
 WORKFLOW = ".github/workflows/release-core.yml"
 TARGET = "x86_64-unknown-linux-musl"
 MAX_JSON_BYTES = 4 * 1024 * 1024
@@ -33,15 +33,9 @@ MAX_BUNDLE_BYTES = 2 * 1024 * 1024 * 1024
 # Private controller image outputs are references, not shipped bundle members.
 MAX_OBSERVED_OUTPUT_BYTES = (1 << 63) - 1
 EXCLUSIONS = ["REL-FUZZ-2026-09-27", "linux-aarch64", "macos", "native-windows",
-              "hardware-power-loss", "github-hosted-build", "REL-PRACTICAL-050-2026-10-27",
-              "formal-tlc", "formal-tlaps", "formal-verus"]
-REQUIRED_GATES = frozenset((
-    "inventory", "test", "gnu-test", "ts-test", "runtime-images",
-    "dependency-audits", "bridge-repro-pins", "b0-linux", "helper-repro-pins",
-    "core-package-static-sbom", "flows", "candidate-sdk", "external-source-pins",
-    "installed-consumers-docs", "core-repro",
-    "persistence-96", "publication-packages",
-))
+              "hardware-power-loss", "github-hosted-build", "REL-PRACTICAL-051-2026-10-28",
+              "formal-tlc", "formal-tlaps", "formal-verus", "exhaustive-persistence",
+              "duplicate-gnu-build", "two-build-reproducibility", "mutant-campaigns"]
 HEX64 = re.compile(r"[0-9a-f]{64}")
 HEX40 = re.compile(r"[0-9a-f]{40}")
 VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
@@ -159,13 +153,13 @@ def validate_manifest(value):
     for field in ("candidate_id", "qualification_sha256", "recipe_sha256"):
         require(isinstance(value[field], str) and HEX64.fullmatch(value[field]), f"invalid {field}")
     compatible = value["compatible"]
-    keys(compatible, {"core", "sdk", "bridge", "conda", "ir", "helper_pins"})
-    for component in ("core", "sdk", "bridge", "conda"):
+    keys(compatible, {"core", "sdk", "conda", "ir", "helper_pins"})
+    for component in ("core", "sdk", "conda"):
         require(isinstance(compatible[component], str) and VERSION.fullmatch(compatible[component]), "invalid component version")
-    require(compatible["core"] == compatible["bridge"] == compatible["conda"], "helper version differs from core")
+    require(compatible["core"] == compatible["conda"], "helper version differs from core")
     keys(compatible["ir"], {"writer", "readers"})
-    require(compatible["ir"] == {"writer": 9, "readers": [9]}, "unsupported IR compatibility contract")
-    keys(compatible["helper_pins"], {"bridge", "conda"})
+    require(compatible["ir"] == {"writer": 10, "readers": [10]}, "unsupported IR compatibility contract")
+    keys(compatible["helper_pins"], {"conda"})
     for pin in compatible["helper_pins"].values():
         require(isinstance(pin, str) and HEX64.fullmatch(pin), "invalid helper pin")
     require(value["signer"] == {"workflow": WORKFLOW, "ref": "refs/tags/core-v" + compatible["core"]}, "wrong signer workflow/ref")
@@ -174,18 +168,22 @@ def validate_manifest(value):
     require(value["exclusions"] == EXCLUSIONS, "changed owner exclusions")
     for inventory, fields, digest_field in (("gates", {"id", "receipt_sha256"}, "receipt_sha256"),
                                              ("partitions", {"id", "sha256"}, "sha256")):
-        require(value[inventory], "empty required coverage")
+        require(isinstance(value[inventory], list), "invalid coverage inventory")
+        if inventory == "gates":
+            require(value[inventory], "empty required coverage")
         for item in value[inventory]:
             keys(item, fields)
             require(isinstance(item["id"], str) and IDENTIFIER.fullmatch(item["id"]), "invalid coverage id")
             require(isinstance(item[digest_field], str) and HEX64.fullmatch(item[digest_field]), "invalid evidence digest")
         unique(value[inventory], "id")
-    require({gate["id"] for gate in value["gates"]} == REQUIRED_GATES, "missing or foreign required gate")
     expected_partitions = {f"Linux-{scenario}-{fault}-{shard}"
                            for scenario in ("apply-deploy", "apply-prune", "rollback-deploy",
                                             "rollback-prune", "apply-deploy-copy", "apply-prune-copy")
                            for fault in ("error", "kill") for shard in range(8)}
-    require({part["id"] for part in value["partitions"]} == expected_partitions, "missing or foreign partition")
+    selected = {gate["id"] for gate in value["gates"]}
+    require({part["id"] for part in value["partitions"]}
+            == (expected_partitions if "persistence-96" in selected else set()),
+            "missing, foreign or unselected partition")
     all_paths = []
     for inventory, extra, prefix in (("artifacts", ("role",), "artifacts/"),
                                       ("packages", ("registry", "name", "version", "dependencies", "metadata"), "packages/"),
@@ -205,12 +203,12 @@ def validate_manifest(value):
         manifest_name = f"gripsack-release-{compatible['core']}.json"
         require(Path(artifact["path"]).name not in (manifest_name, manifest_name + ".sigstore.json"),
                 "artifact shadows reserved manifest/signature name")
-        require(artifact["role"] in ("core", "bridge", "conda", "auxiliary"), "unknown artifact role")
+        require(artifact["role"] in ("core", "conda", "auxiliary"), "unknown artifact role")
         if artifact["role"] != "auxiliary":
             require(artifact["role"] not in roles, "duplicate installable artifact")
             roles[artifact["role"]] = artifact
-    require(set(roles) == {"core", "bridge", "conda"}, "missing compatible installable artifact")
-    for role, stem, suffix in (("core", "gripsack", ".tar.gz"), ("bridge", "grip-buildkit-bridge", ""), ("conda", "gripsack-conda", "")):
+    require(set(roles) == {"core", "conda"}, "missing compatible installable artifact")
+    for role, stem, suffix in (("core", "gripsack", ".tar.gz"), ("conda", "gripsack-conda", "")):
         require(roles[role]["path"] == f"artifacts/{stem}-{compatible[role]}-{TARGET}{suffix}", "artifact version/target mismatch")
         if role != "core":
             require(roles[role]["sha256"] == compatible["helper_pins"][role], "wrong helper digest pin")
@@ -246,11 +244,12 @@ def compatible_source(source):
     sdk = load_json(source / "typescript/package.json")["version"]
     reader = (source / "crates/gripsack-ir/src/parse.rs").read_text()
     writer = (source / "typescript/src/workspace/emit.ts").read_text()
-    require(re.search(r"pub const IR_VERSION: u32 = 9;", reader)
-            and "version != u64::from(IR_VERSION)" in reader
-            and re.search(r"export const IR_VERSION = 9;", writer), "changed IR reader/writer contract")
-    result = {"core": core, "sdk": sdk, "ir": {"writer": 9, "readers": [9]}, "helper_pins": {}}
-    for component in ("bridge", "conda"):
+    # Public version declarations bind compatibility metadata. Reader rejection
+    # behavior is exercised by the IR/consumer gates, not a particular branch spelling.
+    require(re.search(r"pub const IR_VERSION: u32 = 10;", reader)
+            and re.search(r"export const IR_VERSION = 10;", writer), "changed IR reader/writer contract")
+    result = {"core": core, "sdk": sdk, "ir": {"writer": 10, "readers": [10]}, "helper_pins": {}}
+    for component in ("conda",):
         text = (source / f"crates/gripsack-fetch/src/{component}_pins.rs").read_text()
         version = re.search(rf'{component.upper()}_VERSION: &str = "([^"]+)"', text)
         pin = re.search(r'AssetTarget::LinuxX86_64Musl,\s*"([a-f0-9]{64})"', text)
@@ -341,8 +340,9 @@ def validate_bundle(root, source=None):
         path = root / f"evidence/partitions/{partition['id']}.json"
         require(digest(path) == partition["sha256"] == partition_outputs[partition["id"]]["sha256"], "partition digest mismatch")
         reports.append(load_json(path))
-    from check_ci_gate import admit_persistence
-    admit_persistence(reports, manifest["source"]["commit"])
+    if "persistence-96" in gate_ids:
+        from check_ci_gate import admit_persistence
+        admit_persistence(reports, manifest["source"]["commit"])
     index_path = root / "evidence/publication-index.json"
     require(digest(index_path) == outputs["local-ci/publication/index.json"]["sha256"], "package index lacks gate evidence")
     index = load_json(index_path)

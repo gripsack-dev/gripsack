@@ -9,7 +9,7 @@ use std::{
     io::Write,
 };
 
-pub(super) fn captured_definitions(repository: &Repository) -> Result<DefinitionPins, ExecError> {
+pub(crate) fn captured_definitions(repository: &Repository) -> Result<DefinitionPins, ExecError> {
     let Repository::Evaluated { sources, .. } = repository else {
         return Err(ExecError::Step {
             output: "workspace".into(),

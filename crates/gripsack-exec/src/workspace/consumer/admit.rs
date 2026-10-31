@@ -4,7 +4,8 @@
 //! and both declaration spans where two declarations collide.
 pub(super) mod bytecode;
 mod command;
-pub(super) use command::admit_command;
+pub(in crate::workspace) use command::EnvironmentResolution;
+pub(super) use command::{admit_command, admit_command_in_scope};
 mod elf;
 mod native;
 mod platform;
@@ -35,6 +36,23 @@ use std::{
 
 /// One hashed executable cannot exceed the shared selection budget.
 const EXECUTABLE_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Borrowed native runtime scopes survive nested environment interception.
+/// Image ownership remains the leaf package; enclosing selected graphs still
+/// grant runtime reachability. The chain is stack-bound, not another Arc graph.
+pub(in crate::workspace) struct RuntimeScope<'a> {
+    package: &'a Package,
+    parent: Option<&'a RuntimeScope<'a>>,
+}
+impl<'a> RuntimeScope<'a> {
+    pub(super) fn new(package: &'a Package, parent: Option<&'a Self>) -> Self {
+        Self { package, parent }
+    }
+
+    pub(super) fn packages(&self) -> impl Iterator<Item = &Package> {
+        std::iter::successors(Some(self), |scope| scope.parent).map(|scope| scope.package)
+    }
+}
 
 /// Evaluated OS/architecture/ABI plus the native invocation's independently
 /// measured OS release. Missing capability is never a wildcard.
@@ -158,16 +176,29 @@ pub(in crate::workspace) struct AdmittedCommand {
     pub gnu_loader: Option<std::sync::Arc<gripsack_process::SelectedGnuLoader>>,
     pub interpreter: Option<PinnedInterpreter>,
     pub bytecode: Option<BytecodePolicy>,
+    /// Imported contributions are defaults; recipient environment/task values win.
+    pub entries: Vec<(OsString, OsString)>,
+    pub arguments: Vec<OsString>,
+    pub imported: Option<std::sync::Arc<super::launcher::ImportedEnvironment>>,
 }
 
-/// A checked environment composition. Commands resolve to exact admitted
-/// executable paths inside package payloads; a command name exported by two
-/// selected packages names both declaration spans. `materialize` exposes
-/// exactly the exported commands through one per-launch directory.
-pub(in crate::workspace) struct EnvironmentPlan {
-    pub commands: BTreeMap<String, AdmittedCommand>,
+/// Authenticated package export metadata, deliberately not native admission.
+/// Nested portable projections capture this before their enclosing runtime
+/// graph exists; only common command admission can produce AdmittedCommand.
+pub(in crate::workspace) struct CapturedCommand {
+    package: std::sync::Arc<Package>,
+    span: Span,
+}
+
+/// One environment composition with either captured export evidence or admitted
+/// native commands. The default type is executable authority; CapturedCommand
+/// permits passive nested projection but has no invocation/materialize methods.
+/// Both phases share root ordering, collision checks and typed contributions.
+pub(in crate::workspace) struct EnvironmentPlan<C = AdmittedCommand> {
+    pub commands: BTreeMap<String, C>,
     pub bytecode: Option<BytecodePolicy>,
     entries: Vec<(OsString, OsString)>,
+    profile_entries_start: usize,
     declared_path: Vec<PathBuf>,
     declared_library_path: Vec<PathBuf>,
     closure: BTreeSet<PathBuf>,
@@ -181,6 +212,37 @@ impl EnvironmentPlan {
         realization: &Realization,
         context: &NativeContext<'_>,
     ) -> Result<Self, ExecError> {
+        Self::admit_with_exports(declaration, outputs, realization, context, &[])
+    }
+
+    pub fn admit_with_exports(
+        declaration: &EnvironmentOutput,
+        outputs: &BTreeMap<&str, &WorkspaceOutput>,
+        realization: &Realization,
+        context: &NativeContext<'_>,
+        exports: &[String],
+    ) -> Result<Self, ExecError> {
+        EnvironmentPlan::<CapturedCommand>::capture_with_exports(
+            declaration,
+            outputs,
+            realization,
+            context,
+            exports,
+        )?
+        .admit_commands(declaration, context)
+    }
+}
+
+impl EnvironmentPlan<CapturedCommand> {
+    /// Capture exact commands and typed contributions without assuming a child
+    /// is a standalone native closure. Extra exports never become env roots.
+    pub fn capture_with_exports(
+        declaration: &EnvironmentOutput,
+        outputs: &BTreeMap<&str, &WorkspaceOutput>,
+        realization: &Realization,
+        context: &NativeContext<'_>,
+        exports: &[String],
+    ) -> Result<Self, ExecError> {
         let host = &context.target;
         admit_target(&declaration.target, host, &declaration.span, "environment")?;
         let mut commands = BTreeMap::new();
@@ -189,7 +251,12 @@ impl EnvironmentPlan {
         let mut bytecode = None;
         let mut launchers = BTreeMap::new();
         let mut packages = Vec::new();
-        for name in &declaration.packages {
+        let mut imported_entries = Vec::new();
+        let mut selected = BTreeSet::new();
+        for name in declaration.packages.iter().chain(exports) {
+            if !selected.insert(name) {
+                continue;
+            }
             let output = outputs[name.as_str()];
             let package = realization.packages[name.as_str()].as_ref();
             packages.push(std::sync::Arc::clone(&realization.packages[name.as_str()]));
@@ -197,9 +264,15 @@ impl EnvironmentPlan {
                 .admit_package_closure(package, output.span())?
                 .or(bytecode);
             package.retain_into(&mut closure);
+            if declaration.packages.contains(name) {
+                imported_entries.extend(crate::workspace::sharing::projected_entries(
+                    context.home,
+                    package,
+                )?);
+            }
             let binding =
                 super::launcher::Binding::capture(context.home, package)?.map(std::sync::Arc::new);
-            for (command, provided) in &package.commands {
+            for command in package.commands.keys() {
                 if let Some(previous) = owners.insert(command, output) {
                     return Err(ExecError::Gate(
                         Diagnostic::error(
@@ -218,28 +291,21 @@ impl EnvironmentPlan {
                 }
                 commands.insert(
                     command.clone(),
-                    admit_command(
-                        package,
-                        &provided.selector,
-                        &provided.executable,
-                        context,
-                        output.span(),
-                    )?,
+                    CapturedCommand {
+                        package: std::sync::Arc::clone(&realization.packages[name.as_str()]),
+                        span: output.span().clone(),
+                    },
                 );
             }
         }
-        let mut entries = Vec::new();
+        let profile_entries_start = imported_entries.len();
+        let mut entries = imported_entries;
         let mut declared_path = Vec::new();
         let mut declared_library_path = Vec::new();
-        let gnu_loader = commands
-            .values()
-            .find_map(|command| command.gnu_loader.as_ref());
         for (key, argument) in &declaration.env {
             match argument {
                 WorkspaceArg::Artifact { output, .. } => {
-                    if let Some(artifact) = realization.recipes.get(output.as_str()) {
-                        closure.extend(artifact.retention.iter().cloned());
-                    } else if let Some(package) = realization.packages.get(output.as_str()) {
+                    if let Some(package) = realization.packages.get(output.as_str()) {
                         package.retain_into(&mut closure);
                     }
                 }
@@ -259,11 +325,6 @@ impl EnvironmentPlan {
                 }
                 _ => {}
             }
-            if let Some(loader) = gnu_loader {
-                loader
-                    .check_environment_key(std::ffi::OsStr::new(key))
-                    .map_err(|error| gate(&declaration.span, error.to_string()))?;
-            }
             let value = environment_value(argument, declaration, realization)?;
             match key.as_str() {
                 "PATH" => declared_path = absolute_directories(&value, &declaration.span, "PATH")?,
@@ -279,6 +340,7 @@ impl EnvironmentPlan {
             commands,
             bytecode,
             entries,
+            profile_entries_start,
             declared_path,
             declared_library_path,
             closure,
@@ -287,21 +349,63 @@ impl EnvironmentPlan {
         })
     }
 
+    fn admit_commands(
+        self,
+        declaration: &EnvironmentOutput,
+        context: &NativeContext<'_>,
+    ) -> Result<EnvironmentPlan, ExecError> {
+        let commands = self
+            .commands
+            .into_iter()
+            .map(|(name, captured)| {
+                let provided = &captured.package.commands[&name];
+                let command = admit_command(
+                    &captured.package,
+                    &provided.selector,
+                    &provided.executable,
+                    context,
+                    &captured.span,
+                )?;
+                Ok((name, command))
+            })
+            .collect::<Result<BTreeMap<_, _>, ExecError>>()?;
+        if let Some(loader) = commands
+            .values()
+            .find_map(|command| command.gnu_loader.as_ref())
+        {
+            for key in declaration.env.keys() {
+                loader
+                    .check_environment_key(std::ffi::OsStr::new(key))
+                    .map_err(|error| gate(&declaration.span, error.to_string()))?;
+            }
+        }
+        Ok(EnvironmentPlan {
+            commands,
+            bytecode: self.bytecode,
+            entries: self.entries,
+            profile_entries_start: self.profile_entries_start,
+            declared_path: self.declared_path,
+            declared_library_path: self.declared_library_path,
+            closure: self.closure,
+            launchers: self.launchers,
+            packages: self.packages,
+        })
+    }
+}
+
+impl EnvironmentPlan {
     pub fn empty() -> Self {
         Self {
             commands: BTreeMap::new(),
             bytecode: None,
             entries: Vec::new(),
+            profile_entries_start: 0,
             declared_path: Vec::new(),
             declared_library_path: Vec::new(),
             closure: BTreeSet::new(),
             launchers: BTreeMap::new(),
             packages: Vec::new(),
         }
-    }
-
-    pub fn closure(&self) -> &BTreeSet<PathBuf> {
-        &self.closure
     }
 
     /// Persist literal contributions and an explicit reference to the profile's
@@ -337,7 +441,7 @@ impl EnvironmentPlan {
                 },
             ));
         }
-        for (key, value) in &self.entries {
+        for (key, value) in self.entries.iter().skip(self.profile_entries_start) {
             let name = key
                 .to_str()
                 .ok_or_else(|| failure("profile variable name is not UTF-8"))?;
@@ -356,25 +460,6 @@ impl EnvironmentPlan {
             ));
         }
         Ok(variables)
-    }
-
-    /// Explicit profile launchers freeze activation values and the complete
-    /// receipt graph, unlike historical projections that grant ambient names.
-    pub(in crate::workspace) fn write_managed_commands(
-        &self,
-        home: &Path,
-        directory: &Path,
-        names: &[String],
-    ) -> Result<(), ExecError> {
-        super::launcher::ProfileEnvironment {
-            commands: &self.commands,
-            packages: &self.packages,
-            entries: &self.entries,
-            search_directories: &self.declared_path,
-            library_directories: &self.declared_library_path,
-            retention: &self.closure,
-        }
-        .write(home, directory, names)
     }
 
     /// Shared projection preserves the selected program's argv0, including a
@@ -530,8 +615,48 @@ impl EnvironmentPlan {
             .map(|command| command.library_dirs.clone())
             .unwrap_or_default();
         library.extend(self.declared_library_path.iter().cloned());
-        EnvironmentOverlay::admit(self.entries.iter().cloned(), search, library)
-            .map_err(operational)
+        let entries = launched
+            .into_iter()
+            .flat_map(|command| command.entries.iter())
+            .chain(&self.entries)
+            .cloned();
+        let overlay = EnvironmentOverlay::admit(entries, search, library).map_err(operational)?;
+        super::launcher::compose_imported(launched, overlay)
+    }
+}
+
+impl<C> EnvironmentPlan<C> {
+    pub fn closure(&self) -> &BTreeSet<PathBuf> {
+        &self.closure
+    }
+    /// Explicit profile launchers freeze activation values and the complete
+    /// receipt graph, unlike historical projections that grant ambient names.
+    pub(in crate::workspace) fn write_managed_commands(
+        &self,
+        home: &Path,
+        directory: &Path,
+        names: &[String],
+    ) -> Result<(), ExecError> {
+        self.write_managed_commands_with_arguments(home, directory, names, &BTreeMap::new())
+            .map(|_| ())
+    }
+
+    pub(in crate::workspace) fn write_managed_commands_with_arguments(
+        &self,
+        home: &Path,
+        directory: &Path,
+        names: &[String],
+        arguments: &BTreeMap<String, Vec<String>>,
+    ) -> Result<String, ExecError> {
+        super::launcher::ProfileEnvironment {
+            commands: &self.commands,
+            packages: &self.packages,
+            entries: &self.entries,
+            search_directories: &self.declared_path,
+            library_directories: &self.declared_library_path,
+            retention: &self.closure,
+        }
+        .write_with_arguments(home, directory, names, arguments)
     }
 }
 
@@ -586,9 +711,6 @@ fn environment_value(
 }
 
 pub(super) fn artifact_payload(name: &str, realization: &Realization) -> Option<PathBuf> {
-    if let Some(recipe) = realization.recipes.get(name) {
-        return Some(recipe.payload.clone());
-    }
     realization
         .packages
         .get(name)

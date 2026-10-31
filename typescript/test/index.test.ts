@@ -14,7 +14,7 @@ function view(over: Partial<WorkspaceContext> = {}): WorkspaceContext {
 
 Deno.test("workspace declarations capture source spans", () => {
   const ir = JSON.parse(emitWorkspaceIr(workspace({ outputs: [profile("dotfiles", {})] }), facts, []));
-  assert.equal(ir.ir_version, 9);
+  assert.equal(ir.ir_version, 10);
   assert.deepEqual(Object.keys(ir), ["ir_version", "host", "workspace"]);
   assert.match(ir.workspace.outputs[0].span.file, /index\.test\.ts$/);
   assert.ok(ir.workspace.outputs[0].span.line > 0);

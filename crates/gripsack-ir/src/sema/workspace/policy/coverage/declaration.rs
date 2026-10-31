@@ -215,6 +215,11 @@ pub(super) fn for_each_declared<'a>(
                     TargetBinding::None,
                 ));
             }
+            for service in &task.services {
+                emit(named_reference(
+                    EdgeRole::Runtime, service, at, &["service"], TargetBinding::None,
+                ));
+            }
             for check in &task.checks {
                 emit(named_reference(
                     EdgeRole::Validation,
@@ -296,6 +301,13 @@ pub(super) fn for_each_declared<'a>(
         }
         WorkspaceOutput::Hook(hook) => {
             command_refs(&hook.run, EdgeRole::Runtime, emit);
+        }
+        WorkspaceOutput::Service(service) => {
+            for dependency in &service.depends_on {
+                emit(named_reference(
+                    EdgeRole::Runtime, dependency, at, &["service"], TargetBinding::None,
+                ));
+            }
         }
     }
 }

@@ -240,9 +240,6 @@ fn artifact_root<'a>(
     realization: Option<&super::realize::Realization<'a>>,
 ) -> Option<(PathBuf, String)> {
     let realization = realization?;
-    if let Some(recipe) = realization.recipes.get(output) {
-        return Some((recipe.payload.clone(), recipe.tree.as_str().to_owned()));
-    }
     if let Some(package) = realization.packages.get(output) {
         return Some((
             package.payload().to_path_buf(),

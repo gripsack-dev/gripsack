@@ -133,6 +133,9 @@ pub fn gc(
         }
     }
     referenced.extend(crate::workspace::roots::inventory(&home_cap, home)?);
+    for path in store::activation::retained_schedule_roots(&home_cap, home)? {
+        referenced.insert(utf8_path(&path)?);
+    }
     let store_inventory = inventory::ObjectInventory::open(&home_cap, home, store::STORE_DIR)?;
     let prior_inventory = inventory::ObjectInventory::open(&home_cap, home, "prior")?;
     let referenced: Vec<&str> = referenced.iter().map(String::as_str).collect();

@@ -34,6 +34,7 @@ pub(super) fn output(kind: &str) -> Option<&'static [&'static str]> {
             "span",
             "steps",
             "context",
+            "services",
             "deps",
             "environment",
             "checks",
@@ -62,6 +63,18 @@ pub(super) fn output(kind: &str) -> Option<&'static [&'static str]> {
             "launchers",
         ],
         "hook" => &["kind", "name", "span", "run", "trigger"],
+        "service" => &[
+            "kind",
+            "name",
+            "span",
+            "image",
+            "ports",
+            "volumes",
+            "env",
+            "command",
+            "health",
+            "depends_on",
+        ],
         _ => return None,
     })
 }
@@ -85,10 +98,12 @@ pub(super) fn layout(kind: &str) -> Option<&'static [&'static str]> {
 pub(super) fn acquisition(kind: &str) -> Option<&'static [&'static str]> {
     Some(match kind {
         "fetch" => &["kind", "fetch", "span"],
+        "package" => &["kind", "manifest", "span"],
         "conda_environment" => &[
             "kind",
             "channels",
             "packages",
+            "wheels",
             "platforms",
             "system_requirements",
             "span",

@@ -8,11 +8,10 @@ export type {
   CheckNode,
   EnvironmentNode,
   HookNode,
-  ImageNode,
   PackageNode,
   ProfileNode,
-  RecipeNode,
   ScheduleNode,
+  ServiceNode,
   TaskNode,
   WorkspaceOutputNode,
 } from "./workspace/ir.ts";

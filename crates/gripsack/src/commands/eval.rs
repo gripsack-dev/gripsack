@@ -155,7 +155,8 @@ pub(super) fn eval_prepared(
 
 /// Every content command validates IR semantics and captured workspace sources.
 pub fn validated_ir(outcome: &EvalOutcome, sink: &mut DiagnosticSink) -> Result<Ir, ExitCode> {
-    let ir = check_ir(&outcome.ir_json, sink)?;
+    let mut ir = check_ir(&outcome.ir_json, sink)?;
+    gripsack_exec::rebind_captured_ir(&mut ir, &outcome.sources).map_err(operational)?;
     crate::commands::validate_sources(&ir, outcome.sources.repository(), sink)?;
     Ok(ir)
 }
@@ -245,7 +246,7 @@ pub(super) fn acquisition_limits(
 }
 
 /// Provision declared fetcher plugins into the verified plugin store.
-fn provision_plugins(
+pub(super) fn provision_plugins(
     fetchers: &BTreeMap<String, gripsack_config::FetcherSectionView>,
     fetch: &gripsack_fetch::FetchContext,
 ) -> Result<(), ExitCode> {

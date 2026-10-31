@@ -1,354 +1,459 @@
-# Release qualification tracking and post-release fuzz handoff
+# Practical qualification and manual release handoff
 
-Snapshot: 2026-09-29. Goal: qualified releases the owner can install and share
-with close friends. **Not merge-ready or release-ready yet.**
-The owner now requested an implementation-agent switch. Start with
-[`continuation-handoff.md`](continuation-handoff.md) for the exact working trees,
-new npm-resolution blocker, owner-selected OS filesystem isolation and running
-gate. Remaining implementation/non-fuzz gates are not waived; the later fuzz
-assignment remains separate and `REL-FUZZ-2026-09-27` still forbids this continuation
-from running fuzz/replay.
+Standing owner policy: `REL-PRACTICAL-051-2026-10-28`, qualification authority
+`LOCAL-PRACTICAL-QUALIFICATION-2026-10-28`. This supersedes the historical
+all-gates handoff and the 0.50 requirement to run 96 persistence partitions.
+See [plan 0048](../plan/0048-review-response-0.42.0.md) for safety invariants and
+owner amendments and [plan 0055](../plan/0055-workspace-only-product.md) for the
+current product scope. Historical reports remain historical, not evidence for a
+new candidate. This document does not claim any new check has passed.
 
-## 1. Authority and safe starting point
+## Required routine qualification
 
-Read the repository instructions and the `gripsack-pr`, `gripsack-release`
-and, for flow tests, `gripsack-e2e` skills. Then read:
+The committed `.ci/pilot.json` is the authoritative selected gate inventory.
+Its twelve gates are:
 
-- [Plan 0048](../plan/0048-review-response-0.42.0.md), especially §§6, 9, 10,
-  the §14 leaf evidence and §15 owner exception. Its NEXT scope controls the
-  release, including prereleases advertising these guarantees.
-- [Current status](../plan/STATUS.md), [guarantees](guarantees.md),
-  [runner reports](reports/README.md) and [delivery inventory](delivery.json).
-- From the repository root, the immutable edition-5 handover is in
-  `../gripsack-handover/`, beginning with `START_HERE.md`, for the
-  capability/milestone boundaries. That bundle is outside this repository;
-  do not edit it or reset to its research baseline.
+1. `inventory`: delivery/schema/architecture checks and release/admission unit tests.
+2. `test`: Rust fmt, clippy, unit tests and generated-source freshness.
+3. `ts-test`: TypeScript tests and checked examples.
+4. `runtime-images`: source-bound runtime/tool images for the following gates.
+5. `dependency-audits`: both Rust dependency graphs against one recorded advisory revision.
+6. `helper-pins`: one Conda helper build, exact compiled pin, static/protocol and license admission.
+7. `core-package-static-sbom`: exact musl release tarball, checksum, ELF/static, version and binary audit.
+8. `candidate-sdk`: exact TypeScript package build/pack.
+9. `publication-packages`: source/package inventory and installer freshness; preparing registry-format bytes is not registry publication.
+10. `external-source-pins`: exact external example/site revisions.
+11. `installed-consumers-docs`: exact core/Conda/SDK bytes, real CLI consumers and external examples.
+12. `flows`: normal real-CLI e2e, excluding exhaustive persistence and golden regeneration.
 
-This is a navigation/runbook snapshot, **not a second authoritative backlog**.
-Update plan 0048's leaf record and the owning delivery rows as work progresses.
-All acceptance subcases in the cited sections remain conjunctive; the concise
-rows below do not replace or narrow them.
+Changed-feature real CLI scenarios are also required before claiming that feature
+qualified. In particular, services require an isolated Docker/PostgreSQL smoke
+with unique container/volume names, a digest-pinned image and explicit readiness.
+Never run that smoke against developer production state; tasks and normal flow
+qualification must not implicitly start services or delete data volumes.
 
-Observed durable-authority checkpoint:
+Scheduler qualification still requires actual isolated systemd registration,
+calendar invocation, update/disable, rollback/GC interaction and rejection of
+unsupported timing policies. The owner separately makes disruptive sleep/wake,
+logout/login, reboot and host-clock/DST campaigns optional and explicitly
+requested; do not disrupt the developer session or change its clock as a routine
+gate. Ordinary scheduler observations do not claim those campaigns passed.
 
-- Branch: `handover/h0-bundle-import`; pushed source
-  `e3738d765025aa5ea352f47d603f83b43760feb5`. M-V5, transaction-bound
-  selection, activation outcomes and four durability repairs are committed.
-- [PR #164](https://github.com/gripsack-dev/gripsack/pull/164) remains draft;
-  the complete handover and remaining NEXT requirements are not merge-ready.
-- Explicit-waiver run
-  [36385223651](https://github.com/gripsack-dev/gripsack/actions/runs/36385223651)
-  passed Linux, native macOS, docs, audit and the aggregate. Linux CLI passed
-  **405/405**. Mac process tests passed **25/25**; CLI passed **403**, with **2** filesystem-unconstructible
-  filename fixtures explicitly skipped. Only fuzz was an owner-waived job.
-  Earlier run `36337128792`'s failures remain evidence, not erased by the repair.
-- Last observed `main` protection requires `test`, with strict up-to-date
-  checks, `enforce_admins=false` and zero required approvals. The fail-closed
-  `gate` is now implemented, but its live protection requirement is not yet
-  observed. Admin bypass cannot qualify a missing gate.
-- The delivery ledger contains **178** rows: 157 pending, 14 in progress,
-  5 implemented-unverified, 1 verified, 1 blocked. `B0-01` is the verified
-  historical Linux/container qualification, not a qualified current builder.
+The combined D/E journey also requires the scheduled fixture's
+`--package-bundle` and `--package-trust` variant on a separate recipient with no
+producer paths mounted. It must execute an imported tool and its postconditions,
+retain the admitted in-flight run across GC/update, and refuse new consumption
+after local trust revocation. See the
+[disposable manager fixture](../examples/workspaces/04-scheduled-task/README.md#disposable-real-manager-smoke).
 
-No candidate version/tag or complete release capability matrix has been fixed.
-Choose and record the actual release scope before closure: future C/D/E and
-foundation-extension rows must not block an unrelated native release, but
-neither can a partial file-profile implementation be called full A2/foundation.
-Plan 0048's remaining NEXT gates still apply unless the owner explicitly amends
-those exact requirements. No such additional amendment exists.
 
-## 2. Owner-approved fuzz exception
-
-**REL-FUZZ-2026-09-27**, recorded in [plan 0048 §15](../plan/0048-review-response-0.42.0.md):
-the owner chose **“Release without fuzz/replay”** and clarified that this
-assistant must complete and release the handover before the other agent fuzzes
-it. The exception covers this continuation's feedback releases; every other
-gate remains mandatory.
-
-- Status: **not run / owner-waived**, not passed, verified or permanently removed.
-- Do not execute fuzz/replay as part of this handoff's ordinary no-fuzz path.
-- Keep the runners/corpora intact for a separately delegated fuzz assignment.
-- The waiver does not cover ordinary deterministic regression/property tests,
-  Loom, TLC, TLAPS, Verus, semantic-mutant calibration or persistence cases.
-- CI supports the explicit manual-dispatch input
-  `fuzz_waiver=REL-FUZZ-2026-09-27` and fail-closed result aggregation.
-  Local calibration passed 4 positive/64 negative cases and four executable
-  entrypoint smokes. Run `36337128792` correctly failed on non-fuzz failures;
-  runs `36357284121` (`472a111`) and `36385223651` (`e3738d7`) passed at their
-  exact sources. Live aggregate protection remains pending.
-  Release assurance must still bind the exception into the candidate tuple.
-  `delivery.json` has no `waived` status: do not invent one there or label a
-  skipped fuzz job `verified`.
-- PR/main-push CI retains its normal fuzz lane. Preserve `[skip ci]` while
-  landing candidate source without triggering it; then explicitly dispatch
-  the updated CI with the owner waiver. A waived gate requires fuzz to be
-  skipped and every other required job successful. Unknown waiver, missing
-  job, failure, cancellation or any other skip fails the aggregate.
-- `.github/workflows/fuzz.yml` also has a separate weekly schedule. The release
-  exception does not silently reconfigure or disable that unrelated schedule.
-
-Deferred fuzz commands, recorded for the model specifically assigned that lane:
+External Docker/registry/Conda/native-wheel scenarios use `native_integration`. Ordinary
+pytest/flow/installed-consumer selections exclude that marker; those exclusions
+do **not** qualify the changed feature. Prepare its isolated runtime, actual
+helper and network fixtures, then run the marked cases explicitly:
 
 ```sh
-# Saved-corpus replay, contained by the existing runner:
-docker compose run --build --rm fuzz
-
-# Bounded coverage-guided run; requires the disposable contained environment:
-docker compose run --build --rm -e FUZZ_SECONDS=300 fuzz sh scripts/check_fuzz.sh scheduled
+# GRIPSACK_BIN and GRIPSACK_CONDA_HELPER_MIRROR must name the exact candidate
+# and measured helper. Prepare the compiled extension against the actual runtime:
+python3 e2e/test_package_native_wheel.py prepare \
+  --directory /tmp/native-wheel-inputs \
+  --runtime-bundle /tmp/conda-runtime-inputs/bundle
+export GRIPSACK_TEST_NATIVE_WHEEL_BUNDLE=/tmp/native-wheel-inputs/bundle
+uv run --project e2e --locked pytest -o addopts= -m native_integration \
+  e2e/test_package_sharing.py e2e/test_package_conda_offline.py \
+  e2e/test_package_native_wheel.py e2e/test_package_external_closure.py \
+  e2e/test_package_environment.py
 ```
 
-`fuzz/run.py` owns containment and target inventory; `scripts/check_fuzz.sh`
-selects replay/scheduled mode. No uncontained fallback. Retain failing inputs,
-fix the actual production defect, then rerun the affected target and consumer
-regressions. Do not treat a missing tool, timeout or sandbox-construction failure
-as a successful semantic negative. §7.8 still requires archived failure
-artifacts; the waiver is not permission to discard future findings.
+Set `GRIPSACK_BIN` to the exact candidate binary and supply the fixture-specific
+runtime/helper environment, including `GRIPSACK_TEST_PACKAGE_REGISTRY` for the
+isolated registry and `GRIPSACK_TEST_CONDA_RUNTIME_BUNDLE` for the prepared real
+runtime. The external-closure lane includes real-registry graph consumption;
+the environment lane includes mixed local/external Conda use from project,
+profile and task contexts with typed artifact environments. Their unmarked
+offline admission/authority cases remain in ordinary flows.
+`e2e/test_package_environment_projection.py` is an unmarked ordinary-flow lane
+for actual shared-DAG, contextual authority, cyclic runtime and non-root export
+consumption. It is not replaced by a catalog-only or pointer-identity test.
+Keep real OCI existing-image consumption and service readiness in changed-feature
+evidence; retired BuildKit production is unrelated.
+Record the explicit result separately from the ordinary flows receipt.
+The native-wheel lane must exercise the real compiled extension and Python,
+ABI, architecture and libc mismatch refusals. Merely preparing its fixture or
+running the unmarked offline cases does not qualify that lane.
 
-**Less obvious corpus consumer:** `tools/buildkit-bridge/build.sh` runs
-`protocol.TestSharedConformanceCorpus`, which reads
-`fuzz/corpus/buildkit_protocol`. Keep that out of an advertised no-corpus path;
-record it separately or delegate it with the corpus work. Do not silently skip
-it and claim complete Rust/Go conformance.
+### Private TLS registry/native handover
 
-## 3. Evidence already available: reuse with source matching
-
-The R3/transaction-identity packet is qualified at source `472a111`, not as a
-whole release. All six local Compose gates passed, including **401/401** CLI,
-Verus **111/0** plus **17** calibrations, TypeScript **67**, the **301**-obligation
-TLAPS pilot and the complete TLC gate. Full native/current-commit CI then
-passed; `reports/2026-09-28-ci-472a111.log` has SHA-256
-`8b573eee464d1e739f942bba572296b5a8e969f30855b5e3f3e7a041be5b658d`.
-The later prior-cache, directory-birth, retained-prior and generation-prune
-repairs are qualified at `e3738d7`: all local gates and full native/current-commit
-CI passed. `reports/2026-09-28-ci-e3738d7.log` has SHA-256
-`87aa22c96fe32b682e1f2fa45758c8546496f1f520bea40125a624aab6ea7637`.
-Neither checkpoint closes generalized M-V6/M-V7, live protection or the
-remaining release requirements.
-
-The subsequent observed-generation and legacy allocation-floor repairs have a
-complete local packet: **416/416** real CLI, **67/67** focused flows and all six
-non-fuzz Compose gates. `reports/2026-09-28-generation-authority-local.log`
-has SHA-256
-`7c2e3fd0e1650bcdd926211364e43f8c9c90160ecdf68ae02886e9028d87830a`.
-Its source fingerprint is
-`5abd7717ff346b74cb25042d96bd0e27f76f26e112c599b619b617cc67a265e7`;
-exact source `ae77f524bace1e46b738832fe99f133feb51ed51` then passed CI run
-`36468870180`, including Linux **416/416**, native Mac **414 passed / 2 skips**
-and native process **25/25**. `reports/2026-09-28-ci-ae77f52.log` has SHA-256
-`644af54a4bebccbc5b86e0be5bde4cbc781668af29c83e92a35f83147dc3f144`.
-Private proof development now includes checked journal, activation/lifecycle
-and granular preparation components. Complete GC composition and integration
-into the shipped proof runner remain required; this is not M-V6 closure.
-
-The [report index](reports/README.md) also preserves historical M-V5 evidence:
-
-| Evidence | Observed result | What it does not establish |
-|---|---|---|
-| `reports/2026-09-27-m-v4-c92e84e.log` | Exact-source store 69/69, seven parser/recovery properties plus missing-field calibration, CLI 10/10 | Serde theorem, new candidate CI or native platform closure |
-| `reports/2026-09-27-m-v5-local-rust.log` | fmt/clippy/tests, Loom/journal/GC calibration; 898 test-image source files matched | The three ignored real-Go/Docker integration tests |
-| `reports/2026-09-27-m-v5-local-cli.log` | Final working-tree real CLI/Deno **362/362**, including GC 30, build closures 7, history 10, recovery 10 | Every future handover capability or native macOS |
-| `reports/2026-09-27-m-v5-local-proof.log` | Whole policy **92 verified/0 errors**, 13 attributed calibrations, 20 image-bound policy/Cargo/runner inputs | Generalized recovery M-V6, protocol M-V7, filesystem inventory completeness |
-| `reports/2026-09-27-m-v5-local-smoke.log` | Five actual CLI cases; root substitution refusal, old current, orphan link, expired history, ID exhaustion | Release artifact/provenance or public installation qualification |
-| `reports/2026-09-27-m-v5-local-gates.log` | All six local non-fuzz Compose services passed | TS/TLC/TLAPS RUN layers were cached; no fresh counts claimed |
-
-Base for the M-V5 packet: `c92e84e`; tracked patch SHA-256
-`87b991bc888af8342823771505a2d30bdadd3526c8cc81b5524967d751d6b5e2`;
-source-file fingerprint including new source files:
-`581f470d6761f6e4e6c839f9dbb91a61604c3ef2dd883e10db196ad9e92a63f6`.
-Subsequent handoff documentation does not change those behavior-bearing inputs.
-Reconcile live changes before reuse; commit cleanly and bind candidate evidence
-rather than retroactively relabelling dirty-tree reports as protected CI.
-
-M-V1's existing TLAPS result is a **301-obligation, one-destination/one-recovery
-pilot**. M-V2's shared scheduler Loom coverage, M-V3's actual scanner proof,
-M-V4's byte admission and M-V5's typed retention are implemented with local
-reports. Preserve their named obligations/calibrations when extending them.
-
-## 4. Missing implementation/proof gates
-
-| Gate / authoritative scope | Current gap | Next action and acceptance |
-|---|---|---|
-| M-V6 — §6 generalized recovery | Corrected prepared-constructor proof passes the complete rebuilt local gate; exact-source/native qualification remains pending | Source `8143443` carries the explicit transition decomposition. Focused two-CPU execution passed 97/97; complete local generalized TLAPS passed 40 modules / 443 names / 4,623 obligations. CI `36557008541` is the candidate run; prior CI `36531160370`'s constructor timeout remains preserved. No failed aggregate is release approval. |
-| M-V7 — §6 items 1–5 | Production acquisition/process/survey/journal kernels and complete local calibration pass; exact-source/native candidate remains pending | Local Verus passed 333/0 with 60 calibrations and 16 evidence negatives; Rust, TS and 417-case CLI gates passed. Journal effect calibration passed five positives and six seam mutants, plus the actual interrupted-rollback/recovery smoke. Candidate CI is `36557008541` at `8143443`; it does not qualify subsequent R1 edits. |
-| R1 — all §13 R1 changes/acceptance | Captured-source approval, retained runtime, immutable inputs, private versioned records, native source roles and generated-source adopt resume are implemented; complete qualification is open | Development group passed 63 cases, including six controlled repo/pin/link pauses through real Deno. One invalid config fixture key was corrected. The native alias-staging failure is repaired and passes the actual apply/live-edit witness. Strict schema/reader tests passed. Finish the read-fault/alias-form/resume additions, whole gates, demos/examples, website visual proof and native/exact-source CI. The website branch is `handover/source-approval-docs`; nothing there is published yet. |
-| R2 — remaining §13 R2 plus §10 | M-V5 supplies generation types/inventory/exact pruning, **not** ownership role types, complete independent seam oracles or policy receipts | Finish zero-copy desired/live/prior roles, takeover and lineage authority types; migrate every caller/model/proof without raw overloads. Extend real filesystem oracles and attributable role/authority/observation/effect/receipt mutants; implement the versioned durable policy receipt. Required compile-fail and Verus contracts remain part of acceptance. |
-| R3 — all §13 R3 | Stable selection/intent IDs, private outcomes/archives, settled failure/supersession, legacy migration, inspection and fixture-only simulations are implemented and qualified by local/native/current-commit runtime gates | Preserve the 43-case focused crash/activation bridge, latest 405-case Linux / 403-case native CLI results, real simulation/example smokes and six bounded model mutants. Compose the persisted identity with generalized M-V6; no exactly-once claim. |
-| R5 — NEXT portion from §9 | Scoped process supervision/plugin fixes exist; full required identity/env/FD/receipt/escaping campaign is not closed | Inventory and migrate every caller touched by NEXT work; bind launched executable/interpreter/script identity with honest OS assumptions, role env/grants and FD handling. Add private bounded receipts/required trace controls and actual lifecycle/pressure/canary/terminal-output cases. Current process tests live at `crates/gripsack-process/src/tests/`, not the older plan's `tests/` spelling. Additional full-tree containment is claim-gated, never silently inferred from process groups. |
-| R6 — NEXT applicability/identity and software-fault cases | Existing persistence tests do not close the complete named applicability/campaign contract | Record actual metadata/alias/filesystem limits, resolve dangling guarantee IDs, add the machine-readable applicability matrix and applicable ENOSPC/EDQUOT/EIO/ESTALE/EXDEV/lock/parent-replacement/readonly cases across real publication/recovery/receipts. Qualified VM power-cut evidence is separately claim-gated/M5: do not invent a hardware claim or run destructive experiments on user disks. |
-| R4 — all §13 R4 | No `schema/release/` or `schema/verification/` contracts found; `install.sh` currently installs after same-origin checksum verification | Implement generated assurance/release manifests, exact-source/evidence/artifact/compatible-SDK binding, identity/ref/workflow-constrained attestation verification, fail-closed installer/self-update, revocation and interrupted-publication recovery. Run the complete non-publishing valid/tampered/wrong-identity/missing-evidence/mismatched-SDK/revoked cases; old binary stays usable on every failure. |
-| R7 and §8 E1–E3/E7–E8 — NEXT public surface | No root `SECURITY.md` found; current-candidate tap/site/profile/example and owner security qualification is not recorded | Finish current API/frontend/compatibility docs, real private reporting/support/rotation/revocation policy and owner actions. Canonical site is `gripsack-dev/gripsack-dev.github.io`; bind banner/installer/examples/assurance to one verified release tuple. Exercise actual examples/browser/deployed headers and advertised Formula/Cask channels. Do not archive/yank/delete other projects implicitly. |
-| Existing §§1–6 NEXT fixes and §10 quality | Local packets exist, but the final complete release candidate is not qualified | Preserve and requalify evaluator/host/adopt, archive/plugin/throttle, scheduler, prior/privacy, update/resource/sema and evidence-integrity fixes. Include source-matched original regressions, required module/type cleanup and explicit review. A required failing case promotes its necessary fix to NEXT. |
-
-R8's current survey/error-precedence contract remains required; its new JSON
-survey interface is authorized later work. §4.2/4.3/4.5/4.7, broad trace/caller
-breadth, recovery convenience, ecosystem conformance additions and M-V8 retain
-exactly the NEXT/LATER/CLAIM-GATED split in §9. Do not make every later item a
-new release blocker, or defer a prerequisite exposed by a required failure.
-
-## 5. Delivery/CI changes: all 13 §7 items accounted for
-
-| Plan item | Observed gap / required action |
-|---|---|
-| §7.1 | Core publish loop still places `gripsack-ir` before `gripsack-policy`. Derive/validate topological order from Cargo metadata, including every publishable current workspace crate; calibrate a dependency-order violation without publishing. |
-| §7.2 | Homebrew bump precedes GitHub release creation. Finalize/verify the complete release tuple before tap/site/channel advancement; registry publication remains before announcement. |
-| §7.3 | Post-download handoff checks count four tarballs but do not verify the exact expected subject set/digests before attestation. Add recomputation at every handoff and test missing/extra/mismatched subjects and checksum root resolution. |
-| §7.4 | CI read-only permissions and cancel-in-progress concurrency are implemented. Preserve non-canceling release publication. |
-| §7.5 | Fail-closed `gate` and explicit fuzz-waiver admission are implemented and their real failed-run behavior observed. Live protection still needs the aggregate; qualify corrected current-source CI before relying on it. |
-| §7.6 | SDK workflow has no `id-token: write`, npm `--provenance` or non-canceling publication concurrency. Implement and verify the selected registry identity/auth policy; trusted-publishing/token retirement remains an explicit external action if chosen. |
-| §7.7 | Scheduled audit grants unused `issues: write`. Remove it or implement real idempotent failure reporting; record the yanked/unsound advisory policy deliberately. |
-| §7.8 | Scheduled fuzz workflow lacks crash-out mount/upload. Preserve this repair requirement for the delegated lane; archive failures with 90-day retention when that lane runs. Current feedback waiver does not fabricate a passing fuzz result. |
-| §7.9 | Demo uses floating VHS and `curl ... deno.land/install.sh | sh`. Pin VHS by digest, verify the Deno ZIP, register the pins, and migrate source-bound fixture approval with R1. |
-| §7.10 | Verus image still downloads an unchecksummed rustup installer. Pin `rustup-init` bytes and validate the installer pin. |
-| §7.11 | Dependabot lists Cargo/GitHub Actions only. Add npm for `/typescript`; Docker pins remain owned by `check_pins.py`. |
-| §7.12 | Installer selects matching core tags without a stable-only semantic filter and verifies checksums only. Complete R4's fail-closed verified path and prerelease/withdrawal policy; test old-binary preservation before executing candidate bytes. |
-| §7.13 | CI audit's unused `checks: write` permission and stale explanation are removed in the committed CI policy. |
-
-Workflow source and explicit-waiver CI dispatch changed during continuation.
-No branch protection, registry, tag, release, domain or private-reporting
-setting has been changed by this packet.
-
-## 6. Missing executions and real-platform gates
-
-| Gate | What must run / be recorded | Limits and prerequisites |
-|---|---|---|
-| Clean committed candidate | Commit reviewed implementation/new files, then bind every applicable report and PR check to the full candidate SHA | Do not lose the dirty M-V5 changes or substitute the older remote PR head. Split the omnibus draft into reviewable complete packets where necessary. |
-| Required CI | Existing Linux `test`, native `e2e-macos`, docs and audit plus the implemented aggregator/waiver policy | Do not dispatch the current unconditional fuzz workflow. Failed/cancelled/unexpected skips block. Manual dispatch alone does not establish branch protection. |
-| Native macOS | Full real CLI/Deno suite on the declared native runner; filesystem/name/permission and changed process/effect cases | Prior `ce3c7e0` native 319/319 is historical, not new-candidate evidence. Cross-compilation is not native runtime evidence. |
-| BuildKit Linux qualification | Current-source `verification/buildkit-qualification/bridge/build.sh` and `probes.sh`, with real pinned daemon and independent image verification/run | Required by the current Linux CI job. Its historical B0-01 pass does not close B1/B2 or prove a Mac VM. Inspect the harness's disposable-resource requirements first. |
-| Three ignored Rust integration tests | `transport::tests::the_real_go_bridge_negotiates_fails_closed_and_cancels_idempotently`; `worker::linux::tests::the_real_docker_worker_provisions_leases_and_stops`; `worker::linux::tests::the_real_docker_worker_refuses_a_foreign_cache_volume` | Not exercised by ordinary `cargo test`. Real Go bridge and dedicated Docker daemon/image required. Production bridge build also runs the shared corpus noted in §2; delegate that part explicitly. Record individual results, not “Rust gate passed.” |
-| Mac VM / launchd | B0-02/B1 Mac worker lanes and E0-02 native launchd, when included in the selected capability/closure claim | Current ledger marks B0-02 blocked. systemd evidence is not launchd; Linux BuildKit is not native Darwin production. Missing facilities stay blocked, not unsupported-success fixtures. |
-| Reproducibility | Two clean pinned-image release builds using `scripts/check_reproducible.sh` | Archive report/config/toolchain/binary hashes. One build or a cached compile is not this experiment. |
-| Artifact qualification | All advertised Linux musl/Darwin targets, package content, in-binary SBOM/advisory checks, checksums, manifest/provenance verification and compatible packed SDK | Current core workflow lists four targets; its Darwin x86_64 cross-build is not runtime qualification. Use the actual release tuple, not an assumed equal core/npm version. |
-| Public docs/install/site | Actual packed SDK + candidate core in executable website examples, disposable install/update cases, browser and deployed-header checks | Source site from the canonical repository, not an invented local mirror. Live domains/private reporting/registry grants need observed external evidence. |
-| Delivery closure | Inventory/calibration plus selected milestone/scope closure on the committed candidate | Inventory validity is not closure. Keep future unrelated scopes pending; all required cases/lanes/proof catalogs of a claimed milestone must pass. |
-
-## 7. Existing commands for the assigned model
-
-Run from the repository root unless a command states otherwise. Resolve missing
-implementation above first; **today's `model`/`tlaps`/`verify` commands cannot
-prove an unimplemented M-V6/M-V7 contract**. Do not run release tag workflows as
-tests; they publish to real registries.
-
-Inventory and calibrated dependency boundaries:
+`scripts/smoke_package_registry.py` is a standalone stdlib Python journey, not
+a passing receipt or a registry provisioner. Before invoking it, provision a
+real isolated Distribution 3.1.2 registry with basic authentication and a private
+CA, and install that CA in the disposable client OS trust store. Supply the
+candidate core, a signed relocatable native bundle exposing `grip` (local native
+components), its independently obtained publisher
+trust policy, the CA certificate, and a JSON credentials file containing only
+`username` and `password`. Do not use production/public registry resources.
+The core also receives `SSL_CERT_FILE` pointing to the supplied CA; the independent
+Python reader explicitly uses that CA with ordinary hostname/certificate checks.
 
 ```sh
-python3 scripts/check_delivery.py --validate
-python3 scripts/delivery_checker_calibration.py
-python3 scripts/check_architecture.py --self-check
+python3 scripts/smoke_package_registry.py \
+  --grip /private/candidate/grip \
+  --registry https://registry.fixture.example:5443 \
+  --bundle /private/inputs/native-grip-bundle \
+  --trust /private/inputs/publisher-trust.json \
+  --credentials /private/inputs/registry-credentials.json \
+  --ca /private/inputs/registry-ca.pem \
+  --workdir /private/evidence/registry-journey-fresh
 ```
 
-Ordinary non-fuzz container gates (use `--build` after source changes):
+The work directory must not exist. The script creates separate private sender
+and recipient homes, copies the exact supplied policy into each, and uses
+mode-0600 scoped credential copies. It imports/inspects/pushes using the real
+CLI into a unique repository, independently reads the authenticated OCI manifest
+and every referenced blob with `urllib`/`ssl`, and checks digest, size, descriptor
+media type, and exact portable-manifest/DSSE bytes against the supplied bundle.
+This independent check verifies transport bytes and DSSE payload binding;
+signature authority is admitted by ordinary core import/inspect using the
+independent policy, not by a second cryptographic implementation.
+
+Only the script-owned sender home/cache and copied bundle are removed before
+recipient pulls. Missing/wrong credentials must produce HTTP 401 independently
+and authentication refusals through the CLI, followed by authenticated digest-only
+pull, inspect, and actual immutable imported `grip --version` execution. No profile
+or automation is activated. Caller-owned inputs are never removed, and no
+container is started/stopped. Captured output is checked for credential values
+before logging; unsafe output is withheld rather than echoed.
+
+Success emits bounded JSON and saves `evidence.json` plus mode-0600
+`commands.jsonl` under the private work directory. Failures exit nonzero and
+preserve available private evidence; use a new directory for another run.
+Retain these receipts with the exact candidate digest. Merely adding this
+script or preparing its prerequisites does not qualify the handover.
+
+For focused iteration:
 
 ```sh
 docker compose run --build --rm test
 docker compose run --build --rm ts-test
 docker compose run --build --rm e2e
-docker compose run --build --rm model
-docker compose run --build --rm tlaps
-docker compose run --build --rm verify
 ```
 
-For fresh execution rather than reused build RUN layers, use the existing
-in-image runner; retain its actual output. Examples:
+For complete qualification, use the existing selected controller installation
+and a clean committed checkout (no replacement runner or ambient old receipts):
 
 ```sh
-docker compose run --build --rm test python3 scripts/check_gc_roots.py
-docker compose run --build --rm test python3 scripts/check_journal_admission.py
-docker compose run --build --rm model sh scripts/check_models.sh /tla/tla2tools.jar
-docker compose run --build --rm tlaps python3 scripts/check_tlaps.py
-docker compose run --build --rm verify sh scripts/check_verus.sh
-docker compose run --build --rm e2e uv run --locked --no-sync pytest test_gc_admission.py test_build_closures.py test_generation_history.py test_transaction_recovery.py
+export PYTHONPATH=/home/tarek/workspace/ci-infra
+export CI_STATE="$HOME/.local/share/buildbot-ci"
+python3 -m ci_infra --state "$CI_STATE" qualify "$PWD"
+# Use the candidate_id returned above:
+python3 -m ci_infra --state "$CI_STATE" watch "$CANDIDATE_ID"
+python3 -m ci_infra --state "$CI_STATE" status "$CANDIDATE_ID"
 ```
 
-B0 qualification uses its own pinned Go client, not the production bridge build:
+The controller checks every gate declared by that frozen profile, its exit code,
+source/image/adapter/argv binding, output inventory and hashes. Admission does
+not require an obsolete hard-coded 17-gate list. It also does **not** accept a
+missing, failed, cancelled or skipped selected gate. The bundle validator
+requires exact equality between frozen profile, qualification and gate receipts;
+private re-admission checks the original controller archive. Profile edits change
+the candidate identity. Source-qualified admission additionally compares the
+profile with the committed source. A standalone internally consistent synthetic
+bundle is not trusted private admission.
+
+The protected status context is `local-practical-qualification`.
+`scripts/release_admission.py` produces that exact context only after selected
+private re-admission; it validates the newest matching source/repository/creator
+status, never an older convenient success. It does not post GitHub statuses.
+Do not substitute the old `local-qualification` context or mark unrun gates green.
+
+## Optional checks: only on explicit request
+
+The following are **not run by default**, not waived failures and not passing
+claims. They retain their real entrypoints and original acceptance criteria:
 
 ```sh
-sh verification/buildkit-qualification/bridge/build.sh
-sh verification/buildkit-qualification/probes.sh
+# Separate GNU/full build (not a second routine prerequisite):
+docker compose --profile optional run --build --rm gnu-test
+# Model/proof and attributed mutation campaigns:
+docker compose --profile optional run --build --rm model
+docker compose --profile optional run --build --rm tlaps
+docker compose --profile optional run --build --rm verify
+docker compose --profile optional run --build --rm mutants
+python3 scripts/delivery_checker_calibration.py
+# Independent two-build core comparison:
+sh scripts/check_reproducible.sh /absolute/path/to/fresh-repro-output
+# Independent two-build helper comparison:
+python3 tools/conda-helper/package.py --target x86_64-unknown-linux-musl \
+  --dist /absolute/path/to/fresh-helper-output --check --reproducible
 ```
 
-On the qualified pinned Rust Linux runner, after the actual production bridge
-and dedicated Docker prerequisites have been supplied, these execute the
-otherwise ignored tests. Coordinate corpus work as described in §2:
+For the complete persistence campaign, first prepare source-bound images in a
+clean checkout, set a distinct candidate/checkpoint identity, then invoke the
+retained runner:
 
 ```sh
-cargo test --locked -p gripsack-buildkit --lib transport::tests::the_real_go_bridge_negotiates_fails_closed_and_cancels_idempotently -- --ignored --exact --nocapture
-cargo test --locked -p gripsack-buildkit --lib worker::linux::tests::the_real_docker_worker_provisions_leases_and_stops -- --ignored --exact --nocapture
-cargo test --locked -p gripsack-buildkit --lib worker::linux::tests::the_real_docker_worker_refuses_a_foreign_cache_volume -- --ignored --exact --nocapture
+python3 scripts/local_ci.py images
+export CI_CANDIDATE_ID=explicit-persistence-candidate
+export CI_CHECKPOINT_ROOT=/absolute/path/to/private-checkpoints
+python3 scripts/local_ci_persistence.py
 ```
 
-`GRIPSACK_BRIDGE_BIN` can name the actual binary; otherwise the test uses
-`tools/buildkit-bridge/bridge-bin`. Use disposable owned resources, never remove
-foreign containers/volumes to get a pass. Finish with the normal container gates.
+That runner still requires all 96 partitions, both drift states, original
+cut inventories and matching source/image/dispatcher receipts. An incomplete
+campaign is not success. Its checkpoints do not count as controller gate-success
+receipts. An explicitly selected `persistence-96` release gate must supply the
+complete partition evidence; an unselected campaign must not invent partitions.
+The ordinary profile does not select it.
 
-Non-publishing artifact work, after the candidate version/scope is settled:
+CI's manual-dispatch optional booleans select deep lanes explicitly. The
+aggregate requires selected jobs to succeed and unselected jobs to be skipped;
+it never treats a failed selected lane as optional. Fuzz/replay remains separately
+owner-authorized (`REL-FUZZ-2026-09-27`); do not run it as part of routine release
+qualification. Existing fuzz entrypoints remain available for that assignment.
+
+## Storage hygiene and archive relocation
+
+Standing owner authorization `STORAGE-HYGIENE-2026-10-30` permits bounded
+cleanup and verified cold relocation without another capacity-approval round.
+This maintenance authorization alone does not permit discarding unique evidence,
+changing admission floors, rewriting receipts, deleting data volumes or
+interrupting active work.
+
+Separate owner decision `STORAGE-FAST-96-2026-10-31` temporarily sets only the
+current B: physical reserve to 96 GiB (`103079215104` bytes) while the existing
+drive is in use. The system-volume 128-GiB and state-volume 64-GiB floors and
+all twelve qualification gates are unchanged. This accepts less reserve for
+concurrent build growth; it is not a passing qualification or a failed-gate waiver.
+Restore B:'s 128-GiB reserve during the 4-TB replacement/identity update below.
+
+1. Measure both filesystems before acting: `df`/`du` for Ubuntu and
+   `Get-Volume` for Windows. The current Ubuntu VHDX lives on C:, Docker-managed
+   storage on B:, and Seagate's archive on D:. Inspect the WSL registration,
+   configured storage identities and `/mnt/d/CI-Archive/.ci-storage-identity.json`;
+   do not infer identity from a drive letter or an existing empty directory.
+2. Classify the exact paths. Cargo `target/` intermediates are rebuildable;
+   executables used for a reported observation, diagnostics, source, `dist/`,
+   receipts, checkpoints and backups are not disposable merely because their
+   parent looks temporary. Check active compiler processes, open/mapped files
+   and live container mounts. Retain active files and their parent directories.
+3. Prefer clearing inactive compiler output first. Checkpoint retained
+   executables, generated packages and diagnostics to a fresh Seagate directory;
+   preserve modes and links in an archive, compare its contents against the
+   source, then hash the completed archive. Never use broad workspace globs as
+   deletion authority. Root-owned container output can be handled through a
+   container bound only to the explicitly selected cache directories.
+4. For duplicate CI attempt evidence or predecessor inputs, hold the existing
+   controller request lock and confirm no live request/build owns the candidate.
+   Validate the candidate/gate/attempt receipts, complete inventories, every
+   file's size/hash and stable identities against the retained archive.
+   A directory name or a successful old log is not backup evidence. Keep
+   unmatched, interrupted and unbacked attempts.
+5. If more room is needed, copy inactive cold artifacts to a fresh directory
+   under the verified Seagate archive. Record source-to-archive paths and a
+   complete inventory, preserve filesystem metadata in an archive where needed,
+   read back and independently verify every retained byte before removing the
+   original. Keep published release/controller admission records available at
+   their required paths; do not replace live state with NTFS symlinks or assume
+   an archive copy is immediately usable as restored state. Same-host external
+   storage is not offline/disaster-recovery proof.
+6. Save a cleanup receipt outside the deleted tree: selected paths, protected
+   paths, source/retained hashes, verification results, before/after available
+   bytes and the exact removals. Run the real `ci_infra storage-check` afterward.
+   Never substitute lowering the 64-GiB state floor or waiving a gate.
+
+For development compilation, use a toolchain/profile-specific Docker named
+volume, not a host checkout's `target/` bind:
 
 ```sh
-sh scripts/check_reproducible.sh
-# VERSION must be the reviewed candidate version, not an invented release claim.
-: "${VERSION:?set the reviewed candidate version}"
-docker compose run --build --rm -e "VERSION=$VERSION" release
-(cd typescript && npm ci && npm test && npm run build && npm pack)
+docker compose run --build --rm \
+  -v gripsack-dev-rust198-musl:/app/target \
+  -e CARGO_PROFILE_DEV_OPT_LEVEL=1 \
+  -e CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true \
+  -e CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true \
+  build cargo build --locked -p gripsack
 ```
 
-Use Cargo metadata-derived order for **all** publishable-crate package/dry-run
-checks after §7.1 is fixed; do not copy the current broken publish loop. No
-`cargo publish`/`npm publish` without the dry-run flag during verification.
+Named volumes remain caches, not release evidence, and consume B: capacity.
+The ordinary e2e image already uses an optimized development build with debug
+assertions and overflow checks; do not mistake opt-level-zero hashing cost for
+a reason to weaken runtime admission or enlarge command deadlines.
 
-For published examples, set `SITE` to the real canonical website checkout,
-`SDK` to the just-built tarball, and `GRIPSACK_BIN`/`GRIPSACK_DENO` to the actual
-candidate/pinned runtime paths:
+Deleting Ubuntu files does not necessarily shrink its Windows VHDX. Online
+`fstrim` and an eventual offline
+[DiskPart compaction](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/compact-vdisk)
+are separate maintenance steps. Inspect the actual Ubuntu VHDX path first.
+Compaction requires the disk detached or attached read-only; quit Docker/WSL
+clients and stop the distro only in an explicit downtime window. Do not terminate
+the running assistant, editor or qualification jobs to shrink the file. Report
+guest free space and Windows free space separately; an unrun compaction is not
+a claimed recovery.
+
+### Docker Desktop privilege boundary
+
+Start and stop Docker Desktop as its normal owning user. Run only the necessary
+disk-maintenance command in Administrator PowerShell, detach the disk, then
+leave that elevated shell before starting Docker. Do not bundle an elevated
+`docker desktop start` into the compaction instructions.
+
+If WSL reports `MountDisk/HCS/E_ACCESSDENIED`, inspect the exact VHDX named in
+the error, its attributes, attachment state, owner and effective permissions.
+Docker's small `main/ext4.vhdx` bootstrap and large `disk/docker_data.vhdx`
+are different files. The 2026-10-30 recovery found an Administrator-owned
+bootstrap whose normal account could read/write bytes but could not manage
+its ACL; the data disk did not have that restriction. Saved ACLs and a narrowly
+scoped, owner-approved permission repair restored normal-user startup without
+resetting Docker or changing the bootstrap bytes.
+
+Back up security descriptors before repair. Grant only the intended owning
+account the required access within the actual Docker WSL directory; retain
+SYSTEM and existing VM/capability entries. Protected Administrator-owned child
+ACLs can require elevation even when the parent is user-owned. Never grant
+Everyone full control, recursively reset the whole drive, unregister a distro,
+or replace the data disk as a first response. Verify the original daemon ID,
+retained volume bytes and an actual container execution afterward.
+
+Ubuntu and Docker also have separate guest filesystems. Trimming Ubuntu's `/`
+does not trim Docker's data disk. Identify the actual Docker data mount before
+any discard operation; a reported guest discard does not establish Windows
+space recovery. Re-measure host capacity and retain the configured admission
+floor.
+
+### Planned hardware, unchanged storage roles
+
+The owner-selected next fast tier is a Lexar NM790 4-TB NVMe in an OWC Express
+1M2 enclosure on the workstation's USB4 40-Gb/s port. It replaces the existing
+fast build tier; Seagate remains the cold archive. Until it is installed and
+verified, the existing drive and storage identity remain authoritative.
+
+Use the supported Docker storage-location workflow in a quiescent window.
+Retain and verify the old copy before retirement, check normal-user ACLs and
+the engine/image/volume inventories, and deliberately update the recorded
+physical/volume identities for the replacement device. Keeping drive letter B:
+does not make a new disk match the old storage binding. Keep bounded cache
+retention even with the extra capacity.
+
+The HP mini is a future independent verification/signing boundary, not a
+provisioned signer today. It should receive immutable candidates and verify
+their bytes and approval evidence independently; signing keys must not enter
+the shared build cache or untrusted build execution. The current unsigned
+GitHub-only release authority remains unchanged until the real host and its
+explicit policy are provisioned and exercised.
+
+
+
+## Conda measurements and unchanged-source reuse
+
+Conda remains supported. Core/SDK/helper versions are coordinated at 0.51.0 for
+this release; the integration owner owns version/pin changes. One build is the
+default; `reproducible_rounds: 1` is not a reproducibility claim. A requested
+second independent build records `2` only after byte equality.
+
+A new measurement records `source_sha256` over the helper manifests, lock,
+packager, Rust sources, vendored inputs and transitive local dependency sources,
+manifests and build scripts. Used inherited workspace package/dependency/lint
+settings are bound; unrelated core/SDK code is not. The Conda pin table is
+checked independently, not hashed into its own measurement. Unchanged
+measurements can be imported without rebuilding:
 
 ```sh
-python3 scripts/check_examples.py --site "$SITE" --core-repo . --sdk "$SDK" --grip "$GRIPSACK_BIN" --deno "$GRIPSACK_DENO" --selfcheck
+python3 scripts/local_ci.py helper --reuse-helper-dist /absolute/path/to/measured-helper
+# Or directly with the pinned toolchain installed:
+python3 tools/conda-helper/package.py --target x86_64-unknown-linux-musl \
+  --dist /absolute/path/to/fresh-helper-output --reuse-dist /absolute/path/to/measured-helper --check
 ```
 
-Current checker closure commands (expected to reject incomplete claims):
+Reuse requires exact compiled pin/version, source/lock/compiler/image metadata,
+checksum sidecar, original license bytes, static binary admission and a fresh
+protocol smoke. Changed/missing source metadata fails; it never silently falls
+back to a rebuild or claims a new measurement. For controller qualification,
+select the explicit reuse argv/path in the reviewed profile before freezing it;
+its resulting bytes still pass the normal installed consumer gate. Historical
+manifests without the source binding require one new measurement.
+
+The 0.51 local profile explicitly re-admits the existing helper measurement at
+`/home/tarek/.local/share/buildbot-ci/worker/retained-inputs/conda-0.51.0-60d66f94`.
+Its six files were copied and hash-verified from the passed `helper-pins` attempt
+of candidate `1a2df07b09fa6b9d441e88d9dc52fc3b96d048dea2950cf3c7dd035e8bef6b10`;
+that candidate's later failure does not become a passing overall qualification.
+The helper source digest remains
+`971f8f393ca26612059d4fd41454687e6bb5ba5107369ff51ec6d97dc43d6d76`.
+This path is a worker-visible input of the selected local installation, not a
+new measurement or a portable host default. Another installation must stage
+and verify that exact tuple or explicitly select an ordinary helper build
+before freezing its source/profile. No fallback or gate-success reuse is implied.
+
+
+## Manual unsigned GitHub-only publication
+
+No Homebrew channel, BuildKit bridge/B0 release asset, hosted duplicate build,
+registry migration or new signing infrastructure is a prerequisite. Generic OCI
+transport and Docker service runtime are separate from the retired BuildKit
+backend. Retained generations/receipts/journals/rollback/GC safety is unchanged.
+
+For 0.51.0, owner decision `REL-051-QUALIFIED-ARTIFACT-2026-10-31` selects the
+already-qualified source `3332429b2b92392e267c1df28f673fa798d43a02` and candidate
+`8c0bc53c23bfc815c727b334d1279c2250e558e9de51fa68fe64015b45c26aa4`.
+Its twelve gates and packaged-byte runtime journeys passed. The later scheduler
+smoke synchronization fix and evidence/docs may merge under a scoped owner
+admin override; that fix passed its actual real-manager journey and changes no
+product code. The release tag, manifest and qualification status must still
+name the qualified source, never the later merge head. Do not manufacture a
+passing follow-up candidate: its attempted submission stopped at the physical
+storage guard before creating a candidate. The 96-GiB floor is unchanged.
+This is a one-release artifact boundary, not a general waiver for product edits.
+
+After actual complete selected qualification, assemble and independently admit
+the exact candidate bundle using the existing selected CI runtime:
 
 ```sh
-: "${CANDIDATE:?set the full committed candidate SHA}"
-: "${MILESTONE:?set an actually claimed milestone}"
-python3 scripts/check_delivery.py --close-milestone "$MILESTONE" --release "$CANDIDATE"
-# Only when claiming the entire registered foundation scope:
-python3 scripts/check_delivery.py --close-scope foundation --release "$CANDIDATE"
+python3 scripts/release_prepare.py assemble --source "$PWD" \
+  --candidate "$CI_STATE/inbox/$CANDIDATE_ID/candidate.json" \
+  --evidence "$CI_STATE/archive/$CANDIDATE_ID/evidence" \
+  --destination /absolute/path/to/fresh-release-nomination
+export NOMINATION=/absolute/path/to/fresh-release-nomination
+python3 scripts/release_manifest.py validate --source "$PWD" \
+  --root "$NOMINATION/bundle" \
+  --manifest "$NOMINATION/bundle/gripsack-release-0.51.0.json"
 ```
 
-Other registered scopes are `foundation_extensions`, `tasks_schedules`,
-`semantic_change` and `artifact_sharing`; there is no registered `feedback`
-scope. Do not invent a successful closure by relabelling the claim.
+Review the nomination, exact asset hashes and source tag before the irreversible
+manual publication. With `NOMINATION` pointing at that admitted directory and
+`RELEASE_NOTES` at the reviewed product notes:
 
-## 8. Failure handling, evidence and release exit
+```sh
+export VERSION=0.51.0
+export TAG="core-v$VERSION"
+gh release create "$TAG" --repo gripsack-dev/gripsack --verify-tag \
+  --title "Gripsack $VERSION" --notes-file "$RELEASE_NOTES" --draft \
+  "$NOMINATION"/bundle/artifacts/* \
+  "$NOMINATION"/bundle/gripsack-release-"$VERSION".json
+# Inspect/download/check the actual draft assets before publishing:
+gh release view "$TAG" --repo gripsack-dev/gripsack
+gh release edit "$TAG" --repo gripsack-dev/gripsack --draft=false --latest
+```
 
-For each assigned gate:
+The tag must already point at the qualified source; `--verify-tag` refuses a
+missing remote tag. Do not overwrite public assets or retag an existing release.
+Publish the SDK tarball as a GitHub asset, not an unrequested npm/crates.io upload.
+Record the qualification receipt and explicit unrun optional checks in the
+release evidence. A draft or successful upload alone is not consumer verification.
 
-1. Fix its named support/case/proof inventory **before** judging results. Record
-   the production entrypoint and implementation prerequisite, not just a command.
-2. Run the real surface in sandboxed HOME/offline fixtures or the explicitly
-   qualified platform. Reuse existing runners; no mirror algorithm or no-op test.
-3. Preserve failure output and its source/tool/input identities. Diagnose and fix
-   the production cause; add/retain a deterministic consumer-visible regression
-   where appropriate. Do not bless new output, weaken the oracle, lower a proof
-   floor, replace a positive with unsupported, or hide failure as a skip.
-4. Re-execute the affected gate and integration surface after correction. Proof
-   mutants must fail the named property/function; compiler errors, missing tools,
-   timeout and unrelated failures are not calibration.
-5. Record full SHA plus dirty-patch digest if applicable, exact command, tool/image
-   versions, fixtures/configuration, expected and actual executed/pass/fail/skip
-   counts, named obligations/calibrations, raw report and SHA-256, assumptions,
-   remaining blockers and next action. Verify downloaded artifact bytes at handoffs.
-6. Update the existing leaf ledger, guarantees and report index together. A local
-   pass does not change a live GitHub setting or prove native/hardware behavior.
+`release-core.yml` is dispatch-only guidance, not a publisher. The retained
+signed installer/update admission path remains fail-closed and requires its
+actual signed evidence; this unsigned manual release must not be advertised as
+satisfying it. Manual tarball/checksum installation is the selected distribution
+path. No synthetic signature or passing hosted/proof status is manufactured.
 
-External owner/facility gates remain explicit: stronger branch protection and
-release environment policy; registry/signing authorization; tested private
-security-report route and support policy; revocation/trust-anchor recovery;
-canonical domain/tap/site authority; native Mac/VM resources for claimed lanes.
-Check reachable APIs/configuration first. If unavailable, record exactly what
-was attempted and who must supply it; never invent contacts, settings or evidence.
+## Integration checks to exercise after edits
 
-Exit only when the selected release's implementation and non-waived evidence
-close, the exact committed candidate has required protected/native results,
-the non-publishing artifact/installer/resume negatives pass, and the finalized
-compatible release tuple is verified before tap/site/channel consumers advance.
-The owner authorized proceeding toward a release, **not bypassing the remaining
-gates**. Keep unrun/waived and qualified results distinct in the final handoff.
+```sh
+python3 scripts/check_ci_gate.py --self-check
+PYTHONPATH=/home/tarek/workspace/ci-infra python3 -m unittest discover -s scripts -p 'test_release_*.py'
+python3 scripts/release_installer.py --check
+docker compose config
+```
+
+Then run the complete selected profile and the changed-feature real CLI/service
+smokes. These commands are recommendations, not a report that they ran. Preserve
+raw failures and fix their actual causes; do not suppress selected checks to
+produce a successful status.

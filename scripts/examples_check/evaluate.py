@@ -24,18 +24,15 @@ from .extract import Block, CheckFailure
 from .fixtures import scaffold, fresh_home
 
 def host_facts() -> dict:
-    os_name = {"Linux": "linux", "Darwin": "darwin"}.get(platform.system())
-    if os_name is None:
+    if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise CheckFailure(
-            f"unsupported checker host OS {platform.system()!r} — "
-            "expectations are derived for linux/darwin"
+            f"unsupported checker host {platform.system()!r}/{platform.machine()!r}; "
+            "expected Linux/WSL x86_64"
         )
-    machine = platform.machine()
-    arch = "aarch64" if machine in ("arm64", "aarch64") else "x86_64"
     return {
-        "os": os_name,
-        "arch": arch,
-        "libc": "glibc-2.36" if os_name == "linux" else None,
+        "os": "linux",
+        "arch": "x86_64",
+        "libc": "glibc-2.36",
         "hostname": "examples-checker",
     }
 
@@ -183,8 +180,8 @@ def assert_envelope(env: dict, expect_outputs: dict, where: str) -> None:
     ir = env.get("ir")
     if not isinstance(ir, dict) or set(ir) != {"ir_version", "host", "workspace"}:
         raise CheckFailure(f"{where}: expected workspace-only IR, got {ir!r}")
-    if ir["ir_version"] != 9:
-        raise CheckFailure(f"{where}: expected IR9, got {ir['ir_version']!r}")
+    if ir["ir_version"] != 10:
+        raise CheckFailure(f"{where}: expected IR10, got {ir['ir_version']!r}")
     workspace = ir["workspace"]
     if not isinstance(workspace, dict):
         raise CheckFailure(f"{where}: no workspace in IR")
@@ -218,7 +215,7 @@ def run_example(entry: dict, block: Block, ctx) -> list[str]:
                     or not isinstance(span.get("col"), int) or span["col"] < 1):
                 raise CheckFailure(f"{where}: invalid source span for {node['name']}: {span}")
             declaration = re.compile(
-                rf'\b(?:pkg|recipe|environment|profile|image|task|check|hook)\("{re.escape(node["name"])}"'
+                rf'\b(?:pkg|environment|profile|task|check|hook|service|schedule)\("{re.escape(node["name"])}"'
             )
             expected_lines = [i for i, text in enumerate(block.code.splitlines(), 1)
                               if declaration.search(text)]
