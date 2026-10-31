@@ -18,11 +18,12 @@ review/saved-plan application. Independent native transfer, private authenticate
 TLS registry consumption, imported-tool scheduling, all 13 projection cases and
 eight final-helper Conda/native-wheel cases passed. Both mixed local and external
 environment journeys passed; the latter used the exact optimized candidate
-binary without weakening admission or raising command limits. The first ten
-selected gates passed before stale documentation classifications stopped the
-installed-consumer gate; all ten complete examples pass after its repair.
-Current-source admission, final public consumers and the website must still pass
-before publication. No 0.51 release is claimed here.
+binary without weakening admission or raising command limits. Candidate `9f0d7978...`
+passed all twelve selected gates, and its packaged core passed the changed-feature
+runtime journeys. Requalification after an operator-check repair correctly refused
+stale generated installers; both generated payloads are refreshed. New exact-source
+admission and final-byte/public consumers remain required before publication.
+No 0.51 release is claimed here.
 
 The owner's `REL-PRACTICAL-051-2026-10-28` amendment selects twelve routine gates.
 Formal/model/mutant/fuzz, exhaustive persistence, duplicate GNU and two-build

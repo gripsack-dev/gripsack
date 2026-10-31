@@ -319,6 +319,16 @@ completion or release evidence is claimed by this execution map.
   semantic/saved-plan journeys also passed with those exact bytes. Later source
   qualification may reuse these runtime observations only if its final
   executable is byte-identical; this is not a passing new-source claim.
+- Candidate `29232f4640b810555f2eeedc4fe1f3f51bf7cce657c2bd1a78932907d168f965`
+  passed its first eight gates, then correctly refused stale generated installer
+  payloads in `publication-packages`. The compatibility-check repair also changes
+  the embedded verifier: both installers are regenerated from their reviewed
+  modules, and the actual entrypoint's help command and freshness check pass.
+  This changes compiled core bytes; final-byte runtime scenarios must run again
+  after the new source is qualified. No failed gate is waived or receipt reused.
+  The prior `f69ff3e8...` core also passed PostgreSQL persistence, imported-tool
+  systemd scheduling, authenticated TLS registry consumption and independent
+  executable-filesystem relocation after removal of the producer and first recipient.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer
