@@ -20,8 +20,10 @@ marked native cases plus PostgreSQL persistence/readiness/foreign-owner refusal,
 private TLS registry, independent-filesystem transfer and imported-tool scheduling.
 The scheduler fixture now waits for its terminal receipt as well as postcondition
 effects; its corrected real-manager journey passed without changing deadlines
-or scheduler behavior. The source repair still needs fresh qualification; runtime
-proof is reusable only after final executable byte equality.
+or scheduler behavior. The owner selected the fully qualified `3332429...` artifact
+for release and a scoped admin merge of only the verified smoke fix and evidence/docs.
+The tag/status stay bound to that source; the later head has no fabricated passing
+candidate, and the physical storage guard remains unchanged.
 
 See the [release record](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.51.0)
 for final source, publication/readback, public-consumer and website evidence.

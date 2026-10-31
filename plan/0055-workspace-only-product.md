@@ -348,6 +348,13 @@ completion or release evidence is claimed by this execution map.
   lifecycle, admitted-old completion and all three revocation refusals with the
   same `8ddc3ba7...` core. The fixture repair still requires new exact-source
   qualification; runtime evidence is reusable only for byte-identical artifacts.
+- The owner selected `REL-051-QUALIFIED-ARTIFACT-2026-10-31`: publish the fully
+  qualified `3332429...` artifact and merge only the verified smoke fix and
+  evidence/docs under a scoped admin override. The follow-up submission stopped
+  before creating a candidate when B: had 75.9 GiB free against its 96-GiB floor.
+  No product source changed after qualification. The release tag, manifest and
+  successful qualification status remain bound to `3332429...`; the follow-up
+  head is not reported as fully qualified, and no storage floor is lowered.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer

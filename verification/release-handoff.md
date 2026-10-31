@@ -390,6 +390,18 @@ registry migration or new signing infrastructure is a prerequisite. Generic OCI
 transport and Docker service runtime are separate from the retired BuildKit
 backend. Retained generations/receipts/journals/rollback/GC safety is unchanged.
 
+For 0.51.0, owner decision `REL-051-QUALIFIED-ARTIFACT-2026-10-31` selects the
+already-qualified source `3332429b2b92392e267c1df28f673fa798d43a02` and candidate
+`8c0bc53c23bfc815c727b334d1279c2250e558e9de51fa68fe64015b45c26aa4`.
+Its twelve gates and packaged-byte runtime journeys passed. The later scheduler
+smoke synchronization fix and evidence/docs may merge under a scoped owner
+admin override; that fix passed its actual real-manager journey and changes no
+product code. The release tag, manifest and qualification status must still
+name the qualified source, never the later merge head. Do not manufacture a
+passing follow-up candidate: its attempted submission stopped at the physical
+storage guard before creating a candidate. The 96-GiB floor is unchanged.
+This is a one-release artifact boundary, not a general waiver for product edits.
+
 After actual complete selected qualification, assemble and independently admit
 the exact candidate bundle using the existing selected CI runtime:
 
