@@ -329,6 +329,25 @@ completion or release evidence is claimed by this execution map.
   The prior `f69ff3e8...` core also passed PostgreSQL persistence, imported-tool
   systemd scheduling, authenticated TLS registry consumption and independent
   executable-filesystem relocation after removal of the producer and first recipient.
+- Candidate `8c0bc53c23bfc815c727b334d1279c2250e558e9de51fa68fe64015b45c26aa4`
+  passed all twelve selected gates for source
+  `3332429b2b92392e267c1df28f673fa798d43a02`: 706 ordinary flows and 227
+  installed-release cases. Its packaged core, SHA-256
+  `8ddc3ba79dba5ef20004190fca46b5eb0470f74e8c2f0d4844dbb0dadd7b0fd0`,
+  also passed all twelve marked native cases, Bash, semantic/saved-plan,
+  PostgreSQL persistence, private TLS registry and independent-filesystem smokes.
+  Assembly, independent validation and private controller re-admission passed.
+  Private admission initially refused the installation root's 0755 mode; only
+  that operator-owned directory was restricted to 0700. Its already-private
+  configuration and all admission checks remained unchanged.
+- The real scheduler reached success, but its smoke observed a postcondition
+  file before the terminal invocation receipt was committed. The retained
+  status and manager both report success. The fixture now waits for both
+  observations within its original deadline, rather than taking a racy receipt
+  snapshot. A fresh real systemd255 recipient passed the complete imported-tool
+  lifecycle, admitted-old completion and all three revocation refusals with the
+  same `8ddc3ba7...` core. The fixture repair still requires new exact-source
+  qualification; runtime evidence is reusable only for byte-identical artifacts.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer

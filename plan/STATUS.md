@@ -4,7 +4,7 @@ One row per plan. Current work and priorities live in the numbered plans;
 historical decisions remain here rather than on the product website.
 Update this ledger in the same change as the plan it tracks.
 
-## Native workspaces 0.51 — implementation and qualification in progress
+## Native workspaces 0.51 — implementation and qualification evidence
 
 [0055's active continuation](0055-workspace-only-product.md#active-continuation--2026-10-28)
 targets coordinated core/SDK/helper 0.51.0, current IR10, lock3 and helper
@@ -12,18 +12,20 @@ protocol4. Mac/Homebrew/BuildKit authoring and execution are retired, including
 the obsolete B0 harness and worker/session proof dispatcher entries. Actual
 stored ownership, generation, receipt and rollback readers remain.
 
-Development CLI journeys have exercised literal Bash, PostgreSQL readiness and
-data retention, real systemd255 calendar/lifecycle behavior, and offline semantic
-review/saved-plan application. Independent native transfer, private authenticated
-TLS registry consumption, imported-tool scheduling, all 13 projection cases and
-eight final-helper Conda/native-wheel cases passed. Both mixed local and external
-environment journeys passed; the latter used the exact optimized candidate
-binary without weakening admission or raising command limits. Candidate `9f0d7978...`
-passed all twelve selected gates, and its packaged core passed the changed-feature
-runtime journeys. Requalification after an operator-check repair correctly refused
-stale generated installers; both generated payloads are refreshed. New exact-source
-admission and final-byte/public consumers remain required before publication.
-No 0.51 release is claimed here.
+Literal Bash, Docker Engine services, captured systemd255 schedules, semantic
+review/saved plans and passive native sharing are implemented. Candidate
+`8c0bc53c...` passed all twelve selected gates, including 706 ordinary flows and
+227 installed-release cases. Its packaged `8ddc3ba7...` core passed all twelve
+marked native cases plus PostgreSQL persistence/readiness/foreign-owner refusal,
+private TLS registry, independent-filesystem transfer and imported-tool scheduling.
+The scheduler fixture now waits for its terminal receipt as well as postcondition
+effects; its corrected real-manager journey passed without changing deadlines
+or scheduler behavior. The source repair still needs fresh qualification; runtime
+proof is reusable only after final executable byte equality.
+
+See the [release record](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.51.0)
+for final source, publication/readback, public-consumer and website evidence.
+Local qualification alone is not a claim of public or signed release.
 
 The owner's `REL-PRACTICAL-051-2026-10-28` amendment selects twelve routine gates.
 Formal/model/mutant/fuzz, exhaustive persistence, duplicate GNU and two-build

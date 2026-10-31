@@ -181,9 +181,11 @@ def main():
     # Installed tools must survive loss of acquisition material.
     if archive is not None:
         archive.unlink()
-    wait(lambda: checks.exists() and len(checks.read_text().splitlines()) >= 2)
+    # The postcondition writes its effect before the invocation is finalized.
+    # Observe both within the original deadline, not a racy receipt snapshot.
+    wait(lambda: checks.exists() and len(checks.read_text().splitlines()) >= 2
+         and any(item["status"] == "succeeded" for item in status()["invocations"]))
     assert effects.read_text().splitlines()[:2] == ["first", "first"]
-    assert any(item["status"] == "succeeded" for item in status()["invocations"])
     (repo / "gripsack.ts").write_text("throw new Error('timer must not evaluate');")
     command("jobs", "dispatch", first["job"], first["revision"], "--json", approve=False)
 
