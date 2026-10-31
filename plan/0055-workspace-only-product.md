@@ -36,7 +36,7 @@ Owner direction supersedes the earlier product and qualification scope below:
 
 ### Execution ownership and evidence
 
-| Slice | Owner / boundary | Acceptance still to record |
+| Slice | Owner / boundary | Qualified behavior |
 |---|---|---|
 | Bash/QoL | SDK command normalization and source mapping | Actual tagged-template task/check/hook execution and invalid interpolation |
 | Service runtime | Engine API, resource ownership and native task readiness | PostgreSQL readiness, task use, stop/restart data retention, foreign-resource refusal |
@@ -47,9 +47,51 @@ Owner direction supersedes the earlier product and qualification scope below:
 | Gate policy | Existing profile/runner and release admission | Essential-only default and truthful optional-gate selection |
 | Release/site | Integration owner | Exact artifacts, download/install readback and rendered website |
 
-Implementation is in the isolated `feat/linux-product-handover` worktree from
-`799676d`; the older checkout's uncommitted plan edits are preserved. No new
-completion or release evidence is claimed by this execution map.
+Implementation merged in [PR200](https://github.com/gripsack-dev/gripsack/pull/200);
+the older checkout's uncommitted plan edits remain untouched.
+
+### Published 0.51.0 — 2026-10-31
+
+[0.51.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.51.0) is
+public/latest, manually distributed as unsigned GitHub assets. Its immutable
+tag names qualified source `3332429b2b92392e267c1df28f673fa798d43a02`, not the
+later integration merge `375fcddf19ae21e3f7ba8cf42cd81f922d5fb868`.
+
+- Candidate `8c0bc53c23bfc815c727b334d1279c2250e558e9de51fa68fe64015b45c26aa4`
+  passed all twelve selected gates: 706 ordinary CLI flows, 227 installed-release
+  cases, exact packages, dependency audits, documentation and frozen consumers.
+  Original private controller receipts were re-admitted after downloading the
+  actual content-addressed bundle from GitHub.
+- Packaged core SHA-256
+  `8ddc3ba79dba5ef20004190fca46b5eb0470f74e8c2f0d4844dbb0dadd7b0fd0`
+  passed all twelve marked native cases and the Bash, PostgreSQL, semantic,
+  independent-filesystem, authenticated TLS registry and real systemd journeys.
+  [Runtime evidence](https://github.com/gripsack-dev/gripsack/releases/download/core-v0.51.0/gripsack-0.51.0-runtime-evidence.json)
+  records exact hashes and the smoke's corrected terminal-receipt wait.
+- All thirteen uploaded assets passed byte-for-byte download readback before
+  publication. Subsequent anonymous public downloads and a fresh 17-command
+  consumer verified SDK installation/typechecking, cold default-helper
+  provisioning, frozen Conda execution/profile use, and helper-unavailable
+  retained reuse without changing manifests or locks.
+- [Example PR7](https://github.com/gripsack-dev/example-env-typescript/pull/7)
+  merged at `7c1e2278f33935049f343b9b3494000baca585a6`; its public SDK
+  typecheck also passed in run `41184250933`.
+- [Website PR27](https://github.com/gripsack-dev/gripsack-dev.github.io/pull/27)
+  merged at `b2bc6183980b68336a77d4aa8f9663c141ad9b11`. Static commit
+  `0d035eb4b98f9ea6b4b52d5d94df5b11808ef918` deployed in upload-only
+  [Pages run 41184337645](https://github.com/gripsack-dev/gripsack-dev.github.io/actions/runs/41184337645).
+  Live desktop/mobile navigation and light/dark themes passed: 22 pages,
+  706 internal references, no broken anchors, browser errors or horizontal
+  overflow. Code links name the exact released source.
+- Owner decision `REL-051-QUALIFIED-ARTIFACT-2026-10-31` separately permits the
+  verified smoke-only fix and evidence/docs admin merge. No product code changed
+  after qualification; no passing status is attributed to that later head.
+  Optional deep/disruptive campaigns, registry publication and signed-installer
+  admission are not claimed.
+- Completed registry volumes and the safe scheduler filesystem were archived
+  and read-back verified on Seagate before their three owned containers were
+  removed. WSL's interop registration stayed unchanged. Receipts are under
+  `D:\CI-Archive\gripsack-release-0.51.0\20261031T082527Z`.
 
 ### Development observations — not release qualification
 
