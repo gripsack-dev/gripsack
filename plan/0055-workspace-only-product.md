@@ -305,6 +305,20 @@ completion or release evidence is claimed by this execution map.
   remain required. The corrected operator assembled and independently admitted
   the real frozen candidate, and all 141 release-tooling tests passed.
   The corrected source must be qualified afresh before publication.
+- Requalification reached the physical B: reserve again after the first full
+  run. With 118.2 GiB physically free and 152.5 GiB available inside Docker,
+  the owner explicitly chose `STORAGE-FAST-96-2026-10-31`: a temporary 96-GiB
+  physical B: floor until the 4-TB replacement. The system 128-GiB and state
+  64-GiB floors and all twelve gates remain unchanged. Actual storage admission
+  passed after that single-field policy change; the old policy and exact delta
+  are retained in the recovery evidence. Restore B: to 128 GiB on replacement.
+- The packaged core from candidate `9f0d7978...`, SHA-256
+  `f69ff3e8dd3c442d14413b79e0c3ba06767adc813710533535a3b52a4166e628`,
+  passed all twelve marked native-integration cases together, including the
+  corrected short-base overlong-prefix refusal. Standalone literal-Bash and
+  semantic/saved-plan journeys also passed with those exact bytes. Later source
+  qualification may reuse these runtime observations only if its final
+  executable is byte-identical; this is not a passing new-source claim.
 
 These development observations span preserved intermediate binaries and source
 checkpoints. Exact-source selected-gate, final-artifact, independent-consumer

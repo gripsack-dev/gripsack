@@ -64,7 +64,13 @@ Prefer a Docker-managed named target/cache volume for development iteration;
 ordinary image-build layers already use Docker storage. Host editor checks can
 also create Ubuntu caches. Verify volume identity and capacity, not drive letters
 alone, before relocation. Never move live controller state onto an unchecked
-filesystem or weaken its storage floor.
+filesystem or change an admission floor without an explicit owner decision.
+
+`STORAGE-FAST-96-2026-10-31` is that explicit temporary exception: the owner
+selected a 96-GiB physical B: reserve for the current drive until the 4-TB
+replacement. The system-volume 128-GiB and state-volume 64-GiB floors remain;
+no qualification gate is waived. Restore B:'s 128-GiB reserve when commissioning
+the replacement drive and recording its new storage identity.
 
 Follow [the storage flow](verification/release-handoff.md#storage-hygiene-and-archive-relocation).
 No blanket Docker/volume pruning, deletion of unmatched evidence, or unannounced

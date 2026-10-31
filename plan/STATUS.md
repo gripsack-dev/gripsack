@@ -34,9 +34,11 @@ all-gates language below while preserving those original evidence records.
 `STORAGE-HYGIENE-2026-10-30` authorizes bounded inactive-cache cleanup and
 verified Seagate archive relocation without repeated capacity approvals.
 Old compiler-cache removal restored Ubuntu headroom while preserving source,
-release evidence and active editor libraries. The owner completed Docker-data
-compaction after verified cold-image retention: B: now has 163.3 GiB free and
-the unchanged external-volume storage admission passes.
+release evidence and active editor libraries. Docker-data compaction restored
+headroom; subsequent qualification used some of that reserve. The owner's
+`STORAGE-FAST-96-2026-10-31` amendment temporarily sets only the current B:
+physical floor to 96 GiB, keeping all gates and the other floors unchanged.
+Restore B:'s 128-GiB floor when commissioning the 4-TB replacement.
 The [storage flow](../verification/release-handoff.md#storage-hygiene-and-archive-relocation)
 records copy verification, protected data, Docker bind-mount placement and
 the separate offline-compaction requirement.

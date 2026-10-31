@@ -215,8 +215,16 @@ qualification. Existing fuzz entrypoints remain available for that assignment.
 
 Standing owner authorization `STORAGE-HYGIENE-2026-10-30` permits bounded
 cleanup and verified cold relocation without another capacity-approval round.
-It does not authorize discarding unique evidence, reducing admission floors,
-rewriting receipts, deleting data volumes or interrupting active work.
+This maintenance authorization alone does not permit discarding unique evidence,
+changing admission floors, rewriting receipts, deleting data volumes or
+interrupting active work.
+
+Separate owner decision `STORAGE-FAST-96-2026-10-31` temporarily sets only the
+current B: physical reserve to 96 GiB (`103079215104` bytes) while the existing
+drive is in use. The system-volume 128-GiB and state-volume 64-GiB floors and
+all twelve qualification gates are unchanged. This accepts less reserve for
+concurrent build growth; it is not a passing qualification or a failed-gate waiver.
+Restore B:'s 128-GiB reserve during the 4-TB replacement/identity update below.
 
 1. Measure both filesystems before acting: `df`/`du` for Ubuntu and
    `Get-Volume` for Windows. The current Ubuntu VHDX lives on C:, Docker-managed
