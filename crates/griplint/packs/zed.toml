@@ -5,8 +5,8 @@
 tool = "zed"
 handles = ["settings.json"]
 format = "json"
-supported = ["0."]
-series = "v0"
+supported = ["0.", "1."]
+series = "v0-v1"
 coverage_warning = "key tables are written for a different major version; this module pins {version} — results may be stale"
 
 [files."settings.json".rules.""]
@@ -38,6 +38,7 @@ buffer_font_size = { types = ["integer"] }
 buffer_font_weight = { types = ["integer"] }
 buffer_line_height = { types = ["string"] }
 calls = { types = ["table"] }
+call_hierarchy = { types = ["table"] }
 centered_layout = { types = ["table"] }
 cli_default_open_behavior = { types = ["string"] }
 close_on_file_delete = { types = ["boolean"] }
@@ -47,6 +48,7 @@ code_lens = { types = ["string"] }
 collaboration_panel = { types = ["table"] }
 colorize_brackets = { types = ["boolean"] }
 command_aliases = "free"
+command_palette = { types = ["table"] }
 completion_detail_alignment = { types = ["string"] }
 completion_menu_item_kind = { types = ["string"] }
 completion_menu_scrollbar = { types = ["string"] }
@@ -56,6 +58,7 @@ context_server_timeout = { types = ["integer"] }
 context_servers = "free"
 current_line_highlight = { types = ["string"] }
 cursor_blink = { types = ["boolean"] }
+cursor_animation = { types = ["table"] }
 cursor_shape = { types = ["string"] }
 dap = "free"
 debugger = { types = ["table"] }
@@ -120,6 +123,7 @@ jupyter = { types = ["table"] }
 language_models = { types = ["table"] }
 language_servers = { types = ["array"] }
 languages = "free"
+language_detection = { types = ["boolean"] }
 line_ending = { types = ["string"] }
 line_indicator_format = { types = ["string"] }
 linked_edits = { types = ["boolean"] }
@@ -147,7 +151,9 @@ multi_cursor_modifier = { types = ["string"] }
 nightly = { types = ["table"] }
 node = { types = ["table"] }
 on_last_window_closed = { types = ["string"] }
+on_new_window = { types = ["string"] }
 outline_panel = { types = ["table"] }
+reveal_if_open = { types = ["boolean"] }
 pane_split_direction_horizontal = { types = ["string"] }
 pane_split_direction_vertical = { types = ["string"] }
 preferred_line_length = { types = ["integer"] }
@@ -224,6 +230,8 @@ which_key = { types = ["table"] }
 whitespace_map = { types = ["table"] }
 window_decorations = { types = ["string"] }
 windows = { types = ["table"] }
+window_title_format = { types = ["string"] }
+window_title_separator = { types = ["string"] }
 word_diff_enabled = { types = ["boolean"] }
 wrap_guides = { types = ["array"] }
 zoomed_padding = { types = ["boolean"] }

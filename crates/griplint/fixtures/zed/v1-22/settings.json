@@ -1,0 +1,16 @@
+{
+  "call_hierarchy": {
+    "modal_max_width": "medium"
+  },
+  "command_palette": {
+    "use_command_history": true
+  },
+  "cursor_animation": {
+    "enabled": false
+  },
+  "language_detection": true,
+  "on_new_window": "launchpad",
+  "reveal_if_open": false,
+  "window_title_format": "${projectName}${separator}${fileName}",
+  "window_title_separator": " \u2014 "
+}
