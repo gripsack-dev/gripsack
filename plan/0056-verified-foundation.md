@@ -324,3 +324,80 @@ superseded by this plan, or kept as product work.
 | Releases during the epic | Continue; this plan removes release gates rather than adding them | — |
 | Fuzzing | Keep 3 edge parsers, weekly, never release-blocking | Remove fully |
 | Review | Independent model review 2026-11-08 adopted: observe/re-check interface, S5 explicit, rate limits out of kernel, storage model reused, pilot falsifiers. Overruled: retaining Verus/TLAPS as sunk cost | — |
+
+## F0b record
+
+Scope: the local CI and release machinery (stream F0b, branch
+`foundation/f0-ci-release`). §7's single hosted `gate` job does not apply:
+the required check on `main` is the local Buildbot qualification
+(`local-practical-qualification`); hosted workflows are manual diagnostics.
+
+**Deleted** (≈8.5k lines; `scripts/` 14,559 → 6,566 Python lines):
+
+| What | Lines |
+|---|---|
+| `release_{admission,evidence,hosted,inventory,operator,prepare,publish,verify}.py` + tests (`test_release_manifest.py` included) | 5,106 |
+| `check_ci_gate.py`, `check_delivery.py`, `delivery_{scope,evidence,checker_calibration}.py`, `release_completion_witness.py` | 1,848 |
+| `local_ci_{checkpoints,partition,persistence,runtime}.py` + test | 1,067 |
+| `smoke_package_registry.py` (unreferenced) | 337 |
+| workflows `examples.yml`, `qualify-conda-helper.yml`, `repro.yml`; `ci.yml` 239 → 89 lines (4 manual jobs, no waiver/gate aggregation) | 363 |
+| compose `gnu-test`, `mutants` services and Dockerfile stages; stale `ldd` probe in the `release` stage | — |
+
+Kept on purpose: `release_manifest.py`, `release_consumer.py`,
+`release_installer.py` — `install.sh` and the embedded self-updater
+(`crates/gripsack/src/commands/self_update/installer.sh`) are generated from
+them byte-for-byte, so they are product code; `release-core.yml` stays as a
+no-op because the installer names it as signer identity. `fuzz.yml` stays
+manual-only (owner: never dispatch fuzz). `repro` service and
+`scripts/check_reproducible.sh` stay on demand. `model`/`tlaps`/`verify`/`fuzz`
+services untouched.
+
+**Gates** (`.ci/pilot.json`, each `python3 scripts/local_ci.py <gate>`):
+`test` (compose `test` + `scripts/test_*.py`), `ts-test`, `e2e`, `audit`
+(cargo audit, both locks), `package` (`release.py prepare`: core tarball from
+the Dockerfile `release` stage, Conda helper built fresh with `--check`
+against the committed pin, SDK `npm pack`, `install.sh`), `smoke`
+(`release.py verify`: exact inventory, checksum sidecars, static ELF and
+embedded cargo-auditable SBOM parsed from the packaged bytes, `grip
+--version`, helper manifest/licences, SDK name/version, installer bytes, then
+the installed-consumer smoke `local_artifact_consumers.py` against the pinned
+website/example commits). `proofs` is wired in `local_ci.py` and named under
+`external_inputs.pending_gates`; add it to `gates` once the service lands.
+
+**Release sequence** (tag `core-vX.Y.Z`; `ts-v*` tags ended at 0.46.0):
+
+```sh
+python3 -m ci_infra qualify <clean checkout on a local branch>   # → candidate id
+python3 scripts/release.py status <candidate_id>                 # posts local-practical-qualification
+python3 scripts/release.py publish <candidate_id> --notes N.md   # dry run; add --yes to publish
+```
+
+`publish` refuses an existing tag, a commit not on `origin/main` or a missing
+status; copies the qualified bytes from the ci-infra archive (digest-checked
+against `qualification.json`), re-runs the artifact checks, creates the
+release at the qualified commit and reads every asset back. Asset set = the
+0.51.0 set minus evidence files (`gripsack-release-X.json`,
+`*-runtime-evidence.json`, qualification-bundle tarball): core tarball +
+`.sha256`, helper + `.sha256` + `.manifest.json` + 3 licences, SDK `.tgz`,
+`install.sh`.
+
+**Validation** (2026-11-08, worktree at `277ba2f`): `local_ci.py test` 0,
+`ts-test` 0, `audit` 0, `e2e` 0 (706 passed, 12 deselected, 25 min),
+`package` 0 (fresh helper reproduced pin `60d66f94…`; tarball, SDK and
+installer produced user-owned), `smoke` 0 (88 consumer commands, 227 installed
+flows). `release.py verify --no-smoke` 0. `publish` against the archived
+0.51.0 candidate `8c0bc53c…` refused (tag exists); its collect+verify path
+passed on those archived bytes. Real Buildbot qualification **not run**:
+`ci_infra storage-check` failed (state volume 62.5 GB free < 64 GiB floor);
+a clean checkout is ready at `ci-checkouts/gripsack-foundation-f0` (branch
+`qualify/f0-ci-release`).
+
+**Left for the owner**: run that qualification and `release.py status` once
+storage allows; one release on this flow before calling F0 done (§9);
+`release_manifest.py` still names `REL-*` exclusions and lazily imports deleted
+modules in `validate_bundle` (dead in the installer path) — clean it together
+with the embedded installer in `crates/`; the mutant-calibration scripts that
+only the removed `mutants` stage ran (`check_{journal_admission,
+journal_protocol,gc_roots,rate_admission,http_budget,process_bounds,
+update_survey}.py`) are now unreferenced; per-attempt compose project names
+leave tagged `ci-…-<service>` images behind (layers shared).
