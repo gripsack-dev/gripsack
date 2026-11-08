@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Mutant calibration for the `proofs` gate (plan/0056 §7).
+
+Every moved kernel function gets at least one semantic mutation of its Rust
+source. For each: copy the crate, apply the mutation, translate it exactly as
+the gate does (proofs/extract.sh), build the theorems against the mutated
+translation in a scratch copy of the lake project, and require the build to
+FAIL inside the named theorem(s) — no other theorem may fail, and the
+translation itself must still type-check. A proof that survives its mutant
+proves nothing; a failure anywhere else is noise, not calibration.
+"""
+from dataclasses import dataclass
+from pathlib import Path
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parent.parent
+PROOFS = ROOT / "proofs"
+KERNEL = ROOT / "crates" / "gripsack-kernel"
+
+
+@dataclass(frozen=True)
+class Mutant:
+    name: str
+    file: str
+    before: str
+    after: str
+    fails: tuple[str, ...]
+
+
+MUTANTS = (
+    # CLASSIFY-001: numeric/generation identity must never grant commit authority
+    Mutant("classify-generation-commit", "selection.rs",
+           "            if current.same(&facts.target) {\n                Classification::Committed",
+           "            if current.generation().same(facts.target.generation()) {\n                Classification::Committed",
+           ("Gripsack.Kernel.classify_committed_iff",)),
+    # a fresh machine's interrupted first run is uncommitted, not ambiguous
+    Mutant("classify-fresh-ambiguous", "selection.rs",
+           "            None => Classification::Uncommitted,",
+           "            None => Classification::Ambiguous,",
+           ("Gripsack.Kernel.classify_uncommitted_iff", "Gripsack.Kernel.classify_ambiguous_iff")),
+    # current = previous ≠ target is uncommitted; swapping the arms commits a crashed roll-forward
+    Mutant("classify-previous-commit", "selection.rs",
+           "                        if current.same(&previous) {\n                            Classification::Uncommitted",
+           "                        if current.same(&previous) {\n                            Classification::Committed",
+           ("Gripsack.Kernel.classify_committed_iff", "Gripsack.Kernel.classify_uncommitted_iff")),
+    # transaction identity is byte-exact: ignoring the last byte is a different identity
+    Mutant("transaction-identity-prefix", "selection.rs",
+           "        while i < TRANSACTION_ID_BYTES {\n            if self.bytes[i] != other.bytes[i] {",
+           "        while i + 1 < TRANSACTION_ID_BYTES {\n            if self.bytes[i] != other.bytes[i] {",
+           ("Gripsack.Kernel.TransactionId.same_spec",)),
+    # K4: nothing is planned while recovery/activation is pending
+    Mutant("gc-recovery-pending-ignored", "retention.rs",
+           "    if recovery_pending {\n        return GcAdmission::RecoveryPending;\n    }",
+           "    if recovery_pending && current.is_none() {\n        return GcAdmission::RecoveryPending;\n    }",
+           ("Gripsack.Kernel.admit_gc_spec",)),
+    # K4: a current generation without a directory is corruption, never admission
+    Mutant("gc-corrupt-current-admitted", "retention.rs",
+           "            if contains_generation(inventory.as_slice(), current) {\n                GcAdmission::Admitted\n            } else {\n                GcAdmission::CorruptCurrent\n            }",
+           "            if contains_generation(inventory.as_slice(), current) {\n                GcAdmission::Admitted\n            } else {\n                GcAdmission::Admitted\n            }",
+           ("Gripsack.Kernel.admit_gc_spec",)),
+    # K4: prune the OLDEST excess, never the newest retained generations
+    Mutant("gc-newest-prefix", "retention.rs",
+           "        let generation = generations[i];",
+           "        let generation = generations[generations.len() - 1 - i];",
+           ("Gripsack.Kernel.plan_prune_spec",)),
+    # K4: the current generation is never pruned
+    Mutant("gc-prunes-current", "retention.rs",
+           "        if !names_generation(current, generation) {\n            pruned.push(generation);\n        }",
+           "        pruned.push(generation);",
+           ("Gripsack.Kernel.plan_prune_spec",)),
+    # K4: deletions ⊆ candidates − roots; inverting deletes exactly the roots
+    Mutant("gc-roots-in-deletion", "retention.rs",
+           "        if !contains_bytes(referenced, candidates[i]) {",
+           "        if contains_bytes(referenced, candidates[i]) {",
+           ("Gripsack.Kernel.plan_delete_spec",)),
+    # inventory admission must refuse duplicates (strict, not weak, ascent)
+    Mutant("generation-duplicate", "generation.rs",
+           "        if ids[i - 1].number >= ids[i].number {",
+           "        if ids[i - 1].number > ids[i].number {",
+           ("Gripsack.Kernel.strictly_ascending_spec",)),
+    # journal: the file barrier cannot be skipped
+    Mutant("journal-publication-file-barrier", "journal.rs",
+           "            Self::Stage => Self::SyncFile,",
+           "            Self::Stage => Self::PublishName,",
+           ("Gripsack.Kernel.PublicationAction.successor_spec",)),
+    # journal: a failed effect is never accepted
+    Mutant("journal-publication-failed-ack", "journal.rs",
+           "        if !succeeded || !action.same(self.next) {",
+           "        if !action.same(self.next) {",
+           ("Gripsack.Kernel.RecordPublication.acknowledge_spec",)),
+    # journal: authority only after the namespace barrier completed
+    Mutant("journal-publication-early-authority", "journal.rs",
+           "        if self.next.same(PublicationAction::Complete) {",
+           "        if self.next.same(PublicationAction::PublishName) {",
+           ("Gripsack.Kernel.RecordPublication.finish_spec",)),
+    # journal: marker OR entry is not marker AND entry
+    Mutant("journal-mutation-role-confusion", "journal.rs",
+           "    if marker.role.same(RecordRole::RunMarker) && entry.role.same(RecordRole::MutationEntry) {",
+           "    if marker.role.same(RecordRole::RunMarker) || entry.role.same(RecordRole::MutationEntry) {",
+           ("Gripsack.Kernel.admit_mutation_spec",)),
+)
+
+ERROR = re.compile(r"(?:error:\s*)?(?P<file>[^\s:]+\.lean):(?P<line>\d+):(?P<col>\d+):\s*error")
+DECLARATION = re.compile(r"^(?:@\[[^\]]*\]\s*)?(?:private\s+|protected\s+)?(?:theorem|lemma|def|abbrev|instance)\s+(?P<name>[^\s:(]+)", re.M)
+NAMESPACE = re.compile(r"^namespace\s+(?P<name>\S+)", re.M)
+
+
+def declarations(path: Path) -> list[tuple[int, str]]:
+    """(line, fully qualified name) of every declaration in a theorem file."""
+    namespace = ""
+    found = []
+    for number, line in enumerate(path.read_text().splitlines(), start=1):
+        if match := NAMESPACE.match(line):
+            namespace = match.group("name") + "."
+            continue
+        if line.startswith("end "):
+            namespace = ""
+            continue
+        if match := DECLARATION.match(line):
+            found.append((number, namespace + match.group("name")))
+    return found
+
+
+def attribute(file: Path, line: int) -> str | None:
+    enclosing = None
+    for start, name in declarations(file):
+        if start <= line:
+            enclosing = name
+    return enclosing
+
+
+def failing_theorems(output: str, project: Path) -> tuple[set[str], list[str]]:
+    failures: set[str] = set()
+    unattributed: list[str] = []
+    for match in ERROR.finditer(output):
+        file = (project / match.group("file")).resolve()
+        try:
+            relative = file.relative_to(project)
+        except ValueError:
+            unattributed.append(match.group(0))
+            continue
+        if relative.parts[0] != "Kernel" or not file.exists():
+            unattributed.append(str(relative))
+            continue
+        name = attribute(file, int(match.group("line")))
+        if name is None:
+            unattributed.append(str(relative))
+        else:
+            failures.add(name)
+    return failures, unattributed
+
+
+def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          text=True, timeout=1800)
+
+
+def calibrate(mutant: Mutant, scratch: Path) -> None:
+    crate = scratch / "crate"
+    shutil.copytree(KERNEL, crate, ignore=shutil.ignore_patterns("target"))
+    source = crate / "src" / mutant.file
+    text = source.read_text()
+    if text.count(mutant.before) != 1:
+        raise SystemExit(f"FAIL {mutant.name}: mutation site does not match exactly once")
+    source.write_text(text.replace(mutant.before, mutant.after))
+
+    extraction = run(["sh", str(PROOFS / "extract.sh"), str(crate), str(scratch / "Extracted")], ROOT)
+    if extraction.returncode != 0:
+        print(extraction.stdout)
+        raise SystemExit(f"FAIL {mutant.name}: the mutated kernel did not translate")
+
+    project = scratch / "proofs"
+    project.mkdir()
+    for name in ("lakefile.toml", "lean-toolchain", "lake-manifest.json", "Audit.lean"):
+        shutil.copy2(PROOFS / name, project / name)
+    shutil.copytree(PROOFS / "Kernel", project / "Kernel")
+    shutil.copytree(scratch / "Extracted", project / "Extracted")
+    (project / ".lake").mkdir()
+    os.symlink(PROOFS / ".lake" / "packages", project / ".lake" / "packages")
+
+    build = run(["lake", "build"], project)
+    if build.returncode == 0:
+        raise SystemExit(f"FAIL {mutant.name}: the proofs still build against the mutated kernel")
+    failures, unattributed = failing_theorems(build.stdout, project)
+    if unattributed:
+        print(build.stdout)
+        raise SystemExit(f"FAIL {mutant.name}: errors outside the theorem files: {unattributed}")
+    expected = set(mutant.fails)
+    if not failures or not expected <= failures:
+        print(build.stdout)
+        raise SystemExit(f"FAIL {mutant.name}: expected {sorted(expected)} to fail, got {sorted(failures)}")
+    if failures - expected:
+        print(build.stdout)
+        raise SystemExit(f"FAIL {mutant.name}: unexpected failing theorems {sorted(failures - expected)}")
+    print(f"calibration: {mutant.name} rejected by {', '.join(sorted(failures))}", flush=True)
+
+
+def main() -> None:
+    selected = set(sys.argv[1:])
+    mutants = [m for m in MUTANTS if not selected or m.name in selected]
+    if selected and len(mutants) != len(selected):
+        raise SystemExit(f"unknown mutant(s): {sorted(selected - {m.name for m in mutants})}")
+    for mutant in mutants:
+        with tempfile.TemporaryDirectory(prefix=f"mutant-{mutant.name}-") as directory:
+            calibrate(mutant, Path(directory))
+    print(f"PROOF_CALIBRATIONS={len(mutants)}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
