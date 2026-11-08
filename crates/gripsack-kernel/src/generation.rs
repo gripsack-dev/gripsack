@@ -7,7 +7,6 @@
 //! duplicate-free).
 use alloc::vec::Vec;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GenerationId {
     number: u64,
 }
@@ -49,10 +48,13 @@ impl GenerationId {
     }
 }
 
-/// `current` names `generation`: false when there is no current at all.
-pub fn names_generation(current: Option<GenerationId>, generation: GenerationId) -> bool {
+/// `current` names `candidate`: false when there is no current at all.
+/// (The parameter is not called `generation`: Aeneas emits Rust locals and
+/// module paths into one Lean namespace, and a local named like the module
+/// shadows it.)
+pub fn names_generation(current: Option<GenerationId>, candidate: GenerationId) -> bool {
     match current {
-        Some(current) => current.same(generation),
+        Some(current) => current.same(candidate),
         None => false,
     }
 }
@@ -77,7 +79,6 @@ pub fn strictly_ascending(ids: &[GenerationId]) -> bool {
 /// use gripsack_kernel::retention::plan_prune;
 /// plan_prune(&vec![1, 2, 3], None, Some(1));
 /// ```
-#[derive(Debug)]
 pub struct GenerationList {
     ids: Vec<GenerationId>,
 }

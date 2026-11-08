@@ -17,7 +17,6 @@ use alloc::vec::Vec;
 
 /// GC admission (0045 F3): the destructive command's preconditions as a total
 /// function, so a caller cannot forget a check.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GcAdmission {
     /// Inventory is sound and recovery is finished — plan away.
     Admitted,
@@ -71,19 +70,19 @@ pub fn contains_generation(haystack: &[GenerationId], needle: GenerationId) -> b
 pub fn plan_prune(
     inventory: &GenerationList,
     current: Option<GenerationId>,
-    keep: Option<u32>,
+    keep: Option<usize>,
 ) -> Vec<GenerationId> {
     let generations = inventory.as_slice();
     let excess = match keep {
-        Some(keep) if generations.len() > keep as usize => generations.len() - keep as usize,
+        Some(keep) if generations.len() > keep => generations.len() - keep,
         _ => 0,
     };
     let mut pruned: Vec<GenerationId> = Vec::new();
     let mut i = 0;
     while i < excess {
-        let generation = generations[i];
-        if !names_generation(current, generation) {
-            pruned.push(generation);
+        let candidate = generations[i];
+        if !names_generation(current, candidate) {
+            pruned.push(candidate);
         }
         i += 1;
     }
@@ -105,11 +104,13 @@ pub fn same_bytes(a: &[u8], b: &[u8]) -> bool {
     true
 }
 
-/// Membership over path identities.
-pub fn contains_bytes(haystack: &[&[u8]], needle: &[u8]) -> bool {
+/// Membership over path identities. Identities are owned byte vectors: a
+/// slice of borrowed slices is a nested borrow, which the Aeneas
+/// translation does not support.
+pub fn contains_bytes(haystack: &[Vec<u8>], needle: &[u8]) -> bool {
     let mut i = 0;
     while i < haystack.len() {
-        if same_bytes(haystack[i], needle) {
+        if same_bytes(&haystack[i], needle) {
             return true;
         }
         i += 1;
@@ -121,11 +122,11 @@ pub fn contains_bytes(haystack: &[&[u8]], needle: &[u8]) -> bool {
 /// order. `referenced` are the paths retained manifests pin (store payloads,
 /// build closures, prior blobs); `candidates` are the objects actually on
 /// disk under one inventory directory.
-pub fn plan_delete(referenced: &[&[u8]], candidates: &[&[u8]]) -> Vec<usize> {
+pub fn plan_delete(referenced: &[Vec<u8>], candidates: &[Vec<u8>]) -> Vec<usize> {
     let mut deletions: Vec<usize> = Vec::new();
     let mut i = 0;
     while i < candidates.len() {
-        if !contains_bytes(referenced, candidates[i]) {
+        if !contains_bytes(referenced, &candidates[i]) {
             deletions.push(i);
         }
         i += 1;

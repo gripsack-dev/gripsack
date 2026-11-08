@@ -65,13 +65,13 @@ MUTANTS = (
            ("Gripsack.Kernel.admit_gc_spec",)),
     # K4: prune the OLDEST excess, never the newest retained generations
     Mutant("gc-newest-prefix", "retention.rs",
-           "        let generation = generations[i];",
-           "        let generation = generations[generations.len() - 1 - i];",
+           "        let candidate = generations[i];",
+           "        let candidate = generations[generations.len() - 1 - i];",
            ("Gripsack.Kernel.plan_prune_spec",)),
     # K4: the current generation is never pruned
     Mutant("gc-prunes-current", "retention.rs",
-           "        if !names_generation(current, generation) {\n            pruned.push(generation);\n        }",
-           "        pruned.push(generation);",
+           "        if !names_generation(current, candidate) {\n            pruned.push(candidate);\n        }",
+           "        pruned.push(candidate);",
            ("Gripsack.Kernel.plan_prune_spec",)),
     # K4: deletions ⊆ candidates − roots; inverting deletes exactly the roots
     Mutant("gc-roots-in-deletion", "retention.rs",

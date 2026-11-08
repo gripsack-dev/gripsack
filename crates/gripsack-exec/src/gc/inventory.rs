@@ -40,8 +40,12 @@ impl ObjectInventory {
     pub(super) fn plan(&self, roots: &[&str]) -> Result<CollectionPlan<'_>, ExecError> {
         // The proven kernel (plan/0056 K4) decides by byte identity and
         // returns candidate positions; this adapter owns the str ↔ bytes seam.
-        let referenced: Vec<&[u8]> = roots.iter().map(|root| root.as_bytes()).collect();
-        let candidates: Vec<&[u8]> = self.candidates.iter().map(String::as_bytes).collect();
+        let referenced: Vec<Vec<u8>> = roots.iter().map(|root| root.as_bytes().to_vec()).collect();
+        let candidates: Vec<Vec<u8>> = self
+            .candidates
+            .iter()
+            .map(|c| c.as_bytes().to_vec())
+            .collect();
         let paths: Vec<&str> = gripsack_kernel::retention::plan_delete(&referenced, &candidates)
             .into_iter()
             .map(|position| self.candidates[position].as_str())

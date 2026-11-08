@@ -9,7 +9,6 @@
 //! the sequence completed; `admit_mutation` grants authority iff the roles
 //! are marker and entry.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordRole {
     RunMarker,
     MutationEntry,
@@ -24,7 +23,6 @@ impl RecordRole {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PublicationAction {
     Stage,
     SyncFile,
@@ -62,14 +60,12 @@ impl PublicationAction {
 }
 
 /// A record being published: its role and the next effect it expects.
-#[derive(Debug)]
 pub struct RecordPublication {
     role: RecordRole,
     next: PublicationAction,
 }
 
 /// A record whose publication completed in order.
-#[derive(Debug)]
 pub struct DurableRecord {
     role: RecordRole,
 }
@@ -118,7 +114,6 @@ impl RecordPublication {
 }
 
 /// The authority one durable marker and one consumed durable entry grant.
-#[derive(Debug)]
 pub struct MutationAuthority {
     entry: DurableRecord,
 }

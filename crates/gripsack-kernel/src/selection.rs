@@ -13,7 +13,6 @@ use crate::GenerationId;
 /// run marker's declared transaction against the live `current` pointer by
 /// EXACT identity. A crashed roll-forward has current < target before the
 /// flip and is not committed by it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Classification {
     /// The flip landed: the generation owns the truth; journal cleanup only.
     Committed,
@@ -26,7 +25,6 @@ pub enum Classification {
 
 pub const TRANSACTION_ID_BYTES: usize = 32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TransactionId {
     bytes: [u8; TRANSACTION_ID_BYTES],
 }
@@ -55,7 +53,6 @@ impl TransactionId {
 
 /// Historical pointers remain generation-scoped. New pointers bind a unique
 /// transaction even when rollback reactivates the already-current generation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionIdentity {
     Legacy {
         generation: GenerationId,
@@ -116,7 +113,6 @@ impl SelectionIdentity {
 /// One observed transaction, identity roles named explicitly. Values are
 /// owned copies of the admitted marker and pointer: the classifier compares
 /// identities, it never holds the store's state.
-#[derive(Debug, Clone, Copy)]
 pub struct RecoveryFacts {
     pub previous: Option<SelectionIdentity>,
     pub target: SelectionIdentity,

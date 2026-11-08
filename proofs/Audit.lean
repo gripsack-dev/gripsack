@@ -1,3 +1,6 @@
+import Lean
+import Kernel
+
 /-!
 # Axiom audit (plan/0056 §7)
 
@@ -7,7 +10,6 @@ axiom, an Aeneas `axiom` standing in for an unmodelled external — fails the
 build. The headline claims are also required to exist, so a deleted or
 renamed theorem cannot pass silently.
 -/
-import Kernel
 open Lean Elab Command
 
 /-- Lean's standard axioms. -/
@@ -30,21 +32,29 @@ def claims : List Name := [
   ``Gripsack.Kernel.admit_mutation_spec,
 ]
 
-run_cmd do
+/-- Every theorem under `Gripsack.Kernel`, sorted by name. -/
+def kernelTheorems (env : Environment) : Array Name :=
+  let audited : Name := `Gripsack.Kernel
+  (env.constants.fold (init := (#[] : Array Name)) fun acc decl info =>
+    if audited.isPrefixOf decl && decl.isInternal = false && info.isThm then acc.push decl
+    else acc).qsort (fun a b => a.toString < b.toString)
+
+-- `name` is a reserved token once the Aeneas library is imported (its attribute
+-- syntax), so declarations are called `decl` here.
+def auditAxioms : CommandElabM Unit := do
   let env ← getEnv
-  let theorems := env.constants.fold (init := #[]) fun acc name info =>
-    if (`Gripsack.Kernel).isPrefixOf name && !name.isInternal && info matches .thmInfo _
-    then acc.push name else acc
-  let theorems := theorems.qsort (fun a b => a.toString < b.toString)
-  if theorems.isEmpty then throwError "axiom audit: no theorems under Gripsack.Kernel"
-  for name in theorems do
-    let (_, state) := ((CollectAxioms.collect name).run env).run {}
-    let axioms := state.axioms.qsort (fun a b => a.toString < b.toString)
-    logInfo m!"AXIOMS {name}: {axioms.toList}"
-    for axiom in axioms do
-      unless allowedAxioms.contains axiom do
-        throwError "axiom audit: {name} depends on {axiom}, which is not a standard Lean axiom"
+  let sorted := kernelTheorems env
+  if sorted.isEmpty then
+    throwError "axiom audit: no theorems under Gripsack.Kernel"
+  for decl in sorted do
+    let axioms := (← collectAxioms decl).qsort (fun a b => a.toString < b.toString)
+    logInfo m!"AXIOMS {decl}: {axioms.toList}"
+    for ax in axioms do
+      unless allowedAxioms.contains ax do
+        throwError "axiom audit: {decl} depends on {ax}, which is not a standard Lean axiom"
   for claim in claims do
-    unless theorems.contains claim do
+    unless sorted.contains claim do
       throwError "axiom audit: required claim {claim} is missing or is not a theorem"
-  logInfo m!"AXIOM_AUDIT ok: {theorems.size} theorems, {claims.length} required claims, axioms ⊆ {allowedAxioms}"
+  logInfo m!"AXIOM_AUDIT ok: {sorted.size} theorems, {claims.length} required claims, axioms ⊆ {allowedAxioms}"
+
+run_cmd auditAxioms

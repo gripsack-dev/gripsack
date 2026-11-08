@@ -98,9 +98,13 @@ pub fn gc(
     // generations come from the inventory and never name the current
     // generation — proved, not reviewed.
     let mut pruned: std::collections::BTreeSet<store::GenerationId> =
-        gripsack_kernel::retention::plan_prune(generations, current, keep)
-            .into_iter()
-            .collect();
+        gripsack_kernel::retention::plan_prune(
+            generations,
+            current,
+            keep.map(|keep| keep as usize),
+        )
+        .into_iter()
+        .collect();
     let manifests =
         directory_roots::admit(&generation_directory, &home_cap, home, &mut pruned, dry_run)?;
     let retirements = directory_roots::pending(&generation_directory, &home_cap, home, dry_run)?;

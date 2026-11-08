@@ -39,7 +39,7 @@ fn exact_pruning_boundaries_preserve_current_without_shifting_the_prefix() {
         (Some(0), Some(1), vec![0, u64::MAX]),
         (Some(1), Some(0), vec![1]),
         (Some(2), Some(u64::MAX), vec![0]),
-        (Some(u32::MAX), None, vec![]),
+        (Some(usize::MAX), None, vec![]),
     ] {
         assert_eq!(
             plan_prune(&inventory, current.map(GenerationId::new), keep),
@@ -68,8 +68,11 @@ fn exact_pruning_boundaries_preserve_current_without_shifting_the_prefix() {
 
 #[test]
 fn deletion_positions_are_the_unreferenced_candidates_in_order() {
-    let referenced: Vec<&[u8]> = vec![b"a", b"c"];
-    let candidates: Vec<&[u8]> = vec![b"c", b"b", b"a", b"", b"ab"];
+    let referenced: Vec<Vec<u8>> = vec![b"a".to_vec(), b"c".to_vec()];
+    let candidates: Vec<Vec<u8>> = [&b"c"[..], b"b", b"a", b"", b"ab"]
+        .into_iter()
+        .map(<[u8]>::to_vec)
+        .collect();
     assert_eq!(plan_delete(&referenced, &candidates), vec![1, 3, 4]);
     assert_eq!(plan_delete(&[], &candidates), vec![0, 1, 2, 3, 4]);
     assert!(plan_delete(&candidates, &candidates).is_empty());

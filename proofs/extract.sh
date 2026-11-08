@@ -16,13 +16,16 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-python3 - "$root/Cargo.toml" "$work/Cargo.toml" <<'PY'
+python3 - "$root/Cargo.toml" "$crate/Cargo.toml" "$work/Cargo.toml" <<'PY'
 import sys, tomllib
-root, out = sys.argv[1], sys.argv[2]
+root, kernel, out = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(root, "rb") as handle:
     package = tomllib.load(handle)["workspace"]["package"]
+with open(kernel, "rb") as handle:
+    inherited = [key for key, value in tomllib.load(handle)["package"].items()
+                 if isinstance(value, dict) and value.get("workspace")]
 lines = ['[workspace]', 'members = ["crates/gripsack-kernel"]', 'resolver = "2"', '', '[workspace.package]']
-lines += [f'{key} = "{value}"' for key, value in package.items()]
+lines += [f'{key} = "{package[key]}"' for key in inherited]
 open(out, "w").write("\n".join(lines) + "\n")
 PY
 mkdir -p "$work/crates"
