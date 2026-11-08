@@ -37,7 +37,8 @@ MUTANTS = (
     Mutant("classify-generation-commit", "selection.rs",
            "            if current.same(&facts.target) {\n                Classification::Committed",
            "            if current.generation().same(facts.target.generation()) {\n                Classification::Committed",
-           ("Gripsack.Kernel.classify_committed_iff",)),
+           ("Gripsack.Kernel.classify_committed_iff", "Gripsack.Kernel.classify_uncommitted_iff",
+            "Gripsack.Kernel.classify_ambiguous_iff")),
     # a fresh machine's interrupted first run is uncommitted, not ambiguous
     Mutant("classify-fresh-ambiguous", "selection.rs",
            "            None => Classification::Uncommitted,",
@@ -52,7 +53,7 @@ MUTANTS = (
     Mutant("transaction-identity-prefix", "selection.rs",
            "        while i < TRANSACTION_ID_BYTES {\n            if self.bytes[i] != other.bytes[i] {",
            "        while i + 1 < TRANSACTION_ID_BYTES {\n            if self.bytes[i] != other.bytes[i] {",
-           ("Gripsack.Kernel.TransactionId.same_spec",)),
+           ("Gripsack.Kernel.TransactionId.same_loop_spec",)),
     # K4: nothing is planned while recovery/activation is pending
     Mutant("gc-recovery-pending-ignored", "retention.rs",
            "    if recovery_pending {\n        return GcAdmission::RecoveryPending;\n    }",
@@ -67,22 +68,23 @@ MUTANTS = (
     Mutant("gc-newest-prefix", "retention.rs",
            "        let candidate = generations[i];",
            "        let candidate = generations[generations.len() - 1 - i];",
-           ("Gripsack.Kernel.plan_prune_spec",)),
+           ("Gripsack.Kernel.plan_prune_loop_spec",)),
     # K4: the current generation is never pruned
     Mutant("gc-prunes-current", "retention.rs",
            "        if !names_generation(current, candidate) {\n            pruned.push(candidate);\n        }",
            "        pruned.push(candidate);",
-           ("Gripsack.Kernel.plan_prune_spec",)),
+           # `current` leaves the loop's signature, so the top-level proof breaks too
+           ("Gripsack.Kernel.plan_prune_loop_spec", "Gripsack.Kernel.plan_prune_spec")),
     # K4: deletions ⊆ candidates − roots; inverting deletes exactly the roots
     Mutant("gc-roots-in-deletion", "retention.rs",
-           "        if !contains_bytes(referenced, candidates[i]) {",
-           "        if contains_bytes(referenced, candidates[i]) {",
-           ("Gripsack.Kernel.plan_delete_spec",)),
+           "        if !contains_bytes(referenced, &candidates[i]) {",
+           "        if contains_bytes(referenced, &candidates[i]) {",
+           ("Gripsack.Kernel.plan_delete_loop_spec",)),
     # inventory admission must refuse duplicates (strict, not weak, ascent)
     Mutant("generation-duplicate", "generation.rs",
            "        if ids[i - 1].number >= ids[i].number {",
            "        if ids[i - 1].number > ids[i].number {",
-           ("Gripsack.Kernel.strictly_ascending_spec",)),
+           ("Gripsack.Kernel.strictly_ascending_loop_spec",)),
     # journal: the file barrier cannot be skipped
     Mutant("journal-publication-file-barrier", "journal.rs",
            "            Self::Stage => Self::SyncFile,",
@@ -105,7 +107,8 @@ MUTANTS = (
            ("Gripsack.Kernel.admit_mutation_spec",)),
 )
 
-ERROR = re.compile(r"(?:error:\s*)?(?P<file>[^\s:]+\.lean):(?P<line>\d+):(?P<col>\d+):\s*error")
+# lake reports `error: <path>.lean:<line>:<col>: <message>`
+ERROR = re.compile(r"^error:\s*(?P<file>[^\s:]+\.lean):(?P<line>\d+):(?P<col>\d+):", re.M)
 DECLARATION = re.compile(r"^(?:@\[[^\]]*\]\s*)?(?:private\s+|protected\s+)?(?:theorem|lemma|def|abbrev|instance)\s+(?P<name>[^\s:(]+)", re.M)
 NAMESPACE = re.compile(r"^namespace\s+(?P<name>\S+)", re.M)
 
@@ -176,7 +179,7 @@ def calibrate(mutant: Mutant, scratch: Path) -> None:
 
     project = scratch / "proofs"
     project.mkdir()
-    for name in ("lakefile.toml", "lean-toolchain", "lake-manifest.json", "Audit.lean"):
+    for name in ("lakefile.toml", "lean-toolchain", "lake-manifest.json", "Kernel.lean", "Audit.lean"):
         shutil.copy2(PROOFS / name, project / name)
     shutil.copytree(PROOFS / "Kernel", project / "Kernel")
     shutil.copytree(scratch / "Extracted", project / "Extracted")
@@ -193,6 +196,7 @@ def calibrate(mutant: Mutant, scratch: Path) -> None:
     expected = set(mutant.fails)
     if not failures or not expected <= failures:
         print(build.stdout)
+        print(f"attributed failures: {sorted(failures)}")
         raise SystemExit(f"FAIL {mutant.name}: expected {sorted(expected)} to fail, got {sorted(failures)}")
     if failures - expected:
         print(build.stdout)
@@ -205,9 +209,17 @@ def main() -> None:
     mutants = [m for m in MUTANTS if not selected or m.name in selected]
     if selected and len(mutants) != len(selected):
         raise SystemExit(f"unknown mutant(s): {sorted(selected - {m.name for m in mutants})}")
+    # Every mutant runs even after a failure, so one gate run reports them all.
+    failed: list[str] = []
     for mutant in mutants:
         with tempfile.TemporaryDirectory(prefix=f"mutant-{mutant.name}-") as directory:
-            calibrate(mutant, Path(directory))
+            try:
+                calibrate(mutant, Path(directory))
+            except SystemExit as error:
+                print(error, flush=True)
+                failed.append(mutant.name)
+    if failed:
+        raise SystemExit(f"FAIL: {len(failed)} mutant(s) not calibrated: {failed}")
     print(f"PROOF_CALIBRATIONS={len(mutants)}", flush=True)
 
 
