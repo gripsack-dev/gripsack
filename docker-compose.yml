@@ -169,3 +169,14 @@ services:
       # The runner exports a unique absolute directory. A default is required:
       # compose interpolates every service even when running an unrelated gate.
       - ${REPRO_OUTPUT:-./repro}:/dist
+
+  # plan/0056: render docs/diagrams/*.d2 → *.svg (pinned d2, BuildKit build).
+  #   docker compose run --build --rm diagram
+  diagram:
+    profiles: [tools]
+    build:
+      context: docs/diagrams
+      dockerfile: Dockerfile
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./docs/diagrams:/diagrams
