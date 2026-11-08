@@ -1,4 +1,6 @@
-# gripsack build/test/release services (plan/0003 §3, plan/0056 §7).
+# gripsack build/test/release services (plan/0003 §3, plan/0056 §7, plan/0057).
+# Cargo builds use BuildKit cache mounts (Dockerfile); the first build after
+# `docker builder prune` is cold, every later one reuses the dependency tree.
 #
 # Required local qualification (.ci/pilot.json, via scripts/local_ci.py):
 #   docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test

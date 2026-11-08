@@ -19,6 +19,7 @@ Core, Conda helper and SDK share one version; the tag is `core-vX.Y.Z`.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -158,6 +159,18 @@ def compose(*args, profile=None):
     run(["docker", "compose", *(["--profile", profile] if profile else []), *args])
 
 
+def compose_captured(*args, profile=None) -> str:
+    """A compose run whose output is returned instead of streamed, for runs
+    that happen concurrently: the log stays readable, one build after another."""
+    argv = ["docker", "compose", *(["--profile", profile] if profile else []), *args]
+    completed = subprocess.run([str(arg) for arg in argv], cwd=ROOT, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True)
+    text = "+ " + shlex.join(map(str, argv)) + "\n" + completed.stdout
+    if completed.returncode:
+        raise ReleaseError(f"{shlex.join(map(str, argv))} failed ({completed.returncode}):\n{text}")
+    return text
+
+
 def sha256(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
@@ -185,16 +198,25 @@ def prepare(args):
             (dist / name).unlink(missing_ok=True)
         except PermissionError:
             raise ReleaseError(f"dist/{name} is not removable (root-owned?); clean dist/ via docker")
-    compose("run", "--build", "--rm", "-e", f"VERSION={version}", "-e", f"TARGET={TARGET}",
-            *owner(), "release")
+    core = ["run", "--build", "--rm", "-e", f"VERSION={version}", "-e", f"TARGET={TARGET}", *owner(), "release"]
     helper = f"gripsack-conda-{version}-{TARGET}"
     if args.helper_from:
+        compose(*core)
         # Reuse previously measured bytes; verify still checks them against the pin.
         for name in asset_names(version)[2:8]:
             shutil.copyfile(args.helper_from / name, dist / name)
         (dist / helper).chmod(0o755)
-    else:
+    elif os.environ.get("GRIPSACK_RELEASE_SERIAL"):
+        compose(*core)
         compose("run", "--build", "--rm", *owner(), "helper", profile="tools")
+    else:
+        # The core and the helper are independent images with independent
+        # outputs (plan/0057 D6): build both at once, print both logs in order.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            builds = [pool.submit(compose_captured, *core),
+                      pool.submit(compose_captured, "run", "--build", "--rm", *owner(), "helper", profile="tools")]
+            for build in builds:
+                print(build.result(), end="", flush=True)
     compose("run", "--build", "--rm", "--user", f"{os.getuid()}:{os.getgid()}",
             "-e", "HOME=/tmp/home", "-v", f"{dist}:/out", "tools", "sh", "-ec",
             "cp -r /app/typescript /tmp/sdk && cd /tmp/sdk"

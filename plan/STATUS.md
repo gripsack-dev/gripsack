@@ -75,6 +75,7 @@ change as the plan. Long-form release/evidence narratives were removed by
 | 0054 | Workspace ergonomics and original handover completion | 0.48 |
 | 0055 | One workspace surface | 0.50–0.51 |
 | 0056 | Verified foundation: Lean-proved kernel, rings, trim | F0 + F1 (GO) in 0.52.0; F2 next |
+| 0057 | Fast qualification: cache mounts, one dev profile, parallel e2e/mutants/package, theorem-backed test trim | landing after 0.52.0 |
 
 ## Settled rejections (all eras)
 

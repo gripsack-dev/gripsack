@@ -226,9 +226,12 @@ COPY examples ./examples
 COPY install.sh ./install.sh
 COPY scripts ./scripts
 ENV GRIPSACK_E2E_IN_DOCKER=1
+# plan/0057 D4: pytest-xdist workers; every test is sandboxed under its own
+# tmp_path and fixture servers bind port 0. Override with -e for other hosts.
+ENV PYTEST_XDIST_AUTO_NUM_WORKERS=8
 ENV GRIPSACK_BIN=/usr/local/bin/grip
 WORKDIR /app/e2e
-CMD ["uv", "run", "--locked", "--no-sync", "pytest", "--ignore=test_persistence_matrix.py", "--ignore=test_golden.py"]
+CMD ["uv", "run", "--locked", "--no-sync", "pytest", "-n", "auto", "--durations=25", "--ignore=test_persistence_matrix.py", "--ignore=test_golden.py"]
 
 # Nonpublishing local qualification tools. Tool bytes are immutable; dependency
 # audits deliberately fetch the current advisory database and retain its revision.

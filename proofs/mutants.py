@@ -9,6 +9,7 @@ FAIL inside the named theorem(s) — no other theorem may fail, and the
 translation itself must still type-check. A proof that survives its mutant
 proves nothing; a failure anywhere else is noise, not calibration.
 """
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 import os
@@ -163,19 +164,27 @@ def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess:
                           text=True, timeout=1800)
 
 
-def calibrate(mutant: Mutant, scratch: Path) -> None:
+class Calibration(Exception):
+    """One mutant's verdict: the message is the gate line, `log` the tool output."""
+
+    def __init__(self, message: str, log: str = ""):
+        super().__init__(message)
+        self.log = log
+
+
+def calibrate(mutant: Mutant, scratch: Path) -> str:
+    """Return the calibration line, or raise `Calibration` with the evidence."""
     crate = scratch / "crate"
     shutil.copytree(KERNEL, crate, ignore=shutil.ignore_patterns("target"))
     source = crate / "src" / mutant.file
     text = source.read_text()
     if text.count(mutant.before) != 1:
-        raise SystemExit(f"FAIL {mutant.name}: mutation site does not match exactly once")
+        raise Calibration(f"FAIL {mutant.name}: mutation site does not match exactly once")
     source.write_text(text.replace(mutant.before, mutant.after))
 
     extraction = run(["sh", str(PROOFS / "extract.sh"), str(crate), str(scratch / "Extracted")], ROOT)
     if extraction.returncode != 0:
-        print(extraction.stdout)
-        raise SystemExit(f"FAIL {mutant.name}: the mutated kernel did not translate")
+        raise Calibration(f"FAIL {mutant.name}: the mutated kernel did not translate", extraction.stdout)
 
     project = scratch / "proofs"
     project.mkdir()
@@ -188,20 +197,34 @@ def calibrate(mutant: Mutant, scratch: Path) -> None:
 
     build = run(["lake", "build"], project)
     if build.returncode == 0:
-        raise SystemExit(f"FAIL {mutant.name}: the proofs still build against the mutated kernel")
+        raise Calibration(f"FAIL {mutant.name}: the proofs still build against the mutated kernel")
     failures, unattributed = failing_theorems(build.stdout, project)
     if unattributed:
-        print(build.stdout)
-        raise SystemExit(f"FAIL {mutant.name}: errors outside the theorem files: {unattributed}")
+        raise Calibration(f"FAIL {mutant.name}: errors outside the theorem files: {unattributed}", build.stdout)
     expected = set(mutant.fails)
     if not failures or not expected <= failures:
-        print(build.stdout)
-        print(f"attributed failures: {sorted(failures)}")
-        raise SystemExit(f"FAIL {mutant.name}: expected {sorted(expected)} to fail, got {sorted(failures)}")
+        raise Calibration(f"FAIL {mutant.name}: expected {sorted(expected)} to fail, got {sorted(failures)}",
+                          build.stdout + f"\nattributed failures: {sorted(failures)}")
     if failures - expected:
-        print(build.stdout)
-        raise SystemExit(f"FAIL {mutant.name}: unexpected failing theorems {sorted(failures - expected)}")
-    print(f"calibration: {mutant.name} rejected by {', '.join(sorted(failures))}", flush=True)
+        raise Calibration(f"FAIL {mutant.name}: unexpected failing theorems {sorted(failures - expected)}",
+                          build.stdout)
+    return f"calibration: {mutant.name} rejected by {', '.join(sorted(failures))}"
+
+
+def verdict(mutant: Mutant) -> tuple[bool, str]:
+    """(calibrated, text to print) for one mutant, in its own scratch directory."""
+    with tempfile.TemporaryDirectory(prefix=f"mutant-{mutant.name}-") as directory:
+        try:
+            return True, calibrate(mutant, Path(directory))
+        except Calibration as error:
+            return False, (error.log + "\n" if error.log else "") + str(error)
+
+
+def jobs(count: int) -> int:
+    """Concurrent calibrations (plan/0057 D5): each is one Charon/Aeneas run plus
+    a scratch `lake build`; PROOF_MUTANT_JOBS overrides the default of 6."""
+    configured = os.environ.get("PROOF_MUTANT_JOBS")
+    return max(1, min(count, int(configured) if configured else 6))
 
 
 def main() -> None:
@@ -209,14 +232,13 @@ def main() -> None:
     mutants = [m for m in MUTANTS if not selected or m.name in selected]
     if selected and len(mutants) != len(selected):
         raise SystemExit(f"unknown mutant(s): {sorted(selected - {m.name for m in mutants})}")
-    # Every mutant runs even after a failure, so one gate run reports them all.
+    # Every mutant runs even after a failure, so one gate run reports them all;
+    # verdicts are printed in declaration order whatever order they finish in.
     failed: list[str] = []
-    for mutant in mutants:
-        with tempfile.TemporaryDirectory(prefix=f"mutant-{mutant.name}-") as directory:
-            try:
-                calibrate(mutant, Path(directory))
-            except SystemExit as error:
-                print(error, flush=True)
+    with ThreadPoolExecutor(max_workers=jobs(len(mutants))) as pool:
+        for mutant, (calibrated, text) in zip(mutants, pool.map(verdict, mutants)):
+            print(text, flush=True)
+            if not calibrated:
                 failed.append(mutant.name)
     if failed:
         raise SystemExit(f"FAIL: {len(failed)} mutant(s) not calibrated: {failed}")
