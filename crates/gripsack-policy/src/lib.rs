@@ -8,15 +8,14 @@
 //! `cargo build` compiles the same source with specifications erased,
 //! so the musl release and every ordinary build need no verifier.
 //!
+//! Ring-0 decisions proved in Lean live in `gripsack-kernel` (plan/0056);
+//! what remains here is still Verus-checked.
+//!
 //! Crate rules (handoff §6.1): no filesystem, network, subprocess,
 //! tracing, or async dependencies. Effects stay in the caller's crate;
 //! rendering stays out of the kernels.
-use vstd::prelude::*;
-
 pub mod activation;
 pub mod conda_admission;
-pub mod generation;
-pub use generation::{GenerationId, GenerationInventory, GenerationList};
 pub mod graph;
 pub mod journal_protocol;
 pub mod merge;
@@ -24,32 +23,9 @@ pub mod operation_budget;
 pub mod ownership;
 pub mod process_budget;
 pub mod rate_limit;
-pub mod retention;
 pub mod retry_budget;
-pub mod selection;
 pub mod semantic;
 pub mod target;
 pub mod task;
 pub mod update_survey;
 pub mod workspace_command;
-
-verus! {
-
-/// The commit classification of an interrupted run (0019, 0026 §4,
-/// 0028): recovery compares the run marker's declared transaction
-/// against the live `current` pointer by EXACT identity. Numeric
-/// ordering never decides — a crashed roll-forward has
-/// current < target before the flip and is not committed by it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Classification {
-    /// The flip landed: the generation owns the truth; journal
-    /// cleanup only.
-    Committed,
-    /// The flip never landed: restore every journaled prior.
-    Uncommitted,
-    /// Neither: corruption or tampering — recovery changes nothing
-    /// and keeps the journal intact (fail closed).
-    Ambiguous,
-}
-
-}

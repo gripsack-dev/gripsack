@@ -29,7 +29,7 @@ mod deployment;
 pub use deployment::{ActivationTrigger, DeploymentEntry, EnvironmentOperation, Ownership};
 mod generation_wire;
 pub mod generations;
-pub use gripsack_policy::{GenerationId, GenerationInventory, GenerationList};
+pub use gripsack_kernel::{GenerationId, GenerationList};
 pub mod hash;
 pub mod jobs;
 pub mod journal;

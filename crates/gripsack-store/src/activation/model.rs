@@ -3,7 +3,7 @@
 use super::{ActivationAction as Action, PendingIntent};
 use crate::ActivationTrigger;
 use crate::selection_wire::{TransactionText, parse_transaction};
-use gripsack_policy::selection::{SelectionIdentity, TransactionId};
+use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
 use gripsack_process::Sha256Digest;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};

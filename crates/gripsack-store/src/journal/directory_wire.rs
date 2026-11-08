@@ -4,7 +4,7 @@ use super::{
     directory::{DirectoryTransition, invalid},
     storage::Journal,
 };
-use gripsack_policy::journal_protocol::{RecordRole, admit_mutation};
+use gripsack_kernel::journal::{RecordRole, admit_mutation};
 use serde::{Deserialize, Serialize};
 use std::{
     io,

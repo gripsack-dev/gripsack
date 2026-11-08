@@ -105,10 +105,10 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
                 // either restoration or committed cleanup can have effects.
                 crate::generations::admit_manifest_at(home, home_path, selection.generation())?;
             }
-            match classify(&RecoveryFacts {
-                previous: marker.previous.as_ref(),
-                target: &marker.target,
-                current: current.as_ref(),
+            match classify(RecoveryFacts {
+                previous: marker.previous,
+                target: marker.target,
+                current,
             }) {
                 Classification::Committed => true,
                 Classification::Uncommitted => false,

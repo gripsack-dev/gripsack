@@ -7,7 +7,7 @@ use crate::{
     selection_wire::{TransactionText, parse_transaction},
 };
 use gripsack_fs::{Dir, open_dir_nofollow};
-use gripsack_policy::selection::{SelectionIdentity, TransactionId};
+use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
 use std::{
     io,
     path::{Component, Path, PathBuf},

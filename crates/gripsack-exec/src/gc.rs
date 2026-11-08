@@ -56,8 +56,8 @@ pub fn gc(
 
     // Admission as a total function (0045 F3, 0046): the kernel's
     // biconditionals mean a forgotten check is a type-level impossibility.
-    use gripsack_policy::retention::GcAdmission;
-    match gripsack_policy::retention::admit_gc(
+    use gripsack_kernel::retention::GcAdmission;
+    match gripsack_kernel::retention::admit_gc(
         pending.is_some() || activation_pending,
         current,
         generations,
@@ -98,7 +98,7 @@ pub fn gc(
     // generations come from the inventory and never name the current
     // generation — proved, not reviewed.
     let mut pruned: std::collections::BTreeSet<store::GenerationId> =
-        gripsack_policy::retention::plan_prune(generations, current, keep)
+        gripsack_kernel::retention::plan_prune(generations, current, keep)
             .into_iter()
             .collect();
     let manifests =
