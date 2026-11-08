@@ -280,6 +280,7 @@ gate below 2 GiB available. Host: 32 cores, 30 GiB VM + 8 GiB swap.
 | cold | `proofs` | 98 s | pass | 6.2 GiB used, 24.0 GiB min available, swap 0.0 GiB | `0c8e73f` |
 | cold | `e2e` | 480 s | pass | 6.3 GiB used, 23.9 GiB min available, swap 0.0 GiB | `0c8e73f` |
 | cold | `audit` | 46 s | pass | 5.6 GiB used, 24.6 GiB min available, swap 0.0 GiB | `0c8e73f` |
+| cold | `package` | 492 s | pass | 5.9 GiB used, 24.2 GiB min available, swap 0.0 GiB | `0c8e73f` |
 
 ## 6. How to qualify this branch
 
