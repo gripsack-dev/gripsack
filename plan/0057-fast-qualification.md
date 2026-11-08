@@ -262,8 +262,19 @@ warm daemon; "after (cold mounts)" is the first run that populated them.
 
 ### 5a. Recorded runs
 
-Filled in by the landing PR from the local runs (see the PR description
-for the raw timings and the commands).
+One row per gate per run, appended by the measurement driver as each gate
+finishes (so a host reboot loses at most one gate). "cold" = the three
+`gripsack-*` cargo cache mounts pruned first, toolchain image layers
+cached; "warm" = a second fresh clone after the cold run, with a
+one-line throwaway source change so BuildKit re-executes the RUN-step
+gates (a tree it has already built would be fully `CACHED`, which is
+what re-qualifying an identical commit looks like, not what a release
+commit looks like). Memory is the whole WSL2 VM (`free -m`, 30 GiB,
+Docker Desktop included), sampled every 5 s; the sampler would kill the
+gate below 2 GiB available. Host: 32 cores, 30 GiB VM + 8 GiB swap.
+
+| Run | Gate | Wall | Result | VM memory | Source |
+|---|---|---|---|---|---|
 
 ## 6. How to qualify this branch
 
