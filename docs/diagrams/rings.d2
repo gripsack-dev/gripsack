@@ -1,0 +1,48 @@
+# User-facing rings: what is proved today (0.52), what is next. The full
+# end-state picture is foundation.d2. Render: docker compose run --build --rm diagram
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 24
+  }
+}
+direction: down
+
+r4: "Product — the CLI, review, adopt, doctor\nchecked by end-to-end flows and golden fixtures" {
+  style: {fill: "#eef3fb"; stroke: "#5b7db1"; font-size: 16; bold: true; border-radius: 14}
+
+  r3: "Edge — everything that touches untrusted input\nTypeScript evaluation · downloads · archives · Conda · Docker · systemd\nsandboxed evaluator · typed admission · hash-verified bytes · fuzzing" {
+    style: {fill: "#e3f1e8"; stroke: "#4c9a6a"; font-size: 16; bold: true; border-radius: 14}
+
+    r2: "Host — the small trusted layer\ndriver loop · filesystem · store layout · locks\nsmall enough to read; storage assumptions S1–S7 listed, fault-injected, crash-tested" {
+      style: {fill: "#fbf1e1"; stroke: "#c08a2e"; font-size: 16; bold: true; border-radius: 14}
+
+      r1: "Protocol — apply · rollback · recover · gc as state machines\nnext: Lean proofs that a crash anywhere, then recovery, leaves prior, intended or your own bytes" {
+        style: {fill: "#f8e3e3"; stroke: "#b5525c"; font-size: 16; bold: true; border-radius: 14}
+
+        r0: "Kernel — pure decisions, no IO\nmoving inward next: ownership and drift, managed-block splice, generation identity" {
+          style: {fill: "#efe1f5"; stroke: "#7d4d9a"; font-size: 16; bold: true; border-radius: 14}
+          proved: "proved in Lean since 0.52 — 34 theorems, standard axioms only\ncommit classification · GC admission and pruning · journal publication order" {
+            style: {font-size: 14; fill: "#ffffff"; stroke: "#7d4d9a"; border-radius: 8}
+          }
+        }
+      }
+    }
+  }
+}
+
+lean: "proofs/ — Lean 4, over the Charon → Aeneas\ntranslation of the shipped Rust" {
+  shape: document
+  style: {fill: "#fff4d6"; stroke: "#b8860b"; font-size: 14}
+}
+
+world: "the world — not proved\nfilesystem · network · Docker Engine · systemd · Deno" {
+  shape: cylinder
+  style: {fill: "#eeeeee"; stroke: "#888888"; font-size: 14}
+}
+
+r4.r3.r2.r1.r0.proved -> lean: "the same bytes that ship" {
+  style: {stroke: "#7d4d9a"; stroke-width: 3; font-size: 13}
+}
+r4.r3.r2 -> world: "assumptions, not proofs" {style: {stroke: "#c08a2e"; stroke-width: 2; font-size: 13}}

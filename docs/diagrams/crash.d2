@@ -1,0 +1,55 @@
+# User-facing: what a crash during `grip apply` leaves behind, and how the
+# next run decides. Render: docker compose run --build --rm diagram
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 24
+  }
+}
+direction: right
+
+classes: {
+  phase: {
+    style: {font-size: 15; border-radius: 8; fill: "#ffffff"; stroke: "#5b7db1"}
+  }
+  result: {
+    style: {font-size: 14; border-radius: 8; fill: "#e3f1e8"; stroke: "#4c9a6a"}
+  }
+  crash: {
+    style: {stroke: "#b5525c"; font-size: 13; stroke-dash: 4}
+  }
+}
+
+apply: "grip apply — a crash can land anywhere" {
+  style: {font-size: 17; bold: true; border-radius: 12; fill: "#f7f7f7"; stroke: "#333333"}
+  journal: "journal written\nprior + intent, fsync" {class: phase}
+  writes: "destinations written\none at a time" {class: phase}
+  flip: "`current` flipped\natomic rename" {class: phase}
+  hooks: "hooks run" {class: phase}
+  journal -> writes -> flip -> hooks
+}
+
+classify: "the next grip command\nrecovers first:\nclassify (current, previous, target)\nproved in Lean since 0.52" {
+  style: {font-size: 15; bold: true; fill: "#efe1f5"; stroke: "#7d4d9a"; border-radius: 8}
+}
+
+uncommitted: "Uncommitted\ncurrent = previous" {class: result}
+committed: "Committed\ncurrent = target" {class: result}
+ambiguous: "Ambiguous — neither\nstop, report, never guess;\nnothing else mutates until you look" {
+  style: {font-size: 14; border-radius: 8; fill: "#f8e3e3"; stroke: "#b5525c"}
+}
+
+r1: "nothing was changed" {class: result}
+r2: "prior bytes restored from the journal.\nEvery destination holds its prior bytes,\nits intended bytes, or something you wrote —\nnever a half-written file" {class: result}
+r3: "the new generation stands;\npending hooks resume under\nthe same intent id" {class: result}
+
+apply.journal -> r1: "crash before\nthe journal" {class: crash}
+apply.writes -> classify: "crash while\nwriting" {class: crash}
+apply.flip -> classify: "crash around\nthe flip" {class: crash}
+apply.hooks -> r3: "crash during\nhooks" {class: crash}
+classify -> uncommitted
+classify -> committed
+classify -> ambiguous
+uncommitted -> r2 {style.stroke: "#4c9a6a"}
+committed -> r3: "finish activation" {style: {stroke: "#4c9a6a"; font-size: 13}}
