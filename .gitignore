@@ -21,3 +21,6 @@ demos/out/
 /specs/**/*.tlaps/
 /specs/**/*.out
 *.hprof
+
+# Local qualification scratch (scripts/release.py verify).
+/local-ci/
