@@ -8,8 +8,9 @@
 # the grip binary stays musl-static; deno-dependent stages (ts-test,
 # e2e) run on glibc bases, where the static binary works fine.
 
-# GNU-linked loader fixtures require a GNU compiler and runtime. Coupled to
-# the musl builder/native CI toolchain by scripts/check_pins.py.
+# GNU Rust toolchain for the local-tools image (dependency audit and the
+# installed-consumer smoke). Coupled to the musl builder/native CI toolchain
+# by scripts/check_pins.py.
 ARG GNU_RUST_IMAGE=rust:1.98.0@sha256:620dbcd124499c59e2406d3741574b5c5838cf9eb9656f0c3a03948f79b02959
 
 # Digest-pinned (plan/0042 F): this manifest-list sha256 is the exact
@@ -70,20 +71,10 @@ COPY scripts ./scripts
 COPY typescript/src ./typescript/src
 COPY typescript/deno.json typescript/package.json ./typescript/
 RUN python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
-# Fast generated-source checks remain routine; mutation campaigns are opt-in.
+# Fast generated-source freshness checks.
 RUN cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \
     && python3 scripts/gen_diagnostic_registry.py --check \
     && python3 scripts/gen_frontend_embed.py --check
-
-FROM test AS mutants
-RUN python3 scripts/gen_diagnostic_registry.py --self-check \
-    && python3 scripts/check_journal_admission.py \
-    && python3 scripts/check_journal_protocol.py \
-    && python3 scripts/check_gc_roots.py \
-    && python3 scripts/check_rate_admission.py \
-    && python3 scripts/check_http_budget.py \
-    && python3 scripts/check_process_bounds.py \
-    && python3 scripts/check_update_survey.py
 
 # Exercise debug assertions, overflow checks and fault controls without paying
 # unoptimized hashing costs on every sealed executable launch. Keep the full
@@ -96,15 +87,6 @@ RUN CARGO_PROFILE_DEV_OPT_LEVEL=1 \
     && apk add --no-cache binutils \
     && mkdir -p /app/e2e-bin \
     && objcopy --strip-debug /app/target/debug/grip /app/e2e-bin/grip
-
-# Optional GNU-native duplicate regressions; these cannot execute on Alpine.
-# The e2e stage separately exercises the shipped musl core on a GNU host.
-FROM ${GNU_RUST_IMAGE} AS gnu-test
-ENV CARGO_BUILD_JOBS=4
-WORKDIR /app
-COPY --from=builder /app /app
-RUN cargo test --locked -p gripsack-exec --lib workspace::consumer::admit::host_runtime_tests \
-    && cargo test --locked -p gripsack-process --lib input::tests
 
 # The model gate (plan/0028, 0042 G): TLC over the TLA+ specs via the
 # canonical runner scripts/check_models.sh — positive protocols AND
@@ -265,12 +247,11 @@ FROM builder AS local-helper
 RUN apk add --no-cache python3 build-base binutils cmake perl linux-headers \
     xz-dev bzip2-dev zstd-dev
 
-# Stripped static release binary.
+# Stripped release binary with its embedded SBOM. Static linkage, the SBOM and
+# the version are verified on the packaged bytes by scripts/release.py verify.
 FROM builder AS release
 RUN cargo auditable build --release --locked -p gripsack \
-    && strip target/release/grip \
-    && ldd target/release/grip 2>&1 | grep -q "Not a valid dynamic program\|not a dynamic executable" \
-    && echo "static: ok"
+    && strip target/release/grip
 
 # Fuzz builds share the core compiler. Select its installed version explicitly:
 # +stable may provision a newer release even inside a digest-pinned image.

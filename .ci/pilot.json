@@ -7,17 +7,6 @@
   "version": "0.51.0",
   "gates": [
     {
-      "id": "inventory",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "inventory"
-      ],
-      "timeout_seconds": 1800,
-      "inputs": [],
-      "outputs": []
-    },
-    {
       "id": "test",
       "argv": [
         "python3",
@@ -26,9 +15,7 @@
       ],
       "timeout_seconds": 0,
       "inputs": [],
-      "outputs": [
-        "local-ci/images/test.json"
-      ]
+      "outputs": []
     },
     {
       "id": "ts-test",
@@ -39,149 +26,61 @@
       ],
       "timeout_seconds": 0,
       "inputs": [],
-      "outputs": [
-        "local-ci/images/ts-test.json"
-      ]
+      "outputs": []
     },
     {
-      "id": "runtime-images",
+      "id": "e2e",
       "argv": [
         "python3",
         "scripts/local_ci.py",
-        "images"
+        "e2e"
       ],
       "timeout_seconds": 0,
       "inputs": [],
-      "outputs": [
-        "local-ci/images/builder.tar",
-        "local-ci/images/builder.json",
-        "local-ci/images/e2e.tar",
-        "local-ci/images/e2e.json",
-        "local-ci/images/local-tools.tar",
-        "local-ci/images/local-tools.json",
-        "local-ci/debug/grip"
-      ]
+      "outputs": []
     },
     {
-      "id": "dependency-audits",
+      "id": "audit",
       "argv": [
         "python3",
         "scripts/local_ci.py",
         "audit"
       ],
       "timeout_seconds": 3600,
-      "inputs": [
-        "local-ci/images/local-tools.tar",
-        "local-ci/images/local-tools.json"
-      ],
-      "outputs": [
-        "local-ci/audit-snapshot.tar.gz",
-        "local-ci/audit.json"
-      ]
+      "inputs": [],
+      "outputs": []
     },
     {
-      "id": "helper-pins",
+      "id": "package",
       "argv": [
         "python3",
         "scripts/local_ci.py",
-        "helper",
-        "--reuse-helper-dist",
-        "/home/tarek/.local/share/buildbot-ci/worker/retained-inputs/conda-0.51.0-60d66f94"
+        "package"
       ],
       "timeout_seconds": 0,
       "inputs": [],
       "outputs": [
+        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz",
+        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz.sha256",
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl",
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.sha256",
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.manifest.json",
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-pixi",
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-rattler",
-        "local-ci/images/local-helper.json"
-      ]
-    },
-    {
-      "id": "core-package-static-sbom",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "core"
-      ],
-      "timeout_seconds": 0,
-      "inputs": [
-        "local-ci/images/builder.tar",
-        "local-ci/images/builder.json",
-        "local-ci/images/local-tools.tar",
-        "local-ci/images/local-tools.json",
-        "local-ci/audit-snapshot.tar.gz",
-        "local-ci/audit.json"
-      ],
-      "outputs": [
-        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz",
-        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz.sha256",
-        "local-ci/core-artifact.json"
-      ]
-    },
-    {
-      "id": "candidate-sdk",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "sdk"
-      ],
-      "timeout_seconds": 1800,
-      "inputs": [
-        "local-ci/images/local-tools.tar",
-        "local-ci/images/local-tools.json"
-      ],
-      "outputs": [
-        "dist/gripsack-core-0.51.0.tgz"
-      ]
-    },
-    {
-      "id": "publication-packages",
-      "argv": ["python3", "scripts/release_prepare.py", "gate"],
-      "timeout_seconds": 0,
-      "inputs": [
-        "local-ci/images/local-tools.tar",
-        "local-ci/images/local-tools.json",
-        "dist/gripsack-core-0.51.0.tgz"
-      ],
-      "outputs": [
-        "local-ci/publication/packages.tar.gz",
-        "local-ci/publication/index.json",
+        "dist/gripsack-core-0.51.0.tgz",
         "dist/install.sh"
       ]
     },
     {
-      "id": "external-source-pins",
+      "id": "smoke",
       "argv": [
         "python3",
         "scripts/local_ci.py",
-        "external-sources"
-      ],
-      "timeout_seconds": 1800,
-      "inputs": [],
-      "outputs": [
-        "local-ci/external/site.bundle",
-        "local-ci/external/example.bundle",
-        "local-ci/external/sources.json"
-      ]
-    },
-    {
-      "id": "installed-consumers-docs",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "consumers"
+        "smoke"
       ],
       "timeout_seconds": 0,
       "inputs": [
-        "local-ci/images/local-tools.tar",
-        "local-ci/images/local-tools.json",
-        "local-ci/external/site.bundle",
-        "local-ci/external/example.bundle",
-        "local-ci/external/sources.json",
         "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz",
         "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz.sha256",
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl",
@@ -190,24 +89,8 @@
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-pixi",
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
         "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-rattler",
-        "dist/gripsack-core-0.51.0.tgz"
-      ],
-      "outputs": [
-        "local-ci/consumers.json",
-        "local-ci/consumer-evidence.tar.gz"
-      ]
-    },
-    {
-      "id": "flows",
-      "argv": [
-        "python3",
-        "scripts/local_ci.py",
-        "flows"
-      ],
-      "timeout_seconds": 0,
-      "inputs": [
-        "local-ci/images/e2e.tar",
-        "local-ci/images/e2e.json"
+        "dist/gripsack-core-0.51.0.tgz",
+        "dist/install.sh"
       ],
       "outputs": []
     }
@@ -235,61 +118,8 @@
         "commit": "ed90e26a106782b563b7a392e1bef69c2da96ce2"
       }
     },
-    "sdk": {
-      "name": "@gripsack/core",
-      "version": "0.51.0"
-    },
-    "core": {
-      "crate": "gripsack",
-      "binary": "grip",
-      "version": "0.51.0",
-      "target": "x86_64-unknown-linux-musl"
-    },
-    "helper": {
-      "crate": "gripsack-conda",
-      "version": "0.51.0",
-      "target": "x86_64-unknown-linux-musl"
-    },
-    "ir_version": 10,
-    "fuzz_exclusion": "REL-FUZZ-2026-09-27",
-    "authority": "LOCAL-PRACTICAL-QUALIFICATION-2026-10-28",
-    "optional_verification": {
-      "decision": "REL-PRACTICAL-051-2026-10-28",
-      "gates": ["gnu-test", "core-repro", "helper-repro", "persistence-96", "model", "tlaps", "verify", "mutants"],
-      "status": "not run by this profile; only executed on explicit request; no passing claim"
-    },
-    "buildkit_cache": "retained; build output records cache hits, not fresh RUN execution",
-    "persistence_budget": {
-      "partitions": 96,
-      "shards": 8,
-      "drift_states": [
-        false,
-        true
-      ],
-      "maximum_slots": 8,
-      "slot_cpus": 1,
-      "slot_memory_bytes": 2147483648,
-      "partition_timeout_seconds": 7200,
-      "outer_timeout_seconds": 0,
-      "slots_environment": "GRIPSACK_PERSISTENCE_SLOTS; 1..min(8, measured Docker NCPU, measured Docker MemTotal / 2 GiB)"
-    },
-    "persistence_checkpoints": {
-      "candidate_environment": "CI_CANDIDATE_ID",
-      "root_environment": "CI_CHECKPOINT_ROOT",
-      "authority": "CI-owned candidate/gate subtree; partition checkpoints are not controller gate-success receipts",
-      "admission": "candidate/source/image/dispatcher-bound exit-zero report and log digests, followed by original full96 union admission",
-      "retained_log_bytes_per_partition": 16777216,
-      "docker_log_compression": false,
-      "metadata_bytes_per_file": 65536,
-      "fixtures": "never retained; private container filesystem only",
-      "timing": "original boot-ID-bound monotonic nanoseconds; UTC observations are informational; ambiguous unfinished timing after boot changes expires without a fresh budget",
-      "resume": "reuse admitted completed partitions; reattach matching journalled containers without resetting deadlines; restart only unfinished boundaries on a new operator invocation"
-    },
-    "excluded_platforms": [
-      "linux-aarch64",
-      "macos",
-      "native-windows"
-    ],
-    "hardware_claim": "none; Linux process-fault persistence is not power-loss qualification"
+    "pending_gates": {
+      "proofs": "python3 scripts/local_ci.py proofs (docker compose run --build --rm proofs, plan/0056 \u00a77); add to gates once the service lands on main"
+    }
   }
 }

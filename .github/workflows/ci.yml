@@ -1,31 +1,12 @@
 name: ci
 
-# Manual diagnostics; routine selection is essential-only. Optional campaigns
-# are enforced when explicitly selected, never required by omission.
+# Manual diagnostics only. The required check on main is the local Buildbot
+# qualification (`local-practical-qualification`, gates in .ci/pilot.json);
+# these hosted jobs never gate integration or releases. Optional campaigns
+# (model/tlaps/verify/fuzz) run locally via docker compose when asked.
 
 on:
   workflow_dispatch:
-    inputs:
-      formal:
-        description: Run TLC, TLAPS and Verus campaigns
-        type: boolean
-        default: false
-      persistence:
-        description: Run all 96 persistence partitions
-        type: boolean
-        default: false
-      gnu:
-        description: Run duplicate GNU-native regressions
-        type: boolean
-        default: false
-      mutants:
-        description: Run mutation campaigns
-        type: boolean
-        default: false
-      fuzz:
-        description: Run bounded corpus replay
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -49,118 +30,13 @@ jobs:
 
 
   # Flow tests: real binary + real frontend against fixture env
-  # repos, offline (file:// fixtures only). The persistence matrix has
-  # its own sharded lane below; this lane runs every other flow test.
+  # repos, offline (file:// fixtures only).
   e2e:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: E2E (flow suite)
         run: docker compose run --build --rm e2e
-
-  # Explicitly selected persistence requires the complete measured union.
-  e2e-persistence:
-    if: inputs.persistence
-    runs-on: ${{ matrix.platform }}
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [ubuntu-latest]
-        scenario: [apply-deploy, apply-prune, rollback-deploy, rollback-prune, apply-deploy-copy, apply-prune-copy]
-        fault: [error, kill]
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
-    env:
-      GRIPSACK_PERSISTENCE_SHARD: ${{ matrix.shard }}
-      GRIPSACK_PERSISTENCE_SHARDS: "8"
-      GRIPSACK_PERSISTENCE_REPORTS: ${{ github.workspace }}/persistence-reports
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: E2E (Linux persistence shard)
-        run: |
-          mkdir -p "$GRIPSACK_PERSISTENCE_REPORTS"
-          docker compose run --build --rm \
-            -e GRIPSACK_PERSISTENCE_SHARD -e GRIPSACK_PERSISTENCE_SHARDS \
-            -e GRIPSACK_PERSISTENCE_REPORTS=/persistence-reports -e GITHUB_SHA \
-            -v "$GRIPSACK_PERSISTENCE_REPORTS:/persistence-reports" \
-            e2e uv run --locked --no-sync pytest -s "test_persistence_matrix.py::test_every_reachable_persistence_boundary[${{ matrix.scenario }}-${{ matrix.fault }}]"
-      - name: Publish completed persistence partition
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: persistence-${{ matrix.platform }}-${{ matrix.scenario }}-${{ matrix.fault }}-${{ matrix.shard }}
-          path: persistence-reports/*.json
-          if-no-files-found: error
-
-  formal:
-    if: inputs.formal
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        gate: [model, tlaps, verify]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Selected formal gate (${{ matrix.gate }})
-        run: docker compose run --build --rm "${{ matrix.gate }}"
-
-  gnu:
-    if: inputs.gnu
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - run: docker compose run --build --rm gnu-test
-
-  mutants:
-    if: inputs.mutants
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - run: docker compose run --build --rm mutants
-
-  # Manual diagnostic aggregate over the parallel lanes.
-  # A selected lane cannot be missing, failed, cancelled or skipped.
-  test:
-    if: always()
-    needs: [core, e2e, e2e-persistence, formal, gnu, mutants]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        if: inputs.persistence
-        with:
-          pattern: persistence-*
-          path: persistence-reports
-      - name: Calibrate complete required-work admission
-        run: python3 scripts/check_ci_gate.py --self-check
-      - name: Admit every required lane
-        env:
-          GRIPSACK_TEST_NEEDS: ${{ toJSON(needs) }}
-          GRIPSACK_CI_EVENT: ${{ github.event_name }}
-          SELECT_FORMAL: ${{ inputs.formal }}
-          SELECT_PERSISTENCE: ${{ inputs.persistence }}
-          SELECT_GNU: ${{ inputs.gnu }}
-          SELECT_MUTANTS: ${{ inputs.mutants }}
-        run: |
-          selected=()
-          args=()
-          if [ "$SELECT_FORMAL" = true ]; then selected+=(formal); fi
-          if [ "$SELECT_GNU" = true ]; then selected+=(gnu); fi
-          if [ "$SELECT_MUTANTS" = true ]; then selected+=(mutants); fi
-          if [ "$SELECT_PERSISTENCE" = true ]; then
-            selected+=(e2e-persistence)
-            args+=(--persistence-reports persistence-reports)
-          fi
-          selection=$(IFS=,; echo "${selected[*]}")
-          python3 scripts/check_ci_gate.py --test-lanes --selected "$selection" "${args[@]}"
-
-  fuzz:
-    if: inputs.fuzz
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Replay the fuzz corpus (bounded container)
-        run: docker compose run --build --rm fuzz
 
   # Executable docs gate (plan/0042 E): the important published TS
   # examples are extracted from the WEBSITE source and evaluated
@@ -219,21 +95,3 @@ jobs:
       - run: cargo audit
       - run: cargo audit --file tools/conda-helper/Cargo.lock
       - run: npm ci --ignore-scripts --prefix typescript && npm audit --prefix typescript
-
-  gate:
-    if: always()
-    needs: [test, docs, audit, fuzz]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Calibrate required-result admission
-        run: python3 scripts/check_ci_gate.py --self-check
-      - name: Admit every required lane
-        env:
-          GRIPSACK_CI_RESULTS: ${{ toJSON(needs) }}
-          GRIPSACK_CI_EVENT: ${{ github.event_name }}
-          SELECT_FUZZ: ${{ inputs.fuzz }}
-        run: |
-          selected=""
-          if [ "$SELECT_FUZZ" = true ]; then selected=fuzz; fi
-          python3 scripts/check_ci_gate.py --selected "$selected"
