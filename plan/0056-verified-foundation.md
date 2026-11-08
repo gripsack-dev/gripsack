@@ -90,74 +90,130 @@ The reviewer's key finding (verified in the code): the real boundary is
 **observe → decide → re-check at mutation**, not plain command/event.
 `ops/mod.rs` plans from observed state and the journal re-validates at
 mutation time; `journal/mutation.rs` says outright "this is not CAS".
-The interface therefore makes the check explicit:
+The interface therefore makes the check explicit. Rollback and managed
+blocks show that the machines cannot plan everything up front and then
+execute: the next block in a shared file must see the previous block's
+actual result (`rollback.rs:187`). So every machine is a loop: **observe
+one unit → decide → issue one command → read its result**, with at most
+one effect outstanding. Sequential traces keep P2 a plain induction.
 
-```text
-events   Observed{dest, Identity|Absent}  CurrentRead  MarkerRead  Inventory
-         EffectLanded{cmd, Identity}       EffectFailed{cmd, Errno}   Crash
-commands Capture{dest, expect}  Mutate{dest, expect, intended}  Publish{gen}
-         Flip{from, to}  Barrier{scope}  Cleanup{entries}  Remove{object}
+```rust
+// kernel vocabulary: interned, Copy, no strings/paths/maps
+DestId(u32)  Digest([u8;32])  GenId(u64)  TxId([u8;32])  CmdId(u32)
+enum Live     { Absent, Obj(Ident), Unsupported }
+enum Command  { ReadJournal, ReadCurrent, ReadInventory(Scope), ReadLedger, Observe(DestId),
+                CapturePrior{dest, expect}, PublishRecord{role, rec},
+                Mutate{id, dest, expect, effect}, Seal{dest, file}, EnsureParent(DestId),
+                Reserve{gen}, RaiseFloor(GenId), PublishGeneration{gen, manifest},
+                Flip{expect, to}, Barrier(Scope), Unlink(Name), RenameNoReplace{from,to},
+                RemoveTree(Name), RunChecks, RunHook{intent, attempt},
+                PersistIntent{intent, state}, Finish(Outcome), Abort(Refusal) }
+enum Event    { Start, JournalRead{..}, CurrentRead(..), Observed{dest, live}, Inventory{..},
+                LedgerRead(..), PriorCaptured{..}, Reserved(..), Landed{id, live}, Done(CmdId),
+                Failed{id, why: Drift|Io(i32)|Unsupported}, ChecksDone(bool), HookDone{..} }
+fn recover_step(RecoverState, Event) -> (RecoverState, Command)   // likewise gc_, activation_,
+fn apply_step(ApplyState, &Desired, Event) -> (ApplyState, Command) // rollback_ (embed recover/
+                                                                    // activation sub-machines)
 ```
 
-Each mutating command carries `expect`. The driver re-reads the target, refuses
-on mismatch (`EffectFailed{Drift}`), acts, then reports the landed identity.
-The kernel decides only from events, so every proof states what it assumed
-about the world.
+For `Mutate`/`CapturePrior` the driver opens the parent pinned, computes
+`Live` with the same function `Observe` uses, returns `Failed{Drift}` on
+mismatch, otherwise acts and returns `Landed{live}`. The *kernel* compares
+`Landed` with the intended identity. `Splice` re-reads the latest bytes and
+calls the kernel's proved splice. Two-barrier cleanup is `Unlink`+`Barrier`
+commands, so its order is proved, not trusted. `Flip` carries `expect`.
 
-**Storage model** (ring 1's only axioms, one Lean file, mirrored in
-`gripsack-host` docs and fault-injection tests):
+**Storage model** (ring 1's only axioms, one Lean file, mirrored by the
+`MemFs` crash-injecting storage in ring 2). Inode-based, not path-based,
+so O_NOFOLLOW parent pinning and directory receipts (fs id, inode, birth
+time) are expressible:
 
 - S1 `rename` within a directory is atomic and replaces the target.
+  `RENAME_NOREPLACE` and exclusive `mkdir` fail if the name exists.
+  `remove_dir_all` is *not* atomic; it is a sequence of unlinks.
 - S2 A file's data is durable after `fsync(file)`. A name is durable after
   `fsync(parent dir)`.
-- S3 A crash discards an arbitrary subset of non-durable operations,
-  consistent with S2 (prefix-closed per file/directory).
+- S3 Two crash kinds. **Kill**: the process dies, the page cache survives,
+  so later processes can observe non-durable state (why the code seals what
+  it observes before acting). **Power loss**: an *arbitrary subset* of
+  non-durable operations is lost, consistent only with completed barriers.
+  No prefix-closure is assumed. Each P-theorem is proved for both.
 - S4 One lifecycle writer at a time: apply, rollback, gc and recover hold
-  `LifecycleSession`. Concurrent `grip` invocations serialize; the scheduler's
-  workers never run lifecycle commands concurrently.
-- S5 External writers exist, but are only *detected*, never prevented. Between
-  the driver's re-read and its act there is a window. "Never overwrite unowned
-  data" is proved for every external write the re-read sees. The window itself
-  is a named, documented residual risk, not a hidden premise.
-- S6 Case-insensitive aliasing is handled by kernel destination keys (0023,
-  0030), not by the storage model.
+  `LifecycleSession` (flock, released when the holder dies).
+- S5 External writers exist and are only *detected*. Between the driver's
+  re-check and its act there is a window. "Never overwrite unowned data" is
+  proved for every external write the re-check sees; the window is a named
+  residual risk in the claim list.
+- S6 The filesystem's name equivalence is no coarser than the kernel's
+  destination-key equivalence. (A case-insensitive mount such as WSL
+  `/mnt/c` violates this today unless keys fold consistently; see §5a.)
+- S7 Content identity is a SHA-256 digest; equal digests mean equal bytes
+  (collision resistance). `#print axioms` cannot show this, so it is listed.
 
-The existing `gripsack-fs` persistence trace oracle becomes the test-side
-mirror of S1–S3 (the crash-injecting in-memory storage in ring 2).
+`gripsack-fs/src/persistence_model.rs` is a dirty-set checker over
+traces, not a storage. `MemFs` is new (inode table, volatile and durable
+layers, kill and power-loss enumeration, ~1–1.5k lines) and reuses its
+fault-boundary vocabulary and every-cut tests.
 
 ## 5. Theorems (the end-state claim list)
 
+Revised after the F2 design study (2026-11-08), which found the first
+draft's K1, K2, K4, K6, P2 and P4 false or unprovable as stated.
+
 Ring 0 (all inputs):
 
-- K1 Ownership: a mutation is planned only for Fresh, consented TakeOver,
-  or an Update whose live identity equals the last managed write. Preserved
-  drift is never overwritten.
-- K2 Plan totality and fidelity: the plan is a function of
-  (desired, observed, records); executing it to completion yields desired
-  for every planned destination and leaves unplanned ones untouched.
-- K3 Commit classification: Committed iff current = target, plus the existing
-  biconditionals (CLASSIFY-001); numeric order never grants commit authority.
-- K4 GC retention: current, every retained generation, priors needed for
-  recovery and transitive build inputs are never collected.
+- K1 Ownership, per unit: a copy/template destination is mutated only if
+  Fresh, consented TakeOver, or its live identity equals the last managed
+  write; a managed block only if intact; a remove only if the live object is
+  the deployed one; rollback's restore only via the three-way rule. Preserved
+  drift is never overwritten. (Owned links currently violate this; §5a.)
+- K2 Fidelity, per unit: for each leaf destination the decision is a
+  function of (desired, live, previous record, consent); executing it to
+  `Landed` yields the intended identity or a refusal. Preserve/Refuse never
+  claim the desired state. The unjournaled effects (parent mkdirs,
+  selection reservations, staging dirs) are listed, not hidden.
+- K3 Commit classification: Committed iff current = target, plus the
+  existing biconditionals (CLASSIFY-001); numeric order never grants commit
+  authority.
+- K4 GC, relative to the `Inventory` event: deletions ⊆ candidates − roots;
+  current and every retained generation are never deleted; nothing is
+  deleted while recovery or activation is pending. K4′: roots include the
+  closure of every retained manifest. (Gathering workspace/schedule roots is
+  ring-3 input and is tested, not proved.)
 - K5 Managed-block splice: foreign bytes outside markers are preserved
-  exactly, and splice is idempotent.
-- K6 Generations: every mutating transaction produces exactly one generation;
-  generation ids never repeat (high-water floor).
+  exactly; splice is idempotent; block generation is in the kernel.
+- K6 Generations: new generation numbers exceed the durable high-water
+  floor; every flip carries a never-reused TxId; published generations are
+  immutable. (Rollback creates no generation; it reselects with a fresh
+  TxId. Vacuous applies create none.)
 
-Ring 1 (under S1–S6):
+Ring 1 (under S1–S7, separately for Kill and Power loss):
 
 - P1 Mutation never precedes durable intent and prior evidence.
-- P2 For any execution with crashes at arbitrary points (unbounded), followed
-  by recovery: the store satisfies the K-invariants, `current` names a durably
-  published generation, and each destination is either its prior or its
-  intended identity — never a third state.
-- P3 Cleanup never destroys evidence needed after a later crash.
-- P4 Rollback reaches the target generation's state with a fresh transaction
-  identity. Hooks are at-least-once and never auto-rolled back (0001 §3.8).
+- P2 After any execution with crashes at arbitrary points (unbounded),
+  followed by recovery: the K-invariants hold, `current` names a durably
+  published generation, and each destination holds its prior, its intended
+  identity, or a value gripsack did not produce — never a gripsack-produced
+  intermediate.
+- P3 Cleanup never destroys evidence needed after a later crash; a
+  malformed or quarantined record yields no effects.
+- P4 A hook runs only after its `Started` record is durable and while its
+  selection is current; an interrupted `Started` attempt replays under the
+  same intent ID; `Failed`/`Succeeded`/`Superseded` are terminal. Hooks are
+  never auto-rolled back (0001 §3.8). (Not "at-least-once": failed intents
+  are not retried and superseded intents run zero times.)
 - Liveness ("eventually recovers") stays claim-gated and TLC-only.
 
 `grip doctor --guarantees` and the website list exactly these, generated from
 the Lean sources with their axioms.
+
+### 5a. Defects found while designing the theorems
+
+| ID | Defect | Evidence | Fix lands in |
+|---|---|---|---|
+| FND-1 | A recorded (owned) symlink is re-pointed whatever is live: if the user replaced it with their own file, the next apply overwrites it. Breaks the drift promise for links | `gripsack-policy/src/ownership.rs:103` (`recorded ⇒ Link`), `ops/plan/link.rs:18`; `lineage_model.rs:199` encodes it as intended | F2 step 6 (planner), with a failing-before e2e |
+| FND-2 | Rollback backfills `generations/<n>/env/profile.sh` into an existing generation and deletes the legacy env file outside the journal | `gripsack-exec/src/env.rs:27-49`, called from `rollback.rs:72` | F2 step 8 |
+| FND-3 | Suspected: on a case-insensitive mount, re-spelling only a destination's case deploys the new spelling, then prunes the old one — the same inode | admission folds (`deploy/destinations.rs:26`) but prune compares raw `PathBuf` keys (`apply.rs:443-486`) | needs a reproducer first; F2 step 7 |
 
 ## 6. Target layout
 
@@ -179,7 +235,7 @@ crates/
   griplint/          unchanged (standalone linter)
 proofs/              Lean 4 lake project
   Extracted/         Aeneas output, committed; CI checks regeneration matches
-  Storage.lean       S1–S6
+  Storage.lean       S1–S7
   Kernel/*.lean      K1–K6
   Protocol/*.lean    P1–P4
   Claims.lean        generates the claim list + axiom audit
@@ -213,10 +269,15 @@ mounts); nothing is installed on the host.
 | `release` | musl tarball | tags |
 | `diagram` | d2 render of `docs/diagrams/*.d2` | on demand |
 
-The required check on `main` is one `gate` job: `test`, `ts-test`, `e2e`,
-`proofs`. A release tag runs the same gate, builds the tarball, publishes.
-Lean/Charon images are pinned by digest. Charon's nightly rustc lives only in
-the `proofs` image; the shipped binary still builds on stable musl with rustls.
+The required gate is the owner's **local Buildbot** qualification, not
+GitHub Actions (hosted queues ran up to 14 h; 0053). `ci_infra qualify
+<checkout>` runs `.ci/pilot.json` and posts `local-practical-qualification`,
+which `main` requires. F0 slims that gate list to: test, ts-test, e2e/flows,
+audit, package (core + SDK + helper) and an installed-consumer smoke; F1 adds
+`proofs`. A release is that qualification green on the exact source, then
+one local release command that builds, verifies and publishes. Lean/Charon
+images are pinned by digest. Charon's nightly rustc lives only in the
+`proofs` image; the shipped binary still builds on stable musl with rustls.
 
 ## 8. Trim register
 
@@ -266,18 +327,42 @@ generate-and-check loop exceeds ~10 min in CI.
 in Verus against a Lean spec, with that link labelled *tested*. Ring 1 still
 moves to Lean over the spec. The owner decides at the F1 review.
 
-**F2 — Kernel extraction (≈4–6 weeks).** Move every ring-0 decision into
-`gripsack-kernel`. Rewrite apply/rollback/recover/gc/activation as sans-IO
-machines (§4). Build `gripsack-host` with the driver and the crash-injecting
-storage. Port the remaining Verus kernels to Lean or demote them per §8.
-Delete the explorers.
-*Exit:* K1–K6 proved; no Verus; real CLI e2e green; `gripsack-store`,
-`gripsack-policy`, `gripsack-fs` and `gripsack-process` gone.
+**F2 — Kernel extraction (≈8–10 weeks; the first estimate ignored the
+~3.7k-line directory domain and ~3k lines of non-transaction Verus).** Ten
+mergeable steps; `main` stays releasable throughout. Old and new engines run
+side by side behind a debug-only `GRIPSACK_ENGINE=legacy|kernel` switch, with
+the crash e2e run both ways for one release before the legacy path goes.
 
-**F3 — Protocol proofs (≈3–4 weeks).** `Storage.lean` (S1–S6). P1–P4 over
+1. Vocabulary + `gripsack-host::Storage` trait with `RealFs` and `MemFs`.
+   *Exit:* `MemFs` finds the 0.19.1 resurrection bug when the entry barrier
+   is removed; ported persistence-model cases pass.
+2. Recover machine (decide, order, cleanup, seal); directory records still
+   delegated to legacy code. Delete `journal/model.rs`, `repeated_model.rs`.
+3. Leaf + journal-run sub-machine; port `journal_protocol` to Lean.
+4. GC machine incl. root derivation from manifests; `retention` Verus goes.
+5. Activation machine (ledger order, authorize/supersede, attempts).
+6. Planner into the kernel (copy/template/link/merge/remove/restore per
+   unit; block generation on bytes). Fix FND-1. `lineage_model`,
+   `ops/model`, `mode_model` become kernel property tests, then go.
+7. Apply machine end to end (`mutated` flag replaces `ReportKind`); directory
+   transitions are an opaque `DirectoryStep` still run by legacy code.
+   Reproduce/fix FND-3.
+8. Rollback machine (per-unit loop, fresh selection); fix FND-2.
+9. Directory domain fenced into host as a sub-protocol; its TLC models stay
+   as bug-finders. Moving it into the kernel is F5 work — the largest risk.
+10. Dissolve `gripsack-store`/`-policy`/`-fs`; port or demote the remaining
+   policy kernels (`semantic`, `graph`, `task`, `target`, `conda_admission`,
+   `workspace_command`, `update_survey`); delete Verus.
+
+Each step's exit runs the matching e2e group (persistence matrix, recovery,
+GC, activation, ownership, merge, rollback, directory evolution).
+*Phase exit:* K1–K6 proved; no Verus; `gripsack-store`, `gripsack-policy`,
+`gripsack-fs` and `gripsack-process` gone.
+
+**F3 — Protocol proofs (≈3–4 weeks).** `Storage.lean` (S1–S7). P1–P4 over
 the translated machines. Generated claims and `grip doctor --guarantees`.
 Delete TLAPS and the excess TLA+.
-*Exit:* P1–P4 proved without axioms beyond S1–S6; ≤5 TLC models; website
+*Exit:* P1–P4 proved without axioms beyond S1–S7; ≤5 TLC models; website
 claim page generated.
 
 **F4 — Feature crates (≈2–3 weeks, can overlap F3).** Split the remainder of
@@ -290,7 +375,8 @@ e2e.
 kernel, state the theorem, prove it, delete the tests and models it makes
 redundant. One PR per candidate.
 
-**Handover reconciliation.** After F0, produce a landed/pending/dropped table
+**Handover reconciliation.** Done early (read-only), see
+[0056a](0056a-handover-reconciliation.md). After F0, produce a landed/pending/dropped table
 for the original handover (0048 R1–R8 and M-V*, 0049 H0/A0, 0054 "original
 handover completion"). Every pending item is re-homed into a ring, dropped as
 superseded by this plan, or kept as product work.

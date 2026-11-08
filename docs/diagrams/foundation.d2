@@ -61,8 +61,8 @@ r4: "Ring 4 — Product" {
 
       r1: "Ring 1 — Protocol (proved, Lean)" {
         style: {fill: "#f8e3e3"; stroke: "#b5525c"; font-size: 22; bold: true; border-radius: 12}
-        machines: "sans-IO machines\napply · rollback · recover · gc · activation\njournal ordering + barriers" {class: crate}
-        r1thm: "P1 intent before mutation\nP2 crash anywhere + recover ⇒ invariants\nP3 cleanup keeps needed evidence\nP4 rollback = fresh txn identity" {class: check}
+        machines: "sans-IO machines (observe → decide → one command)\napply · rollback · recover · gc · activation\njournal ordering + barriers" {class: crate}
+        r1thm: "P1 durable intent before mutation\nP2 crash anywhere + recover ⇒ prior | intended | foreign\nP3 cleanup keeps evidence; bad records ⇒ no effects\nP4 hooks only after durable Started" {class: check}
 
         r0: "Ring 0 — Kernel (proved, Lean)" {
           style: {fill: "#efe1f5"; stroke: "#7d4d9a"; font-size: 22; bold: true; border-radius: 12}
@@ -71,7 +71,7 @@ r4: "Ring 4 — Product" {
             shape: rectangle
             style: {font-size: 15}
           }
-          r0thm: "K1 never overwrite unowned/drift\nK2 plan fidelity  K3 commit iff current=target\nK4 GC keeps roots  K5 splice preserves foreign bytes\nK6 one generation per txn, ids never repeat" {class: check}
+          r0thm: "K1 never overwrite drift (per unit)\nK2 per-unit fidelity  K3 commit iff current=target\nK4 GC deletes only non-roots  K5 splice keeps foreign bytes\nK6 fresh ids, floor, immutable generations" {class: check}
           kernel -> decisions: holds
         }
 
@@ -92,7 +92,7 @@ r4: "Ring 4 — Product" {
   cli -> r3.sources
 }
 
-r4.r3.r2.host -> world.fs: "S1–S6 storage model" {style: {stroke: "#c08a2e"; stroke-width: 3}}
+r4.r3.r2.host -> world.fs: "S1–S7 storage model" {style: {stroke: "#c08a2e"; stroke-width: 3}}
 r4.r3.sources -> world.net
 r4.r3.runtime -> world.docker
 r4.r3.runtime -> world.systemd
@@ -101,7 +101,7 @@ r4.cli -> world.deno: "evaluate (no env, no net)"
 proofs: "proofs/ — Lean 4 lake project" {
   style: {fill: "#fffaf0"; stroke: "#b8860b"; font-size: 20; bold: true; border-radius: 12}
   extracted: "Extracted/\n(Aeneas output, committed;\nCI checks no drift)" {class: proof}
-  storage: "Storage.lean\nS1 atomic rename · S2 fsync durability\nS3 crash drops non-durable · S4 one writer\nS5 external writes detected, not prevented\n(same assumptions fault-tested in ring 2)" {class: proof}
+  storage: "Storage.lean\nS1 atomic rename · S2 fsync durability\nS3 kill vs power loss (any non-durable subset)\nS4 one writer · S5 external writes detected\nS6 name equivalence · S7 hash identity\n(same assumptions fault-tested in ring 2)" {class: proof}
   kernelthm: "Kernel/*.lean\nK1–K6" {class: proof}
   protothm: "Protocol/*.lean\nP1–P4" {class: proof}
   claims: "Claims.lean\n→ generated guarantee list\n+ #print axioms audit\n→ grip doctor --guarantees" {class: proof}
