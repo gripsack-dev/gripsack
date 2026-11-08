@@ -1,4 +1,11 @@
-# Guarantee ledger
+# Guarantee ledger (frozen, historical)
+
+> **Frozen 2026-11-08 by [plan 0056](../plan/0056-verified-foundation.md).**
+> This ledger records the pre-foundation claims and their evidence as of
+> 0.51. It is no longer updated. The replacement is a guarantee list
+> generated from the Lean theorems and their `#print axioms` audit (0056 §5,
+> §9 F3). Statuses below are historical; links to `verification/reports/`
+> resolve in git history (`git log -- verification/reports`).
 
 One row per guarantee: what is promised, where it is enforced, what is
 trusted, and what evidence backs it. Statuses: `proposed`,
