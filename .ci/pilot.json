@@ -126,7 +126,7 @@
       },
       "example": {
         "url": "https://github.com/gripsack-dev/example-env-typescript.git",
-        "commit": "ed90e26a106782b563b7a392e1bef69c2da96ce2"
+        "commit": "798945cd9c0fcf26f9379c36e2942d52113f15b2"
       }
     }
   }
