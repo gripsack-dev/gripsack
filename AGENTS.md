@@ -17,16 +17,20 @@ contract; the image does. Images build with BuildKit.
 ```
 docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
 docker compose run --build --rm ts-test   # typescript frontend tests (deno)
-docker compose run --build --rm e2e       # flow tests (real binary + real frontend)
-docker compose run --build --rm proofs    # Lean proofs of the kernel (plan/0056, once F1 lands)
-docker compose run --build --rm -e VERSION=x.y.z release   # musl tarball → ./dist/
+docker compose run --build --rm e2e       # offline flow tests (real binary + real frontend)
+docker compose run --build --rm audit     # cargo audit, core + helper locks
+docker compose run --build --rm proofs    # Lean proofs of the kernel (plan/0056 F1)
+python3 scripts/release.py prepare        # release assets → ./dist/
+python3 scripts/release.py verify         # artifact checks + installed-consumer smoke
 docker compose run --build --rm diagram   # render docs/diagrams/*.d2
 ```
 
-The required gate set is `.ci/pilot.json`, run by the local Buildbot
-(see Workflow). Weekly/on-demand only, never release-blocking: TLC models
-(`model`), fuzz (`fuzz`). `tlaps` and `verify` (Verus) are being retired by
-plan/0056 as the Lean proofs replace them; don't extend them.
+The required gates are `.ci/pilot.json` (test, ts-test, e2e, audit,
+package, smoke), run by the local Buildbot (see Workflow). Optional and only
+when asked: `model` (TLC), `tlaps`, `verify` (Verus), `fuzz`,
+`scripts/check_reproducible.sh`. `tlaps` and `verify` are being retired by
+plan/0056 as the Lean proofs replace them; don't extend them. Never
+dispatch fuzz without an owner request.
 
 `--build` after every source change or the image runs stale code. Host
 `cargo test` / `pytest e2e` are fine for fast iteration; always finish
@@ -202,15 +206,18 @@ stored data needed for rollback and integrity retains its original meaning.
 ## Workflow
 
 - `main` is protected and requires the `local-practical-qualification`
-  status, posted by the owner's local Buildbot after it runs `.ci/pilot.json`
-  on the exact source (`cd ~/workspace/ci-infra && python3 -m ci_infra
-  qualify <checkout>`; see `~/workspace/SHARED-BUILDBOT-CI-PLAN.md` §15).
-  `ci-infra` and the shared plan serve several projects — don't edit them
-  from here. GitHub workflows are manual diagnostics or weekly jobs only.
-- Releases: tag `core-vX.Y.Z` matching the `gripsack` crate version;
-  unsigned, Actions-free, prepared and published locally (see
-  `.agents/skills/` release skill and `scripts/` release entrypoint).
-- Never dispatch fuzz/corpus replay without an explicit owner request.
+  status. Qualify the exact source on the owner's local Buildbot
+  (`cd ~/workspace/ci-infra && python3 -m ci_infra qualify <clean checkout>`,
+  see `~/workspace/SHARED-BUILDBOT-CI-PLAN.md` §15), then post the status with
+  `python3 scripts/release.py status <candidate_id>`. `ci-infra` and the
+  shared plan serve several projects — don't edit them from here.
+- Hosted workflows (`ci`, `demo`, `audit`, `upstream-watch`,
+  `template-mirror`, `fuzz`) are diagnostics or maintenance and never gate
+  anything.
+- Releases: `python3 scripts/release.py publish <candidate_id> --notes N.md
+  [--yes]` uploads the qualified bytes (never rebuilt) as immutable
+  `core-vX.Y.Z` matching the `gripsack` crate version. Unsigned,
+  GitHub-asset-only; no npm/crates.io. See `.agents/skills/gripsack-release`.
 - The website lives in `gripsack-dev/gripsack-dev.github.io` — edit there,
   not here. Build static pages locally from a selected core commit and
   publish with the site's `website/publish.py`.
