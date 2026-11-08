@@ -7,7 +7,7 @@ change as the plan. Long-form release/evidence narratives were removed by
 
 ## Now
 
-- **Latest release:** [core-v0.51.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.51.0) (2026-10-31), Linux/WSL x86_64 only.
+- **Latest release:** 0.52.0 (pending publication) after [core-v0.51.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.51.0) (2026-10-31), Linux/WSL x86_64 only.
 - **Active plan:** [0056 — verified foundation](0056-verified-foundation.md), approved 2026-11-08.
   Its ledger (§9 phases, §13+ records) is the source of truth for the epic.
 - **Superseded by 0056:** 0047 tooling decisions; 0048 §6 (M-V1–M-V8), §9–§10 as
@@ -74,7 +74,7 @@ change as the plan. Long-form release/evidence narratives were removed by
 | 0053 | CI and release-flow migration | Buildbot local qualification |
 | 0054 | Workspace ergonomics and original handover completion | 0.48 |
 | 0055 | One workspace surface | 0.50–0.51 |
-| 0056 | Verified foundation: Lean-proved kernel, rings, trim | active (F0, F1) |
+| 0056 | Verified foundation: Lean-proved kernel, rings, trim | F0 + F1 (GO) in 0.52.0; F2 next |
 
 ## Settled rejections (all eras)
 

@@ -12,7 +12,7 @@ Nothing here publishes.
     package   release.py prepare: core tarball, Conda helper (pin-checked), SDK, installer
     smoke     release.py verify: static binary, embedded SBOM, versions, checksums and the
               installed-consumer smoke against the pinned website/example repositories
-    proofs    compose `proofs` (plan/0056 §7); not yet a required gate
+    proofs    compose `proofs` (plan/0056 §7): Lean proofs, drift check, axiom audit, mutants
 """
 from __future__ import annotations
 

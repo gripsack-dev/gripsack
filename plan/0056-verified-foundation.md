@@ -1,6 +1,6 @@
 # 0056 — Verified foundation: a Lean-proved kernel, rings outward, and a trim
 
-- Status: approved by the owner 2026-11-08; executing (F0, F1)
+- Status: approved by the owner 2026-11-08; F0 and F1 landed in 0.52.0 (F1: GO); F2 next
 - Date: 2026-11-08
 - Owner direction: 2026-11-08 conversation — "a kernel that is Lean proved …
   interaction with the world needs proper proofs … keep expanding the rings";
@@ -407,7 +407,7 @@ superseded by this plan, or kept as product work.
 | Decision | Choice | Alternative left open |
 |---|---|---|
 | Ring-1 proof language | Lean (one language across the seam) | TLA+/TLAPS for ring 1 (owner's first sketch). Reversible until F3 |
-| Kernel↔code link | Aeneas translation of shipped Rust | Lean spec + Verus code proofs (F1 fallback) |
+| Kernel↔code link | Aeneas translation of shipped Rust — **F1 GO (2026-11-08)**, §13 | Lean spec + Verus code proofs (F1 fallback, not needed) |
 | Releases during the epic | Continue; this plan removes release gates rather than adding them | — |
 | Fuzzing | Keep 3 edge parsers, weekly, never release-blocking | Remove fully |
 | Review | Independent model review 2026-11-08 adopted: observe/re-check interface, S5 explicit, rate limits out of kernel, storage model reused, pilot falsifiers. Overruled: retaining Verus/TLAPS as sunk cost | — |

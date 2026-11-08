@@ -4,7 +4,7 @@
   "profile": "linux-x64-trusted-pilot",
   "platform": "linux-x86_64",
   "policy": "PLATFORM-LINUX-X64-2026-10-09",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "gates": [
     {
       "id": "test",
@@ -23,6 +23,17 @@
         "python3",
         "scripts/local_ci.py",
         "ts-test"
+      ],
+      "timeout_seconds": 0,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "proofs",
+      "argv": [
+        "python3",
+        "scripts/local_ci.py",
+        "proofs"
       ],
       "timeout_seconds": 0,
       "inputs": [],
@@ -60,15 +71,15 @@
       "timeout_seconds": 0,
       "inputs": [],
       "outputs": [
-        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz",
-        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz.sha256",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.sha256",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.manifest.json",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-pixi",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-rattler",
-        "dist/gripsack-core-0.51.0.tgz",
+        "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz",
+        "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz.sha256",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.sha256",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.manifest.json",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.LICENSE-pixi",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.LICENSE-rattler",
+        "dist/gripsack-core-0.52.0.tgz",
         "dist/install.sh"
       ]
     },
@@ -81,30 +92,30 @@
       ],
       "timeout_seconds": 0,
       "inputs": [
-        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz",
-        "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz.sha256",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.sha256",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.manifest.json",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-pixi",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
-        "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-rattler",
-        "dist/gripsack-core-0.51.0.tgz",
+        "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz",
+        "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz.sha256",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.sha256",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.manifest.json",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.LICENSE-pixi",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
+        "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.LICENSE-rattler",
+        "dist/gripsack-core-0.52.0.tgz",
         "dist/install.sh"
       ],
       "outputs": []
     }
   ],
   "artifacts": [
-    "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz",
-    "dist/gripsack-0.51.0-x86_64-unknown-linux-musl.tar.gz.sha256",
-    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl",
-    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.sha256",
-    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.manifest.json",
-    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-pixi",
-    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
-    "dist/gripsack-conda-0.51.0-x86_64-unknown-linux-musl.LICENSE-rattler",
-    "dist/gripsack-core-0.51.0.tgz",
+    "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz",
+    "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz.sha256",
+    "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl",
+    "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.sha256",
+    "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.manifest.json",
+    "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.LICENSE-pixi",
+    "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
+    "dist/gripsack-conda-0.52.0-x86_64-unknown-linux-musl.LICENSE-rattler",
+    "dist/gripsack-core-0.52.0.tgz",
     "dist/install.sh"
   ],
   "external_inputs": {
@@ -117,9 +128,6 @@
         "url": "https://github.com/gripsack-dev/example-env-typescript.git",
         "commit": "ed90e26a106782b563b7a392e1bef69c2da96ce2"
       }
-    },
-    "pending_gates": {
-      "proofs": "python3 scripts/local_ci.py proofs (docker compose run --build --rm proofs, plan/0056 \u00a77); add to gates once the service lands on main"
     }
   }
 }
