@@ -1,0 +1,51 @@
+# User-facing: from gripsack.ts to a generation, and back.
+# Render: docker compose run --build --rm diagram
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 24
+  }
+}
+direction: right
+
+classes: {
+  step: {
+    style: {font-size: 16; border-radius: 8; fill: "#ffffff"; stroke: "#5b7db1"}
+  }
+  gen: {
+    shape: page
+    style: {font-size: 15; fill: "#eef3fb"; stroke: "#5b7db1"}
+  }
+}
+
+src: "gripsack.ts + gripsack.lock\nyour workspace, in a repository" {
+  shape: document
+  style: {font-size: 16; fill: "#fbf1e1"; stroke: "#c08a2e"}
+}
+
+plan: "grip plan\nreview the exact changes;\nno file is touched" {class: step}
+
+apply: "grip apply — one transaction\n\n1 · realize packages into the read-only store\n2 · journal prior state and intent, durably, before any write\n3 · write destinations, re-checking each for drift first\n4 · run pre-flip checks\n5 · flip `current` — one atomic rename\n6 · run hooks (never auto-rolled back)" {
+  style: {font-size: 15; fill: "#f7f7f7"; stroke: "#333333"; border-radius: 12}
+}
+
+store: "generations/ — every applied state is kept" {
+  style: {font-size: 16; border-radius: 12; fill: "#f7f7f7"; stroke: "#999999"; stroke-dash: 3}
+  g1: "generation 1" {class: gen}
+  g2: "generation 2" {class: gen}
+  g3: "generation 3\nfiles · launchers\nrecovery data" {class: gen}
+  g1 -> g2 -> g3: {style.stroke: "#999999"}
+}
+
+rollback: "grip rollback\nreselects a retained generation:\nretained bytes, nothing rebuilt,\nyour local edits preserved" {
+  style: {font-size: 16; border-radius: 8; fill: "#e3f1e8"; stroke: "#4c9a6a"}
+}
+
+gc: "grip gc\nreclaims only what no retained\ngeneration or recovery root needs" {class: step}
+
+src -> plan: "evaluated in a sandbox:\nno env, no network" {style.font-size: 13}
+plan -> apply: "you say yes" {style.font-size: 14}
+apply -> store.g3: "current →" {style: {stroke: "#7d4d9a"; stroke-width: 3; font-size: 14}}
+rollback -> store.g2: "current →" {style: {stroke: "#4c9a6a"; stroke-width: 3; font-size: 14}}
+store -> gc: {style.stroke: "#999999"}
