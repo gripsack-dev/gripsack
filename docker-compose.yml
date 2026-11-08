@@ -88,7 +88,7 @@ services:
         PKG="gripsack-$$VERSION-$$TARGET"
         staging="$$(mktemp -d)"
         mkdir -p "$$staging/$$PKG"
-        install -m755 target/release/grip "$$staging/$$PKG/grip"
+        install -m755 release-bin/grip "$$staging/$$PKG/grip"
         tar -czf "/dist/$$PKG.tar.gz" -C "$$staging" "$$PKG"
         cd /dist
         sha256sum "$$PKG.tar.gz" > "$$PKG.tar.gz.sha256"
