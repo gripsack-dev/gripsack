@@ -239,6 +239,9 @@ RUN tar -xzf /tmp/audit.tgz -C /usr/local/bin --strip-components=1 \
     && rm /tmp/audit.tgz
 WORKDIR /app
 COPY . .
+# Qualification checkouts are mode 700 (umask 077) and COPY keeps modes; the
+# package and smoke steps run as the host uid, so make the source readable.
+RUN chmod -R a+rX /app
 
 # Native helper tooling; the source is mounted read-only at canonical /src.
 # Default packaging builds once with pin/license/protocol checks; two independent
