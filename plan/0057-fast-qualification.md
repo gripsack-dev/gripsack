@@ -275,6 +275,7 @@ gate below 2 GiB available. Host: 32 cores, 30 GiB VM + 8 GiB swap.
 
 | Run | Gate | Wall | Result | VM memory | Source |
 |---|---|---|---|---|---|
+| cold | `test` | 627 s | pass | 7.4 GiB used, 22.8 GiB min available, swap 0.0 GiB | `0c8e73f` |
 
 ## 6. How to qualify this branch
 
