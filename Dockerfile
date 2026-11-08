@@ -247,12 +247,11 @@ FROM builder AS local-helper
 RUN apk add --no-cache python3 build-base binutils cmake perl linux-headers \
     xz-dev bzip2-dev zstd-dev
 
-# Stripped static release binary.
+# Stripped release binary with its embedded SBOM. Static linkage, the SBOM and
+# the version are verified on the packaged bytes by scripts/release.py verify.
 FROM builder AS release
 RUN cargo auditable build --release --locked -p gripsack \
-    && strip target/release/grip \
-    && ldd target/release/grip 2>&1 | grep -q "Not a valid dynamic program\|not a dynamic executable" \
-    && echo "static: ok"
+    && strip target/release/grip
 
 # Fuzz builds share the core compiler. Select its installed version explicitly:
 # +stable may provision a newer release even inside a digest-pinned image.

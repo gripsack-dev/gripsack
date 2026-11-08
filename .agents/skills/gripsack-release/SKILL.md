@@ -1,62 +1,53 @@
 ---
 name: gripsack-release
-description: Qualify exact-source Gripsack artifacts locally and publish immutable releases with honest verification scope
+description: Qualify exact-source Gripsack artifacts locally and publish an immutable core-vX.Y.Z GitHub release with scripts/release.py
 ---
 
 # Releasing
 
-Current policy is the owner's practical local qualification profile in
-`.ci/pilot.json` and `plan/0054`. Core, SDK, Conda helper and bridge assets are
-coordinated. A tag or version string is not qualification, and pushing a tag
-does not request an Actions product build.
+A release is the local Buildbot qualification green on the exact source,
+then one script that uploads those same bytes (plan/0056 §2 rule 6). Core,
+SDK (`@gripsack/core` tarball) and Conda helper share one version. Publication
+is manual, unsigned and GitHub-asset-only; no npm/crates.io publication.
 
-## Core (binary)
+## Sequence
 
-1. Freeze the exact source commit, profile, external source pins, tools and
-   candidate artifacts. Run the required local gates against those inputs.
-   Preserve failed attempts; changed source needs its own evidence, never a
-   relabeled receipt.
-2. The practical release profile has 17 gates, including all 96 Linux persistence
-   partitions. TLC/TLAPS/Verus are separate and must not be claimed qualified.
-   No fuzz engine or saved-corpus replay is authorized by this workflow.
-3. Prepare a draft release and upload only the admitted candidate's exact bytes.
-   Read every uploaded asset back and compare its digest before publication.
-   Publish an immutable `core-vX.Y.Z` tag and exact source/qualification scope.
-4. Exercise an actual installed archive, its matching SDK and default helper
-   provisioning from the public assets. Build/run a frozen consumer without an
-   operator helper override. Checksums are transport integrity, not signatures.
+1. Bump the coordinated version: `Cargo.toml` workspace, `Cargo.lock`,
+   `tools/conda-helper/Cargo.toml` (+ lock), `typescript/package.json` (+ lock),
+   the helper pin (`crates/gripsack-fetch/src/conda_pins.rs`, measured with
+   `tools/conda-helper/dist.sh`), and the version in `.ci/pilot.json`
+   (its `version`, `artifacts` and the `package`/`smoke` file lists —
+   `scripts/test_release.py` fails if they drift). Merge through a PR.
+2. Qualify a clean checkout of the release commit on a local branch:
+   ```sh
+   cd /home/tarek/workspace/ci-infra
+   python3 -m ci_infra storage-check && python3 -m ci_infra up
+   python3 -m ci_infra qualify /home/tarek/workspace/ci-checkouts/gripsack
+   python3 -m ci_infra watch <candidate_id>
+   ```
+   Gates: test, ts-test, e2e, audit, package (`release.py prepare`), smoke
+   (`release.py verify`). A failed gate means fix and re-qualify; never relabel.
+3. On the host (uses your `gh` login):
+   ```sh
+   python3 scripts/release.py status <candidate_id>     # local-practical-qualification=success
+   python3 scripts/release.py publish <candidate_id> --notes NOTES.md          # dry run
+   python3 scripts/release.py publish <candidate_id> --notes NOTES.md --yes    # publish
+   ```
+   `publish` refuses an existing tag, a commit not on origin/main or a missing
+   status; copies the archived qualified bytes (digest-checked), re-verifies
+   them, creates `core-vX.Y.Z` at the qualified commit and reads every asset back.
+4. Check a public install by hand: download the tarball + `.sha256`, install
+   the SDK from the release URL, run a frozen consumer.
 
-The owner selected manual unsigned publication after practical local
-qualification, without Actions signing or registry publication prerequisites.
-Keep the verified installer/updater's signature policy intact. Release notes
-lead with product changes and link detailed technical evidence; checksums are
-not signatures. Existing release tags and artifacts remain immutable.
+Without Buildbot, `python3 scripts/release.py prepare && python3 scripts/release.py verify`
+reproduces the package and smoke gates in any checkout (a dry run; nothing is published).
 
-## TypeScript (frontend package)
+## Notes
 
-Ship the SDK archive matching the core version. A repository-installed SDK is a
-deliberate frontend pin; an editor-only copy may instead be explicitly excluded
-from capture, selecting the embedded frontend. An npm declaration alone neither
-installs the SDK nor upgrades the core.
-
-GitHub assets, npm publication and crates.io publication are separate events.
-Do not claim either registry was published unless it actually was. Retained
-signed-publication tooling and closed historical evidence formats are not the
-unsigned release path; the website is independent of those formats.
-
-## Checklist
-
-- [ ] Coordinated versions, measured helper pins and the current IR contract.
-- [ ] Required exact-source local gates, including the complete persistence union.
-- [ ] Actual installed consumers, failed-path coverage and public asset readback.
-- [ ] Short product-focused notes, source identity, checksums and linked evidence.
-- [ ] No overwritten public tag, asset or historical qualification receipt.
-- [ ] Current README, SDK guidance and executable examples.
-- [ ] Website rendered locally from the selected core Git commit in the separate
-      site repository; `website/publish.py` uploads a static commit and dispatches
-      only Pages deployment. Check the live desktop/mobile surface afterward.
-
-Main requires `local-practical-qualification`, not a fabricated hosted `test`
-result. Record the actual source and check scope; development status does not
-by itself authorize a release. Continue independent work while an external
-publication step runs, without mutating the pending candidate.
+- Release notes lead with product changes. Checksums are transport integrity,
+  not signatures; the signed installer/updater does not admit unsigned releases.
+- Existing tags and assets are immutable. Optional campaigns (model, tlaps,
+  verify, fuzz, two-build repro) are not part of a release unless run and
+  reported; never dispatch fuzz without an owner request.
+- The website lives in `gripsack-dev/gripsack-dev.github.io`; build it locally
+  from the release commit and publish with its `website/publish.py`.
