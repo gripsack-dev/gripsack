@@ -1,7 +1,8 @@
 name: release-core
 
-# Publication is manual and GitHub-only. This workflow never builds, signs,
-# uploads packages to registries, or promotes a Homebrew formula.
+# Publication is manual, local and GitHub-only: this workflow never builds,
+# signs, or uploads anything. Its path stays because the installer/self-update
+# verifier names it as the (future) attestation signer identity.
 on:
   workflow_dispatch:
 
@@ -12,8 +13,9 @@ jobs:
   publication-policy:
     runs-on: ubuntu-latest
     steps:
-      - name: Explain manual publication authority
+      - name: Explain manual publication
         run: |
           echo 'No publication performed.'
-          echo 'Follow verification/release-handoff.md: qualify locally, then explicitly publish the exact unsigned artifacts using gh release create/upload.'
-          echo 'Do not rebuild a qualified candidate or infer signed/hosted qualification from this workflow.'
+          echo 'Qualify locally (python3 -m ci_infra qualify <checkout>), then on the host:'
+          echo '  python3 scripts/release.py status <candidate_id>'
+          echo '  python3 scripts/release.py publish <candidate_id> --notes NOTES.md'
