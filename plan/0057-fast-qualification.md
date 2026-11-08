@@ -102,25 +102,34 @@ stay on explicitly, so `#[cfg(debug_assertions)]` fault controls and
 change Rust semantics. Compile time per crate rises slightly on cold
 builds and vanishes on warm ones.
 
-### D3. `CARGO_BUILD_JOBS` 4 → 12
+### D3. `CARGO_BUILD_JOBS` 4 → 8
 
 `4` was introduced with the Linux worker staging (`4b0988d`) alongside a
 2 GiB *slot* memory partition for the ci-infra worker container; Docker
 builds run in the host daemon, not in that slot, on 32 cores / 30 GiB.
-12 jobs keeps worst-case rustc memory (≈1.5 GiB × 12) inside the host
-while gates run one at a time; the value is a single `ENV` in each
-cargo-bearing stage and in `verify`. The conda helper build inherits it
-(`package.py` passes `CARGO_BUILD_JOBS` through).
+8 jobs keeps worst-case rustc memory (≈1.5 GiB × 8 ≈ 12 GiB) inside the
+30 GiB VM with room for the daemon, the page cache and a developer's
+own work, while gates run one at a time; the value is a single `ENV` in
+each cargo-bearing stage and in `verify`. The conda helper build inherits
+it (`package.py` passes `CARGO_BUILD_JOBS` through). The first draft of
+this plan used 12 (and D6 ran two such builds at once); the measurement
+host rebooted twice during those runs, both times under heavy concurrent
+compilation, so 8 is chosen as the value whose worst case fits with
+margin rather than the value that saturates the cores. Compile wall time
+is dominated by the critical path of the crate graph, not by the job
+count, once jobs exceed ~8 (§5 records the cost).
 
 Risk: OOM under concurrent builds (a developer running two compose gates
-at once while the worker builds). Measured peak during the runs in §5 is
-recorded there; if the worker ever OOMs, the number is the knob.
+at once while the worker builds). Measured peaks during the runs in §5
+are recorded there; if the worker ever OOMs, the number is the knob.
 
 ### D4. e2e in parallel (pytest-xdist)
 
 `e2e/pyproject.toml` adds `pytest-xdist`; the image's CMD runs
-`pytest -n auto` with `PYTEST_XDIST_AUTO_NUM_WORKERS=8` (override with
-`-e`). The harness is already isolation-safe: every test lives under
+`pytest -n auto` with `PYTEST_XDIST_AUTO_NUM_WORKERS=6` (override with
+`-e`). Each worker runs one `grip` plus, for evaluating tests, one
+sandboxed Deno; 6 keeps the gate's footprint small next to the compile
+gates while taking most of the 8× speed-up (§5). The harness is already isolation-safe: every test lives under
 `tmp_path` with `HOME`/`GRIPSACK_HOME` redirected (`conftest.sandbox`),
 every fixture HTTP server binds port 0, the only session fixture
 (`confined_runtime`) is a per-worker copy. `--durations=25` goes into the
@@ -133,8 +142,9 @@ such failure is a harness bug to fix, not a reason to serialize.
 ### D5. Mutant calibration in parallel
 
 `proofs/mutants.py` runs the 14 calibrations through a thread pool
-(`PROOF_MUTANT_JOBS`, default 6 — each is one Charon/Aeneas run plus a
-scratch `lake build`, ~1–2 GiB). Each mutant's output is captured and
+(`PROOF_MUTANT_JOBS`, default 4 — each is one Charon/Aeneas run plus a
+scratch `lake build` whose Lean processes load mathlib, ~1–2 GiB each;
+4 bounds the gate at ≈8 GiB). Each mutant's output is captured and
 printed whole, in declaration order, so the evidence log reads exactly as
 before. Pass/fail semantics are unchanged: every mutant still runs, every
 expected theorem must fail and nothing else may.
@@ -142,17 +152,23 @@ expected theorem must fail and nothing else may.
 Risk: none to the proof claims (the calibration oracle is untouched);
 memory pressure if `PROOF_MUTANT_JOBS` is raised on a smaller host.
 
-### D6. `package` builds the core and the helper concurrently
+### D6. `package` builds the core and the helper one after the other (concurrency opt-in)
 
 `release.py prepare` ran `release` (271 s) then `helper` (~300 s) then
 the SDK pack. The two builds are independent (different images, different
-outputs) and now run as two threads with captured output printed in order
-once both finish; the SDK pack follows. Nothing about *what* is built or
-checked changes; `verify`/`smoke` are untouched.
+outputs) and *can* run as two threads with captured output printed in
+order once both finish (`GRIPSACK_RELEASE_PARALLEL=1`); the SDK pack
+follows. The default is the sequence: the core build (whose dependency
+tree is now a cache mount, D1) then the helper (from zero by design,
+D9). Nothing about *what* is built or checked changes; `verify`/`smoke`
+are untouched.
 
-Risk: combined CPU use of two 12-job builds on 32 cores — acceptable;
-memory worst case ≈ 2 × 12 rustc, within the host. If the worker proves
-smaller than this one, `GRIPSACK_RELEASE_SERIAL=1` restores the sequence.
+Why serial by default: the concurrent mode's worst case is two full
+cargo builds at once (2 × 12 rustc in the first draft), and the
+measurement host rebooted during exactly that step. The release must not
+depend on headroom luck, so the default is the mode whose peak is one
+build; the parallel mode stays for a host whose size has been measured.
+The cost is the shorter of the two builds, recorded in §5.
 
 ### D7. Tests replaced by Lean theorems (K3, K4-kernel, journal)
 
@@ -222,10 +238,10 @@ cheaper; the single qualification stays the only release-blocking path.
 |---|---|---|
 | cache mounts | stale dependency artifact | cargo content fingerprints; workspace crates always rebuilt (fresh clone); `repro` gate for from-zero equality |
 | one dev profile | test semantics at opt-level 1 | assertions/overflow checks pinned on; no `cfg` depends on opt-level |
-| jobs 12 | OOM | one gate at a time; measured peak in §5 |
+| jobs 8 | OOM | one gate at a time; measured peak in §5 |
 | xdist | hidden shared state | all state under `tmp_path`, port 0 servers, per-worker session fixture; first runs green |
 | parallel mutants | — | oracle unchanged; output serialized |
-| parallel core+helper | resource contention only | independent images and outputs |
+| core+helper serial by default, parallel opt-in | resource contention only (opt-in) | independent images and outputs; default peak is one build |
 | kernel test deletions | lose a concrete-value guard | each guard is an instance of a proved biconditional over the drift-checked extraction |
 
 ## 5. Measurements
@@ -239,9 +255,9 @@ warm daemon; "after (cold mounts)" is the first run that populated them.
 | `test` | 630 s | _see §5a_ | _see §5a_ | |
 | `ts-test` | 16 s | — | — | unchanged |
 | `proofs` | 643 s (154 s gate) | — | _see §5a_ | mutants parallel |
-| `e2e` | 1526 s | _see §5a_ | _see §5a_ | xdist 8 |
+| `e2e` | 1526 s | _see §5a_ | _see §5a_ | xdist 6 |
 | `audit` | 51 s | — | — | unchanged |
-| `package` | 675 s (failed) | _see §5a_ | _see §5a_ | parallel core+helper |
+| `package` | 675 s (failed) | _see §5a_ | _see §5a_ | core then helper |
 | `smoke` | not reached | _see §5a_ | | |
 
 ### 5a. Recorded runs

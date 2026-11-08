@@ -222,9 +222,9 @@ def verdict(mutant: Mutant) -> tuple[bool, str]:
 
 def jobs(count: int) -> int:
     """Concurrent calibrations (plan/0057 D5): each is one Charon/Aeneas run plus
-    a scratch `lake build`; PROOF_MUTANT_JOBS overrides the default of 6."""
+    a scratch `lake build`; PROOF_MUTANT_JOBS overrides the default of 4."""
     configured = os.environ.get("PROOF_MUTANT_JOBS")
-    return max(1, min(count, int(configured) if configured else 6))
+    return max(1, min(count, int(configured) if configured else 4))
 
 
 def main() -> None:

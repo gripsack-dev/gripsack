@@ -23,12 +23,13 @@ FROM rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6
 # plan/0057 D2/D3: one dev profile for every debug build in the image, so
 # `cargo test`, clippy and the e2e binary share one set of dependency
 # artifacts (opt-level 1 keeps e2e launches from paying unoptimized hashing;
-# assertions and overflow checks stay on, as in a plain dev build). 12 jobs
-# on the 32-core worker — the qualification gates run one at a time.
+# assertions and overflow checks stay on, as in a plain dev build). 8 jobs
+# on the 32-core / 30 GiB worker: the qualification gates run one at a
+# time, and 8 bounds worst-case rustc memory well inside the VM (plan/0057 D3).
 # Cargo's registry and the target directories are BuildKit cache mounts
 # (plan/0057 D1): third-party crates compile once per profile and never
 # enter an image layer; workspace crates are always rebuilt (fresh mtimes).
-ENV CARGO_BUILD_JOBS=12 \
+ENV CARGO_BUILD_JOBS=8 \
     CARGO_PROFILE_DEV_OPT_LEVEL=1 \
     CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true \
     CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true
@@ -147,7 +148,7 @@ RUN python3 scripts/check_tlaps.py
 # all digest/version-pinned; the verifier's Rust (1.98.0) is the
 # repo's pinned toolchain.
 FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 AS verify
-ENV CARGO_BUILD_JOBS=12
+ENV CARGO_BUILD_JOBS=8
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     curl ca-certificates unzip build-essential python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -229,7 +230,7 @@ COPY scripts ./scripts
 ENV GRIPSACK_E2E_IN_DOCKER=1
 # plan/0057 D4: pytest-xdist workers; every test is sandboxed under its own
 # tmp_path and fixture servers bind port 0. Override with -e for other hosts.
-ENV PYTEST_XDIST_AUTO_NUM_WORKERS=8
+ENV PYTEST_XDIST_AUTO_NUM_WORKERS=6
 ENV GRIPSACK_BIN=/usr/local/bin/grip
 WORKDIR /app/e2e
 CMD ["uv", "run", "--locked", "--no-sync", "pytest", "-n", "auto", "--durations=25", "--ignore=test_persistence_matrix.py", "--ignore=test_golden.py"]

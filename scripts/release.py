@@ -206,14 +206,17 @@ def prepare(args):
         for name in asset_names(version)[2:8]:
             shutil.copyfile(args.helper_from / name, dist / name)
         (dist / helper).chmod(0o755)
-    elif os.environ.get("GRIPSACK_RELEASE_SERIAL"):
+    elif not os.environ.get("GRIPSACK_RELEASE_PARALLEL"):
+        # Default: one build at a time, so the gate's peak memory is one
+        # cargo's worth (plan/0057 D6; two concurrent release builds are the
+        # leading suspect for the measurement-host reboots recorded there).
         compose(*core)
         compose("run", "--build", "--rm", *owner(), "helper", profile="tools")
     else:
-        # The core and the helper are independent images with independent
-        # outputs (plan/0057 D6): build both at once, print both logs in order.
-        # Both logs reach the evidence record even when one build fails; the
-        # first failure is raised once both have been printed.
+        # GRIPSACK_RELEASE_PARALLEL=1: the core and the helper are independent
+        # images with independent outputs; build both at once and print both
+        # logs in order. Both logs reach the evidence record even when one
+        # build fails; the first failure is raised once both have been printed.
         with ThreadPoolExecutor(max_workers=2) as pool:
             builds = [pool.submit(compose_captured, *core),
                       pool.submit(compose_captured, "run", "--build", "--rm", *owner(), "helper", profile="tools")]
