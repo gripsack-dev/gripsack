@@ -50,7 +50,7 @@
 //! matches neither the marker's previous nor its target, recovery
 //! changes NOTHING and keeps the journal intact (fail closed).
 
-use gripsack_policy::selection::SelectionIdentity;
+use gripsack_kernel::selection::SelectionIdentity;
 
 use super::marker::{Classification, RecoveryFacts, classify};
 use super::recover::{RecoveryDecision, decide_from};
@@ -232,7 +232,7 @@ fn recover(
     mut disk: Disk,
     run_prev: crate::GenerationId,
     run_target: crate::GenerationId,
-    classifier: &dyn Fn(&RecoveryFacts) -> Classification,
+    classifier: &dyn Fn(RecoveryFacts) -> Classification,
 ) -> (Disk, Option<Classification>) {
     // an empty journal — never started, or cleanup finished — means
     // NO recovery at all (the real reconcile returns before reading
@@ -246,10 +246,10 @@ fn recover(
     let target = SelectionIdentity::legacy(target);
     let current = disk.current.map(SelectionIdentity::legacy);
     let class = match disk.marker {
-        Some(_) => Some(classifier(&RecoveryFacts {
-            previous: previous.as_ref(),
-            target: &target,
-            current: current.as_ref(),
+        Some(_) => Some(classifier(RecoveryFacts {
+            previous,
+            target,
+            current,
         })),
         // entries without a marker: the real rule — uncommitted
         None => Some(Classification::Uncommitted),
@@ -353,7 +353,7 @@ fn explore(
     prev: crate::GenerationId,
     target: crate::GenerationId,
     kind: RunKind,
-    classifier: &dyn Fn(&RecoveryFacts) -> Classification,
+    classifier: &dyn Fn(RecoveryFacts) -> Classification,
 ) -> (usize, Vec<String>) {
     let mut seen = std::collections::HashSet::new();
     let mut stack = vec![(Node::initial(prev, kind), String::new())];

@@ -23,3 +23,6 @@ demos/out/
 
 # Local qualification scratch (scripts/release.py verify).
 /local-ci/
+
+# plan/0056 proofs: lake products and packages live in the proofs image
+/proofs/.lake/

@@ -1,5 +1,5 @@
 //! Current generation pointer admission and activation.
-use gripsack_policy::selection::SelectionIdentity;
+use gripsack_kernel::selection::SelectionIdentity;
 
 use crate::GenerationId;
 use std::{io, path::Path};

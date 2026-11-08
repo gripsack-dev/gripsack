@@ -9,10 +9,8 @@ use super::{
 };
 use crate::{journal::JournalRun, private_state};
 use gripsack_fs::Dir;
-use gripsack_policy::{
-    activation::{self, AttemptNumber, IntentState, Outcome, StartDecision},
-    selection::{SelectionIdentity, TransactionId},
-};
+use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
+use gripsack_policy::activation::{self, AttemptNumber, IntentState, Outcome, StartDecision};
 use gripsack_process::{ProcessReceipt, Sha256Digest};
 use serde::{Deserialize, Serialize};
 use std::{io, path::Path};

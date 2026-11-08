@@ -1684,6 +1684,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "gripsack-kernel"
+version = "0.51.0"
+
+[[package]]
 name = "gripsack-policy"
 version = "0.51.0"
 dependencies = [
@@ -1708,6 +1712,7 @@ dependencies = [
  "getrandom 0.4.3",
  "gripsack-fs",
  "gripsack-ir",
+ "gripsack-kernel",
  "gripsack-policy",
  "gripsack-process",
  "serde",

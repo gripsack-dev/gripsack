@@ -215,3 +215,16 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ./docs/diagrams:/diagrams
+
+  # plan/0056 §7: the Lean proof gate over the Charon/Aeneas translation of
+  # crates/gripsack-kernel — regenerate, check no drift against the committed
+  # proofs/Extracted/, lake build, axiom audit, mutant calibration.
+  #   docker compose run --build --rm proofs
+  #   sh proofs/refresh.sh      # regenerate and copy out proofs/Extracted/
+  proofs:
+    profiles: [proofs]
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: proofs/Dockerfile
+      target: gate

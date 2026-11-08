@@ -5,10 +5,9 @@
 
 use crate::{GenerationId, generations::SelectionReservation};
 use gripsack_fs::Dir;
-use gripsack_policy::journal_protocol::{
-    CleanupAction, CleanupProgress, CleanupScope, DurableRecord, RecordRole,
-};
-use gripsack_policy::selection::SelectionIdentity;
+use gripsack_kernel::journal::{DurableRecord, RecordRole};
+use gripsack_kernel::selection::SelectionIdentity;
+use gripsack_policy::journal_protocol::{CleanupAction, CleanupProgress, CleanupScope};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -254,8 +253,9 @@ pub(super) fn run_marker(journal: &Journal) -> io::Result<Option<RunMarker>> {
     }
 }
 
-/// One exact-selection kernel serves recovery, concrete models and Verus.
-pub(crate) use gripsack_policy::{
+/// One exact-selection kernel serves recovery, the concrete models and the
+/// Lean proofs (plan/0056).
+pub(crate) use gripsack_kernel::{
     Classification,
     selection::{RecoveryFacts, classify},
 };

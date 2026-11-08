@@ -14,6 +14,7 @@ gripsack-fetch.workspace = true
 gripsack-ir.workspace = true
 gripsack-store.workspace = true
 gripsack-policy.workspace = true
+gripsack-kernel.workspace = true
 gripsack-process.workspace = true
 serde.workspace = true
 serde_json.workspace = true

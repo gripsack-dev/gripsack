@@ -1,7 +1,7 @@
 //! Explicit selection/transaction wire seam. Policy keeps compact identities;
 //! this module alone owns their canonical JSON and filesystem text encoding.
 use crate::GenerationId;
-use gripsack_policy::selection::{SelectionIdentity, TransactionId};
+use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeStruct};
 use std::{fmt, io};
 

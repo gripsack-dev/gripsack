@@ -5,7 +5,7 @@ use crate::{
     GenerationId,
     selection_wire::{SelectionWire, serialize_optional},
 };
-use gripsack_policy::selection::SelectionIdentity;
+use gripsack_kernel::selection::SelectionIdentity;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeStruct};
 use std::{fmt, io};
 

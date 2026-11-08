@@ -1,6 +1,6 @@
 //! Generation inventory, manifest admission and pruning share one pinned root.
 use super::{Generation, admission::validate};
-use crate::{GENERATIONS_DIR, GenerationId, GenerationInventory, GenerationList};
+use crate::{GENERATIONS_DIR, GenerationId, GenerationList};
 use gripsack_fs::{
     Dir,
     fault::{Boundary, operation},
@@ -85,7 +85,7 @@ impl GenerationDirectory {
         if retiring
             .iter()
             .chain(&retired)
-            .any(|id| generations.inventory().as_slice().binary_search(id).is_ok())
+            .any(|id| generations.as_slice().binary_search(id).is_ok())
             || retiring.iter().any(|id| retired.binary_search(id).is_ok())
         {
             return Err(invalid("generation and retirement identities overlap"));
@@ -98,8 +98,8 @@ impl GenerationDirectory {
         })
     }
 
-    pub fn inventory(&self) -> GenerationInventory<'_> {
-        self.generations.inventory()
+    pub fn inventory(&self) -> &GenerationList {
+        &self.generations
     }
 
     pub fn into_generations(self) -> GenerationList {

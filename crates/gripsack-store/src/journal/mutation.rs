@@ -4,7 +4,7 @@ use super::{
     prior_identity,
 };
 use gripsack_fs::Dir;
-use gripsack_policy::journal_protocol::{MutationAuthority, RecordRole, admit_mutation};
+use gripsack_kernel::journal::{MutationAuthority, RecordRole, admit_mutation};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
@@ -29,7 +29,7 @@ impl CapturedPrior<'_> {
 pub struct MutationPermit<'a> {
     captured: CapturedPrior<'a>,
     intended: &'a Intended,
-    _authority: MutationAuthority<'a>,
+    _authority: MutationAuthority,
 }
 
 impl MutationPermit<'_> {
