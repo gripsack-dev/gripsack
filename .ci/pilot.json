@@ -122,7 +122,7 @@
     "repositories": {
       "site": {
         "url": "https://github.com/gripsack-dev/gripsack-dev.github.io.git",
-        "commit": "a9865115a5d5645a4f0635ef2f01f8b759675ec2"
+        "commit": "a13fdbd7fd323b936ecb9c81ae92ccd92e79e2e8"
       },
       "example": {
         "url": "https://github.com/gripsack-dev/example-env-typescript.git",
