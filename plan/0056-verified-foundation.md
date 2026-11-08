@@ -1,6 +1,6 @@
 # 0056 — Verified foundation: a Lean-proved kernel, rings outward, and a trim
 
-- Status: proposed (owner review)
+- Status: approved by the owner 2026-11-08; executing (F0, F1)
 - Date: 2026-11-08
 - Owner direction: 2026-11-08 conversation — "a kernel that is Lean proved …
   interaction with the world needs proper proofs … keep expanding the rings";
