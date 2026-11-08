@@ -311,8 +311,9 @@ releases.
 **F0 — Trim and reset the gates (≈1 week).** The "now" rows of §8. Collapse
 CI to `gate` = test, ts-test, e2e. Rewrite AGENTS.md. One release goes out on
 the simplified flow before the old release scripts are deleted.
-*Exit:* CI ≤ 4 jobs; `scripts/` ≤ 3k lines; release from tag with no manual
-evidence.
+*Exit:* six required gates; `scripts/` ≤ 3k lines excluding the Verus/TLAPS/TLC
+runners that retire in F2/F3 and the installer generators (product code);
+release from qualified bytes with no hand-assembled evidence.
 
 **F1 — Aeneas pilot (2 weeks, time-boxed; go/no-go).** Create
 `gripsack-kernel` holding *moved* (not copied) `selection::classify`, one
