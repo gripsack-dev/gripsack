@@ -85,7 +85,8 @@ COPY scripts ./scripts
 # must not invalidate the Rust compilation layers.
 COPY typescript/src ./typescript/src
 COPY typescript/deno.json typescript/package.json ./typescript/
-RUN python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
+RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
+    python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
 # Fast generated-source freshness checks.
 RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
     cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \

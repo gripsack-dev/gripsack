@@ -212,11 +212,16 @@ def prepare(args):
     else:
         # The core and the helper are independent images with independent
         # outputs (plan/0057 D6): build both at once, print both logs in order.
+        # Both logs reach the evidence record even when one build fails; the
+        # first failure is raised once both have been printed.
         with ThreadPoolExecutor(max_workers=2) as pool:
             builds = [pool.submit(compose_captured, *core),
                       pool.submit(compose_captured, "run", "--build", "--rm", *owner(), "helper", profile="tools")]
-            for build in builds:
-                print(build.result(), end="", flush=True)
+        failed = [build for build in builds if build.exception() is not None]
+        for build in builds:
+            print(build.result() if build not in failed else build.exception(), end="", flush=True)
+        if failed:
+            raise ReleaseError(f"{len(failed)} of the concurrent core/helper builds failed (logs above)")
     compose("run", "--build", "--rm", "--user", f"{os.getuid()}:{os.getgid()}",
             "-e", "HOME=/tmp/home", "-v", f"{dist}:/out", "tools", "sh", "-ec",
             "cp -r /app/typescript /tmp/sdk && cd /tmp/sdk"
