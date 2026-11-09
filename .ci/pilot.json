@@ -13,7 +13,7 @@
         "scripts/local_ci.py",
         "test"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 2700,
       "inputs": [],
       "outputs": []
     },
@@ -24,7 +24,7 @@
         "scripts/local_ci.py",
         "ts-test"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 900,
       "inputs": [],
       "outputs": []
     },
@@ -35,7 +35,7 @@
         "scripts/local_ci.py",
         "proofs"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 5400,
       "inputs": [],
       "outputs": []
     },
@@ -46,7 +46,7 @@
         "scripts/local_ci.py",
         "e2e"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 3600,
       "inputs": [],
       "outputs": []
     },
@@ -68,7 +68,7 @@
         "scripts/local_ci.py",
         "package"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 3600,
       "inputs": [],
       "outputs": [
         "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz",
@@ -90,7 +90,7 @@
         "scripts/local_ci.py",
         "smoke"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 2700,
       "inputs": [
         "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz",
         "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz.sha256",

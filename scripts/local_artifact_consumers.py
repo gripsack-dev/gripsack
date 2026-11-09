@@ -23,6 +23,10 @@ import tomllib
 import xml.etree.ElementTree as ET
 
 from examples_check.fixtures import prepare_sdk
+
+# One consumer command may not stall the smoke gate; the installed flow suite
+# is the longest (minutes), so the bound is generous (plan/0057).
+COMMAND_TIMEOUT = 1800
 from examples_check.extract import CheckFailure
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -108,7 +112,7 @@ class Consumer:
         with prefix.with_suffix(".stdout").open("wb") as out, prefix.with_suffix(".stderr").open("wb") as err:
             process = subprocess.run(argv, cwd=directory, env=environment,
                                      input=input.encode() if isinstance(input, str) else input,
-                                     stdout=out, stderr=err)
+                                     stdout=out, stderr=err, timeout=COMMAND_TIMEOUT)
         command["returncode"] = process.returncode
         stdout = prefix.with_suffix(".stdout").read_bytes()
         stderr = prefix.with_suffix(".stderr").read_bytes()
