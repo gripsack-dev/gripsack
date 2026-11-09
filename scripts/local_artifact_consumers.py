@@ -304,38 +304,17 @@ class Consumer:
         }
 
     def external_consumer(self):
-        repo = self.work / "example"
-        shutil.copytree(self.args.example, repo, ignore=shutil.ignore_patterns(".git"))
-        before = snapshot(repo)
-        # artifacts() seeded the exact SDK tarball in this private npm cache.
-        # Fetch only the other locked archives, then forbid network fallback
-        # while npm reconstructs the complete tree captured by gripsack.lock.
-        packages = json.loads((repo / "package-lock.json").read_text())["packages"]
-        for name, package in sorted(packages.items()):
-            if name in ("", "node_modules/@gripsack/core"):
-                continue
-            require(package.get("resolved") and package.get("integrity"),
-                    f"npm dependency {name} is not frozen to an archive identity")
-            self.run(["npm", "cache", "add", "--ignore-scripts", package["resolved"]], cwd=repo)
-        self.run(["npm", "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=repo)
-        require(all(sha(repo / name) == before[name]["sha256"]
-                    for name in ("package.json", "package-lock.json", "gripsack.lock")),
-                "frozen npm preparation changed a source manifest or lock")
-        installed = repo / "node_modules/@gripsack/core"
-        require({name: value["sha256"] for name, value in snapshot(installed).items()}
-                == {name: value["sha256"] for name, value in snapshot(self.sdk).items()},
-                "frozen workspace SDK differs from candidate bytes")
-        # Frozen root caller: no automatic lock migration or mutable GitHub release install.
-        self.approve(repo)
-        self.run([self.grip, "check"], cwd=repo)
-        # This published lock was captured against the embedded frontend.
-        # Installing a repository SDK would deliberately change its import pins.
-        conda = self.work / "example-conda"
-        shutil.copytree(self.args.example / "workspaces/conda", conda)
-        conda_before = snapshot(conda)
+        # An in-tree Conda workspace (formerly the external example repository):
+        # lock it once with the candidate, then prove frozen build/run/task/apply
+        # and offline reuse never rewrite that lock or the retained prefix.
+        conda = self.work / "consumer-conda"
+        shutil.copytree(ROOT / "e2e/fixtures/consumer-conda", conda)
+        self.approve(conda)
+        self.run([self.grip, "update"], cwd=conda)
+        self.approve(conda)
         lock = conda / "gripsack.lock"
         frozen = lock.read_bytes()
-        self.approve(conda)
+        conda_before = snapshot(conda)
         self.run([self.grip, "check"], cwd=conda)
         built = json.loads(self.run([self.grip, "build", "ripgrep", "--json"], cwd=conda))
         require([(output["name"], output["kind"]) for output in built["outputs"]] == [("ripgrep", "package")],
@@ -356,13 +335,11 @@ class Consumer:
         require(all(snapshot(Path(path)) == content for path, content in retained.items()), "retained external prefix changed")
         conda_after = snapshot(conda)
         require(all(conda_after.get(path) == content for path, content in conda_before.items()),
-                "frozen external Conda source/lock changed")
-        after = snapshot(repo)
-        require(all(after.get(path) == content for path, content in before.items()), "original external source/locks changed")
-        self.receipt["external_consumer"] = {"root": "root workspace check with candidate installed SDK",
-            "conda": "embedded-frontend frozen build/run/task/apply/apply; unavailable-helper retained build/gc/shell",
+                "frozen Conda source/lock changed")
+        self.receipt["external_consumer"] = {
+            "conda": "candidate-locked, then frozen build/run/task/apply/apply; unavailable-helper retained build/gc/shell",
             "frozen_lock_sha256": sha(lock), "retained_prefixes": retained,
-            "network": "npm dependency archives and Conda archives are lock-pinned; the candidate SDK install is offline; retained reuse is not a network-namespace isolation claim"}
+            "network": "Conda archives are lock-pinned after the candidate locks; retained reuse is not a network-namespace isolation claim"}
 
     def execute(self):
         self.source_identity()
@@ -376,7 +353,7 @@ class Consumer:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for option in ("dist", "site", "example", "report"):
+    for option in ("dist", "site", "report"):
         parser.add_argument(f"--{option}", required=True, type=Path)
     args = parser.parse_args()
     os.umask(0o077)

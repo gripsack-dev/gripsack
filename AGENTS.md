@@ -210,7 +210,7 @@ stored data needed for rollback and integrity retains its original meaning.
   see `~/workspace/SHARED-BUILDBOT-CI-PLAN.md` §15), then post the status with
   `python3 scripts/release.py status <candidate_id>`. `ci-infra` and the
   shared plan serve several projects — don't edit them from here.
-- Hosted workflows (`ci`, `audit`, `upstream-watch`,
+- Hosted workflows (`audit`, `upstream-watch`,
   `template-mirror`, `fuzz`) are diagnostics or maintenance and never gate
   anything.
 - Releases: `python3 scripts/release.py publish <candidate_id> --notes N.md
