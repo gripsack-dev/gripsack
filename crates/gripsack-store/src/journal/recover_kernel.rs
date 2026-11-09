@@ -187,19 +187,17 @@ impl<'a> StoreHost<'a> {
     /// A refusal as the error the CLI shows.
     fn refusal(&self, refusal: Refusal, found: Option<Found>) -> io::Error {
         let message = match refusal {
-            Refusal::Ambiguous => {
-                let (previous, target) = self
-                    .marker
-                    .as_ref()
-                    .map(|marker| (marker.previous, Some(marker.target)))
-                    .unwrap_or((None, None));
-                format!(
-                    "journal selections ({previous:?} → {target:?}) match neither current \
-                     ({:?}) nor the recorded predecessor — the journal is retained; inspect \
+            Refusal::Ambiguous => match &self.marker {
+                Some(marker) => format!(
+                    "journal selections ({:?} → {:?}) match neither current ({:?}) nor the \
+                     recorded predecessor — the journal is retained; inspect \
                      $GRIPSACK_HOME/journal before running again",
-                    self.current
-                )
-            }
+                    marker.previous, marker.target, self.current
+                ),
+                None => "journal selections are ambiguous — the journal is retained; inspect \
+                         $GRIPSACK_HOME/journal before running again"
+                    .into(),
+            },
             Refusal::MarkerMissing => {
                 "directory journal lacks its transaction marker; evidence retained".into()
             }
