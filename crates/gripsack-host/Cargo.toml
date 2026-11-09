@@ -1,0 +1,16 @@
+[package]
+name = "gripsack-host"
+description = "gripsack ring-2 host (plan/0056 §6): storage trait, real and crash-injecting in-memory filesystems"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Ring 2 depends only inward. gripsack-fs supplies the fault-boundary
+# vocabulary until this crate absorbs it (plan/0056 §6, F2 step 10).
+[dependencies]
+gripsack-fs.workspace = true
+rustix = { version = "1", features = ["fs"] }
+
+[dev-dependencies]
+tempfile = "3"

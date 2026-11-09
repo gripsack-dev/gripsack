@@ -27,6 +27,8 @@ from pathlib import Path
 ALLOWED: dict[str, frozenset[str]] = {
     # plan/0056: the ring-0 kernel has no dependencies at all.
     "gripsack-kernel": frozenset(),
+    # plan/0056 ring 2: inward only. gripsack-fs until the host absorbs it.
+    "gripsack-host": frozenset({"gripsack-fs", "rustix", "tempfile"}),
     "gripsack-policy": frozenset({"vstd"}),
     "gripsack-ir": frozenset({
         "gripsack-policy", "serde", "serde_json", "thiserror", "jsonschema",

@@ -1,6 +1,6 @@
 # 0056 — Verified foundation: a Lean-proved kernel, rings outward, and a trim
 
-- Status: approved by the owner 2026-11-08; F0 and F1 landed in 0.52.0 (F1: GO); F2 next
+- Status: approved by the owner 2026-11-08; F0 and F1 landed in 0.52.0 (F1: GO); F2 in progress (step 1 done)
 - Date: 2026-11-08
 - Owner direction: 2026-11-08 conversation — "a kernel that is Lean proved …
   interaction with the world needs proper proofs … keep expanding the rings";
@@ -335,10 +335,22 @@ side by side behind a debug-only `GRIPSACK_ENGINE=legacy|kernel` switch, with
 the crash e2e run both ways for one release before the legacy path goes.
 
 1. Vocabulary + `gripsack-host::Storage` trait with `RealFs` and `MemFs`.
-   *Exit:* `MemFs` finds the 0.19.1 resurrection bug when the entry barrier
-   is removed; ported persistence-model cases pass.
+   *Exit:* `MemFs` finds the 0.19.1 (no barrier) and 0.19.2 (trailing
+   barrier only) resurrections; ported persistence-model cases pass.
+   **Done 2026-11-09** (`crates/gripsack-host`): the shipped two-barrier
+   cleanup passes 574 cuts / 1749 kill and power-loss images; the 0.19.2
+   order fails at cut 23 (entry unlink lost, marker unlink kept). MemFs
+   loss granularity is one update (one write call, one entry, one side of
+   a cross-directory rename); it is deliberately pessimistic about renames
+   of never-durable sources, so a step-2 finding there is checked against
+   S1–S3 before it is called a bug. Not yet modelled: S5 external writers
+   (step 2 adds the injection hook) and directory birth time (before step 9).
 2. Recover machine (decide, order, cleanup, seal); directory records still
-   delegated to legacy code. Delete `journal/model.rs`, `repeated_model.rs`.
+   delegated to legacy code. *Exit:* `journal_cleanup.rs` drives the kernel
+   recover machine through a driver generic over `Storage` (not a
+   hand-written recover) over MemFs, including an S5 external-write hook;
+   then delete `journal/model.rs`, `repeated_model.rs`. Also closes the
+   unrestorable-entry wedge (0058 item 1).
 3. Leaf + journal-run sub-machine; port `journal_protocol` to Lean.
 4. GC machine incl. root derivation from manifests; `retention` Verus goes.
 5. Activation machine (ledger order, authorize/supersede, attempts).

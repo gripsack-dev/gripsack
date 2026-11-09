@@ -30,3 +30,4 @@ griplint = { version = "0.52.0", path = "crates/griplint" }
 gripsack-process = { version = "0.52.0", path = "crates/gripsack-process" }
 gripsack-policy = { version = "0.52.0", path = "crates/gripsack-policy" }
 gripsack-kernel = { version = "0.52.0", path = "crates/gripsack-kernel" }
+gripsack-host = { version = "0.52.0", path = "crates/gripsack-host" }
