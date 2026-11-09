@@ -18,7 +18,9 @@ def allowedAxioms : List Name := [``propext, ``Classical.choice, ``Quot.sound]
 /-- The headline claims: K3 (CLASSIFY-001), K4 retention admission, the
 journal publication transition and mutation authority, and the recover
 machine (F2 step 2): the restore guard, unrestorable refusal, cleanup order
-and classification before restore. -/
+and classification before restore; and the per-unit ownership decision (K1):
+writes only to absence, gripsack's own last write, or a consented object;
+drift never written; identities matter only through equality. -/
 def claims : List Name := [
   ``Gripsack.Kernel.classify_committed_iff,
   ``Gripsack.Kernel.classify_uncommitted_iff,
@@ -39,6 +41,13 @@ def claims : List Name := [
   ``Gripsack.Kernel.mutate_never_unsupported,
   ``Gripsack.Kernel.marker_unlink_after_record_barrier,
   ``Gripsack.Kernel.mutate_after_classification,
+  ``Gripsack.Kernel.decide_unit_k1,
+  ``Gripsack.Kernel.decide_unit_drift_never_written,
+  ``Gripsack.Kernel.decide_unit_owned_drift_refused,
+  ``Gripsack.Kernel.decide_unit_unrecorded_refused,
+  ``Gripsack.Kernel.decide_unit_identity_only,
+  ``Gripsack.Kernel.decide_unit_takeover_acquires,
+  ``Gripsack.Kernel.decide_unit_progress,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/

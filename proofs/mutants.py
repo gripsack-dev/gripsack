@@ -131,6 +131,25 @@ MUTANTS = (
            "                Classification::Committed => {\n                    state.verdict = Verdict::Committed;\n                    state.phase = Phase::SealingSelection;\n                    (state, Command::Barrier(Scope::Selection))\n                }",
            "                Classification::Committed => {\n                    state.verdict = Verdict::Uncommitted;\n                    state.index = 0;\n                    proceed(state)\n                }",
            ("Gripsack.Kernel.on_current_spec",)),
+    # K1 / FND-1: a record re-points an owned destination whatever is live now
+    Mutant("ownership-recorded-overwrites-live", "ownership.rs",
+           "            Recorded::Wrote(ident) => ident.same(object),",
+           "            Recorded::Wrote(_) => true,",
+           ("Gripsack.Kernel.decide_unit_k1", "Gripsack.Kernel.decide_unit_drift_never_written",
+            "Gripsack.Kernel.decide_unit_owned_drift_refused")),
+    # K1: where a link points confers ownership (the `$GRIPSACK_HOME` prefix rule)
+    Mutant("ownership-link-target-confers", "ownership.rs",
+           "            Recorded::Unrecorded => false,\n        }\n    }",
+           "            Recorded::Unrecorded => match object {\n                Ident::Link(_) => true,\n                Ident::File(_) => false,\n            },\n        }\n    }",
+           ("Gripsack.Kernel.decide_unit_k1", "Gripsack.Kernel.decide_unit_drift_never_written",
+            "Gripsack.Kernel.decide_unit_unrecorded_refused", "Gripsack.Kernel.decide_unit_identity_only")),
+    # K1: take-over without consent
+    Mutant("ownership-consent-ignored", "ownership.rs",
+           "        Intended::Obj(_) => consent.grants_take_over(),",
+           "        Intended::Obj(_) => true,",
+           ("Gripsack.Kernel.decide_unit_k1", "Gripsack.Kernel.decide_unit_drift_never_written",
+            "Gripsack.Kernel.decide_unit_owned_drift_refused", "Gripsack.Kernel.decide_unit_unrecorded_refused",
+            "Gripsack.Kernel.decide_unit_takeover_acquires")),
 )
 
 # lake reports `error: <path>.lean:<line>:<col>: <message>`
