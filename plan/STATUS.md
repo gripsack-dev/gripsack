@@ -9,8 +9,8 @@ change as the plan. Long-form release/evidence narratives were removed by
 
 - **Latest release:** [core-v0.52.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.52.0) (2026-11-09), Linux/WSL x86_64 only.
 - **Active plan:** [0056 — verified foundation](0056-verified-foundation.md), approved 2026-11-08.
-- **Independent design review:** [2026-11](../docs/reviews/2026-11-design-review.md) — findings are leads; each is verified before it changes a plan.
   Its ledger (§9 phases, §13+ records) is the source of truth for the epic.
+- **Independent design review:** [2026-11](../docs/reviews/2026-11-design-review.md) — findings are leads; each is verified before it changes a plan.
 - **Superseded by 0056:** 0047 tooling decisions; 0048 §6 (M-V1–M-V8), §9–§10 as
   release gates and its evidence/receipt contract; the formal and evidence
   parts of 0049–0055. Runtime safety contracts are kept and become theorems.
