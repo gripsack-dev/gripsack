@@ -115,10 +115,13 @@ impl Storage for RealFs {
 
     fn open_file(&self, parent: &RealDir, name: &Name) -> io::Result<RealFile> {
         operation(Boundary::Read, label(name), || {
+            // O_NONBLOCK: a FIFO at `name` is refused below instead of
+            // blocking the open until a writer appears (as `gripsack-fs`
+            // does for special-file admission). It is inert on regular files.
             let fd = rustix::fs::openat(
                 &parent.0,
                 name.as_os_str(),
-                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
                 Mode::empty(),
             )?;
             match FileType::from_raw_mode(rustix::fs::fstat(&fd)?.st_mode) {
@@ -277,4 +280,31 @@ impl Storage for RealFs {
 fn bytes_to_os(bytes: Vec<u8>) -> OsString {
     use std::os::unix::ffi::OsStringExt;
     OsString::from_vec(bytes)
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use rustix::fs::FileType;
+
+    #[test]
+    fn open_file_refuses_a_fifo_without_blocking() {
+        let home = tempfile::tempdir().unwrap();
+        let fs = RealFs::new(home.path());
+        let root = fs.root().unwrap();
+        let fifo = Name::new("pipe").unwrap();
+        rustix::fs::mknodat(
+            &root.0,
+            fifo.as_os_str(),
+            FileType::Fifo,
+            Mode::from_raw_mode(0o600),
+            0,
+        )
+        .unwrap();
+        assert_eq!(fs.metadata(&root, &fifo).unwrap().kind, ObjectKind::Other);
+        assert_eq!(
+            fs.open_file(&root, &fifo).unwrap_err().raw_os_error(),
+            Some(Errno::INVAL.raw_os_error())
+        );
+    }
 }
