@@ -3,7 +3,6 @@
 //! lives in ops::plan (0034).
 
 use gripsack_store as store;
-use gripsack_store::Ownership;
 use std::path::Path;
 
 /// Capture a destination's current state for a take-over (0015
@@ -90,25 +89,6 @@ pub(crate) fn restore_prior(
 /// the original file/symlink — "your original files have been
 /// restored." Drifted destinations and prior-less entries fall back to
 /// the drift-guarded removal.
-/// Is the destination still exactly what this manifest entry
-/// deployed? (Merge blocks are checked by block hash at the call
-/// sites — a foreign file is never "intact" as a whole.)
-pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, store_path: &Path) -> bool {
-    if entry.preserved_drift {
-        return false;
-    }
-    match entry.ownership.policy() {
-        Ownership::Owned => std::fs::read_link(dest)
-            .map(|t| t == store_path.join(&entry.from))
-            .unwrap_or(false),
-        Ownership::Merge => false, // merge never carries a prior
-        Ownership::TrackedCopy | Ownership::Template => {
-            matches!(super::observe_readonly(dest),
-                Ok(Some(super::Observation::File { bytes, mode })) if entry.matches_file(&bytes, mode))
-        }
-    }
-}
-
 /// The intended post-prune identity of a destination (0026 §6):
 /// the restored prior's identity when a prior exists, removal
 /// otherwise. Known BEFORE the mutation, from the prior blob —

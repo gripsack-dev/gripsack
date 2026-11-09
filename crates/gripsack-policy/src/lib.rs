@@ -20,7 +20,6 @@ pub mod graph;
 pub mod journal_protocol;
 pub mod merge;
 pub mod operation_budget;
-pub mod ownership;
 pub mod process_budget;
 pub mod rate_limit;
 pub mod retry_budget;

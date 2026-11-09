@@ -1,8 +1,9 @@
-//! The VM-level harness (0034's explorer extension): the lineage
-//! explorer proves the DECISION algebra (plan_copy/plan_link); this
-//! harness proves the LIFTING — that the op planner computes the same
-//! decision the algebra does, and that executing the op lands exactly
-//! its recorded intent. Enumerated abstract states are materialized
+//! The VM-level harness (0034's explorer extension): the kernel's
+//! `ownership::decide_unit` is the DECISION (proved in
+//! proofs/Kernel/Ownership.lean); this harness checks the LIFTING — that
+//! the op planner, fed real observations and manifest records, computes
+//! the decision the kernel gives for independently computed identities,
+//! and that executing the op lands exactly its recorded intent. Enumerated abstract states are materialized
 //! onto a real filesystem, planned with the shipped planner, executed
 //! with the shipped executor, and checked: nothing drifts between the
 //! model's answer and the machine's.
@@ -11,12 +12,16 @@
 mod tests {
     use crate::ctx::Ctx;
     use crate::ops::{
-        Authority, DestView, ModeInput, OpKind, execute_op, plan_entry_op, preview_ops,
+        Authority, DestView, ModeInput, OpKind, PreviousRecord, execute_op, plan_entry_op,
+        preview_ops, take_over_consent,
     };
     use gripsack_ir::HostName;
+    use gripsack_kernel::ownership::{Decision, Recorded, Refusal, decide_unit};
+    use gripsack_kernel::recover::{Ident, Intended as KernelIntended, Live as KernelLive};
     use gripsack_store as store;
     use gripsack_store::{DeploymentEntry, Ownership};
     use std::path::{Path, PathBuf};
+    use store::hash::kernel;
 
     /// An abstract live state, materialized per case.
     #[derive(Clone, Copy)]
@@ -113,24 +118,58 @@ mod tests {
         })
     }
 
-    /// The algebra's answer for the case, via the shipped plan_copy.
-    fn expected_plan(case: &Case, dest: &Path) -> crate::deploy::CopyPlan {
-        let desired = store::canonical_bytes_identity(case.desired.as_bytes(), 0o644).to_string();
-        let live = live_manifest_identity(dest);
-        let prev = prev_entry(&case.prev);
-        let prev_pair = prev.as_ref().map(|e| (e.hash.as_str(), e.preserved_drift));
-        crate::deploy::plan_copy(&desired, live.as_deref(), prev_pair, case.take_over)
+    /// The live object's kernel identity, computed from the filesystem
+    /// independently of the planner's observation.
+    fn kernel_live(dest: &Path) -> KernelLive {
+        match std::fs::symlink_metadata(dest) {
+            Err(_) => KernelLive::Absent,
+            Ok(m) if m.file_type().is_symlink() => KernelLive::Obj(kernel::link(
+                std::fs::read_link(dest)
+                    .unwrap()
+                    .as_os_str()
+                    .as_encoded_bytes(),
+            )),
+            Ok(m) => {
+                use std::os::unix::fs::MetadataExt;
+                KernelLive::Obj(kernel::file(&store::canonical_bytes_identity(
+                    &std::fs::read(dest).unwrap(),
+                    m.mode() & 0o7777,
+                )))
+            }
+        }
     }
 
-    /// plan_copy's answer as the op kind/authority the planner must
-    /// produce.
-    fn expected_shape(plan: crate::deploy::CopyPlan) -> (&'static str, Option<Authority>) {
-        match plan {
-            crate::deploy::CopyPlan::Fresh => ("write", Some(Authority::Fresh)),
-            crate::deploy::CopyPlan::Update => ("write", Some(Authority::Update)),
-            crate::deploy::CopyPlan::TakeOver => ("write", Some(Authority::TakeOver)),
-            crate::deploy::CopyPlan::Satisfied => ("satisfied", None),
-            crate::deploy::CopyPlan::Preserve => ("preserved", None),
+    fn file_ident(content: &str) -> Ident {
+        kernel::file(&store::canonical_bytes_identity(content.as_bytes(), 0o644))
+    }
+
+    /// The kernel's answer for the case.
+    fn expected_plan(case: &Case, dest: &Path) -> Decision {
+        let recorded = match case.prev.0 {
+            None => Recorded::Unrecorded,
+            Some((_, true)) => Recorded::Observed,
+            Some((content, false)) => Recorded::Wrote(file_ident(content)),
+        };
+        decide_unit(
+            &recorded,
+            &kernel_live(dest),
+            &KernelIntended::Obj(file_ident(case.desired)),
+            &take_over_consent(case.take_over),
+        )
+    }
+
+    /// The kernel's decision as the op kind/authority the planner must
+    /// produce for `kind` ("write" or "link").
+    fn expected_shape(decision: Decision, kind: &'static str) -> (&'static str, Option<Authority>) {
+        match decision {
+            Decision::Create => (kind, Some(Authority::Fresh)),
+            Decision::ReplaceOwn => (kind, Some(Authority::Update)),
+            Decision::TakeOver => (kind, Some(Authority::TakeOver)),
+            Decision::Satisfied => ("satisfied", None),
+            // a copy preserves drift silently; a link refusal names it
+            Decision::Refuse(_) if kind == "write" => ("preserved", None),
+            Decision::Refuse(Refusal::Drifted) => ("preserved", Some(Authority::Drifted)),
+            Decision::Refuse(_) => ("preserved", Some(Authority::Foreign)),
         }
     }
 
@@ -140,9 +179,10 @@ mod tests {
     ) -> (&'static str, Option<Authority>) {
         match kind {
             OpKind::Write { .. } => ("write", authority),
+            OpKind::Link { .. } => ("link", authority),
             OpKind::Satisfied => ("satisfied", authority),
             OpKind::Preserved => ("preserved", authority),
-            other => panic!("unexpected op kind for a copy: {other:?}"),
+            other => panic!("unexpected op kind for a whole-object unit: {other:?}"),
         }
     }
 
@@ -201,8 +241,11 @@ mod tests {
             dest: dest.clone(),
             home,
             observed,
-            prev: prev.as_ref(),
-            take_over: case.take_over,
+            prev: prev.as_ref().map(|entry| PreviousRecord {
+                entry,
+                store_path: &payload_dir,
+            }),
+            consent: take_over_consent(case.take_over),
         };
         let op = plan_entry_op(
             &view,
@@ -213,8 +256,8 @@ mod tests {
         )
         .unwrap();
 
-        // the planner IS the algebra: same decision
-        let expected = expected_shape(expected_plan(case, &dest));
+        // the planner lifts the kernel: same decision
+        let expected = expected_shape(expected_plan(case, &dest), "write");
         assert_eq!(
             actual_shape(op.kind(), op.authority()),
             expected,
@@ -267,6 +310,116 @@ mod tests {
         }
     }
 
+    /// FND-1 and the store-prefix widening at the lifting: an owned link
+    /// is gripsack's only when the manifest records exactly that link (the
+    /// previous generation's `store_path/from`). A user's file or link —
+    /// including one into the store — is refused (or taken over), and the
+    /// recorded link is replaced only while it is still live.
+    #[test]
+    fn owned_links_follow_recorded_identity_only() {
+        let mut checked = 0usize;
+        for live in [
+            "absent",
+            "recorded",
+            "intended",
+            "user-file",
+            "user-store-link",
+            "user-link",
+        ] {
+            for recorded in [false, true] {
+                for take_over in [false, true] {
+                    let dir = tempfile::tempdir().unwrap();
+                    let home = dir.path();
+                    let old_store = home.join("store/old");
+                    let new_store = home.join("store/new");
+                    for root in [&old_store, &new_store] {
+                        std::fs::create_dir_all(root).unwrap();
+                        std::fs::write(root.join("payload"), "payload").unwrap();
+                    }
+                    let source = new_store.join("payload");
+                    let dest = home.join("dest");
+                    match live {
+                        "absent" => {}
+                        "recorded" => {
+                            std::os::unix::fs::symlink(old_store.join("payload"), &dest).unwrap()
+                        }
+                        "intended" => std::os::unix::fs::symlink(&source, &dest).unwrap(),
+                        "user-file" => std::fs::write(&dest, "mine").unwrap(),
+                        "user-store-link" => {
+                            std::os::unix::fs::symlink(home.join("store/made-by-me"), &dest)
+                                .unwrap()
+                        }
+                        _ => std::os::unix::fs::symlink("/elsewhere", &dest).unwrap(),
+                    }
+                    let entry = entry(Ownership::Owned, &dest);
+                    let prev = store::DeployedEntry {
+                        from: "payload".into(),
+                        to: String::new(),
+                        key: None,
+                        ownership: store::StoredOwnership::Legacy(Ownership::Owned),
+                        vars: Default::default(),
+                        file_mode: None,
+                        source_executable: None,
+                        hash: store::canonical_file_hash(&source).unwrap().into(),
+                        prior: None,
+                        preserved_drift: false,
+                    };
+                    let view = DestView {
+                        output: "m",
+                        entry: &entry,
+                        dest: dest.clone(),
+                        home,
+                        observed: crate::deploy::observe_readonly(&dest).unwrap(),
+                        prev: recorded.then_some(PreviousRecord {
+                            entry: &prev,
+                            store_path: &old_store,
+                        }),
+                        consent: take_over_consent(take_over),
+                    };
+                    let op = plan_entry_op(
+                        &view,
+                        ModeInput::Link {
+                            source: &source,
+                            content_hash: prev.hash.clone(),
+                        },
+                    )
+                    .unwrap();
+                    let recorded_identity = if recorded {
+                        Recorded::Wrote(kernel::link(
+                            old_store.join("payload").as_os_str().as_encoded_bytes(),
+                        ))
+                    } else {
+                        Recorded::Unrecorded
+                    };
+                    let decision = decide_unit(
+                        &recorded_identity,
+                        &kernel_live(&dest),
+                        &KernelIntended::Obj(kernel::link(source.as_os_str().as_encoded_bytes())),
+                        &take_over_consent(take_over),
+                    );
+                    assert_eq!(
+                        actual_shape(op.kind(), op.authority()),
+                        expected_shape(decision, "link"),
+                        "live={live} recorded={recorded} take_over={take_over}"
+                    );
+                    // the two defects, stated directly
+                    let writes = matches!(op.kind(), OpKind::Link { .. });
+                    if !take_over && live.starts_with("user") {
+                        assert!(
+                            !writes,
+                            "a user's object was re-pointed: {live} recorded={recorded}"
+                        );
+                    }
+                    if live == "recorded" && recorded {
+                        assert_eq!(op.authority(), Some(Authority::Update));
+                    }
+                    checked += 1;
+                }
+            }
+        }
+        eprintln!("owned-link lifting: {checked} cases, zero divergences");
+    }
+
     #[test]
     fn legacy_template_receipts_do_not_acquire_intact_owned_bytes() {
         for preserved in [false, true] {
@@ -286,8 +439,11 @@ mod tests {
                         dest: dest.clone(),
                         home,
                         observed: crate::deploy::observe_readonly(&dest).unwrap(),
-                        prev: Some(&prev),
-                        take_over,
+                        prev: Some(PreviousRecord {
+                            entry: &prev,
+                            store_path: home,
+                        }),
+                        consent: take_over_consent(take_over),
                     };
                     let op = plan_entry_op(
                         &view,
@@ -351,7 +507,7 @@ mod tests {
             home,
             observed,
             prev: None,
-            take_over: false,
+            consent: take_over_consent(false),
         };
         let op = plan_entry_op(
             &view,
@@ -391,8 +547,11 @@ mod tests {
             dest: tilde.clone(),
             home,
             observed,
-            prev: Some(&prev),
-            take_over: false,
+            prev: Some(PreviousRecord {
+                entry: &prev,
+                store_path: &payload_dir,
+            }),
+            consent: take_over_consent(false),
         };
         let op = plan_entry_op(
             &view,

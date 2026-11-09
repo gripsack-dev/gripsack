@@ -326,7 +326,7 @@ fn restore_destinations(
                 }
             }
             // both deploy it: restore only from a clean base
-            (Some((_cname, centry, _csp)), Some((tname, tentry, tsp))) => {
+            (Some((_cname, centry, csp)), Some((tname, tentry, tsp))) => {
                 // either side marked preserved-drift means gripsack is
                 // not the writer — never restore over it (0029 §2)
                 if centry.preserved_drift || tentry.preserved_drift {
@@ -336,7 +336,11 @@ fn restore_destinations(
                 // target's record is the desired state, the current's
                 // is the lineage — live == target is a no-op, live ==
                 // current restores, anything else keeps the drift
-                match crate::ops::plan_restore_op(tname, tentry, tsp, Some(centry), home_path)? {
+                let lineage = crate::ops::PreviousRecord {
+                    entry: centry,
+                    store_path: csp,
+                };
+                match crate::ops::plan_restore_op(tname, tentry, tsp, Some(lineage), home_path)? {
                     None => notes.push(RecoveryNote {
                         severity: NoteSeverity::Warn,
                         message: format!(

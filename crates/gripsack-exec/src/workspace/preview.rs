@@ -246,7 +246,7 @@ impl NativeProfiles {
                         super::directory_changes::preview_observation(self, previous, &dest, home)?
                     },
                     prev: lineage.get(&key).copied(),
-                    take_over: adopting.contains(&entry.to),
+                    consent: crate::ops::take_over_consent(adopting.contains(&entry.to)),
                 };
                 operations.push(deferred(&view, file.note()));
             }
@@ -286,7 +286,7 @@ impl NativeProfiles {
                         super::directory_changes::preview_observation(self, previous, &dest, home)?
                     },
                     prev: lineage.get(&key).copied(),
-                    take_over: adopting.contains(&entry.to),
+                    consent: crate::ops::take_over_consent(adopting.contains(&entry.to)),
                 };
                 let authorization = migration.and_then(|migration| migration.entry(&dest));
                 if let Some(authorization) = authorization {
@@ -305,15 +305,11 @@ impl NativeProfiles {
                 let operation = match entry.mode {
                     Ownership::Owned => {
                         let target = profile.store_path.join(&entry.from);
-                        let already = !migration
-                            .is_some_and(|migration| migration.owns_child(&dest))
-                            && std::fs::read_link(&dest).is_ok_and(|path| path == target);
                         plan_entry_op(
                             &view,
                             ModeInput::Link {
                                 source: &target,
                                 content_hash: store::canonical_file_hash(&source)?.into(),
-                                already,
                             },
                         )?
                     }

@@ -44,15 +44,8 @@ fn name(path: &Path) -> io::Result<Name> {
 }
 
 fn digest_hex(hex: &str) -> io::Result<Digest> {
-    let invalid = || io::Error::new(io::ErrorKind::InvalidData, "malformed identity digest");
-    if hex.len() != 64 {
-        return Err(invalid());
-    }
-    let mut bytes = [0u8; 32];
-    for (index, byte) in bytes.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&hex[2 * index..2 * index + 2], 16).map_err(|_| invalid())?;
-    }
-    Ok(Digest::from_bytes(bytes))
+    crate::hash::kernel::digest_hex(hex)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "malformed identity digest"))
 }
 
 /// The journal's typed identity as a kernel identity. Links compare their
@@ -66,7 +59,7 @@ pub(super) fn kernel_ident(identity: &ObjectIdentity) -> io::Result<Ident> {
 }
 
 fn link_digest(target: &[u8]) -> Digest {
-    digest_hex(&crate::hash::hex_sha256(target)).expect("sha256 hex is 64 digits")
+    crate::hash::kernel::link_digest(target)
 }
 
 /// What restoring this prior puts back, and the prior's typed identity.
@@ -130,8 +123,7 @@ pub(super) fn entry_facts(
 
 /// File identity in the journal's domain (mode-aware, 0031).
 pub(super) fn file_ident(bytes: &[u8], mode: Permissions) -> Ident {
-    let identity = crate::hash::canonical_bytes_identity(bytes, mode.bits());
-    Ident::File(digest_hex(identity.as_str()).expect("canonical identities are sha256 hex"))
+    crate::hash::kernel::file(&crate::hash::canonical_bytes_identity(bytes, mode.bits()))
 }
 
 /// Link identity; a non-UTF-8 target has none (0045 F1, item 7).

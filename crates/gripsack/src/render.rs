@@ -479,6 +479,12 @@ pub fn diff_section(
                         op.declared_to()
                     )
                 }
+                Some(Authority::Drifted) => {
+                    format!(
+                        "  ! {} changed since gripsack deployed it — needs --take-over",
+                        op.declared_to()
+                    )
+                }
                 _ => format!("  ~ {} drifted — kept (apply preserves)", op.declared_to()),
             },
             OpKind::Deferred => {

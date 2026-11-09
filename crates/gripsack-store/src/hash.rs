@@ -284,6 +284,48 @@ pub fn hex_sha256(bytes: &[u8]) -> String {
     hex(&hasher.finalize())
 }
 
+/// Kernel identities (plan/0056): the SHA-256 digests the proved kernel
+/// compares. A file is its mode-aware [`FileIdentity`]; a link is the digest
+/// of its target bytes, so the kernel can tell links apart only by equality,
+/// never by where they point.
+pub mod kernel {
+    use super::{FileIdentity, ManifestHash};
+    use gripsack_kernel::Digest;
+    use gripsack_kernel::recover::Ident;
+
+    /// A 64-digit lowercase or uppercase hex SHA-256, as a kernel digest.
+    pub fn digest_hex(hex: &str) -> Option<Digest> {
+        if hex.len() != 64 || !hex.is_ascii() {
+            return None;
+        }
+        let mut bytes = [0u8; 32];
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hex[2 * index..2 * index + 2], 16).ok()?;
+        }
+        Some(Digest::from_bytes(bytes))
+    }
+
+    /// A file's kernel identity. Canonical identities are always SHA-256 hex.
+    pub fn file(identity: &FileIdentity) -> Ident {
+        Ident::File(digest_hex(identity.as_str()).expect("canonical identities are sha256 hex"))
+    }
+
+    /// A recorded copy/template manifest hash as a file identity; `None` for
+    /// a record that is not one (no kernel identity can equal it).
+    pub fn recorded_file(hash: &ManifestHash) -> Option<Ident> {
+        digest_hex(hash.as_str()).map(Ident::File)
+    }
+
+    /// A link's kernel identity: the digest of its target bytes.
+    pub fn link(target: &[u8]) -> Ident {
+        Ident::Link(link_digest(target))
+    }
+
+    pub fn link_digest(target: &[u8]) -> Digest {
+        digest_hex(&super::hex_sha256(target)).expect("sha256 hex is 64 digits")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

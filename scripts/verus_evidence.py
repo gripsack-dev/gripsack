@@ -107,9 +107,9 @@ def self_check() -> None:
     """Gate consumers must reject forged coverage and split diagnostic evidence."""
     good = Evidence(
         {"success": True, "encountered-error": False, "errors": 0, "verified": 72},
-        {"ownership::plan_copy": True}, (),
+        {"merge::splice_bytes": True}, (),
     )
-    good.positive(0, 72, {"ownership": ("ownership::plan_copy",)})
+    good.positive(0, 72, {"merge": ("merge::splice_bytes",)})
     workspace = Path(__file__).resolve().parent.parent
     source = workspace / "crates/gripsack-policy/src/lib.rs"
     failure = {"success": False, "errors": 1, "verified": 71}

@@ -21,8 +21,10 @@ CRATE = ROOT / "crates/gripsack-policy"
 # plan/0056 F1 moved the selection classifier, generation inventory, GC
 # retention and journal publication/authority kernels to `gripsack-kernel`,
 # where Lean proves them (the `proofs` gate); their 26 obligations leave the
-# Verus floor.
-MIN_OBLIGATIONS = 384
+# Verus floor. plan/0056 F2 moved the copy/link ownership decision
+# (plan_copy, plan_link) to the kernel's `ownership::decide_unit` (K1, Lean);
+# their two obligations leave the floor.
+MIN_OBLIGATIONS = 382
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
@@ -34,7 +36,6 @@ FAMILIES = {
         "AttemptNumber::checked_next", "IntentState::attempt",
         "next_attempt", "finish_attempt", "supersede",
     )),
-    "ownership": ("ownership::plan_copy", "ownership::plan_link"),
     "merge": tuple("merge::" + name for name in (
         "splice_bytes", "lemma_rest_is_gaps", "lemma_splice_canonical", "lemma_splice_identity",
         "lemma_gaps_end_with_tail", "lemma_splice_preserves_edges",
@@ -193,10 +194,6 @@ MUTANTS = (
     Mutant("activation-supersession", "activation.rs", "activation::supersede",
            "IntentState::Started { attempt } => IntentState::Superseded { last_attempt: Some(*attempt) },",
            "IntentState::Started { attempt } => IntentState::Started { attempt: *attempt },"),
-    Mutant("ownership-drift", "ownership.rs", "ownership::plan_copy", "Some((written, false)) if live == written => CopyPlan::Update,", "Some((written, true)) if live == written => CopyPlan::Update,"),
-    Mutant("ownership-intact-takeover", "ownership.rs", "ownership::plan_copy",
-           "Some((written, false)) if live == written => {}",
-           "Some((written, true)) if live == written => {}"),
     Mutant("merge-splice", "merge.rs", "merge::splice_bytes", "    out.extend_from_slice(&text[cursor..]);", ""),
     Mutant("merge-scanner-utf8", "merge/scanner.rs", "merge::scanner::scan",
            "span: Span { start: active.start, end },",
@@ -409,20 +406,20 @@ def main() -> None:
             evidence.mutant(status, path, expected, crate.parent.parent)
             print(f"calibration: {mutation.name} rejected in {','.join(expected)}", flush=True)
         # A real unrelated failing lemma in the same source file cannot
-        # impersonate the ownership mutant's named production failure.
+        # impersonate the merge mutant's named production failure.
         crate = copy_crate(temporary / "unrelated-lemma")
-        path = crate / "src/ownership.rs"
+        path = crate / "src/merge.rs"
         source = path.read_text()
         prefix, suffix = source.rsplit("}", 1)
         path.write_text(prefix + "pub proof fn unrelated_calibration_failure() ensures false {}\n}" + suffix)
         status, evidence = verify(crate, temporary / "unrelated-target")
-        evidence.mutant(status, path, ("ownership::unrelated_calibration_failure",), crate.parent.parent)
+        evidence.mutant(status, path, ("merge::unrelated_calibration_failure",), crate.parent.parent)
         try:
-            evidence.mutant(status, path, ("ownership::plan_copy",), crate.parent.parent)
+            evidence.mutant(status, path, ("merge::splice_bytes",), crate.parent.parent)
         except EvidenceError:
-            print("calibration: unrelated lemma refused as ownership evidence", flush=True)
+            print("calibration: unrelated lemma refused as merge evidence", flush=True)
         else:
-            raise EvidenceError("unrelated lemma falsely calibrated ownership")
+            raise EvidenceError("unrelated lemma falsely calibrated merge")
         print(f"VERUS_CALIBRATIONS={len(MUTANTS) + 1}", flush=True)
         from check_collector_verus import check as check_collector
         check_collector(temporary)

@@ -5,6 +5,9 @@ test_flow.py; fixture repos come from conftest."""
 
 
 import hashlib
+from pathlib import Path
+
+import pytest
 
 from conftest import (
     native_target,
@@ -658,3 +661,97 @@ export default profile("demo", { files: [
     assert out.returncode == 0, out.stderr
     assert "line1" in dest.read_text()
     assert "line2" not in dest.read_text()
+
+
+OWNED_LINK = """
+import { file, identity, profile, repoFile, symlinkTo } from "@gripsack/core";
+
+export default profile("demo", { files: [
+    file({ source: repoFile("configs/demo/tool.conf"), content: identity(), destination: symlinkTo("~/.config/demo/tool.conf") })
+  ] });
+"""
+
+
+def owned_link_repo(sandbox):
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "tool.conf").write_text("repo v1\n")
+    return make_workspace_repo(sandbox / "myenv", OWNED_LINK), confdir
+
+
+def store_root(sandbox):
+    return (sandbox / ".local/share/gripsack").resolve()
+
+
+@pytest.mark.parametrize("replacement", ["file", "link"])
+def test_user_replacement_of_an_owned_link_is_refused_until_take_over(sandbox, replacement):
+    """FND-1 (plan/0056 §5a): ownership is the recorded identity, not the
+    existence of a record. The user replaces gripsack's link with their
+    own file or link; the next apply refuses, names the destination and
+    the way out, and leaves the user's object alone. --take-over then
+    absorbs it (as the prior) and re-points the link."""
+    repo, _ = owned_link_repo(sandbox)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config/demo/tool.conf"
+    assert dest.is_symlink() and str(dest.readlink()).startswith(str(store_root(sandbox)))
+
+    dest.unlink()
+    if replacement == "file":
+        dest.write_text("mine\n")
+    else:
+        dest.symlink_to("/elsewhere/mine.conf")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, out.stdout
+    assert "changed since gripsack deployed it" in out.stderr, out.stderr
+    assert "--take-over" in out.stderr
+    if replacement == "file":
+        assert not dest.is_symlink() and dest.read_text() == "mine\n"
+    else:
+        assert dest.readlink() == Path("/elsewhere/mine.conf")
+
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.is_symlink() and dest.read_text() == "repo v1\n"
+
+
+def test_user_link_into_the_store_is_not_ours(sandbox):
+    """Design review finding 3: a link is ours only if the manifest records
+    exactly that link — never because its target lies under
+    $GRIPSACK_HOME. A link the user made into the store is refused like
+    any foreign object, untouched, until --take-over."""
+    repo, _ = owned_link_repo(sandbox)
+    dest = sandbox / ".config/demo/tool.conf"
+    dest.parent.mkdir(parents=True)
+    user_target = store_root(sandbox) / "store" / "made-by-the-user"
+    dest.symlink_to(user_target)
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, out.stdout
+    assert "not deployed by gripsack" in out.stderr, out.stderr
+    assert dest.readlink() == user_target
+
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.is_symlink() and dest.read_text() == "repo v1\n"
+
+
+def test_rollback_keeps_a_user_replacement_of_an_owned_link(sandbox):
+    """FND-1 through rollback: the current generation records gripsack's
+    link, the user replaced it — rollback restores nothing over the
+    user's object and says so."""
+    repo, confdir = owned_link_repo(sandbox)
+    assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
+    (confdir / "tool.conf").write_text("repo v2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config/demo/tool.conf"
+    assert dest.read_text() == "repo v2\n"
+
+    dest.unlink()
+    dest.write_text("mine\n")
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not dest.is_symlink() and dest.read_text() == "mine\n"
+    assert "your edit stands" in out.stdout + out.stderr

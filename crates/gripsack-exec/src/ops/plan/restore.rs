@@ -9,7 +9,7 @@ pub(crate) fn plan_restore_op(
     output: &str,
     entry: &store::DeployedEntry,
     store_path: &Path,
-    prev: Option<&store::DeployedEntry>,
+    prev: Option<PreviousRecord<'_>>,
     home: &Path,
 ) -> Result<Option<Op>, ExecError> {
     let fail = |detail: String| ExecError::Step {
@@ -38,16 +38,13 @@ pub(crate) fn plan_restore_op(
         home,
         observed,
         prev,
-        take_over: false, // rollback never absorbs
+        consent: take_over_consent(false), // rollback never absorbs
     };
     let mut op = match entry.ownership.policy() {
         Ownership::Owned => {
             if !source.exists() {
                 return Ok(None);
             }
-            let already = std::fs::read_link(&view.dest)
-                .map(|t| t == source)
-                .unwrap_or(false);
             plan_entry_op(
                 &view,
                 ModeInput::Link {
@@ -55,7 +52,6 @@ pub(crate) fn plan_restore_op(
                     content_hash: store::canonical_file_hash(&source)
                         .map_err(|e| fail(format!("{e}")))?
                         .into(),
-                    already,
                 },
             )?
         }

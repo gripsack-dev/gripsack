@@ -4,8 +4,8 @@
 
 use crate::ctx::Ctx;
 use crate::ops::{
-    DestView, ModeInput, Op, OpKind, WritePermissions, execute_op, plan_entry_op, plan_remove_op,
-    plan_restore_op,
+    DestView, ModeInput, Op, OpKind, PreviousRecord, WritePermissions, execute_op, plan_entry_op,
+    plan_remove_op, plan_restore_op, take_over_consent,
 };
 use gripsack_ir::HostName;
 use gripsack_store as store;
@@ -77,8 +77,11 @@ fn plan(
             dest: dest.into(),
             home: &ctx.home,
             observed,
-            prev,
-            take_over: takeover,
+            prev: prev.map(|entry| PreviousRecord {
+                entry,
+                store_path: &ctx.home,
+            }),
+            consent: take_over_consent(takeover),
         },
         input,
     )
@@ -171,9 +174,18 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
                     delta,
                     "execute delta widened acquired permissions"
                 );
-                let restore = plan_restore_op("m", &first, &payload_dir, Some(&toggled), &ctx.home)
-                    .unwrap()
-                    .unwrap();
+                let restore = plan_restore_op(
+                    "m",
+                    &first,
+                    &payload_dir,
+                    Some(PreviousRecord {
+                        entry: &toggled,
+                        store_path: &payload_dir,
+                    }),
+                    &ctx.home,
+                )
+                .unwrap()
+                .unwrap();
                 let restored = execute(&run, &restore);
                 assert_eq!(std::fs::read(dest).unwrap(), b"one");
                 assert_eq!(
@@ -335,12 +347,11 @@ fn links_carry_the_payload_mode_without_normalizing_it() {
                 home: &ctx.home,
                 observed: None,
                 prev: None,
-                take_over: false,
+                consent: take_over_consent(false),
             },
             ModeInput::Link {
                 source: &source,
                 content_hash: store::canonical_file_hash(&source).unwrap().into(),
-                already: false,
             },
         )
         .unwrap();

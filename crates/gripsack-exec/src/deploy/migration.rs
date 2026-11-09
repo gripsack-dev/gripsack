@@ -341,6 +341,14 @@ fn logical(destination: &str) -> std::io::Result<PathBuf> {
 }
 
 impl MigrationEntry {
+    /// The admitted predecessor link as the identity gripsack recorded
+    /// writing here (plan/0056 K1): the migration may replace exactly it.
+    pub(crate) fn recorded(&self) -> gripsack_kernel::ownership::Recorded {
+        gripsack_kernel::ownership::Recorded::Wrote(store::hash::kernel::link(
+            self.target.as_os_str().as_encoded_bytes(),
+        ))
+    }
+
     pub(crate) fn reobserve(&self, view: &crate::ops::DestView<'_>) -> Result<(), ExecError> {
         if view.dest != self.destination {
             return Err(failure(

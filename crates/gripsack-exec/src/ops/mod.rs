@@ -41,6 +41,10 @@ pub enum Authority {
     /// The destination is foreign and unrecorded — apply refuses,
     /// rollback keeps.
     Foreign,
+    /// gripsack recorded the destination, but the live object is no
+    /// longer its last write (the user replaced it) — apply refuses an
+    /// owned link, rollback keeps (plan/0056 FND-1).
+    Drifted,
 }
 
 /// Removal authority for a Remove op (0046): the manifest entry being
@@ -295,6 +299,7 @@ mod model;
 
 pub(crate) use execute::execute_op;
 pub(crate) use plan::{
-    DestView, ModeInput, WritePermissions, plan_entry_op, plan_remove_op, plan_restore_op,
+    DestView, ModeInput, PreviousRecord, WritePermissions, plan_entry_op, plan_remove_op,
+    plan_restore_op, take_over_consent,
 };
 pub use preview::preview_ops;

@@ -6,14 +6,19 @@ pub(crate) use destinations::{DestinationDeclaration, check_destinations_with};
 /// Ownership lineage follows destinations across profile renames.
 pub(crate) fn previous_ownership(
     previous: &std::collections::BTreeMap<String, gripsack_store::DeploymentState>,
-) -> std::collections::BTreeMap<gripsack_store::OwnershipKey, &gripsack_store::DeployedEntry> {
+) -> std::collections::BTreeMap<gripsack_store::OwnershipKey, crate::ops::PreviousRecord<'_>> {
     previous
         .iter()
         .flat_map(|(name, state)| {
-            state
-                .entries
-                .iter()
-                .map(move |entry| (entry.ownership_key(name), entry))
+            state.entries.iter().map(move |entry| {
+                (
+                    entry.ownership_key(name),
+                    crate::ops::PreviousRecord {
+                        entry,
+                        store_path: &state.store_path,
+                    },
+                )
+            })
         })
         .collect()
 }
@@ -26,7 +31,6 @@ pub(crate) mod remove;
 pub(crate) mod restore;
 
 pub use remove::{remove_entry_deployed, remove_or_restore_prior};
-pub(crate) use restore::intact_deployed;
 
 #[cfg(test)]
 use gripsack_store as store;
@@ -68,16 +72,6 @@ pub(crate) fn observe(
         ))
     }
 }
-
-/// The copy/link authority kernels live in gripsack-policy (0046):
-/// ONE implementation — production planning, the lineage explorer
-/// (which drives these through materialized filesystem states) and
-/// the Verus proofs share it. The authority rules (0029 §2, 0033 R7):
-/// preserved drift NEVER promotes to authority — reconvergence
-/// (live == desired) or explicit acquisition ends drift; a managed update
-/// requires agreement with the last managed write. Take-over acquires only
-/// foreign/drifted objects, even when their bytes already match the desired.
-pub(crate) use gripsack_policy::ownership::{CopyPlan, LinkPlan, plan_copy, plan_link};
 
 /// A read-only observation by plain path (0035 F7): the preview's
 /// eyes — no capability, NO directory creation. Mutation paths use
