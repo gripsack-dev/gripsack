@@ -351,6 +351,8 @@ the crash e2e run both ways for one release before the legacy path goes.
    hand-written recover) over MemFs, including an S5 external-write hook;
    then delete `journal/model.rs`, `repeated_model.rs`. Also closes the
    unrestorable-entry wedge (0058 item 1).
+   **Done 2026-11-09** (branch `foundation/f2-recover`, stacked on step 1);
+   record in §14.
 3. Leaf + journal-run sub-machine; port `journal_protocol` to Lean.
 4. GC machine incl. root derivation from manifests; `retention` Verus goes.
 5. Activation machine (ledger order, authorize/supersede, attempts).
@@ -707,3 +709,156 @@ inside the named theorem(s) and nowhere else).
 5. When upgrading Aeneas/Charon, move the five pins together (§13.1) and
    expect the extraction to change (it is a reviewable PR, the drift check
    enforces it).
+
+## 14. F2 step 2 record — the recover machine
+
+- Branch `foundation/f2-recover` (stacked on `foundation/f2-storage`, PR
+  #214); date 2026-11-09.
+- Question: can crash recovery be the proved kernel's sans-IO machine,
+  driven over `Storage`, wired into the product unchanged except for the
+  wedge, with its key properties proved in Lean?
+
+### 14.1 The machine (`crates/gripsack-kernel/src/recover.rs`)
+
+`recover_step(RecoverState, Event) -> (RecoverState, Command)`, one command
+outstanding, interned `DestId`/`Digest` from `ids.rs`.
+
+- **State:** `phase` (18 phases: `Start`, `ReadingJournal`, `ReadingCurrent`,
+  `SealingSelection`, `SettlingDirectories`, `OpeningLeaves`, `ReadingEntry`,
+  `Observing`, `Restoring`, `Sealing`, `Preserving`, `ClosingLeaves`,
+  `UnlinkingRecord`, `SyncingRecords`, `UnlinkingMarker`, `SyncingMarker`,
+  `Finished`, `Aborted`), the admitted `JournalFacts` (entry and directory
+  counts, leading reverse directory roots, `MarkerFacts`), `records`,
+  the `current` read, `verdict` (`Pending|Committed|Uncommitted`), `index`,
+  `leaves_open`, and the `EntryFacts` under decision (`dest`, `prior`,
+  `before`, `intended`, `route: Leaf|Delegated`).
+- **Commands:** `ReadJournal`, `ReadCurrent`, `ReadEntry(i)`,
+  `Observe{entry, dest}`, `Mutate{entry, dest, expect, effect: Restore(prior)}`,
+  `Seal{entry, dest, expect, prior}`, `Preserve{entry, dest}`,
+  `Delegate(Committed|BeforeLeaves|AfterLeaves)`,
+  `Unlink(Record(k)|Marker)`, `Barrier(Journal|Selection)`,
+  `Finish(NoJournal|Committed|Recovered)`, `Abort(Refusal)`.
+- **Events:** `Start`, `NoJournal`, `JournalRead(facts)`,
+  `CurrentRead(Option<SelectionIdentity>)`, `EntryRead(facts)`,
+  `Observed{dest, live}`, `Landed{live}`, `Done`, `Failed(Drift|Io(errno))`.
+- **Vocabulary:** `Ident = File(Digest)|Link(Digest)`,
+  `Live = Absent|Obj(Ident)|Unsupported`, `Prior = Absent|Obj(Ident)`,
+  `Intended = Removed|Obj(Ident)`; `Refusal = Ambiguous | MarkerMissing |
+  Malformed | Unrestorable{entry,dest} | Drifted{entry,dest} |
+  NotRestored{entry,dest} | Failed | Protocol`.
+- **Decides:** classification through the proved `classify` (K3); per entry
+  `decide` (the legacy `decide_from` order: intended, prior, immediate
+  pre-state; absent restores an existing prior) plus `Refuse` for
+  `Live::Unsupported`; seal-observed-prior as `Seal`; the cleanup order
+  (every record, journal barrier, marker, journal barrier) and the committed
+  run's selection barrier before any evidence goes. Directory records stay
+  with the legacy domain: three `Delegate` steps at the points the legacy
+  reconcile ran them, and `Route::Delegated` for entries that domain settled.
+
+### 14.2 Driver, storage hook, product wiring
+
+- `gripsack-host::recover::recover<H: RecoverHost>` executes commands over
+  `H::Storage`; `RecoverHost` carries the caller's journal wire, destination
+  resolution, identity hashing and directory domain. `Observe`, the
+  re-check and `Landed` share one `observe` (`Live` + a human `Found`).
+- The re-check is placed after staging (temp written, mode set, fsynced)
+  and immediately before the rename/unlink, and also guards `Seal`.
+- `MemFs` numbers every call (`Operation`) and lands an S5 `ExternalWrite`
+  before any chosen one (durably, not crash-explored).
+- `gripsack-store` `journal::reconcile` (before apply, rollback, gc) drives
+  the machine over `RealFs` (`recover_kernel.rs`). Destination parents
+  resolve exactly as before (`dest_capability` or the directory-bound
+  parent) and are pinned into `RealDir::pin` (cap-std's `O_PATH` handles
+  cannot be fsynced). Notes and errors read as before. The legacy reconcile
+  remains behind debug-only `GRIPSACK_ENGINE=legacy`; the e2e runs one
+  interrupted apply on both engines.
+- `journal::inspect` is a read-only view for `grip doctor` that asks the
+  kernel's own `decide`. `docs/operations/storage.md` hosts the user repair
+  procedure (that file is otherwise the workstation runbook; it was named
+  as the home by 0058).
+
+### 14.3 Proofs (`proofs/Kernel/Recover.lean`; `Audit.lean`: 86 theorems, 19 claims, standard axioms only)
+
+- Identities: `Digest.same_spec` (byte loop), `DestId.same_spec`,
+  `Ident.same_spec`, `Live.same_spec`, `Prior.matches_spec`.
+- `decide_spec`: `Restore → Restorable` (the live object is `Obj i` with
+  `intended = Obj i` or `before = some i`, or `Absent` with a prior),
+  `Refuse ↔ Unsupported`, `Unchanged →` the prior is live.
+- One total-correctness spec per helper, then `step_spec`: from any state
+  satisfying `Inv` (records issued before cleanup barriers; pre-
+  classification phases pending; `ReadCurrent` asked before read; the loop
+  only under an uncommitted verdict; an uncommitted verdict came from
+  `classify` or a markerless journal), every (phase, event) step re-
+  establishes `Inv`. `Run` is every execution from `RecoverState::new`;
+  `run_inv` gives `Inv` on all of them.
+- (a) `mutate_guard`: a `Mutate` answers `Observed{dest, expect}` for the
+  entry under decision, carries that observed object as `expect`, restores
+  that entry's prior, and the object is `Restorable` — never a foreign one.
+- (b) `marker_unlink_after_record_barrier`: the marker unlink is issued only
+  immediately after `Barrier(Journal)`, and every `Unlink(Record k)`,
+  `k < records`, precedes that barrier.
+- (c) `unrestorable_refused` (any state in `Observing`: the answer to
+  `Observed{d, Unsupported}` is `Abort(Unrestorable{index, d})`) and
+  `mutate_never_unsupported`.
+- (d) `mutate_after_classification`: a `Mutate` only under
+  `verdict = Uncommitted`, and with a marker only after `ReadCurrent` was
+  issued and `classify(marker, current) = ok Uncommitted`.
+- Mutants (`proofs/mutants.py`, 19 total, 5 new), each rejected by exactly
+  the named theorem: `recover-guard-restores-foreign` (`decide_spec`),
+  `recover-guard-wrong-expect` (`on_observed_spec`),
+  `recover-cleanup-barrier-swapped` — the 0.19.2 order —
+  (`next_unlink_spec`), `recover-mutates-unrestorable` (`decide_spec`),
+  `recover-restores-committed-run` (`on_current_spec`). As with the loop
+  mutants of §13.6, a mutant is attributed to the helper spec where the
+  contract breaks; the headline theorems build on those specs.
+
+### 14.4 Deviations from §4 / the step-2 brief, and why
+
+1. **No `CmdId` on commands/events.** One command is outstanding; each
+   event is checked against the phase, and anything else is
+   `Abort(Protocol)`. `CmdId` stays in `ids.rs`, unused.
+2. **Vocabulary adapted to recovery**: `ReadEntry` (entries are admitted one
+   at a time, keeping state first-order), `Preserve` (a kept foreign edit is
+   reported, so it is a command), `Delegate` (the legacy directory domain),
+   `Unlink(JournalName)` and `Barrier(Scope)` instead of host `Name`s,
+   `Seal` also carries `expect`. No `CapturePrior`/`PublishRecord` here:
+   those belong to the apply machine (step 3/7).
+3. **Total steps.** Counters advance with `checked_add` (a pure `Option` in
+   the translation); an overflow is `Refusal::Malformed`. The ITree-based
+   `Result` of this Aeneas release makes inverting a failed `+` awkward,
+   and totality is the stronger statement anyway.
+4. **The wedge is a refusal, not "keep".** Treating a directory as a foreign
+   edit and dropping the entry would make progress, but the brief requires
+   fail-closed with an actionable stop. The refusal changes nothing; the
+   repair is "move it aside, run again".
+5. **Drift on the re-check refuses** (`Drifted`): legacy recovery would have
+   overwritten a destination changed between its decision and its write.
+   The S5 window that remains is measured by
+   `recovery_never_overwrites_an_external_write_its_recheck_sees`: two
+   operations (an external write landing after the re-check's name lookup
+   but before its content read through the open handle, or between that
+   read and the rename) — the named residual risk of §4 S5.
+6. **Host-side residue (ring 2, tested, not proved):** journal admission
+   (quarantine, straggler removal, permission repair, marker admission,
+   reverse-root ordering) runs inside `ReadJournal`; parents are resolved
+   ambiently as before (`open_or_create`), so recovery can still create a
+   destination's missing parents.
+7. **The numeric-commit calibration** of `repeated_model.rs` is now a test
+   host whose `read_current` lies (the kernel's `classify` cannot be mutated
+   from a test); the kernel side is calibrated by the Lean mutants.
+
+### 14.5 Ported and deleted
+
+`journal/model.rs` and `journal/repeated_model.rs` are deleted. Their cases
+run in `crates/gripsack-host/tests/journal_cleanup.rs` against the kernel
+machine over MemFs, every kill and power-loss cut of the run, then every cut
+of the recovery, then recovery to the end: deploy and prune (create,
+replace, remove, link↔file, link→link) on fresh and existing machines;
+repeated writes (immediate pre-state); two destinations in interleaved and
+batched record orders; a user edit after the run's crash, after the
+recovery's crash, and both; an ambiguous `current` (refused, journal and
+destinations byte-identical); the numeric-commit mutant (caught). Plus the
+step-1 calibrations (0.19.1 and 0.19.2 cleanups resurrect after power loss;
+kill alone does not), the wedge (refused by name, state untouched, repair
+completes) and the S5 window.
+
