@@ -8,6 +8,20 @@ User-visible changes per release. Design archaeology lives in
 
 ### Fixed
 
+- `apply` no longer overwrites your replacement of a gripsack-managed
+  symlink. If you replaced a link gripsack deployed with your own file or
+  link, the next `apply` used to re-point it silently; it now stops, names
+  the destination ("changed since gripsack deployed it") and leaves it
+  untouched. `plan` shows it as needing `--take-over`, `rollback` keeps it
+  and says so, and `apply --take-over` absorbs it (recorded as the prior,
+  restored when you undeclare the file).
+
+- A symlink is gripsack's only if gripsack recorded writing exactly that
+  link. A link you made yourself that points into gripsack's store
+  (`$GRIPSACK_HOME`) used to be treated as gripsack's and re-pointed
+  without `--take-over`; it is now refused like any other file that is not
+  gripsack's.
+
 - `install.sh` and `grip self-update` work again. They download the release
   tarball and its published `.sha256`, verify it, and install atomically.
   They no longer need the GitHub CLI, Python or a signed release manifest.
@@ -27,6 +41,17 @@ User-visible changes per release. Design archaeology lives in
   refuses one — the expected and found state and the fix.
 
 ### Changed
+
+- The ownership decision for every copied, templated or linked file (and
+  for removing one) is one function in `gripsack-kernel`, proved in Lean:
+  gripsack writes, replaces or removes a destination only if nothing is
+  there, the live object is exactly what gripsack last wrote, or you gave
+  consent (`--take-over`); a file you changed is never written without
+  consent; and where a link points never makes it gripsack's. Copies and
+  templates behave as before. One deliberate difference: when a
+  declaration switches from a symlink to a copy, gripsack now replaces its
+  own intact link with the file instead of keeping the link as drift.
+  `plan --json` operations gain the authority `drifted`.
 
 - Crash recovery runs as a state machine in `gripsack-kernel`, proved in
   Lean: a restore only replaces the interrupted run's own write (or an
