@@ -1,10 +1,110 @@
-//! Rollback prepares retained inputs for the same entry planner as apply.
+//! Rollback restores exactly what the target generation recorded
+//! (plan/0056 K2): retained store bytes whose identity IS the record, or
+//! nothing. Re-rendering an older template receipt and choosing a mode for a
+//! receipt that recorded none are allowed only because the result is checked
+//! against the recorded identity before anything is installed.
 use super::*;
+
+/// The retained bytes that reproduce one whole-object record exactly.
+pub(crate) enum Retained {
+    /// Content and mode whose identity is the record (a tracked copy, a
+    /// workspace template's rendered output, an older template receipt
+    /// re-rendered with its recorded variables).
+    File { content: Vec<u8>, mode: u32 },
+    /// The owned link's store payload, whose content hash is the record.
+    Link {
+        source: PathBuf,
+        content_hash: store::hash::ManifestHash,
+    },
+    /// No retained bytes reproduce the record.
+    Missing,
+}
+
+/// The retained bytes for a whole-object entry, verified against its record.
+/// A merge block is not a whole-object unit (K5) and has none.
+pub(crate) fn retained(
+    output: &str,
+    entry: &store::DeployedEntry,
+    store_path: &Path,
+) -> Result<Retained, ExecError> {
+    let fail = |detail: String| ExecError::Step {
+        output: output.to_string(),
+        step: "rollback".into(),
+        detail,
+    };
+    let source = store_path.join(&entry.from);
+    match entry.ownership.policy() {
+        Ownership::Owned => {
+            if std::fs::symlink_metadata(&source).is_err() {
+                return Ok(Retained::Missing);
+            }
+            let hash = store::canonical_file_hash(&source).map_err(|e| fail(format!("{e}")))?;
+            if hash.as_str() != entry.hash.as_str() {
+                return Ok(Retained::Missing);
+            }
+            Ok(Retained::Link {
+                source,
+                content_hash: hash.into(),
+            })
+        }
+        Ownership::TrackedCopy | Ownership::Template => {
+            let bytes = match std::fs::read(&source) {
+                Ok(bytes) => bytes,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(Retained::Missing);
+                }
+                Err(e) => return Err(fail(format!("{e}"))),
+            };
+            let content = match entry.ownership.policy() {
+                // an older receipt (0.16.1 vars-in-manifest): re-render,
+                // then let the record decide whether that is what landed
+                Ownership::Template => match crate::template::render_template(
+                    &bytes,
+                    &entry.vars,
+                    &entry.from.to_string_lossy(),
+                ) {
+                    Ok(rendered) => rendered,
+                    Err(_) => return Ok(Retained::Missing),
+                },
+                _ => bytes,
+            };
+            // the recorded landed mode (0031); a receipt that recorded none
+            // is tried at the payload's executable default, and the record
+            // decides whether that guess is the identity that landed
+            let mode = entry.file_mode.unwrap_or_else(|| {
+                if payload_executable(&source) {
+                    0o755
+                } else {
+                    0o644
+                }
+            });
+            if entry.matches_file(&content, mode) {
+                Ok(Retained::File { content, mode })
+            } else {
+                Ok(Retained::Missing)
+            }
+        }
+        Ownership::Merge => Ok(Retained::Missing),
+    }
+}
+
+fn payload_executable(source: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(source).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = source;
+        false
+    }
+}
 
 /// A restore op for rollback (0034): the desired state is the TARGET
 /// generation's manifest record, planned by the same per-destination
-/// function apply uses. None when no safe restore exists (the caller
-/// surfaces a Skipped note — 0030 §H8).
+/// function apply uses. None when no exact restore exists — the caller
+/// refuses the rollback before it flips.
 pub(crate) fn plan_restore_op(
     output: &str,
     entry: &store::DeployedEntry,
@@ -41,60 +141,27 @@ pub(crate) fn plan_restore_op(
         consent: take_over_consent(false), // rollback never absorbs
     };
     let mut op = match entry.ownership.policy() {
-        Ownership::Owned => {
-            if !source.exists() {
-                return Ok(None);
+        Ownership::Owned | Ownership::TrackedCopy | Ownership::Template => {
+            match retained(output, entry, store_path)? {
+                Retained::Missing => return Ok(None),
+                Retained::Link {
+                    source,
+                    content_hash,
+                } => plan_entry_op(
+                    &view,
+                    ModeInput::Link {
+                        source: &source,
+                        content_hash,
+                    },
+                )?,
+                Retained::File { content, mode } => plan_entry_op(
+                    &view,
+                    ModeInput::Write {
+                        content: &content,
+                        permissions: WritePermissions::Exact(mode),
+                    },
+                )?,
             }
-            plan_entry_op(
-                &view,
-                ModeInput::Link {
-                    source: &source,
-                    content_hash: store::canonical_file_hash(&source)
-                        .map_err(|e| fail(format!("{e}")))?
-                        .into(),
-                },
-            )?
-        }
-        Ownership::TrackedCopy | Ownership::Template => {
-            let bytes = match std::fs::read(&source) {
-                Ok(b) => b,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(e) => return Err(fail(format!("{e}"))),
-            };
-            let rendered;
-            let content: &[u8] = match entry.ownership.policy() {
-                Ownership::Template => {
-                    rendered = crate::template::render_template(
-                        &bytes,
-                        &entry.vars,
-                        &entry.from.to_string_lossy(),
-                    )
-                    .map_err(|e| fail(format!("{e}")))?;
-                    &rendered
-                }
-                _ => &bytes,
-            };
-            // exact mode restoration (0031): the recorded landed mode;
-            // an unrecorded one follows the payload's exec bit
-            #[cfg(unix)]
-            let payload_exec = {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::metadata(&source)
-                    .map(|m| m.permissions().mode() & 0o111 != 0)
-                    .unwrap_or(false)
-            };
-            #[cfg(not(unix))]
-            let payload_exec = false;
-            let intent_mode = entry
-                .file_mode
-                .unwrap_or(if payload_exec { 0o755 } else { 0o644 });
-            plan_entry_op(
-                &view,
-                ModeInput::Write {
-                    content,
-                    permissions: WritePermissions::Exact(intent_mode),
-                },
-            )?
         }
         Ownership::Merge => {
             let payload = match std::fs::read_to_string(&source) {

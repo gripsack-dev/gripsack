@@ -1,7 +1,8 @@
 //! Exported env (0001 §3.10, reworked by 0025 §C): deployments contribute
 //! variables to the user's shell. The profile lives INSIDE the
-//! generation — `generations/<N>/env/profile.sh` — rendered before
-//! the flip on apply AND rollback, and sourced through
+//! generation — `generations/<N>/env/profile.sh` — published with the
+//! generation before apply's flip; rollback reselects it as published and
+//! never writes it (plan/0056 FND-2). It is sourced through
 //! `$GRIPSACK_HOME/current/env/profile.sh`. The rc-side path is still
 //! stable, but it resolves through the `current` symlink: the profile
 //! activates with the generation, indivisibly. (The pre-0.22 stable
@@ -21,32 +22,32 @@ pub fn render_profile(deployments: &BTreeMap<String, store::DeploymentState>) ->
     render_lines(deployments).map(|lines| lines.join("\n"))
 }
 
-/// Backfill a MISSING profile into an existing generation — pre-0.22
-/// history only; a present profile is never rewritten (generations
-/// are immutable, 0027 §8). Returns the path either way.
-pub fn render_env_file(
+/// Where generation `generation` keeps its profile.
+pub fn profile_path(home: &Path, generation: store::GenerationId) -> PathBuf {
+    home.join("generations")
+        .join(generation.to_string())
+        .join("env")
+        .join("profile.sh")
+}
+
+/// Whether a published generation retains the profile its selection
+/// activates: one that contributes variables carries
+/// `generations/<N>/env/profile.sh`, published with it since 0.22. Read
+/// only — a generation is immutable (0027 §8), so rollback refuses a target
+/// without its profile instead of writing one into it (plan/0056 FND-2).
+pub fn retains_profile(
     home: &Path,
     generation: store::GenerationId,
     deployments: &BTreeMap<String, store::DeploymentState>,
-) -> io::Result<PathBuf> {
-    let rel = Path::new("generations")
-        .join(generation.to_string())
-        .join("env")
-        .join("profile.sh");
-    let path = home.join(&rel);
-    // the legacy pre-0.22 location goes away either way
-    let legacy = home.join("env");
-    let _ = std::fs::remove_file(legacy.join("profile.sh"));
-    let _ = std::fs::remove_dir(&legacy);
-    if path.exists() {
-        return Ok(path);
+) -> io::Result<bool> {
+    if render_profile(deployments).is_none() {
+        return Ok(true);
     }
-    let cap = gripsack_fs::open_or_create(home)?;
-    let Some(text) = render_profile(deployments) else {
-        return Ok(path); // no contributions: nothing to backfill
-    };
-    gripsack_fs::atomic_write(&cap, &rel, text.as_bytes())?;
-    Ok(path)
+    match std::fs::symlink_metadata(profile_path(home, generation)) {
+        Ok(meta) => Ok(meta.is_file()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 fn render_lines(deployments: &BTreeMap<String, store::DeploymentState>) -> Option<Vec<String>> {
@@ -209,8 +210,9 @@ mod tests {
     }
 
     #[test]
-    fn empty_contributions_remove_the_file() {
+    fn a_contributing_generation_retains_its_profile_only_when_published() {
         let dir = tempfile::tempdir().unwrap();
+        let generation = store::GenerationId::new(1);
         let mut deployments = BTreeMap::new();
         deployments.insert(
             "hx".to_string(),
@@ -219,14 +221,18 @@ mod tests {
                 vec![var("A", EnvironmentOperation::Set, "1")],
             ),
         );
-        render_env_file(dir.path(), store::GenerationId::new(1), &deployments).unwrap();
-        // the profile is generation-local now (0025 §C)
-        let path = dir.path().join("generations/1/env/profile.sh");
-        assert!(path.exists());
+        // contributions without the published profile: not retained, and
+        // the check writes nothing (FND-2)
+        assert!(!retains_profile(dir.path(), generation, &deployments).unwrap());
+        assert!(!dir.path().join("generations").exists());
+        let path = profile_path(dir.path(), generation);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, render_profile(&deployments).unwrap()).unwrap();
+        assert!(retains_profile(dir.path(), generation, &deployments).unwrap());
+        // a generation with no contributions needs no profile
         deployments.insert("hx".to_string(), state("/gs/store/abc-hx", vec![]));
-        // a generation with no contributions carries no profile
-        render_env_file(dir.path(), store::GenerationId::new(2), &deployments).unwrap();
-        assert!(!dir.path().join("generations/2/env/profile.sh").exists());
+        let empty = store::GenerationId::new(2);
+        assert!(retains_profile(dir.path(), empty, &deployments).unwrap());
     }
 
     #[test]
@@ -264,8 +270,8 @@ mod tests {
         let encoded = serde_json::to_vec(&output).unwrap();
         let output = serde_json::from_slice::<store::DeploymentState>(&encoded).unwrap();
         let deployments = BTreeMap::from([("profile".into(), output)]);
-        let profile =
-            render_env_file(temporary.path(), store::GenerationId::new(1), &deployments).unwrap();
+        let profile = temporary.path().join("profile.sh");
+        std::fs::write(&profile, render_profile(&deployments).unwrap()).unwrap();
         let marker = temporary.path().join("unexpected-execution");
         let output = std::process::Command::new("/bin/sh")
             .args(["-c", r#"probe="$2"; tripwire() { : > "$probe"; }; . "$1"; printf '%s\0' "$LEGACY" "$LITERAL" "$SAME" "$PATH""#, "env-probe"])

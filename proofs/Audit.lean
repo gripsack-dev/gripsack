@@ -20,7 +20,12 @@ journal publication transition and mutation authority, and the recover
 machine (F2 step 2): the restore guard, unrestorable refusal, cleanup order
 and classification before restore; and the per-unit ownership decision (K1):
 writes only to absence, gripsack's own last write, or a consented object;
-drift never written; identities matter only through equality. -/
+drift never written; identities matter only through equality; and the
+rollback machine (F2 step 8): every write installs the target generation's
+recorded identity (K2) into absence or gripsack's own write (K1), never inside
+a generation; a restore is reported only when it landed; the flip follows
+every unit, under a fresh transaction, onto a target that keeps its profile;
+an unrestorable unit aborts. -/
 def claims : List Name := [
   ``Gripsack.Kernel.classify_committed_iff,
   ``Gripsack.Kernel.classify_uncommitted_iff,
@@ -48,6 +53,17 @@ def claims : List Name := [
   ``Gripsack.Kernel.decide_unit_identity_only,
   ``Gripsack.Kernel.decide_unit_takeover_acquires,
   ``Gripsack.Kernel.decide_unit_progress,
+  ``Gripsack.Kernel.Rollback.decide_restore_spec,
+  ``Gripsack.Kernel.Rollback.decide_restore_drift_kept,
+  ``Gripsack.Kernel.Rollback.decide_restore_unrestorable_refused,
+  ``Gripsack.Kernel.Rollback.rollback_installs_target,
+  ``Gripsack.Kernel.Rollback.rollback_write_k1,
+  ``Gripsack.Kernel.Rollback.rollback_never_writes_generation,
+  ``Gripsack.Kernel.Rollback.rollback_restored_landed,
+  ``Gripsack.Kernel.Rollback.rollback_flip_after_every_unit,
+  ``Gripsack.Kernel.Rollback.rollback_flip_admitted,
+  ``Gripsack.Kernel.Rollback.rollback_unrestorable_aborts,
+  ``Gripsack.Kernel.Rollback.rollback_delegated_refusal_aborts,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/

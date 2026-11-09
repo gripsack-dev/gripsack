@@ -1805,6 +1805,593 @@ def retention.plan_delete
   retention.plan_delete_loop referenced candidates (alloc.vec.Vec.new
     Std.Usize) 0#usize
 
+/-- [gripsack_kernel::rollback::Place]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 52:0-58:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Place where
+| Outside : rollback.Place
+| Generation : rollback.Place
+
+/-- [gripsack_kernel::rollback::Bytes]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 63:0-66:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Bytes where
+| Retained : rollback.Bytes
+| Missing : rollback.Bytes
+
+/-- [gripsack_kernel::rollback::Target]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 69:0-80:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Target where
+| Released : recover.Intended → rollback.Target
+| Wrote : recover.Ident → rollback.Bytes → rollback.Target
+| Preserved : rollback.Target
+
+/-- [gripsack_kernel::rollback::UnitFacts]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 83:0-90:1
+    Visibility: public -/
+structure rollback.UnitFacts where
+  dest : ids.DestId
+  place : rollback.Place
+  route : recover.Route
+  current : ownership.Recorded
+  target : rollback.Target
+
+/-- [gripsack_kernel::rollback::Profile]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 94:0-97:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Profile where
+| Retained : rollback.Profile
+| Missing : rollback.Profile
+
+/-- [gripsack_kernel::rollback::PlanFacts]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 100:0-107:1
+    Visibility: public -/
+structure rollback.PlanFacts where
+  units : Std.U32
+  reselect : selection.SelectionIdentity
+  previous : Option selection.SelectionIdentity
+  profile : rollback.Profile
+
+/-- [gripsack_kernel::rollback::Settled]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 110:0-123:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Settled where
+| Restored : rollback.Settled
+| Already : rollback.Settled
+| Kept : ownership.Refusal → rollback.Settled
+| Untouched : rollback.Settled
+| Delegated : rollback.Settled
+
+/-- [gripsack_kernel::rollback::Refusal]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 142:0-163:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Refusal where
+| ProfileMissing : rollback.Refusal
+| Reused : rollback.Refusal
+| Unrestorable : Std.U32 → ids.DestId → rollback.Refusal
+| Protected : Std.U32 → ids.DestId → rollback.Refusal
+| Drifted : Std.U32 → ids.DestId → rollback.Refusal
+| NotRestored : Std.U32 → ids.DestId → rollback.Refusal
+| Malformed : rollback.Refusal
+| Failed : rollback.Refusal
+| Protocol : rollback.Refusal
+
+/-- [gripsack_kernel::rollback::Restore]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 126:0-133:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Restore where
+| Write : recover.Intended → rollback.Restore
+| Leave : rollback.Settled → rollback.Restore
+| Refuse : rollback.Refusal → rollback.Restore
+
+/-- [gripsack_kernel::rollback::Outcome]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 135:0-138:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Outcome where
+| RolledBack : rollback.Outcome
+
+/-- [gripsack_kernel::rollback::Command]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 165:0-197:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Command where
+| ReadPlan : rollback.Command
+| ReadUnit : Std.U32 → rollback.Command
+| Observe : Std.U32 → ids.DestId → rollback.Command
+| Mutate :
+  Std.U32 →
+  ids.DestId →
+  recover.Live →
+  recover.Intended →
+  rollback.Command
+| Delegate : Std.U32 → ids.DestId → rollback.Command
+| Report : Std.U32 → ids.DestId → rollback.Settled → rollback.Command
+| Flip : selection.SelectionIdentity → rollback.Command
+| Finish : rollback.Outcome → rollback.Command
+| Abort : rollback.Refusal → rollback.Command
+
+/-- [gripsack_kernel::rollback::Event]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 199:0-214:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Event where
+| Start : rollback.Event
+| PlanRead : rollback.PlanFacts → rollback.Event
+| UnitRead : rollback.UnitFacts → rollback.Event
+| Observed : ids.DestId → recover.Live → rollback.Event
+| Landed : recover.Live → rollback.Event
+| Done : rollback.Event
+| Refused : rollback.Event
+| Failed : recover.Failure → rollback.Event
+
+/-- [gripsack_kernel::rollback::Phase]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 216:0-227:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.Phase where
+| Start : rollback.Phase
+| ReadingPlan : rollback.Phase
+| ReadingUnit : rollback.Phase
+| Observing : rollback.Phase
+| Writing : rollback.Phase
+| Delegating : rollback.Phase
+| Reporting : rollback.Phase
+| Flipping : rollback.Phase
+| Finished : rollback.Phase
+| Aborted : rollback.Phase
+
+/-- [gripsack_kernel::rollback::RollbackState]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 229:0-237:1
+    Visibility: public -/
+structure rollback.RollbackState where
+  phase : rollback.Phase
+  plan : rollback.PlanFacts
+  index : Std.U32
+  unit : Option rollback.UnitFacts
+  install : Option recover.Intended
+
+/-- [gripsack_kernel::rollback::{gripsack_kernel::rollback::RollbackState}::new]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 240:4-255:5
+    Visibility: public -/
+def rollback.RollbackState.new : Result rollback.RollbackState := do
+  let gi ← generation.GenerationId.new 0#u64
+  ok
+    {
+      phase := rollback.Phase.Start,
+      plan :=
+        {
+          units := 0#u32,
+          reselect := (selection.SelectionIdentity.Legacy gi),
+          previous := none,
+          profile := rollback.Profile.Missing
+        },
+      index := 0#u32,
+      unit := none,
+      install := none
+    }
+
+/-- [gripsack_kernel::rollback::withheld]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 259:0-263:1 -/
+def rollback.withheld : Result ownership.Consent := do
+  ok { take_over := ownership.TakeOver.Withheld }
+
+/-- [gripsack_kernel::rollback::authority]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 268:0-274:1 -/
+def rollback.authority
+  (target : rollback.Target) : Result (Option recover.Intended) := do
+  match target with
+  | rollback.Target.Released _ => ok (some recover.Intended.Removed)
+  | rollback.Target.Wrote ident _ => ok (some (recover.Intended.Obj ident))
+  | rollback.Target.Preserved => ok none
+
+/-- [gripsack_kernel::rollback::install]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 277:0-283:1
+    Visibility: public -/
+def rollback.install
+  (target : rollback.Target) : Result (Option recover.Intended) := do
+  match target with
+  | rollback.Target.Released origin => ok (some origin)
+  | rollback.Target.Wrote ident _ => ok (some (recover.Intended.Obj ident))
+  | rollback.Target.Preserved => ok none
+
+/-- [gripsack_kernel::rollback::retained]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 286:0-295:1 -/
+def rollback.retained (target : rollback.Target) : Result Bool := do
+  match target with
+  | rollback.Target.Released _ => ok true
+  | rollback.Target.Wrote _ bytes =>
+    match bytes with
+    | rollback.Bytes.Retained => ok true
+    | rollback.Bytes.Missing => ok false
+  | rollback.Target.Preserved => ok false
+
+/-- [gripsack_kernel::rollback::writable]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 297:0-302:1 -/
+def rollback.writable (place : rollback.Place) : Result Bool := do
+  match place with
+  | rollback.Place.Outside => ok true
+  | rollback.Place.Generation => ok false
+
+/-- [gripsack_kernel::rollback::writing]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 323:0-342:1 -/
+def rollback.writing
+  (index : Std.U32) (unit : rollback.UnitFacts) : Result rollback.Restore := do
+  let o ← rollback.install unit.target
+  match o with
+  | none => ok (rollback.Restore.Leave rollback.Settled.Untouched)
+  | some intended =>
+    let b ← rollback.retained unit.target
+    if b
+    then
+      let b1 ← rollback.writable unit.place
+      if b1
+      then ok (rollback.Restore.Write intended)
+      else
+        ok (rollback.Restore.Refuse (rollback.Refusal.Protected index
+          unit.dest))
+    else
+      ok (rollback.Restore.Refuse (rollback.Refusal.Unrestorable index
+        unit.dest))
+
+/-- [gripsack_kernel::rollback::decide_restore]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 308:0-319:1
+    Visibility: public -/
+def rollback.decide_restore
+  (index : Std.U32) (unit : rollback.UnitFacts) (live : recover.Live) :
+  Result rollback.Restore
+  := do
+  let o ← rollback.authority unit.target
+  match o with
+  | none => ok (rollback.Restore.Leave rollback.Settled.Untouched)
+  | some asked =>
+    let c ← rollback.withheld
+    let d ← ownership.decide_unit unit.current live asked c
+    match d with
+    | ownership.Decision.Create => rollback.writing index unit
+    | ownership.Decision.Satisfied =>
+      ok (rollback.Restore.Leave rollback.Settled.Already)
+    | ownership.Decision.ReplaceOwn => rollback.writing index unit
+    | ownership.Decision.TakeOver => rollback.writing index unit
+    | ownership.Decision.Refuse why =>
+      ok (rollback.Restore.Leave (rollback.Settled.Kept why))
+
+/-- [gripsack_kernel::rollback::lands]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 345:0-351:1
+    Visibility: public -/
+def rollback.lands
+  (install : recover.Intended) (live : recover.Live) : Result Bool := do
+  match install with
+  | recover.Intended.Removed =>
+    match live with
+    | recover.Live.Absent => ok true
+    | recover.Live.Obj _ => ok false
+    | recover.Live.Unsupported => ok false
+  | recover.Intended.Obj ident =>
+    match live with
+    | recover.Live.Absent => ok false
+    | recover.Live.Obj object => recover.Ident.same ident object
+    | recover.Live.Unsupported => ok false
+
+/-- [gripsack_kernel::rollback::fresh]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 370:0-382:1
+    Visibility: public -/
+def rollback.fresh
+  (reselect : selection.SelectionIdentity)
+  (previous : Option selection.SelectionIdentity) :
+  Result Bool
+  := do
+  match reselect with
+  | selection.SelectionIdentity.Legacy _ => ok false
+  | selection.SelectionIdentity.Transaction _ transaction =>
+    match previous with
+    | none => ok true
+    | some si =>
+      match si with
+      | selection.SelectionIdentity.Legacy _ => ok true
+      | selection.SelectionIdentity.Transaction _ replaced =>
+        let b ← selection.TransactionId.same transaction replaced
+        ok (¬ b)
+
+/-- [gripsack_kernel::rollback::admit]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 355:0-366:1
+    Visibility: public -/
+def rollback.admit
+  (plan : rollback.PlanFacts) : Result (Option rollback.Refusal) := do
+  match plan.profile with
+  | rollback.Profile.Retained =>
+    let b ← rollback.fresh plan.reselect plan.previous
+    if b
+    then ok none
+    else ok (some rollback.Refusal.Reused)
+  | rollback.Profile.Missing => ok (some rollback.Refusal.ProfileMissing)
+
+/-- [gripsack_kernel::rollback::refuse]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 384:0-387:1 -/
+def rollback.refuse
+  (state : rollback.RollbackState) (refusal : rollback.Refusal) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  ok ({ state with phase := rollback.Phase.Aborted }, rollback.Command.Abort
+    refusal)
+
+/-- [gripsack_kernel::rollback::failed_or_protocol]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 389:0-394:1 -/
+def rollback.failed_or_protocol
+  (state : rollback.RollbackState) (event : rollback.Event) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  match event with
+  | rollback.Event.Start => rollback.refuse state rollback.Refusal.Protocol
+  | rollback.Event.PlanRead _ =>
+    rollback.refuse state rollback.Refusal.Protocol
+  | rollback.Event.UnitRead _ =>
+    rollback.refuse state rollback.Refusal.Protocol
+  | rollback.Event.Observed _ _ =>
+    rollback.refuse state rollback.Refusal.Protocol
+  | rollback.Event.Landed _ => rollback.refuse state rollback.Refusal.Protocol
+  | rollback.Event.Done => rollback.refuse state rollback.Refusal.Protocol
+  | rollback.Event.Refused => rollback.refuse state rollback.Refusal.Protocol
+  | rollback.Event.Failed _ => rollback.refuse state rollback.Refusal.Failed
+
+/-- [gripsack_kernel::rollback::proceed]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 397:0-407:1 -/
+def rollback.proceed
+  (state : rollback.RollbackState) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  if state.index < state.plan.units
+  then
+    ok ({ state with phase := rollback.Phase.ReadingUnit },
+      rollback.Command.ReadUnit state.index)
+  else
+    ok ({ state with phase := rollback.Phase.Flipping }, rollback.Command.Flip
+      state.plan.reselect)
+
+/-- [gripsack_kernel::rollback::advance]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 410:0-420:1 -/
+def rollback.advance
+  (state : rollback.RollbackState) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  let o ← lift (U32.checked_add state.index 1#u32)
+  match o with
+  | none =>
+    rollback.refuse { state with unit := none, install := none }
+      rollback.Refusal.Malformed
+  | some next =>
+    rollback.proceed
+      { state with index := next, unit := none, install := none }
+
+/-- [gripsack_kernel::rollback::report]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 422:0-433:1 -/
+def rollback.report
+  (state : rollback.RollbackState) (dest : ids.DestId)
+  (settled : rollback.Settled) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  ok ({ state with phase := rollback.Phase.Reporting }, rollback.Command.Report
+    state.index dest settled)
+
+/-- [gripsack_kernel::rollback::on_plan]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 435:0-444:1 -/
+def rollback.on_plan
+  (state : rollback.RollbackState) (plan : rollback.PlanFacts) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  let o ← rollback.admit plan
+  match o with
+  | none => rollback.proceed { state with plan, index := 0#u32 }
+  | some refusal => rollback.refuse state refusal
+
+/-- [gripsack_kernel::rollback::on_unit]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 446:0-461:1 -/
+def rollback.on_unit
+  (state : rollback.RollbackState) (facts : rollback.UnitFacts) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  match facts.route with
+  | recover.Route.Leaf =>
+    ok ({ state with phase := rollback.Phase.Observing, unit := (some facts) },
+      rollback.Command.Observe state.index facts.dest)
+  | recover.Route.Delegated =>
+    ok
+      ({ state with phase := rollback.Phase.Delegating, unit := (some facts) },
+      rollback.Command.Delegate state.index facts.dest)
+
+/-- [gripsack_kernel::rollback::on_observed]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 463:0-489:1 -/
+def rollback.on_observed
+  (state : rollback.RollbackState) (dest : ids.DestId) (live : recover.Live) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  match state.unit with
+  | none => rollback.refuse state rollback.Refusal.Protocol
+  | some facts =>
+    let b ← ids.DestId.same facts.dest dest
+    if b
+    then
+      let r ← rollback.decide_restore state.index facts live
+      match r with
+      | rollback.Restore.Write install =>
+        ok
+          ({
+             state
+               with
+               phase := rollback.Phase.Writing, install := (some install)
+           }, rollback.Command.Mutate state.index dest live install)
+      | rollback.Restore.Leave settled => rollback.report state dest settled
+      | rollback.Restore.Refuse refusal => rollback.refuse state refusal
+    else rollback.refuse state rollback.Refusal.Protocol
+
+/-- [gripsack_kernel::rollback::on_landed]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 491:0-509:1 -/
+def rollback.on_landed
+  (state : rollback.RollbackState) (live : recover.Live) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  match state.unit with
+  | none => rollback.refuse state rollback.Refusal.Protocol
+  | some facts =>
+    match state.install with
+    | none => rollback.refuse state rollback.Refusal.Protocol
+    | some install =>
+      let b ← rollback.lands install live
+      if b
+      then rollback.report state facts.dest rollback.Settled.Restored
+      else
+        rollback.refuse state (rollback.Refusal.NotRestored state.index
+          facts.dest)
+
+/-- [gripsack_kernel::rollback::on_write_failed]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 511:0-528:1 -/
+def rollback.on_write_failed
+  (state : rollback.RollbackState) (failure : recover.Failure) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  match failure with
+  | recover.Failure.Drift =>
+    match state.unit with
+    | none => rollback.refuse state rollback.Refusal.Protocol
+    | some facts =>
+      rollback.refuse state (rollback.Refusal.Drifted state.index facts.dest)
+  | recover.Failure.Io _ => rollback.refuse state rollback.Refusal.Failed
+
+/-- [gripsack_kernel::rollback::on_delegated]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 530:0-548:1 -/
+def rollback.on_delegated
+  (state : rollback.RollbackState) (event : rollback.Event) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  match state.unit with
+  | none => rollback.refuse state rollback.Refusal.Protocol
+  | some facts =>
+    match event with
+    | rollback.Event.Start =>
+      rollback.failed_or_protocol state rollback.Event.Start
+    | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
+    | rollback.Event.Landed _ => rollback.failed_or_protocol state event
+    | rollback.Event.Done =>
+      rollback.report state facts.dest rollback.Settled.Delegated
+    | rollback.Event.Refused =>
+      rollback.refuse state (rollback.Refusal.Unrestorable state.index
+        facts.dest)
+    | rollback.Event.Failed _ => rollback.failed_or_protocol state event
+
+/-- [gripsack_kernel::rollback::rollback_step]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 554:0-596:1
+    Visibility: public -/
+def rollback.rollback_step
+  (state : rollback.RollbackState) (event : rollback.Event) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  match state.phase with
+  | rollback.Phase.Start =>
+    match event with
+    | rollback.Event.Start =>
+      ok ({ state with phase := rollback.Phase.ReadingPlan },
+        rollback.Command.ReadPlan)
+    | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
+    | rollback.Event.Landed _ => rollback.failed_or_protocol state event
+    | rollback.Event.Done =>
+      rollback.failed_or_protocol state rollback.Event.Done
+    | rollback.Event.Refused =>
+      rollback.failed_or_protocol state rollback.Event.Refused
+    | rollback.Event.Failed _ => rollback.failed_or_protocol state event
+  | rollback.Phase.ReadingPlan =>
+    match event with
+    | rollback.Event.Start =>
+      rollback.failed_or_protocol state rollback.Event.Start
+    | rollback.Event.PlanRead plan => rollback.on_plan state plan
+    | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
+    | rollback.Event.Landed _ => rollback.failed_or_protocol state event
+    | rollback.Event.Done =>
+      rollback.failed_or_protocol state rollback.Event.Done
+    | rollback.Event.Refused =>
+      rollback.failed_or_protocol state rollback.Event.Refused
+    | rollback.Event.Failed _ => rollback.failed_or_protocol state event
+  | rollback.Phase.ReadingUnit =>
+    match event with
+    | rollback.Event.Start =>
+      rollback.failed_or_protocol state rollback.Event.Start
+    | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.UnitRead facts => rollback.on_unit state facts
+    | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
+    | rollback.Event.Landed _ => rollback.failed_or_protocol state event
+    | rollback.Event.Done =>
+      rollback.failed_or_protocol state rollback.Event.Done
+    | rollback.Event.Refused =>
+      rollback.failed_or_protocol state rollback.Event.Refused
+    | rollback.Event.Failed _ => rollback.failed_or_protocol state event
+  | rollback.Phase.Observing =>
+    match event with
+    | rollback.Event.Start =>
+      rollback.failed_or_protocol state rollback.Event.Start
+    | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.Observed dest live => rollback.on_observed state dest live
+    | rollback.Event.Landed _ => rollback.failed_or_protocol state event
+    | rollback.Event.Done =>
+      rollback.failed_or_protocol state rollback.Event.Done
+    | rollback.Event.Refused =>
+      rollback.failed_or_protocol state rollback.Event.Refused
+    | rollback.Event.Failed _ => rollback.failed_or_protocol state event
+  | rollback.Phase.Writing =>
+    match event with
+    | rollback.Event.Start => rollback.refuse state rollback.Refusal.Protocol
+    | rollback.Event.PlanRead _ =>
+      rollback.refuse state rollback.Refusal.Protocol
+    | rollback.Event.UnitRead _ =>
+      rollback.refuse state rollback.Refusal.Protocol
+    | rollback.Event.Observed _ _ =>
+      rollback.refuse state rollback.Refusal.Protocol
+    | rollback.Event.Landed live => rollback.on_landed state live
+    | rollback.Event.Done => rollback.refuse state rollback.Refusal.Protocol
+    | rollback.Event.Refused => rollback.refuse state rollback.Refusal.Protocol
+    | rollback.Event.Failed failure => rollback.on_write_failed state failure
+  | rollback.Phase.Delegating => rollback.on_delegated state event
+  | rollback.Phase.Reporting =>
+    match event with
+    | rollback.Event.Start =>
+      rollback.failed_or_protocol state rollback.Event.Start
+    | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
+    | rollback.Event.Landed _ => rollback.failed_or_protocol state event
+    | rollback.Event.Done => rollback.advance state
+    | rollback.Event.Refused =>
+      rollback.failed_or_protocol state rollback.Event.Refused
+    | rollback.Event.Failed _ => rollback.failed_or_protocol state event
+  | rollback.Phase.Flipping =>
+    match event with
+    | rollback.Event.Start =>
+      rollback.failed_or_protocol state rollback.Event.Start
+    | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
+    | rollback.Event.Landed _ => rollback.failed_or_protocol state event
+    | rollback.Event.Done =>
+      ok ({ state with phase := rollback.Phase.Finished },
+        rollback.Command.Finish rollback.Outcome.RolledBack)
+    | rollback.Event.Refused =>
+      rollback.failed_or_protocol state rollback.Event.Refused
+    | rollback.Event.Failed _ => rollback.failed_or_protocol state event
+  | rollback.Phase.Finished => rollback.refuse state rollback.Refusal.Protocol
+  | rollback.Phase.Aborted => rollback.refuse state rollback.Refusal.Protocol
+
 /-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::from_bytes]:
     Source: 'crates/gripsack-kernel/src/selection.rs', lines 33:4-35:5
     Visibility: public -/
