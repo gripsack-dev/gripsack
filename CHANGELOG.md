@@ -6,6 +6,8 @@ User-visible changes per release. Design archaeology lives in
 
 ## [Unreleased]
 
+## [0.53.0] — Proved ownership and rollback
+
 ### Fixed
 
 - `rollback` restores exactly what the target generation deployed, or
