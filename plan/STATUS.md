@@ -7,7 +7,7 @@ change as the plan. Long-form release/evidence narratives were removed by
 
 ## Now
 
-- **Latest release:** [core-v0.52.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.52.0) (2026-11-09), Linux/WSL x86_64 only.
+- **Latest release:** [core-v0.53.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.53.0) (2026-11-09), Linux/WSL x86_64 only.
 - **Active plan:** [0056 — verified foundation](0056-verified-foundation.md), approved 2026-11-08.
   Its ledger (§9 phases, §13+ records) is the source of truth for the epic.
 - **Independent design review:** [2026-11](../docs/reviews/2026-11-design-review.md) — findings are leads; each is verified before it changes a plan.
