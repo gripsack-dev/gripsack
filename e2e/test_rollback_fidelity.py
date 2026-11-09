@@ -152,13 +152,14 @@ def test_rollback_refuses_a_receipt_its_retained_bytes_do_not_reproduce(sandbox)
     apply(repo)
     dest = sandbox / ".config/app/id.toml"
     first = dest.read_bytes()
+    (configs / "id.toml").write_text('email = "{{ email }}"\nversion = 2\n')
+    apply(repo)
+    second = dest.read_bytes()
+    # generation 1 as an older receipt: no recorded mode, an identity at 0600
     rewrite_entry(
         sandbox, 1, "~/.config/app/id.toml",
         hash=file_identity(first, 0o600), file_mode=None, source_executable=None,
     )
-    (configs / "id.toml").write_text('email = "{{ email }}"\nversion = 2\n')
-    apply(repo)
-    second = dest.read_bytes()
 
     out = grip("rollback", cwd=repo)
     assert out.returncode != 0, out.stdout + out.stderr

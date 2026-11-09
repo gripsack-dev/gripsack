@@ -17,7 +17,7 @@ mod write;
 use link::plan_link;
 use merge::plan_merge;
 pub(crate) use remove::plan_remove_op;
-pub(crate) use restore::plan_restore_op;
+pub(crate) use restore::{Retained, plan_restore_op, retained};
 pub use write::WritePermissions;
 use write::{plan_migration_write, plan_write};
 

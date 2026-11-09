@@ -7,16 +7,23 @@
 //! (the second entry used to overwrite the first, losing the true
 //! pre-rollback prior).
 //!
-//! Drift policy (0026 §1): a destination shared by both generations
-//! is restored only when live state IS the current generation's
-//! deployment; live == target is a no-op; anything else is user
-//! drift — preserved and reported, never overwritten.
+//! Fidelity (plan/0056 K2, F2 step 8): every unit is decided by the
+//! kernel's rollback machine (`restore`). A destination is restored to
+//! exactly the identity the target generation recorded, from retained
+//! bytes that reproduce it, and only when live state is absent or IS the
+//! current generation's write (K1); live == target is a no-op; anything
+//! else is user drift — kept and reported, never overwritten. A unit that
+//! cannot be restored exactly refuses the rollback before the flip, and
+//! the journal compensates what this run already wrote. Rollback
+//! publishes no generation and writes nothing into the target: it
+//! reselects it under a fresh transaction (K6, FND-2).
 
 mod directory_transitions;
+mod restore;
 
 use crate::ctx::ExecError;
 use gripsack_store as store;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 use store::journal::RunOp;
 
@@ -65,11 +72,18 @@ pub fn rollback_generation(
     )?;
 
     let result = (|| {
-        let mut planned_notes = restore_destinations(&selection, current, target)?;
-        notes.append(&mut planned_notes);
-        // The env profile renders INTO the generation before the flip
-        // (0025 §C): activation and profile become one indivisible step.
-        crate::env::render_env_file(home_path, target.number, &target.deployments)?;
+        // the kernel machine restores every unit and decides the flip
+        // (plan/0056 F2 step 8); the target generation is reselected as
+        // published, its profile included — nothing is written into it
+        let (machine, reselect) = restore::until_flip(&selection, current, target, &mut notes)?;
+        if reselect != *selection.identity() {
+            return Err(ExecError::Step {
+                output: "*".into(),
+                step: "rollback".into(),
+                detail: "the rollback machine reselected a selection this run did not reserve"
+                    .into(),
+            });
+        }
         // the pending record lands BEFORE the flip (0032's shape,
         // 0037): a failure here compensates like any other; a crash
         // after the flip leaves the record for the next run's resume
@@ -78,6 +92,7 @@ pub fn rollback_generation(
         // test-only kill switch: the restore→flip crash window's e2e
         crate::util::crash_hook("after-rollback-restore");
         let committed = store::flip(selection)?;
+        restore::finish(machine)?;
         Ok((activation, committed))
     })();
     match result {
@@ -184,187 +199,6 @@ fn rollback_intents(
         &target.deployments,
     ));
     intents
-}
-
-/// Preflight every retained target before effects. Plan and execute each
-/// ownership unit in order: the next block in a shared file must observe the
-/// previous block's actual result, not reuse a stale whole-file observation.
-/// The one planner and journal retain their drift and recovery authority.
-fn restore_destinations(
-    journal: &store::journal::JournalRun<'_>,
-    current: Option<&store::Generation>,
-    target: &store::Generation,
-) -> Result<Vec<store::journal::RecoveryNote>, ExecError> {
-    use store::journal::{NoteSeverity, RecoveryNote};
-    let home = journal.home();
-    let home_path = journal.home_path();
-    preflight(target)?;
-    let current_directories = current
-        .map(|generation| generation.directory_transitions.as_slice())
-        .unwrap_or_default();
-    let mut predecessors = BTreeMap::new();
-    for transition in current_directories {
-        if let std::collections::btree_map::Entry::Vacant(slot) =
-            predecessors.entry(transition.predecessor_generation)
-        {
-            let predecessor =
-                store::generations::admit_manifest(home_path, transition.predecessor_generation)?;
-            preflight(&predecessor)?;
-            slot.insert(predecessor);
-        }
-    }
-    let mut current_by_dest = current.map(by_destination).unwrap_or_default();
-    for transition in current_directories {
-        let predecessor = &predecessors[&transition.predecessor_generation];
-        let (name, state, entry) = predecessor
-            .deployments
-            .iter()
-            .find_map(|(name, state)| {
-                state
-                    .entries
-                    .iter()
-                    .find(|entry| entry.key() == transition.destination)
-                    .map(|entry| (name, state, entry))
-            })
-            .ok_or_else(|| {
-                std::io::Error::other("directory transition lost its predecessor ownership lineage")
-            })?;
-        if state.store_path.join(&entry.from) != transition.predecessor_target
-            || entry.preserved_drift
-            || entry.ownership.policy() != gripsack_store::Ownership::Owned
-        {
-            return Err(std::io::Error::other(
-                "directory predecessor lineage no longer matches receipt",
-            )
-            .into());
-        }
-        current_by_dest.insert(entry.ownership_key(name), (name, entry, &state.store_path));
-    }
-    let target_by_dest = by_destination(target);
-    let exchanged =
-        directory_transitions::prepare(journal, &current_by_dest, current_directories, target)?;
-    let mut dests: Vec<store::OwnershipKey> = current_by_dest
-        .keys()
-        .chain(target_by_dest.keys())
-        .cloned()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    dests.sort_by_key(|key| std::cmp::Reverse(key.destination().components().count()));
-    let mut notes = exchanged.notes;
-    for dest in dests {
-        if target
-            .directory_transitions
-            .iter()
-            .any(|transition| transition.destination == dest.destination())
-        {
-            // The directory domain, not a flat unlink, owns this old link.
-            continue;
-        }
-        if let Some(transition) = current_directories
-            .iter()
-            .find(|transition| transition.destination == dest.destination())
-            && !target
-                .directory_transitions
-                .iter()
-                .any(|target| target.destination == transition.destination)
-        {
-            store::journal::reverse_directory(journal, transition)?;
-        }
-        match (current_by_dest.get(&dest), target_by_dest.get(&dest)) {
-            // only the current generation deploys it: the prune rule
-            (Some((name, entry, sp)), None) => {
-                if exchanged.released.contains(&dest) {
-                    continue;
-                }
-                // preserved drift was never written by gripsack —
-                // rollback and prune never touch it (0029 §2)
-                if entry.preserved_drift {
-                    continue;
-                }
-                match crate::ops::plan_remove_op(name, entry, sp, home)? {
-                    None => {} // already gone
-                    Some(op) if matches!(op.kind(), crate::ops::OpKind::Preserved) => {
-                        notes.push(RecoveryNote {
-                            severity: NoteSeverity::Warn,
-                            message: format!(
-                                "kept {} — drifted since the current generation; your edit stands",
-                                op.dest().display()
-                            ),
-                        });
-                    }
-                    Some(op) => {
-                        crate::ops::execute_op(journal, op.as_executable()?)?;
-                    }
-                }
-            }
-            // only the target deploys it: restore, unless foreign
-            // content stands there now (drift preserved)
-            (None, Some((name, entry, sp))) => {
-                if entry.preserved_drift {
-                    continue;
-                }
-                match crate::ops::plan_restore_op(name, entry, sp, None, home_path)? {
-                    None => notes.push(RecoveryNote {
-                        severity: NoteSeverity::Warn,
-                        message: format!(
-                            "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
-                            dest.destination().display()
-                        ),
-                    }),
-                    Some(op) => match op.kind() {
-                        crate::ops::OpKind::Satisfied => {} // already there
-                        crate::ops::OpKind::Preserved => notes.push(RecoveryNote {
-                            severity: NoteSeverity::Warn,
-                            message: format!(
-                                "kept {} — foreign content stands there; your edit stands",
-                                op.dest().display()
-                            ),
-                        }),
-                        _ => { crate::ops::execute_op(journal, op.as_executable()?)?; }
-                    },
-                }
-            }
-            // both deploy it: restore only from a clean base
-            (Some((_cname, centry, csp)), Some((tname, tentry, tsp))) => {
-                // either side marked preserved-drift means gripsack is
-                // not the writer — never restore over it (0029 §2)
-                if centry.preserved_drift || tentry.preserved_drift {
-                    continue;
-                }
-                // plan_copy's three-way through the one planner: the
-                // target's record is the desired state, the current's
-                // is the lineage — live == target is a no-op, live ==
-                // current restores, anything else keeps the drift
-                let lineage = crate::ops::PreviousRecord {
-                    entry: centry,
-                    store_path: csp,
-                };
-                match crate::ops::plan_restore_op(tname, tentry, tsp, Some(lineage), home_path)? {
-                    None => notes.push(RecoveryNote {
-                        severity: NoteSeverity::Warn,
-                        message: format!(
-                            "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
-                            dest.destination().display()
-                        ),
-                    }),
-                    Some(op) => match op.kind() {
-                        crate::ops::OpKind::Satisfied => {}
-                        crate::ops::OpKind::Preserved => notes.push(RecoveryNote {
-                            severity: NoteSeverity::Warn,
-                            message: format!(
-                                "kept {} — drifted since the current generation; your edit stands",
-                                op.dest().display()
-                            ),
-                        }),
-                        _ => { crate::ops::execute_op(journal, op.as_executable()?)?; }
-                    },
-                }
-            }
-            (None, None) => {} // unreachable, union of keys
-        }
-    }
-    Ok(notes)
 }
 
 /// 0026 §9: never discover an incomplete target mid-mutation — every

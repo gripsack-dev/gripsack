@@ -245,8 +245,8 @@ export default profile("demo", { files: [
 
 def test_rollback_never_rewrites_historical_generations(sandbox):
     """0027 §8: a generation is one immutable object. Rolling back to
-    it must not change a single byte inside it — the profile backfills
-    only when MISSING (pre-0.22 history), never re-renders over it."""
+    it must not change a single byte inside it — its profile is reselected
+    as published, never re-rendered or backfilled (plan/0056 FND-2)."""
     import hashlib
 
     confdir = sandbox / "myenv" / "configs" / "demo"

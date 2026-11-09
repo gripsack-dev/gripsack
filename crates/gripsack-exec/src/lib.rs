@@ -30,7 +30,7 @@ mod workspace;
 
 pub use apply::apply;
 pub use ctx::{Ctx, ExecError, Outcome, ProgressCallback};
-pub use env::render_env_file;
+pub use env::{profile_path, retains_profile};
 pub use frontend::{ensure_deno, ensure_ts_frontend};
 pub use gc::{GcReport, PathOwner, gc, why_owns};
 pub use report::{

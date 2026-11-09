@@ -204,6 +204,11 @@ same_eq!(
     },
     TakeOver => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
     UnitRefusal => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Route => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Place => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Bytes => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Profile => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    RollbackPhase => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
     UnitDecision => |a, b| match (a, b) {
         (UnitDecision::Refuse(a), UnitDecision::Refuse(b)) => a == b,
         _ => core::mem::discriminant(a) == core::mem::discriminant(b),
