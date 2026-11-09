@@ -193,6 +193,7 @@ pub(crate) fn deploy_entry(
                     block_id,
                     payload: &payload,
                     permissions: crate::ops::WritePermissions::Preserve,
+                    source: crate::ops::BlockSource::Declared,
                 },
             )?
         }

@@ -25,7 +25,12 @@ rollback machine (F2 step 8): every write installs the target generation's
 recorded identity (K2) into absence or gripsack's own write (K1), never inside
 a generation; a restore is reported only when it landed; the flip follows
 every unit, under a fresh transaction, onto a target that keeps its profile;
-an unrestorable unit aborts. -/
+an unrestorable unit aborts; and managed blocks (K5, F2 step 6): bytes outside
+the owner's blocks are preserved exactly by upsert and removal, an upsert's
+output upserts to itself and reads back as the rendered block, a block is
+removed only if intact, a non-file host and conflicting mode evidence are
+never written, and rollback restores a block only from a payload that is its
+record. -/
 def claims : List Name := [
   ``Gripsack.Kernel.classify_committed_iff,
   ``Gripsack.Kernel.classify_uncommitted_iff,
@@ -64,6 +69,15 @@ def claims : List Name := [
   ``Gripsack.Kernel.Rollback.rollback_flip_admitted,
   ``Gripsack.Kernel.Rollback.rollback_unrestorable_aborts,
   ``Gripsack.Kernel.Rollback.rollback_delegated_refusal_aborts,
+  ``Gripsack.Kernel.Block.splice_ok,
+  ``Gripsack.Kernel.Block.upsert_preserves_outside,
+  ``Gripsack.Kernel.Block.remove_preserves_outside,
+  ``Gripsack.Kernel.Block.upsert_idempotent,
+  ``Gripsack.Kernel.Block.upsert_round_trip,
+  ``Gripsack.Kernel.Block.decide_block_remove_intact,
+  ``Gripsack.Kernel.Block.decide_block_foreign_untouched,
+  ``Gripsack.Kernel.Block.decide_block_mode_evidence_preserves,
+  ``Gripsack.Kernel.Block.decide_block_restore_exact,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/

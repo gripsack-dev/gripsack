@@ -198,6 +198,58 @@ MUTANTS = (
            "        Profile::Missing => Some(Refusal::ProfileMissing),",
            "        Profile::Missing => None,",
            ("Gripsack.Kernel.Rollback.admit_spec",)),
+    # K5: the bytes after the last block are kept
+    Mutant("block-splice-drops-tail", "block.rs",
+           "    out.extend_from_slice(&text[cursor..]);\n    out\n}",
+           "    out\n}",
+           # the loop no longer hands back its cursor, so its lemma breaks too
+           ("Gripsack.Kernel.Block.splice_loop_ok", "Gripsack.Kernel.Block.splice_ok",
+            "Gripsack.Kernel.Block.splice_single")),
+    # K5: the replacement goes in once, at the first block
+    Mutant("block-splice-every-span", "block.rs",
+           "        if i == 0 {\n            out.extend_from_slice(replacement);",
+           "        if i < blocks.len() {\n            out.extend_from_slice(replacement);",
+           ("Gripsack.Kernel.Block.splice_loop_ok",)),
+    # K5: a text without a final newline gets one before an appended block
+    Mutant("block-append-no-separator", "block.rs",
+           "    if text.len() > 0 && text[text.len() - 1] != b'\\n' {",
+           "    if false {",
+           ("Gripsack.Kernel.Block.append_ok",)),
+    # K5: the splice's precondition is checked, never assumed
+    Mutant("block-overlapping-spans", "block.rs",
+           "        if span.start < cursor || span.end <= span.start || span.end > len {",
+           "        if span.end <= span.start || span.end > len {",
+           ("Gripsack.Kernel.Block.ordered_ok",)),
+    # idempotence: an output that does not read back as written is refused
+    Mutant("block-upsert-unchecked", "block.rs",
+           "    if settled(&out, owner, &rendered, &normalized, &newline, &sha, mode) {",
+           "    if true {",
+           ("Gripsack.Kernel.Block.upsert_ok",)),
+    # idempotence: the block found in the output is the rendered block
+    Mutant("block-settled-ignores-bytes", "block.rs",
+           "    if !holds(out, found.start, found.end, rendered) || !newline_of(out).same(newline) {",
+           "    if !newline_of(out).same(newline) {",
+           ("Gripsack.Kernel.Block.settled_ok",)),
+    # K1 for blocks: an edited block is not intact
+    Mutant("block-edited-intact", "block.rs",
+           "        && same_digest(&record.hash, &only.content)\n        && only.marked",
+           "        && same_digest(&record.hash, &only.content)",
+           ("Gripsack.Kernel.Block.intact_true",)),
+    # K1 for blocks: every block's mode record participates
+    Mutant("block-mode-evidence-ignored", "block.rs",
+           "        if other_mode(&blocks[i].mode, live) {\n            return true;",
+           "        if false {\n            return true;",
+           ("Gripsack.Kernel.Block.mode_conflict_false",)),
+    # K1 for blocks: a link or directory at the hosting path is never spliced
+    Mutant("block-foreign-written", "block.rs",
+           "        Host::Foreign => BlockDecision::Refuse(BlockRefusal::Foreign),",
+           "        Host::Foreign => BlockDecision::Write,",
+           ("Gripsack.Kernel.Block.deploy_facts",)),
+    # rollback: a retained payload that is not the record is never restored
+    Mutant("block-restore-mismatch-written", "block.rs",
+           "BlockDecision::Write => BlockDecision::Refuse(BlockRefusal::Unrestorable),",
+           "BlockDecision::Write => BlockDecision::Write,",
+           ("Gripsack.Kernel.Block.decide_block_restore_exact",)),
 )
 
 # lake reports `error: <path>.lean:<line>:<col>: <message>`

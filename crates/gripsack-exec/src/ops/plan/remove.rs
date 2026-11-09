@@ -1,5 +1,6 @@
 //! Drift-guarded undeclaration and prior restoration planning.
 use super::*;
+use gripsack_kernel::block::BlockDecision;
 
 /// A Remove op (prune-on-undeclare, rollback's current-only
 /// destinations): removal authority is the manifest entry, the intent
@@ -57,21 +58,37 @@ pub(crate) fn plan_remove_op(
     if entry.ownership.policy() == Ownership::Merge {
         // the file is foreign — prune removes only our block, and only
         // if the block is still what we deployed
-        let existing = match crate::deploy::observe(&dest_dir, &dest_name)? {
-            Some(crate::deploy::Observation::File { bytes, mode }) => (bytes, mode),
-            None => return Ok(None),
-            _ => return kept(format!("kept {} — hosting file replaced", entry.to)),
+        let observation = crate::deploy::observe(&dest_dir, &dest_name)?;
+        let host = crate::managed_blocks::host(observation.as_ref());
+        let (existing, splice_mode) = match observation {
+            Some(crate::deploy::Observation::File { bytes, mode }) => (
+                String::from_utf8(bytes).map_err(|e| fail(e.to_string()))?,
+                mode,
+            ),
+            _ => (String::new(), 0),
         };
-        let (bytes, splice_mode) = existing;
-        let existing = String::from_utf8(bytes).map_err(|e| fail(e.to_string()))?;
-        let blocks =
-            crate::managed_blocks::ManagedBlockSet::parse(&existing, entry.merge_owner(output))
-                .map_err(|e| fail(e.to_string()))?;
-        match blocks.blocks() {
-            [] => return Ok(None),
-            _ if blocks.intact(entry, splice_mode) => {
+        let owner = entry.merge_owner(output);
+        let blocks = crate::managed_blocks::ManagedBlockSet::parse(&existing, owner)
+            .map_err(|e| fail(e.to_string()))?;
+        // the kernel's K1 for blocks: only an intact block is removed
+        match blocks.decide(
+            Some(crate::managed_blocks::record(entry)),
+            &host,
+            &gripsack_kernel::block::BlockIntent::Remove,
+        ) {
+            BlockDecision::Absent => return Ok(None),
+            BlockDecision::Keep if matches!(host, gripsack_kernel::block::Host::Foreign) => {
+                return kept(format!("kept {} — hosting file replaced", entry.to));
+            }
+            BlockDecision::Keep => {
+                return kept(format!(
+                    "kept {} — block or hosting-file mode modified since deploy",
+                    entry.to
+                ));
+            }
+            BlockDecision::Remove => {
                 let new = blocks
-                    .remove()
+                    .remove(owner)
                     .map_err(|error| fail(error.to_string()))?
                     .expect("intact implies a block");
                 let intended = if new.is_empty() {
@@ -99,10 +116,10 @@ pub(crate) fn plan_remove_op(
                 )));
             }
             _ => {
-                return kept(format!(
-                    "kept {} — block or hosting-file mode modified since deploy",
+                return Err(fail(format!(
+                    "planner bug: a removal of the block in {} decided to write",
                     entry.to
-                ));
+                )));
             }
         }
     }

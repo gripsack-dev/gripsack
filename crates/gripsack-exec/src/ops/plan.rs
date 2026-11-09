@@ -195,6 +195,19 @@ pub enum ModeInput<'a> {
         block_id: Option<&'a store::ManagedBlockId>,
         payload: &'a str,
         permissions: WritePermissions,
+        source: BlockSource<'a>,
+    },
+}
+
+/// Where a managed block's payload comes from.
+#[derive(Clone, Copy)]
+pub enum BlockSource<'a> {
+    /// This run's declaration (apply, plan).
+    Declared,
+    /// A generation's retained payload, restored only if it reproduces the
+    /// generation's record (rollback, plan/0056 K5).
+    Retained {
+        recorded: &'a store::hash::ManifestHash,
     },
 }
 
@@ -220,6 +233,7 @@ pub(crate) fn plan_entry_op(view: &DestView, input: ModeInput) -> Result<Op, Exe
             block_id,
             payload,
             permissions,
-        } => plan_merge(view, payload, permissions, block_id),
+            source,
+        } => plan_merge(view, payload, permissions, block_id, source),
     }
 }

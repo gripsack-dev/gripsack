@@ -214,6 +214,7 @@ the Lean sources with their axioms.
 | FND-1 | A recorded (owned) symlink is re-pointed whatever is live: if the user replaced it with their own file, the next apply overwrites it. Breaks the drift promise for links | `gripsack-policy/src/ownership.rs:103` (`recorded ⇒ Link`), `ops/plan/link.rs:18`; `lineage_model.rs:199` encodes it as intended | **Fixed** in F2 step 6 part 1 (§15), together with the store-prefix widening (design review finding 3) |
 | FND-2 | Rollback backfills `generations/<n>/env/profile.sh` into an existing generation and deletes the legacy env file outside the journal | `gripsack-exec/src/env.rs:27-49`, called from `rollback.rs:72` | **Fixed** in F2 step 8 (§16): the backfill is gone, a target without its own profile is refused |
 | FND-3 | Suspected: on a case-insensitive mount, re-spelling only a destination's case deploys the new spelling, then prunes the old one — the same inode | admission folds (`deploy/destinations.rs:26`) but prune compares raw `PathBuf` keys (`apply.rs:443-486`) | needs a reproducer first; F2 step 7 |
+| FND-4 | A managed block whose payload has a carriage-return run before a line break (`a\r\r\nb`) never matches its own marker sha: content normalization (trim, then `\r\n` → `\n`) is not a fixed point of render-then-normalize. The second apply rewrites the block with CRLF line ends and reports it "hand-edited"; every later apply still cuts a new generation for a no-op | `managed_blocks/mod.rs` `normalized_content` + `str::lines` rendering at `524f576`; e2e reproducer in §17.1 | **Fixed** in F2 step 6 part 2 (§17) |
 
 ## 6. Target layout
 
@@ -366,6 +367,12 @@ the crash e2e run both ways for one release before the legacy path goes.
    kernel property test; record in §15. Remaining: merge (K5, block
    generation on bytes), and `ops/model`/`mode_model` (they check the host
    lifting, which the kernel cannot see).
+   **Part 2 done 2026-11-09** (branch `foundation/f2-splice`): the managed
+   block in the kernel (`block`: marker grammar, scan, normalization,
+   rendering, splice, upsert/remove, and the per-block decision), K5 and K1
+   for blocks proved, rollback's block restore checked against its record
+   (§16.7 deviation 2 closed), FND-4 fixed; the Verus splice/scanner,
+   `MergeBoundary.tla` and the `merge` fuzz target deleted; record in §17.
 7. Apply machine end to end (`mutated` flag replaces `ReportKind`); directory
    transitions are an opaque `DirectoryStep` still run by legacy code.
    Reproduce/fix FND-3.
@@ -1196,7 +1203,10 @@ passed in 11m50s.
    block payload (store bytes verified by `tree256`) but does not compare it
    with the block's recorded hash; that lands with the K5 splice in the
    kernel (rest of step 6). An unrestorable block now refuses instead of
-   flipping.
+   flipping. **Closed by §17:** the kernel's block decision restores (or
+   finds in place) a block only when the retained payload's digest is the
+   target's record (`decide_block_restore_exact`), and refuses otherwise.
+   The unit stays on the delegated route of the rollback machine.
 3. **Directory-transition destinations are delegated** to the directory
    domain (step 9).
 4. **The legacy `$GRIPSACK_HOME/env/profile.sh` is no longer removed.** It
@@ -1209,3 +1219,223 @@ passed in 11m50s.
    the unit.
 6. Not addressed here (review §2.1): `rollback` with no argument still
    targets current−1 by number rather than the last selected generation.
+
+## 17. F2 step 6 part 2 record — the managed-block splice (K5, K1 for blocks)
+
+- Branch `foundation/f2-splice` from `main` at `524f576`; date 2026-11-09.
+- Question: can the managed block — marker grammar, scan, content
+  normalization, rendering, splice and the "may gripsack touch this block?"
+  decision — be the proved kernel's, with the bytes users keep outside the
+  markers preserved exactly, and re-applying a no-op?
+
+### 17.1 Defects, checked on the baseline
+
+Both reproducers live in `e2e/test_managed_block_splice.py` and were run
+against the baseline binary (`grip 0.52.0`, the `f2rollback-e2e` image built
+from the rollback branch merged as `524f576`) before any change: two failed,
+one passed.
+
+- **FND-4 (new): a block never matched its own sha.** Content normalization
+  was "trim trailing `\r`/`\n`, then `\r\n` → `\n`", and rendering split the
+  normal form with `str::lines`, which drops one `\r` before each `\n`. For a
+  payload with a carriage-return run before a line break the rendered block's
+  content normalizes to different bytes than the marker's sha was taken
+  over. Reproducer `test_a_payload_with_carriage_returns_before_a_newline_settles`
+  (payload `export A=1\r\r\r\nexport B=2\n`): before, the first apply
+  wrote `export A=1\r\n` inside an LF block, so the second `apply` saw a CRLF
+  file, rewrote the whole block with CRLF line ends, printed `merged shell →
+  ~/.bashrc (hand-edited block regenerated)` and activated generation 2; the
+  third apply changed no byte and still activated generation 3. The explorer
+  catches the same class (`the_legacy_normalization_is_caught_by_the_round_trip_oracle`).
+- **§16.7 deviation 2 (known): rollback restored a block without comparing it
+  with its record.** Reproducer
+  `test_rollback_refuses_a_block_payload_that_does_not_reproduce_its_record`
+  (generation 1's block record rewritten to another digest, standing in for
+  an older receipt in another hash domain): before, `grip rollback` exited 0
+  and selected generation 1 with a block that is not its record.
+- What held: `test_rollback_restores_a_managed_block_and_keeps_foreign_bytes`
+  (CRLF foreign bytes before and after the block survive a rollback).
+- Checked for and not found: the marker grammar admits a comment prefix with
+  whitespace (`DeploymentEntry.marker`), which would never scan back and
+  append a duplicate on every apply — but no current producer sets a custom
+  marker (`marker: None` everywhere; only retained deployments could carry
+  one). The kernel now refuses such a render instead (`Unrecognized`).
+
+### 17.2 The kernel (`crates/gripsack-kernel/src/block.rs`)
+
+- **Grammar and scan**, moved from `gripsack-exec/src/managed_blocks/parse.rs`
+  and `gripsack-policy/src/merge/scanner.rs` and restated over bytes:
+  `classify` (a marker is its key preceded by at most one word; Unicode
+  `White_Space` exactly as `char::is_whitespace`, so behaviour on foreign
+  lines is unchanged), `scan(text, owner) -> Result<Vec<Block>, ScanFailure>`
+  (blocks of other owners must nest correctly but are not returned; the
+  pre-hash header line is not content).
+- **Content and rendering**: `normalize` drops every line's trailing
+  carriage returns, then trims trailing `\r`/`\n` — identical to the old rule
+  wherever that rule was stable, and a fixed point of render-then-normalize
+  (FND-4). `render` writes the open marker (owner, the 16 recorded sha digits,
+  mode), the header, one line per content line and the close marker, every
+  line ending in the hosting text's newline convention. `mark(digest)` is the
+  16 lowercase hex digits; `marks(sha, digest)` compares them
+  case-insensitively, as markers always were. The host still computes the
+  SHA-256 (`managed_blocks::content_hash` = SHA-256 of `normalize`).
+- **Splice**: `ordered` (in order, disjoint, non-empty, in bounds),
+  `splice(text, blocks, replacement)`, `append(text, newline, block)`.
+  `upsert(text, owner, style, digest, mode, payload)` scans, checks
+  `ordered`, renders, splices (or appends), and returns the output only if
+  `settled` accepts it: the output's only block of `owner` is exactly the
+  rendered block, with the same newline convention, recording `mark(digest)`
+  and `mode`, and its content normalizes to `normalize(payload)`. Otherwise
+  it refuses (`Unrecognized`), never writes. `remove(text, owner)`.
+- **Decision** `decide_block(record, host, blocks, intent)` with
+  `Host = Absent | File{mode} | Foreign`, `Seen{content, marked, mode}`,
+  `BlockRecord{hash, mode, preserved}` and
+  `BlockIntent = Deploy{desired, mode} | Restore{retained, recorded, mode} | Remove`;
+  `BlockDecision = Write | Satisfied | Preserve | Remove | Keep | Absent | Refuse(Foreign | Unrestorable)`.
+  The table is the one `plan_merge`, `plan_remove_op`, `remove_or_restore_prior`
+  and `ManagedBlockSet::{mode_conflicts, satisfied, intact}` implemented,
+  plus the restore check.
+
+Product semantics, verified, not invented (CHANGELOG 0.19.0 "merge blocks
+carry their content hash", 0.21.1, `e2e/test_ownership_modes.py::test_merge_block_carries_its_content_hash`,
+`test_merge_boundaries.py`): inside its markers a block is gripsack's, so a
+deploy regenerates a hand-edited block and says so; a removal (prune,
+rollback's release) requires the block intact and otherwise keeps it; any
+conflicting mode evidence preserves the whole file; malformed markers refuse.
+
+### 17.3 Proofs (`proofs/Kernel/Block.lean`; `Audit.lean`: 216 theorems, 46 claims, standard axioms only)
+
+The K5 claims are partial-correctness statements over the shipped functions
+("if the call returns `out`, then …"); the decision claims likewise.
+
+- `splice_ok`: the splice returns exactly `spliceSpec` — the bytes before the
+  first span, the replacement, then every byte between and after the spans
+  in order (`spliceFrom`, a plain recursion over the spans).
+- `upsert_preserves_outside` (K5): an upsert's output is the splice of the
+  rendered block into the scanned blocks, which are `Ordered` (in order,
+  disjoint, non-empty, in bounds); with no block, the text, one separating
+  newline if it lacked one (`separator`), then the block.
+- `remove_preserves_outside` (K5): a removal keeps exactly the bytes outside
+  the scanned blocks.
+- `upsert_idempotent` (K5): upserting an upsert's output again with the same
+  inputs returns it unchanged.
+- `upsert_round_trip`: the output's only block of the owner is the rendered
+  block, recording the digest's sha digits and the mode, with content that
+  normalizes to the payload's normalization — the next apply sees it intact
+  (FND-4 cannot recur without the kernel refusing instead).
+- `decide_block_remove_intact` (K1 for blocks): only a removal removes, and
+  only an intact block — a file host, a non-drift record, exactly one block,
+  marker sha naming its content, content equal to the record, no mode drift.
+- `decide_block_foreign_untouched`, `decide_block_mode_evidence_preserves`
+  (conflicting mode evidence never writes, for every intent),
+  `decide_block_restore_exact` (rollback writes or claims a block only from a
+  retained payload whose digest is the record).
+- Helper specs the mutants are attributed to: `splice_loop_ok`,
+  `splice_single`, `append_ok`, `ordered_ok`, `settled_ok`, `upsert_ok`,
+  `intact_true`, `mode_conflict_false`, `deploy_facts`.
+- Mutants (`proofs/mutants.py`, 41 total, 10 new), each rejected by exactly
+  the named theorems: `block-splice-drops-tail` (`splice_loop_ok`,
+  `splice_ok`, `splice_single`), `block-splice-every-span`
+  (`splice_loop_ok`), `block-append-no-separator` (`append_ok`),
+  `block-overlapping-spans` (`ordered_ok`), `block-upsert-unchecked` (the
+  output check skipped: `upsert_ok`), `block-settled-ignores-bytes`
+  (`settled_ok`), `block-edited-intact` (`intact_true`),
+  `block-mode-evidence-ignored` (`mode_conflict_false`),
+  `block-foreign-written` (`deploy_facts`), `block-restore-mismatch-written`
+  (`decide_block_restore_exact`).
+
+What is **not** proved, and is tested instead: that `upsert` never refuses a
+well-formed hosting text (liveness), and the marker grammar itself (which
+lines are markers). Idempotence and the round trip are proved for every
+output the kernel returns because `upsert` checks its own output before
+returning it and the proof composes that check with the splice's
+specification (translation validation); a failing check is a loud refusal,
+never a wrong write. The explorer (§17.5) covers liveness.
+
+### 17.4 Wiring
+
+- `gripsack-exec/src/managed_blocks/mod.rs` is a thin adapter: kernel scan
+  offsets to `&str` views, the SHA-256 of the kernel's normal form, the
+  comment style of a destination, `record(entry)` and `host(observation)`
+  for the decision, `validate_payload` over the kernel's `classify`.
+- `plan_merge` asks `decide_block` with `BlockIntent::Deploy` (apply, plan)
+  or `BlockIntent::Restore` (rollback, `ModeInput::Merge.source =
+  BlockSource::Retained { recorded }`); `plan_remove_op` and
+  `remove_or_restore_prior` ask with `BlockIntent::Remove`.
+- Rollback's block units stay on the machine's delegated route; a payload
+  that is not the record is now refused by the kernel and the rollback stops
+  before the flip ("… is not the recorded block; cannot restore it exactly").
+
+### 17.5 Tests
+
+- e2e `test_managed_block_splice.py` (3): two failed before / pass after
+  (§17.1), one pins what held. `test_merge_boundaries.py`,
+  `test_ownership_modes.py` merge cases and `test_rollback_fidelity.py`'s
+  block case pass unchanged.
+- Kernel explorer `crates/gripsack-kernel/tests/block.rs`: every hosting text
+  of up to four lines over ten line kinds (foreign, empty, both owners'
+  markers, header, edited content, two-word prefixes, malformed metadata),
+  LF/CRLF, with and without a final newline, × 2 owner spellings × 4 comment
+  styles × 8 payloads: a malformed text is refused, a well-formed one never
+  is (liveness), and the output matches an independent splice oracle, removes
+  back to the foreign bytes, round-trips and is idempotent. Calibration: the
+  legacy normalization is caught by the round-trip oracle. Plus the marker
+  format golden test, the grammar cases ported from
+  `managed_blocks/tests.rs`, and the decision table against the planner it
+  replaced.
+
+### 17.6 Deleted
+
+`gripsack-policy/src/merge.rs` and `merge/scanner.rs` (the Verus splice and
+scanner: 11 obligations, floor 382 → 371, their two Verus mutants; the
+unrelated-lemma calibration moved to `graph.rs`), `specs/MergeBoundary.tla`
+and its four cfgs (the decision model; its invariants are the decision
+theorems), the `merge` fuzz target (target, harness, corpus, seeds — trim
+register), `gripsack-exec/src/managed_blocks/parse.rs` (the grammar, now the
+kernel's) and `managed_blocks/tests.rs` (ported to the kernel test),
+`ManagedBlockSet::{intact, satisfied, mode_conflicts}` and
+`normalized_content`. `verification/guarantees.md` is frozen and keeps its
+historical MERGE-SPLICE-001 / MERGE-SCAN-001 rows.
+
+### 17.7 Code contortions (recorded in the source)
+
+1. A repeated-byte array constant (`*b">>>"`) is a repeat expression Aeneas
+   rejects ("unexpected constant `[62u8; 3]`"): `>>>`/`<<<` are written and
+   checked as one byte thrice (`push_triple`, `is_triple`).
+2. A `match` on an enum read from a slice element inside a loop ("Not allowed
+   to expand enumerations with several variants") moved into a helper
+   (`other_mode`).
+3. Locals named `block` inside module `block` (§13.4 item 5 again):
+   `span`, `rendered`, `only`.
+4. The scanner's open block is rebuilt per line instead of updated through
+   `&mut`; owner ranges are compared by an explicit byte loop.
+5. clippy idioms that go through trait methods or closures
+   (`RangeInclusive::contains`, `is_empty`, `Option::map`, `is_some`) are
+   allowed in `block.rs`; the proofs are stated over this spelling.
+6. Lean side: `Result` is an interaction tree, so constructor facts come from
+   `Result.match` (`vis_not_ok`, `div_not_ok`); a tuple pattern
+   `let (a, b) ← …` elaborates to `Std.uncurry`; partial correctness of a
+   loop is one generic rule (`loop_ok`) over the body.
+
+### 17.8 Deviations and what is deferred
+
+1. **K1 for blocks is stated per the product contract, not §5's wording.**
+   §5 says "a managed block only if intact". The product regenerates a
+   hand-edited block on deploy (0.19.0); what is proved is: removal only if
+   intact, deploy never touches a byte outside the owner's blocks (K5) and
+   never writes over conflicting mode evidence, a non-file host is never
+   written, and restore only from the record.
+2. **Liveness and the grammar are tested, not proved** (§17.3).
+3. **Rollback's block units stay delegated** in the rollback machine; the
+   kernel decision and splice now decide and perform them, but the machine's
+   K2 theorems do not range over them. Folding them in needs a block
+   identity in the machine's `Ident` vocabulary.
+4. A custom comment marker that the grammar cannot read back (whitespace or
+   a marker key in it) is refused instead of appended forever; no current
+   producer writes one.
+5. Host-computed SHA-256 stays outside the kernel (S7).
+6. A generation recorded by 0.19–0.52 for a payload hit by FND-4 keeps a
+   digest in the old normal form. `grip verify` still accepts it (one more
+   historical block domain in `verify_store`); rolling back to it refuses,
+   because no retained payload reproduces that record under the kernel's
+   normal form. Every other recorded block digest is unchanged.

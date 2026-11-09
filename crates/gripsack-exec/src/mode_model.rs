@@ -63,6 +63,7 @@ fn plan(
             block_id: None,
             payload: std::str::from_utf8(content).unwrap(),
             permissions: policy,
+            source: crate::ops::BlockSource::Declared,
         }
     } else {
         ModeInput::Write {
