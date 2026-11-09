@@ -76,6 +76,7 @@ change as the plan. Long-form release/evidence narratives were removed by
 | 0055 | One workspace surface | 0.50–0.51 |
 | 0056 | Verified foundation: Lean-proved kernel, rings, trim | F0 + F1 (GO) in 0.52.0; F2 next |
 | 0057 | Fast qualification: cache mounts, one dev profile, parallel e2e/mutants/package, theorem-backed test trim | landing after 0.52.0 |
+| 0058 | Handover final reconciliation (supersedes 0056a): 25 landed, 18 obsolete, 13 pending, 3 rejected | review, 0.52 head |
 
 ## Settled rejections (all eras)
 
