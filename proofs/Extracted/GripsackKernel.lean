@@ -1806,7 +1806,7 @@ def retention.plan_delete
     Std.Usize) 0#usize
 
 /-- [gripsack_kernel::rollback::Place]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 51:0-57:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 52:0-58:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Place where
@@ -1814,7 +1814,7 @@ inductive rollback.Place where
 | Generation : rollback.Place
 
 /-- [gripsack_kernel::rollback::Bytes]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 62:0-65:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 63:0-66:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Bytes where
@@ -1822,16 +1822,16 @@ inductive rollback.Bytes where
 | Missing : rollback.Bytes
 
 /-- [gripsack_kernel::rollback::Target]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 68:0-76:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 69:0-80:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Target where
-| Absent : rollback.Target
+| Released : recover.Intended → rollback.Target
 | Wrote : recover.Ident → rollback.Bytes → rollback.Target
 | Preserved : rollback.Target
 
 /-- [gripsack_kernel::rollback::UnitFacts]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 79:0-86:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 83:0-90:1
     Visibility: public -/
 structure rollback.UnitFacts where
   dest : ids.DestId
@@ -1841,7 +1841,7 @@ structure rollback.UnitFacts where
   target : rollback.Target
 
 /-- [gripsack_kernel::rollback::Profile]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 90:0-93:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 94:0-97:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Profile where
@@ -1849,7 +1849,7 @@ inductive rollback.Profile where
 | Missing : rollback.Profile
 
 /-- [gripsack_kernel::rollback::PlanFacts]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 96:0-103:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 100:0-107:1
     Visibility: public -/
 structure rollback.PlanFacts where
   units : Std.U32
@@ -1858,7 +1858,7 @@ structure rollback.PlanFacts where
   profile : rollback.Profile
 
 /-- [gripsack_kernel::rollback::Settled]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 106:0-119:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 110:0-123:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Settled where
@@ -1869,7 +1869,7 @@ inductive rollback.Settled where
 | Delegated : rollback.Settled
 
 /-- [gripsack_kernel::rollback::Refusal]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 138:0-159:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 142:0-163:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Refusal where
@@ -1884,7 +1884,7 @@ inductive rollback.Refusal where
 | Protocol : rollback.Refusal
 
 /-- [gripsack_kernel::rollback::Restore]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 122:0-129:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 126:0-133:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Restore where
@@ -1893,14 +1893,14 @@ inductive rollback.Restore where
 | Refuse : rollback.Refusal → rollback.Restore
 
 /-- [gripsack_kernel::rollback::Outcome]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 131:0-134:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 135:0-138:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Outcome where
 | RolledBack : rollback.Outcome
 
 /-- [gripsack_kernel::rollback::Command]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 161:0-193:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 165:0-197:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Command where
@@ -1920,7 +1920,7 @@ inductive rollback.Command where
 | Abort : rollback.Refusal → rollback.Command
 
 /-- [gripsack_kernel::rollback::Event]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 195:0-210:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 199:0-214:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Event where
@@ -1934,7 +1934,7 @@ inductive rollback.Event where
 | Failed : recover.Failure → rollback.Event
 
 /-- [gripsack_kernel::rollback::Phase]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 212:0-223:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 216:0-227:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Phase where
@@ -1950,7 +1950,7 @@ inductive rollback.Phase where
 | Aborted : rollback.Phase
 
 /-- [gripsack_kernel::rollback::RollbackState]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 225:0-233:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 229:0-237:1
     Visibility: public -/
 structure rollback.RollbackState where
   phase : rollback.Phase
@@ -1960,7 +1960,7 @@ structure rollback.RollbackState where
   install : Option recover.Intended
 
 /-- [gripsack_kernel::rollback::{gripsack_kernel::rollback::RollbackState}::new]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 236:4-251:5
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 240:4-255:5
     Visibility: public -/
 def rollback.RollbackState.new : Result rollback.RollbackState := do
   let gi ← generation.GenerationId.new 0#u64
@@ -1980,25 +1980,34 @@ def rollback.RollbackState.new : Result rollback.RollbackState := do
     }
 
 /-- [gripsack_kernel::rollback::withheld]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 255:0-259:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 259:0-263:1 -/
 def rollback.withheld : Result ownership.Consent := do
   ok { take_over := ownership.TakeOver.Withheld }
 
-/-- [gripsack_kernel::rollback::intent]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 262:0-268:1
-    Visibility: public -/
-def rollback.intent
+/-- [gripsack_kernel::rollback::authority]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 268:0-274:1 -/
+def rollback.authority
   (target : rollback.Target) : Result (Option recover.Intended) := do
   match target with
-  | rollback.Target.Absent => ok (some recover.Intended.Removed)
+  | rollback.Target.Released _ => ok (some recover.Intended.Removed)
+  | rollback.Target.Wrote ident _ => ok (some (recover.Intended.Obj ident))
+  | rollback.Target.Preserved => ok none
+
+/-- [gripsack_kernel::rollback::install]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 277:0-283:1
+    Visibility: public -/
+def rollback.install
+  (target : rollback.Target) : Result (Option recover.Intended) := do
+  match target with
+  | rollback.Target.Released origin => ok (some origin)
   | rollback.Target.Wrote ident _ => ok (some (recover.Intended.Obj ident))
   | rollback.Target.Preserved => ok none
 
 /-- [gripsack_kernel::rollback::retained]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 271:0-280:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 286:0-295:1 -/
 def rollback.retained (target : rollback.Target) : Result Bool := do
   match target with
-  | rollback.Target.Absent => ok true
+  | rollback.Target.Released _ => ok true
   | rollback.Target.Wrote _ bytes =>
     match bytes with
     | rollback.Bytes.Retained => ok true
@@ -2006,72 +2015,57 @@ def rollback.retained (target : rollback.Target) : Result Bool := do
   | rollback.Target.Preserved => ok false
 
 /-- [gripsack_kernel::rollback::writable]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 282:0-287:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 297:0-302:1 -/
 def rollback.writable (place : rollback.Place) : Result Bool := do
   match place with
   | rollback.Place.Outside => ok true
   | rollback.Place.Generation => ok false
 
+/-- [gripsack_kernel::rollback::writing]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 323:0-342:1 -/
+def rollback.writing
+  (index : Std.U32) (unit : rollback.UnitFacts) : Result rollback.Restore := do
+  let o ← rollback.install unit.target
+  match o with
+  | none => ok (rollback.Restore.Leave rollback.Settled.Untouched)
+  | some intended =>
+    let b ← rollback.retained unit.target
+    if b
+    then
+      let b1 ← rollback.writable unit.place
+      if b1
+      then ok (rollback.Restore.Write intended)
+      else
+        ok (rollback.Restore.Refuse (rollback.Refusal.Protected index
+          unit.dest))
+    else
+      ok (rollback.Restore.Refuse (rollback.Refusal.Unrestorable index
+        unit.dest))
+
 /-- [gripsack_kernel::rollback::decide_restore]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 293:0-316:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 308:0-319:1
     Visibility: public -/
 def rollback.decide_restore
   (index : Std.U32) (unit : rollback.UnitFacts) (live : recover.Live) :
   Result rollback.Restore
   := do
-  let o ← rollback.intent unit.target
+  let o ← rollback.authority unit.target
   match o with
   | none => ok (rollback.Restore.Leave rollback.Settled.Untouched)
-  | some intended =>
+  | some asked =>
     let c ← rollback.withheld
-    let d ← ownership.decide_unit unit.current live intended c
+    let d ← ownership.decide_unit unit.current live asked c
     match d with
-    | ownership.Decision.Create =>
-      let b ← rollback.retained unit.target
-      if b
-      then
-        let b1 ← rollback.writable unit.place
-        if b1
-        then ok (rollback.Restore.Write intended)
-        else
-          ok (rollback.Restore.Refuse (rollback.Refusal.Protected index
-            unit.dest))
-      else
-        ok (rollback.Restore.Refuse (rollback.Refusal.Unrestorable index
-          unit.dest))
+    | ownership.Decision.Create => rollback.writing index unit
     | ownership.Decision.Satisfied =>
       ok (rollback.Restore.Leave rollback.Settled.Already)
-    | ownership.Decision.ReplaceOwn =>
-      let b ← rollback.retained unit.target
-      if b
-      then
-        let b1 ← rollback.writable unit.place
-        if b1
-        then ok (rollback.Restore.Write intended)
-        else
-          ok (rollback.Restore.Refuse (rollback.Refusal.Protected index
-            unit.dest))
-      else
-        ok (rollback.Restore.Refuse (rollback.Refusal.Unrestorable index
-          unit.dest))
-    | ownership.Decision.TakeOver =>
-      let b ← rollback.retained unit.target
-      if b
-      then
-        let b1 ← rollback.writable unit.place
-        if b1
-        then ok (rollback.Restore.Write intended)
-        else
-          ok (rollback.Restore.Refuse (rollback.Refusal.Protected index
-            unit.dest))
-      else
-        ok (rollback.Restore.Refuse (rollback.Refusal.Unrestorable index
-          unit.dest))
+    | ownership.Decision.ReplaceOwn => rollback.writing index unit
+    | ownership.Decision.TakeOver => rollback.writing index unit
     | ownership.Decision.Refuse why =>
       ok (rollback.Restore.Leave (rollback.Settled.Kept why))
 
 /-- [gripsack_kernel::rollback::lands]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 319:0-325:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 345:0-351:1
     Visibility: public -/
 def rollback.lands
   (install : recover.Intended) (live : recover.Live) : Result Bool := do
@@ -2088,7 +2082,7 @@ def rollback.lands
     | recover.Live.Unsupported => ok false
 
 /-- [gripsack_kernel::rollback::fresh]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 344:0-356:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 370:0-382:1
     Visibility: public -/
 def rollback.fresh
   (reselect : selection.SelectionIdentity)
@@ -2108,7 +2102,7 @@ def rollback.fresh
         ok (¬ b)
 
 /-- [gripsack_kernel::rollback::admit]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 329:0-340:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 355:0-366:1
     Visibility: public -/
 def rollback.admit
   (plan : rollback.PlanFacts) : Result (Option rollback.Refusal) := do
@@ -2121,7 +2115,7 @@ def rollback.admit
   | rollback.Profile.Missing => ok (some rollback.Refusal.ProfileMissing)
 
 /-- [gripsack_kernel::rollback::refuse]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 358:0-361:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 384:0-387:1 -/
 def rollback.refuse
   (state : rollback.RollbackState) (refusal : rollback.Refusal) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2130,7 +2124,7 @@ def rollback.refuse
     refusal)
 
 /-- [gripsack_kernel::rollback::failed_or_protocol]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 363:0-368:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 389:0-394:1 -/
 def rollback.failed_or_protocol
   (state : rollback.RollbackState) (event : rollback.Event) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2149,7 +2143,7 @@ def rollback.failed_or_protocol
   | rollback.Event.Failed _ => rollback.refuse state rollback.Refusal.Failed
 
 /-- [gripsack_kernel::rollback::proceed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 371:0-381:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 397:0-407:1 -/
 def rollback.proceed
   (state : rollback.RollbackState) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2163,7 +2157,7 @@ def rollback.proceed
       state.plan.reselect)
 
 /-- [gripsack_kernel::rollback::advance]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 384:0-394:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 410:0-420:1 -/
 def rollback.advance
   (state : rollback.RollbackState) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2178,7 +2172,7 @@ def rollback.advance
       { state with index := next, unit := none, install := none }
 
 /-- [gripsack_kernel::rollback::report]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 396:0-407:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 422:0-433:1 -/
 def rollback.report
   (state : rollback.RollbackState) (dest : ids.DestId)
   (settled : rollback.Settled) :
@@ -2188,7 +2182,7 @@ def rollback.report
     state.index dest settled)
 
 /-- [gripsack_kernel::rollback::on_plan]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 409:0-418:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 435:0-444:1 -/
 def rollback.on_plan
   (state : rollback.RollbackState) (plan : rollback.PlanFacts) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2199,7 +2193,7 @@ def rollback.on_plan
   | some refusal => rollback.refuse state refusal
 
 /-- [gripsack_kernel::rollback::on_unit]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 420:0-435:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 446:0-461:1 -/
 def rollback.on_unit
   (state : rollback.RollbackState) (facts : rollback.UnitFacts) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2214,7 +2208,7 @@ def rollback.on_unit
       rollback.Command.Delegate state.index facts.dest)
 
 /-- [gripsack_kernel::rollback::on_observed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 437:0-463:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 463:0-489:1 -/
 def rollback.on_observed
   (state : rollback.RollbackState) (dest : ids.DestId) (live : recover.Live) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2239,7 +2233,7 @@ def rollback.on_observed
     else rollback.refuse state rollback.Refusal.Protocol
 
 /-- [gripsack_kernel::rollback::on_landed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 465:0-483:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 491:0-509:1 -/
 def rollback.on_landed
   (state : rollback.RollbackState) (live : recover.Live) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2258,7 +2252,7 @@ def rollback.on_landed
           facts.dest)
 
 /-- [gripsack_kernel::rollback::on_write_failed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 485:0-502:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 511:0-528:1 -/
 def rollback.on_write_failed
   (state : rollback.RollbackState) (failure : recover.Failure) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2272,7 +2266,7 @@ def rollback.on_write_failed
   | recover.Failure.Io _ => rollback.refuse state rollback.Refusal.Failed
 
 /-- [gripsack_kernel::rollback::on_delegated]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 504:0-522:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 530:0-548:1 -/
 def rollback.on_delegated
   (state : rollback.RollbackState) (event : rollback.Event) :
   Result (rollback.RollbackState × rollback.Command)
@@ -2295,7 +2289,7 @@ def rollback.on_delegated
     | rollback.Event.Failed _ => rollback.failed_or_protocol state event
 
 /-- [gripsack_kernel::rollback::rollback_step]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 528:0-570:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 554:0-596:1
     Visibility: public -/
 def rollback.rollback_step
   (state : rollback.RollbackState) (event : rollback.Event) :

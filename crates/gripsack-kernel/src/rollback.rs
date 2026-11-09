@@ -10,8 +10,9 @@
 //! - **install** the target's recorded identity (bytes plus mode, or a link
 //!   target) when the destination is absent or holds gripsack's own current
 //!   write, and only from retained bytes the host verified reproduce that
-//!   identity; or **remove** gripsack's own write where the target deploys
-//!   nothing;
+//!   identity; or **release** gripsack's own write where the target deploys
+//!   nothing (remove it, or bring back the object the ownership epoch
+//!   recorded before gripsack took the destination over);
 //! - **leave** a destination that already holds the target's identity, that
 //!   the user changed (kept, per K1: the ownership decision [`decide_unit`]
 //!   without consent), or that the target itself recorded as preserved drift;
@@ -66,8 +67,11 @@ pub enum Bytes {
 
 /// What the target generation records at this unit.
 pub enum Target {
-    /// The target deploys nothing here: gripsack's own write is removed.
-    Absent,
+    /// The target deploys nothing here: gripsack releases the destination.
+    /// Its own write goes, replaced by what the ownership epoch recorded
+    /// before gripsack took the destination over (`Obj`), or by nothing
+    /// (`Removed`).
+    Released(Intended),
     /// The target recorded writing this identity.
     Wrote { ident: Ident, bytes: Bytes },
     /// The target kept a user's object here (preserved drift): it records
@@ -258,10 +262,21 @@ fn withheld() -> Consent {
     }
 }
 
-/// What the target asks this unit to hold, when it asks anything.
-pub fn intent(target: &Target) -> Option<Intended> {
+/// What the ownership decision is asked to authorize: deploying the
+/// target's identity, or a removal (a release is a removal, exactly as
+/// apply's prune decides it, whatever it brings back).
+fn authority(target: &Target) -> Option<Intended> {
     match target {
-        Target::Absent => Some(Intended::Removed),
+        Target::Released(_) => Some(Intended::Removed),
+        Target::Wrote { ident, .. } => Some(Intended::Obj(*ident)),
+        Target::Preserved => None,
+    }
+}
+
+/// What a write for this target installs.
+pub fn install(target: &Target) -> Option<Intended> {
+    match target {
+        Target::Released(origin) => Some(*origin),
         Target::Wrote { ident, .. } => Some(Intended::Obj(*ident)),
         Target::Preserved => None,
     }
@@ -270,7 +285,7 @@ pub fn intent(target: &Target) -> Option<Intended> {
 /// Whether the host can install the target's identity exactly.
 fn retained(target: &Target) -> bool {
     match target {
-        Target::Absent => true,
+        Target::Released(_) => true,
         Target::Wrote { bytes, .. } => match bytes {
             Bytes::Retained => true,
             Bytes::Missing => false,
@@ -291,27 +306,38 @@ fn writable(place: &Place) -> bool {
 /// record says what it changes to; the host's verification says whether that
 /// can be done exactly.
 pub fn decide_restore(index: u32, unit: &UnitFacts, live: &Live) -> Restore {
-    match intent(&unit.target) {
+    match authority(&unit.target) {
         None => Restore::Leave(Settled::Untouched),
-        Some(intended) => match decide_unit(&unit.current, live, &intended, &withheld()) {
+        Some(asked) => match decide_unit(&unit.current, live, &asked, &withheld()) {
             UnitDecision::Satisfied => Restore::Leave(Settled::Already),
             UnitDecision::Refuse(why) => Restore::Leave(Settled::Kept(why)),
             UnitDecision::Create | UnitDecision::ReplaceOwn | UnitDecision::TakeOver => {
-                if !retained(&unit.target) {
-                    Restore::Refuse(Refusal::Unrestorable {
-                        unit: index,
-                        dest: unit.dest,
-                    })
-                } else if !writable(&unit.place) {
-                    Restore::Refuse(Refusal::Protected {
-                        unit: index,
-                        dest: unit.dest,
-                    })
-                } else {
-                    Restore::Write(intended)
-                }
+                writing(index, unit)
             }
         },
+    }
+}
+
+/// A write the ownership decision authorized: exactly the target's
+/// identity, from retained bytes, outside generation directories.
+fn writing(index: u32, unit: &UnitFacts) -> Restore {
+    match install(&unit.target) {
+        None => Restore::Leave(Settled::Untouched),
+        Some(intended) => {
+            if !retained(&unit.target) {
+                Restore::Refuse(Refusal::Unrestorable {
+                    unit: index,
+                    dest: unit.dest,
+                })
+            } else if !writable(&unit.place) {
+                Restore::Refuse(Refusal::Protected {
+                    unit: index,
+                    dest: unit.dest,
+                })
+            } else {
+                Restore::Write(intended)
+            }
+        }
     }
 }
 

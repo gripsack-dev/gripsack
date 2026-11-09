@@ -158,8 +158,8 @@ MUTANTS = (
             "Gripsack.Kernel.Rollback.decide_restore_unrestorable_refused")),
     # K2: a write installs something other than the target's recorded identity
     Mutant("rollback-installs-not-target", "rollback.rs",
-           "                } else {\n                    Restore::Write(intended)\n                }",
-           "                } else {\n                    Restore::Write(Intended::Removed)\n                }",
+           "            } else {\n                Restore::Write(intended)\n            }",
+           "            } else {\n                Restore::Write(Intended::Removed)\n            }",
            ("Gripsack.Kernel.Rollback.decide_restore_spec",)),
     # K1 through rollback: consent assumed, drift overwritten
     Mutant("rollback-drift-overwritten", "rollback.rs",

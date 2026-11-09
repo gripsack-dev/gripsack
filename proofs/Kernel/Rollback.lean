@@ -45,10 +45,11 @@ namespace Gripsack.Kernel.Rollback
 /-! ## The per-unit decision -/
 
 /-- What a write may install for a target record: its recorded identity, from
-retained bytes, or the removal where the target deploys nothing. Preserved
-drift records no write. -/
+retained bytes, or — where the target deploys nothing — the release the
+ownership epoch recorded (the removal, or the object gripsack took over).
+Preserved drift records no write. -/
 def Installs : rollback.Target → recover.Intended → Prop
-  | .Absent, i => i = .Removed
+  | .Released r, i => i = r
   | .Wrote o b, i => b = .Retained ∧ i = .Obj o
   | .Preserved, _ => False
 
@@ -63,8 +64,8 @@ def WriteOk (f : rollback.UnitFacts) (live : recover.Live) (i : recover.Intended
 
 /-- The unfolding the decision claims start from. -/
 macro "restore_cases" : tactic => `(tactic| (
-  simp only [rollback.decide_restore, rollback.intent, rollback.withheld, rollback.retained,
-    rollback.writable, ownership.decide_unit, ownership.Recorded.wrote, ownership.acquires,
+  simp only [rollback.decide_restore, rollback.authority, rollback.install, rollback.writing,
+    rollback.withheld, rollback.retained, rollback.writable, ownership.decide_unit, ownership.Recorded.wrote, ownership.acquires,
     ownership.Consent.grants_take_over, ownership.refusal, recover.intends, Ident.same_ok,
     decide_eq_true_eq]
   all_goals (try simp only [bind_tc_ok, bind_ok, decide_eq_true_eq])
@@ -79,12 +80,13 @@ theorem decide_restore_spec (k : U32) (f : rollback.UnitFacts) (live : recover.L
       (∀ i, r = .Write i → WriteOk f live i) ∧ r ≠ .Leave .Restored ⦄ := by
   obtain ⟨dest, place, route, current, target⟩ := f
   cases target with
-  | Absent => cases place <;> cases live <;> cases current <;> restore_cases
+  | Released r => cases r <;> cases place <;> cases live <;> cases current <;> restore_cases
   | Preserved => cases place <;> cases live <;> cases current <;> restore_cases
   | Wrote o b => cases b <;> cases place <;> cases live <;> cases current <;> restore_cases
 
 /-- K1 through rollback: a live object that is not gripsack's current write
-and is not already what the target records is kept, never written. -/
+and is not already what the target records is kept, never written (a release
+is authorized as a removal, so only gripsack's own write is ever released). -/
 theorem decide_restore_drift_kept (k : U32) (f : rollback.UnitFacts) (o : recover.Ident)
     (hr : f.current ≠ .Wrote o) (ht : ∀ b, f.target ≠ .Wrote o b) :
     rollback.decide_restore k f (.Obj o) ⦃ r =>
@@ -92,7 +94,7 @@ theorem decide_restore_drift_kept (k : U32) (f : rollback.UnitFacts) (o : recove
   obtain ⟨dest, place, route, current, target⟩ := f
   simp only at hr ht
   cases target with
-  | Absent => cases place <;> cases current <;> restore_cases
+  | Released r => cases r <;> cases place <;> cases current <;> restore_cases
   | Preserved => cases place <;> cases current <;> restore_cases
   | Wrote t b =>
     have hto : t ≠ o := fun h => ht b (by rw [h])

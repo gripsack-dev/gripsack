@@ -435,7 +435,7 @@ unit_debug!(
 impl fmt::Debug for Target {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Target::Absent => f.write_str("Absent"),
+            Target::Released(origin) => f.debug_tuple("Released").field(origin).finish(),
             Target::Wrote { ident, bytes } => f
                 .debug_struct("Wrote")
                 .field("ident", ident)
