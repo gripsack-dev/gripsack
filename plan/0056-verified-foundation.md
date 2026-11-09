@@ -1178,6 +1178,11 @@ first).
   needed write happened from retained bytes; every refusal has a cause; a
   host that lands the wrong object never reaches the flip.
 
+Gates (docker, this branch): `test` passed (fmt, clippy `-D warnings`,
+cargo test); `proofs` passed in 259 s (no translation drift, 157 theorems,
+37 claims, standard axioms only, 31/31 mutants calibrated); `e2e` 679
+passed in 11m50s.
+
 ### 16.7 Deviations and what is deferred
 
 1. **No MemFs crash exploration of rollback.** The driver executes through
