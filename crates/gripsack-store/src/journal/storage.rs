@@ -1,9 +1,7 @@
 //! One pinned directory owns journal IO, including quarantine and cleanup.
 use crate::private_state;
 use gripsack_fs::Dir;
-use gripsack_policy::journal_protocol::{
-    DurableRecord, PublicationAction, RecordPublication, RecordRole,
-};
+use gripsack_kernel::journal::{DurableRecord, PublicationAction, RecordPublication, RecordRole};
 use std::{
     io::{self, Read},
     path::{Path, PathBuf},

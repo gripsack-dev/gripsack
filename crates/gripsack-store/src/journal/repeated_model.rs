@@ -19,7 +19,7 @@
 //! No concurrent edits occur under the lifecycle lock. A new edit can occur
 //! after EACH crash, including after one destination has been recovered.
 
-use gripsack_policy::selection::SelectionIdentity;
+use gripsack_kernel::selection::SelectionIdentity;
 
 use super::{Classification, RecoveryFacts, classify};
 use crate::journal::recover::{RecoveryDecision, decide_from};
@@ -126,11 +126,11 @@ fn classification(d: Disk, s: Scenario, policy: Policy) -> Classification {
     let target = SelectionIdentity::legacy(s.target);
     let current = d.current.map(SelectionIdentity::legacy);
     let facts = RecoveryFacts {
-        previous: previous.as_ref(),
-        target: &target,
-        current: current.as_ref(),
+        previous,
+        target,
+        current,
     };
-    let shipped = classify(&facts);
+    let shipped = classify(facts);
     match policy {
         // The pre-0028 direction heuristic, driven through the same disk:
         // absent current counts as zero, so a fresh machine's interrupted

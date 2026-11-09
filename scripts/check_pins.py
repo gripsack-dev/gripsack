@@ -32,7 +32,7 @@ Coupled pins move as ONE proposal each:
           deno-version pins. Retired platform hashes are historical only.
   tools   cargo-auditable (version + both musl tarball sha256s), tla2tools
           (version + jar sha256), uv (version + both wheel hashes),
-          node 22 (both setup-node pins).
+          node 22 (the setup-node pin in ci.yml).
   images  other digest-pinned FROM lines (eclipse-temurin, python) —
           tag-scoped digests coupled to nothing else.
 
@@ -77,7 +77,6 @@ MANIFEST_ACCEPT = ", ".join([
 WORKFLOW_FILES = [
     ".github/workflows/ci.yml",
     ".github/workflows/release-core.yml",
-    ".github/workflows/examples.yml",
 ]
 HOST_RS = "crates/gripsack-fetch/src/host.rs"
 

@@ -4,6 +4,31 @@ User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
 
+## [0.52.0] — Verified foundation, phase one
+
+A foundation release: no command or workspace authoring changes. It starts
+plan 0056, which moves Gripsack's core decisions into a small kernel proved
+in Lean.
+
+### Changed
+
+- Commit classification after a crash, garbage-collection admission and
+  pruning, and journal record publication now run from `gripsack-kernel`, a
+  dependency-free crate whose Rust is translated to Lean (Charon/Aeneas) and
+  proved there: 34 theorems, standard axioms only, each calibrated against
+  deliberately broken variants. Behaviour is unchanged; the proofs now cover
+  the exact code that ships.
+- Release assets no longer include the release-evidence JSON, runtime-evidence
+  JSON or qualification bundle. The core tarball, Conda helper (with manifest
+  and licences), SDK tarball, checksums and `install.sh` are unchanged in form.
+
+### Internal
+
+- Release is now local qualification of the exact source plus one script that
+  publishes those same bytes; committed evidence logs, receipt checkers and
+  waiver plumbing were removed.
+
+
 ## [0.51.0] — Native workspaces
 
 ### Added

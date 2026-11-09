@@ -25,6 +25,8 @@ from pathlib import Path
 # Each protected crate owns one domain/effect boundary. New direct
 # dependencies require a deliberate reviewed update of this map.
 ALLOWED: dict[str, frozenset[str]] = {
+    # plan/0056: the ring-0 kernel has no dependencies at all.
+    "gripsack-kernel": frozenset(),
     "gripsack-policy": frozenset({"vstd"}),
     "gripsack-ir": frozenset({
         "gripsack-policy", "serde", "serde_json", "thiserror", "jsonschema",
@@ -32,7 +34,8 @@ ALLOWED: dict[str, frozenset[str]] = {
         "sha2", "vstd", "url",
     }),
     "gripsack-store": frozenset({
-        "gripsack-fs", "gripsack-ir", "gripsack-policy", "gripsack-process", "serde", "serde_json",
+        "gripsack-fs", "gripsack-ir", "gripsack-kernel", "gripsack-policy", "gripsack-process", "serde",
+        "serde_json",
         "toml", "sha2", "tempfile", "getrandom",
         # url: pure RFC3986 parsing for logical_text's file-URL mapping (no
         # network/TLS surface). jsonschema: dev-only schema↔producer parity

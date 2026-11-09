@@ -1,0 +1,25 @@
+[package]
+name = "gripsack-kernel"
+description = "gripsack ring-0 kernel (plan/0056): pure decisions in plain safe Rust, translated to Lean 4 by Charon/Aeneas and proved under proofs/"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# The kernel has no dependencies, by construction (plan/0056 §6): no IO,
+# no floats, no `dyn`, `no_std` + `alloc`. scripts/check_architecture.py
+# enforces the empty set.
+[dependencies]
+
+# Read by Charon when the `proofs` gate translates this crate
+# (proofs/extract.sh). Translation starts from the decision modules under
+# proof and follows what they reach; the production conveniences in
+# `convenience.rs` (Display, FromStr, Ord, Hash, iteration) are never
+# reached, so they stay outside the proved surface.
+[package.metadata.charon]
+start_from = [
+    "gripsack_kernel::generation",
+    "gripsack_kernel::selection",
+    "gripsack_kernel::retention",
+    "gripsack_kernel::journal",
+]

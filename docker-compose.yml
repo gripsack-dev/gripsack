@@ -1,16 +1,22 @@
-# gripsack build/test/release services (plan/0003 §3).
-#   docker compose run --build --rm test      # fmt + clippy + cargo test
+# gripsack build/test/release services (plan/0003 §3, plan/0056 §7, plan/0057).
+# Cargo builds use BuildKit cache mounts (Dockerfile); the first build after
+# `docker builder prune` is cold, every later one reuses the dependency tree.
+#
+# Required local qualification (.ci/pilot.json, via scripts/local_ci.py):
+#   docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
 #   docker compose run --build --rm ts-test   # deno test on the frontend
 #   docker compose run --build --rm e2e       # flow tests (offline)
-# Deep campaigns below are optional and run only when explicitly selected.
+#   docker compose run --build --rm audit     # cargo audit (core + helper locks)
+#   python3 scripts/release.py prepare        # release/helper/tools services -> ./dist/
+#   python3 scripts/release.py verify         # artifact checks + installed-consumer smoke
+#
+# Optional, only when explicitly selected (never release-blocking):
 #   docker compose run --build --rm model     # TLC model gate via scripts/check_models.sh
 #   docker compose run --build --rm tlaps     # transaction induction + semantic calibration (amd64)
 #   docker compose run --build --rm verify    # Verus proofs + mutant calibration (amd64 only)
-#   docker compose run --build --rm -e VERSION=x.y.z release   # tarball → ./dist/
+#   docker compose run --build --rm fuzz      # corpus replay (never without an owner request)
 #   scripts/check_reproducible.sh             # two clean release builds, compared (0042 F)
-#     (drives this file's `repro` service twice, pinned to the captured
-#      image ID; artifacts under a unique repro/run-* dir — REPRO_OUTPUT
-#      parameterizes the mount)
+#     (drives this file's `repro` service twice; artifacts under repro/run-*)
 
 services:
   test:
@@ -21,14 +27,6 @@ services:
     # The gate runs at image-build time (RUN steps); if the image
     # exists, the gate passed. The command is just a confirmation.
     command: 'echo "gate passed: fmt + clippy -D warnings + cargo test"'
-
-  gnu-test:
-    profiles: [optional]
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: gnu-test
-    command: 'echo "gate passed: GNU loader admission and auxiliary-input regressions"'
 
   ts-test:
     build:
@@ -65,14 +63,6 @@ services:
     # proofs + calibration run at image-build time; the image existing IS the gate.
     command: 'echo "gate passed: cargo verus verify -p gripsack-policy + seeded-mutant calibration (scripts/check_verus.sh)"'
 
-  mutants:
-    profiles: [optional]
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: mutants
-    command: 'echo "gate passed: mutation campaigns"'
-
   build:
     build:
       context: .
@@ -81,13 +71,15 @@ services:
     command: cargo build --locked
 
   # Exports a versioned tarball + checksum to ./dist/ (VERSION required).
-  # The tarball layout is the install.sh contract (plan/0003 §4):
-  #   gripsack-<VERSION>-<TARGET>.tar.gz containing <dir>/grip
+  # The binary is built by the Dockerfile `release` stage (cargo auditable,
+  # stripped, static-checked). The tarball layout is the install contract
+  # (plan/0003 §4): gripsack-<VERSION>-<TARGET>.tar.gz containing <dir>/grip.
+  # HOST_UID/HOST_GID hand the outputs back to the invoking user.
   release:
     build:
       context: .
       dockerfile: Dockerfile
-      target: builder
+      target: release
     command:
       - sh
       - -c
@@ -96,17 +88,62 @@ services:
         VERSION="$${VERSION:?set VERSION to the release version, e.g. -e VERSION=0.1.0}"
         TARGET="$${TARGET:-x86_64-unknown-linux-musl}"
         PKG="gripsack-$$VERSION-$$TARGET"
-        cargo auditable build --release --locked -p gripsack \
-        && strip target/release/grip \
-        && staging="$$(mktemp -d)" \
-        && mkdir -p "$$staging/$$PKG" \
-        && install -m755 target/release/grip "$$staging/$$PKG/grip" \
-        && tar -czf "/dist/$$PKG.tar.gz" -C "$$staging" "$$PKG" \
-        && cd /dist \
-        && sha256sum "$$PKG.tar.gz" > "$$PKG.tar.gz.sha256" \
-        && echo "released: /dist/$$PKG.tar.gz"
+        staging="$$(mktemp -d)"
+        mkdir -p "$$staging/$$PKG"
+        install -m755 release-bin/grip "$$staging/$$PKG/grip"
+        tar -czf "/dist/$$PKG.tar.gz" -C "$$staging" "$$PKG"
+        cd /dist
+        sha256sum "$$PKG.tar.gz" > "$$PKG.tar.gz.sha256"
+        chown "$${HOST_UID:-0}:$${HOST_GID:-0}" "$$PKG.tar.gz" "$$PKG.tar.gz.sha256"
+        echo "released: /dist/$$PKG.tar.gz"
     volumes:
       - ./dist:/dist
+
+  # Conda helper with the committed-pin check (tools/conda-helper/package.py):
+  # source read-only at the canonical /src, cwd /. Outputs land in ./dist/.
+  helper:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: local-helper
+    working_dir: /
+    environment:
+      GRIPSACK_CONDA_PACKAGING_CONTAINER: "1"
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        python3 /src/tools/conda-helper/package.py --dist /out --target x86_64-unknown-linux-musl --check
+        chown "$${HOST_UID:-0}:$${HOST_GID:-0}" /out/gripsack-conda-*
+    volumes:
+      - .:/src:ro
+      - ./dist:/out
+
+  # Pinned node/deno/rust/cargo-audit tool image with the source at /app.
+  # scripts/release.py uses it for the SDK pack and the installed-consumer smoke.
+  tools:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: local-tools
+    working_dir: /app
+
+  # Dependency advisories for both lockfiles (fetches the current RustSec db).
+  audit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: local-tools
+    working_dir: /app
+    command:
+      - sh
+      - -ec
+      - |
+        cargo audit
+        cargo audit --file tools/conda-helper/Cargo.lock
 
   e2e:
     build:
@@ -169,3 +206,27 @@ services:
       # The runner exports a unique absolute directory. A default is required:
       # compose interpolates every service even when running an unrelated gate.
       - ${REPRO_OUTPUT:-./repro}:/dist
+
+  # plan/0056: render docs/diagrams/*.d2 → *.svg (pinned d2, BuildKit build).
+  #   docker compose run --build --rm diagram
+  diagram:
+    profiles: [tools]
+    build:
+      context: docs/diagrams
+      dockerfile: Dockerfile
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./docs/diagrams:/diagrams
+
+  # plan/0056 §7: the Lean proof gate over the Charon/Aeneas translation of
+  # crates/gripsack-kernel — regenerate, check no drift against the committed
+  # proofs/Extracted/, lake build, axiom audit, mutant calibration.
+  #   docker compose run --build --rm proofs
+  #   sh proofs/refresh.sh      # regenerate and copy out proofs/Extracted/
+  proofs:
+    profiles: [proofs]
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: proofs/Dockerfile
+      target: gate

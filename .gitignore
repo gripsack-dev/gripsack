@@ -13,7 +13,6 @@ demos/out/
 /persistence-reports/
 
 # Generated verification output is not source or durable evidence.
-# New runner reports require deliberate admission; see verification/reports/README.md.
 *.log
 .verus-log/
 /specs/**/states/
@@ -21,3 +20,9 @@ demos/out/
 /specs/**/*.tlaps/
 /specs/**/*.out
 *.hprof
+
+# Local qualification scratch (scripts/release.py verify).
+/local-ci/
+
+# plan/0056 proofs: lake products and packages live in the proofs image
+/proofs/.lake/

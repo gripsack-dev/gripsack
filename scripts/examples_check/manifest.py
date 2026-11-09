@@ -15,8 +15,6 @@ EXAMPLES = [
      "kind": "workspace", "expect_outputs": {"dotfiles": "profile"}},
     {"id": "readme", "source": "core/README.md", "locator": {"fence": 0},
      "kind": "workspace", "expect_outputs": {"dotfiles": "profile"}},
-    {"id": "readme-conda-wheel", "source": "core/README.md", "locator": {"fence": 1},
-     "kind": "fragment", "reason": "Provider configuration fragment requiring the conda import, an independently approved wheel digest, and enclosing package/workspace declarations; the example URL is illustrative."},
     {"id": "workspaces", "file": "workspaces.md", "locator": {"fence": 0},
      "kind": "workspace", "expect_outputs": {"dotfiles": "profile"},
      "fixtures": {"config/editor.toml": 'theme = "dark"\n'}},

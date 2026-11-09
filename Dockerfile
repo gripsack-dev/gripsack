@@ -8,8 +8,9 @@
 # the grip binary stays musl-static; deno-dependent stages (ts-test,
 # e2e) run on glibc bases, where the static binary works fine.
 
-# GNU-linked loader fixtures require a GNU compiler and runtime. Coupled to
-# the musl builder/native CI toolchain by scripts/check_pins.py.
+# GNU Rust toolchain for the local-tools image (dependency audit and the
+# installed-consumer smoke). Coupled to the musl builder/native CI toolchain
+# by scripts/check_pins.py.
 ARG GNU_RUST_IMAGE=rust:1.98.0@sha256:620dbcd124499c59e2406d3741574b5c5838cf9eb9656f0c3a03948f79b02959
 
 # Digest-pinned (plan/0042 F): this manifest-list sha256 is the exact
@@ -19,7 +20,19 @@ ARG GNU_RUST_IMAGE=rust:1.98.0@sha256:620dbcd124499c59e2406d3741574b5c5838cf9eb9
 # (upstream-watch workflow). The historical multi-architecture index remains
 # pinned; active qualification resolves only its linux/amd64 leaf.
 FROM rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce AS builder
-ENV CARGO_BUILD_JOBS=4
+# plan/0057 D2/D3: one dev profile for every debug build in the image, so
+# `cargo test`, clippy and the e2e binary share one set of dependency
+# artifacts (opt-level 1 keeps e2e launches from paying unoptimized hashing;
+# assertions and overflow checks stay on, as in a plain dev build). 8 jobs
+# on the 32-core / 30 GiB worker: the qualification gates run one at a
+# time, and 8 bounds worst-case rustc memory well inside the VM (plan/0057 D3).
+# Cargo's registry and the target directories are BuildKit cache mounts
+# (plan/0057 D1): third-party crates compile once per profile and never
+# enter an image layer; workspace crates are always rebuilt (fresh mtimes).
+ENV CARGO_BUILD_JOBS=8 \
+    CARGO_PROFILE_DEV_OPT_LEVEL=1 \
+    CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true \
+    CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true
 RUN apk add --no-cache musl-dev git curl xz \
     && rustup component add clippy rustfmt
 # cargo-auditable embeds the dependency tree into the release binary
@@ -55,11 +68,15 @@ COPY schema/ir/v10.json ./schema/ir/v10.json
 FROM builder AS test
 COPY tools/conda-helper ./tools/conda-helper
 RUN apk add --no-cache python3 build-base cmake perl linux-headers xz-dev bzip2-dev zstd-dev
-RUN cargo fmt --check \
+RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=gripsack-target-dev,target=/app/target \
+    cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
 # The optional installer has its own dependency lock, but not an optional gate.
-RUN cargo fmt --manifest-path tools/conda-helper/Cargo.toml --all --check \
+RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=gripsack-target-dev,target=/app/target \
+    cargo fmt --manifest-path tools/conda-helper/Cargo.toml --all --check \
     && CARGO_TARGET_DIR=/app/target cargo clippy --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets -- -D warnings \
     && CARGO_TARGET_DIR=/app/target cargo test --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets
 # CI-only script changes must not invalidate Rust compilation layers.
@@ -69,42 +86,25 @@ COPY scripts ./scripts
 # must not invalidate the Rust compilation layers.
 COPY typescript/src ./typescript/src
 COPY typescript/deno.json typescript/package.json ./typescript/
-RUN python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
-# Fast generated-source checks remain routine; mutation campaigns are opt-in.
-RUN cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \
+RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
+    python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
+# Fast generated-source freshness checks.
+RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
+    cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \
     && python3 scripts/gen_diagnostic_registry.py --check \
     && python3 scripts/gen_frontend_embed.py --check
 
-FROM test AS mutants
-RUN python3 scripts/gen_diagnostic_registry.py --self-check \
-    && python3 scripts/check_journal_admission.py \
-    && python3 scripts/check_journal_protocol.py \
-    && python3 scripts/check_gc_roots.py \
-    && python3 scripts/check_rate_admission.py \
-    && python3 scripts/check_http_budget.py \
-    && python3 scripts/check_process_bounds.py \
-    && python3 scripts/check_update_survey.py
-
-# Exercise debug assertions, overflow checks and fault controls without paying
-# unoptimized hashing costs on every sealed executable launch. Keep the full
-# debug image for tooling; the e2e copy omits only debugger metadata.
+# The e2e binary: the builder's dev profile (assertions, overflow checks and
+# fault controls on, opt-level 1), built in the same target cache as the
+# `test` stage so the dependency tree is shared. The copy outside the cache
+# mount omits only debugger metadata.
 FROM builder AS bin
-RUN CARGO_PROFILE_DEV_OPT_LEVEL=1 \
-    CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true \
-    CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true \
+RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=gripsack-target-dev,target=/app/target \
     cargo build --locked -p gripsack \
     && apk add --no-cache binutils \
     && mkdir -p /app/e2e-bin \
     && objcopy --strip-debug /app/target/debug/grip /app/e2e-bin/grip
-
-# Optional GNU-native duplicate regressions; these cannot execute on Alpine.
-# The e2e stage separately exercises the shipped musl core on a GNU host.
-FROM ${GNU_RUST_IMAGE} AS gnu-test
-ENV CARGO_BUILD_JOBS=4
-WORKDIR /app
-COPY --from=builder /app /app
-RUN cargo test --locked -p gripsack-exec --lib workspace::consumer::admit::host_runtime_tests \
-    && cargo test --locked -p gripsack-process --lib input::tests
 
 # The model gate (plan/0028, 0042 G): TLC over the TLA+ specs via the
 # canonical runner scripts/check_models.sh — positive protocols AND
@@ -148,7 +148,7 @@ RUN python3 scripts/check_tlaps.py
 # all digest/version-pinned; the verifier's Rust (1.98.0) is the
 # repo's pinned toolchain.
 FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 AS verify
-ENV CARGO_BUILD_JOBS=4
+ENV CARGO_BUILD_JOBS=8
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     curl ca-certificates unzip build-essential python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -228,9 +228,12 @@ COPY examples ./examples
 COPY install.sh ./install.sh
 COPY scripts ./scripts
 ENV GRIPSACK_E2E_IN_DOCKER=1
+# plan/0057 D4: pytest-xdist workers; every test is sandboxed under its own
+# tmp_path and fixture servers bind port 0. Override with -e for other hosts.
+ENV PYTEST_XDIST_AUTO_NUM_WORKERS=6
 ENV GRIPSACK_BIN=/usr/local/bin/grip
 WORKDIR /app/e2e
-CMD ["uv", "run", "--locked", "--no-sync", "pytest", "--ignore=test_persistence_matrix.py", "--ignore=test_golden.py"]
+CMD ["uv", "run", "--locked", "--no-sync", "pytest", "-n", "auto", "--durations=25", "--ignore=test_persistence_matrix.py", "--ignore=test_golden.py"]
 
 # Nonpublishing local qualification tools. Tool bytes are immutable; dependency
 # audits deliberately fetch the current advisory database and retain its revision.
@@ -257,6 +260,9 @@ RUN tar -xzf /tmp/audit.tgz -C /usr/local/bin --strip-components=1 \
     && rm /tmp/audit.tgz
 WORKDIR /app
 COPY . .
+# Qualification checkouts are mode 700 (umask 077) and COPY keeps modes; the
+# package and smoke steps run as the host uid, so make the source readable.
+RUN chmod -R a+rX /app
 
 # Native helper tooling; the source is mounted read-only at canonical /src.
 # Default packaging builds once with pin/license/protocol checks; two independent
@@ -265,12 +271,18 @@ FROM builder AS local-helper
 RUN apk add --no-cache python3 build-base binutils cmake perl linux-headers \
     xz-dev bzip2-dev zstd-dev
 
-# Stripped static release binary.
+# Stripped release binary with its embedded SBOM. Static linkage, the SBOM and
+# the version are verified on the packaged bytes by scripts/release.py verify.
 FROM builder AS release
-RUN cargo auditable build --release --locked -p gripsack \
+# The release target directory is its own cache mount (plan/0057 D1): the
+# dependency tree is reused between releases, gripsack's crates are rebuilt,
+# and the binary is copied out of the mount so the image carries it.
+RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=gripsack-target-release,target=/app/target \
+    cargo auditable build --release --locked -p gripsack \
     && strip target/release/grip \
-    && ldd target/release/grip 2>&1 | grep -q "Not a valid dynamic program\|not a dynamic executable" \
-    && echo "static: ok"
+    && mkdir -p /app/release-bin \
+    && cp target/release/grip /app/release-bin/grip
 
 # Fuzz builds share the core compiler. Select its installed version explicitly:
 # +stable may provision a newer release even inside a digest-pinned image.
@@ -282,5 +294,5 @@ CMD ["sh", "scripts/check_fuzz.sh"]
 
 # Shipping image: just the binary.
 FROM scratch AS ship
-COPY --from=release /app/target/release/grip /grip
+COPY --from=release /app/release-bin/grip /grip
 ENTRYPOINT ["/grip"]

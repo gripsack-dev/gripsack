@@ -1,0 +1,63 @@
+# User-facing: what gripsack does with the file that is already at a
+# destination. Render: docker compose run --build --rm diagram
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 24
+  }
+}
+direction: down
+
+classes: {
+  q: {
+    shape: diamond
+    style: {font-size: 15; fill: "#fbf1e1"; stroke: "#c08a2e"}
+  }
+  go: {
+    style: {font-size: 15; border-radius: 8; fill: "#e3f1e8"; stroke: "#4c9a6a"}
+  }
+  stop: {
+    style: {font-size: 15; border-radius: 8; fill: "#f8e3e3"; stroke: "#b5525c"}
+  }
+  keep: {
+    style: {font-size: 15; border-radius: 8; fill: "#efe1f5"; stroke: "#7d4d9a"}
+  }
+}
+
+dest: "a destination in your profile\n~/.config/editor/config.toml" {
+  shape: document
+  style: {font-size: 16; fill: "#ffffff"; stroke: "#5b7db1"}
+}
+
+live: "what is live there now?" {class: q}
+dest -> live
+
+absent: "nothing" {shape: text; style.font-size: 14}
+mine: "the file gripsack\nwrote last time" {shape: text; style.font-size: 14}
+drift: "gripsack's file,\nchanged since" {shape: text; style.font-size: 14}
+foreign: "a file gripsack\nnever wrote" {shape: text; style.font-size: 14}
+
+live -> absent
+live -> mine
+live -> drift
+live -> foreign
+
+write: "write it" {class: go}
+update: "update it" {class: go}
+preserve: "preserve the drift\n(apply and rollback both skip it;\ncopy it back into the repo\nto make it the new desired state)" {class: keep}
+refuse: "refuse —\nthe plan tells you" {class: stop}
+takeover: "grip apply --take-over\nadopts it deliberately,\nprior bytes journaled" {class: go}
+
+absent -> write
+mine -> update
+drift -> preserve
+foreign -> refuse
+refuse -> takeover: "only if you ask" {style: {stroke-dash: 3; font-size: 13}}
+
+modes: "three ownership modes" {
+  style: {font-size: 15; border-radius: 12; fill: "#f7f7f7"; stroke: "#999999"; stroke-dash: 3}
+  sym: "symlinkTo\nstore-owned, read-only" {style: {font-size: 13; fill: "#ffffff"}}
+  copy: "trackedCopyTo\nreal file, drift preserved" {style: {font-size: 13; fill: "#ffffff"}}
+  block: "managedBlock\none marked section; the\nrest of the file is yours" {style: {font-size: 13; fill: "#ffffff"}}
+}

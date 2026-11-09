@@ -1,0 +1,128 @@
+# plan/0056 — the verified foundation, end state.
+# Render: docker compose run --build --rm diagram
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+
+title: "gripsack — verified foundation (plan 0056 end state)\nCode moves inward to gain guarantees; each ring trusts only the rings inside it" {
+  near: top-center
+  shape: text
+  style: {font-size: 30; bold: true}
+}
+
+classes: {
+  crate: {
+    shape: package
+    style: {font-size: 18; bold: true}
+  }
+  check: {
+    shape: page
+    style: {font-size: 16; italic: true; fill: "#ffffff"; stroke-dash: 2}
+  }
+  world: {
+    shape: cylinder
+    style: {fill: "#eeeeee"; stroke: "#888888"; font-size: 15}
+  }
+  proof: {
+    shape: document
+    style: {fill: "#fff4d6"; stroke: "#b8860b"; font-size: 15}
+  }
+}
+
+world: The world (not proved) {
+  style: {fill: "#f7f7f7"; stroke: "#999999"; stroke-dash: 4; font-size: 20; bold: true}
+  fs: "Filesystem\n(ext4 · btrfs · xfs · tmpfs · WSL2)" {class: world}
+  net: "Network\nGitHub · Conda channels · OCI registries" {class: world}
+  docker: "Docker Engine" {class: world}
+  systemd: "systemd --user" {class: world}
+  deno: "Deno\n(sandboxed evaluator)" {class: world}
+}
+
+r4: "Ring 4 — Product" {
+  style: {fill: "#eef3fb"; stroke: "#5b7db1"; font-size: 22; bold: true; border-radius: 12}
+  cli: "gripsack\nCLI · render · review · adopt · doctor" {class: crate}
+  r4check: "e2e flows · golden IR · examples" {class: check}
+
+  r3: "Ring 3 — Edge (untrusted inputs)" {
+    style: {fill: "#e3f1e8"; stroke: "#4c9a6a"; font-size: 22; bold: true; border-radius: 12}
+    ir: "gripsack-ir\nschema + admission" {class: crate}
+    sources: "gripsack-sources\nfetch · archives · Conda/Pixi\npins · sharing · rate limits" {class: crate}
+    runtime: "gripsack-runtime\nservices · schedules · tasks\nlaunchers · run/shell" {class: crate}
+    r3check: "sandbox · typed admission\nhash-verified bytes\nweekly fuzz (3 parsers)" {class: check}
+
+    r2: "Ring 2 — Host (trusted, small, assumptions registered)" {
+      style: {fill: "#fbf1e1"; stroke: "#c08a2e"; font-size: 22; bold: true; border-radius: 12}
+      host: "gripsack-host\ndriver loop · cap-std fs · store layout\nwire codecs · process supervisor · locks" {class: crate}
+      r2check: "crash-injecting storage harness\nfault injection · decoder properties\nLoom (scheduler coordination)" {class: check}
+
+      r1: "Ring 1 — Protocol (proved, Lean)" {
+        style: {fill: "#f8e3e3"; stroke: "#b5525c"; font-size: 22; bold: true; border-radius: 12}
+        machines: "sans-IO machines (observe → decide → one command)\napply · rollback · recover · gc · activation\njournal ordering + barriers" {class: crate}
+        r1thm: "P1 durable intent before mutation\nP2 crash anywhere + recover ⇒ prior | intended | foreign\nP3 cleanup keeps evidence; bad records ⇒ no effects\nP4 hooks only after durable Started" {class: check}
+
+        r0: "Ring 0 — Kernel (proved, Lean)" {
+          style: {fill: "#efe1f5"; stroke: "#7d4d9a"; font-size: 22; bold: true; border-radius: 12}
+          kernel: "gripsack-kernel\npure · no IO · no float · no dyn" {class: crate}
+          decisions: "planning · ownership/consent · drift\nmanaged-block splice · selection identity\ncommit classification · recovery decisions\nGC retention · generation ids" {
+            shape: rectangle
+            style: {font-size: 15}
+          }
+          r0thm: "K1 never overwrite drift (per unit)\nK2 per-unit fidelity  K3 commit iff current=target\nK4 GC deletes only non-roots  K5 splice keeps foreign bytes\nK6 fresh ids, floor, immutable generations" {class: check}
+          kernel -> decisions: holds
+        }
+
+        machines -> r0.kernel: "decide(state, event)"
+      }
+
+      host -> r1.machines: "events:\nObserved · EffectLanded/Failed · Crash" {style.stroke: "#b5525c"}
+      r1.machines -> host: "commands (with expect):\nCapture · Mutate · Publish · Flip · Barrier · Cleanup" {style.stroke: "#b5525c"}
+    }
+
+    ir -> r2.r1.r0.kernel: "admitted typed values only"
+    sources -> r2.host: "verified bytes → store"
+    runtime -> r2.host: "lifecycle commands"
+  }
+
+  cli -> r3.ir: "evaluated IR"
+  cli -> r3.runtime
+  cli -> r3.sources
+}
+
+r4.r3.r2.host -> world.fs: "S1–S7 storage model" {style: {stroke: "#c08a2e"; stroke-width: 3}}
+r4.r3.sources -> world.net
+r4.r3.runtime -> world.docker
+r4.r3.runtime -> world.systemd
+r4.cli -> world.deno: "evaluate (no env, no net)"
+
+proofs: "proofs/ — Lean 4 lake project" {
+  style: {fill: "#fffaf0"; stroke: "#b8860b"; font-size: 20; bold: true; border-radius: 12}
+  extracted: "Extracted/\n(Aeneas output, committed;\nCI checks no drift)" {class: proof}
+  storage: "Storage.lean\nS1 atomic rename · S2 fsync durability\nS3 kill vs power loss (any non-durable subset)\nS4 one writer · S5 external writes detected\nS6 name equivalence · S7 hash identity\n(same assumptions fault-tested in ring 2)" {class: proof}
+  kernelthm: "Kernel/*.lean\nK1–K6" {class: proof}
+  protothm: "Protocol/*.lean\nP1–P4" {class: proof}
+  claims: "Claims.lean\n→ generated guarantee list\n+ #print axioms audit\n→ grip doctor --guarantees" {class: proof}
+  extracted -> kernelthm
+  extracted -> protothm
+  storage -> protothm
+  kernelthm -> claims
+  protothm -> claims
+}
+
+r4.r3.r2.r1.r0.kernel -> proofs.extracted: "Charon → Aeneas\n(the shipped Rust)" {
+  style: {stroke: "#7d4d9a"; stroke-width: 3; animated: true}
+}
+r4.r3.r2.r1.machines -> proofs.extracted: "Charon → Aeneas" {
+  style: {stroke: "#b5525c"; stroke-width: 3; animated: true}
+}
+
+gate: "Release = green CI on the tag" {
+  style: {fill: "#ffffff"; stroke: "#333333"; font-size: 18; bold: true; border-radius: 8}
+  pr: "required gate (every PR)\ntest · ts-test · e2e · proofs" {shape: step}
+  weekly: "weekly, never blocking\n≤5 TLC bug-finders · 3 fuzz targets" {shape: step}
+  tag: "tag → musl tarball → publish" {shape: step}
+  pr -> tag
+}

@@ -18,17 +18,16 @@ CRATE = ROOT / "crates/gripsack-policy"
 # uses project_graph_role directly. Retained named obligations remain required.
 # The BuildKit cutover removes eight named definition/session functions and
 # nine worker-lease functions (baseline 799676d); retained family floors remain.
-MIN_OBLIGATIONS = 410
+# plan/0056 F1 moved the selection classifier, generation inventory, GC
+# retention and journal publication/authority kernels to `gripsack-kernel`,
+# where Lean proves them (the `proofs` gate); their 26 obligations leave the
+# Verus floor.
+MIN_OBLIGATIONS = 384
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
     "task": tuple("task::" + name for name in (
         "prerequisite_succeeded", "admit_conflict", "admit_task_edge",
-    )),
-    "recovery": tuple("selection::" + name for name in (
-        "TransactionId::from_bytes", "TransactionId::as_bytes",
-        "SelectionIdentity::legacy", "SelectionIdentity::transaction",
-        "SelectionIdentity::generation", "SelectionIdentity::transaction_id", "classify",
     )),
     "activation": tuple("activation::" + name for name in (
         "AttemptNumber::admit", "AttemptNumber::first", "AttemptNumber::value",
@@ -36,15 +35,6 @@ FAMILIES = {
         "next_attempt", "finish_attempt", "supersede",
     )),
     "ownership": ("ownership::plan_copy", "ownership::plan_link"),
-    "retention": tuple("retention::" + name for name in (
-        "admit_gc", "contains_generation", "contains_identity", "plan_prune", "plan_delete",
-        "lemma_delete_monotone", "lemma_delete_monotone_prefix",
-    )),
-    "generation-inventory": tuple("generation::" + name for name in (
-        "GenerationId::new", "GenerationId::value", "GenerationId::checked_next",
-        "GenerationId::checked_previous", "GenerationInventory::new",
-        "GenerationInventory::as_slice", "GenerationList::new", "GenerationList::inventory",
-    )),
     "merge": tuple("merge::" + name for name in (
         "splice_bytes", "lemma_rest_is_gaps", "lemma_splice_canonical", "lemma_splice_identity",
         "lemma_gaps_end_with_tail", "lemma_splice_preserves_edges",
@@ -133,10 +123,6 @@ FAMILIES = {
     )) + tuple("update_survey::UpdateSummary::" + name for name in (
         "selected", "unchanged", "changed", "skipped", "failed", "outcome", "publishes_lock",
     )),
-    "journal-publication": tuple("journal_protocol::RecordPublication::" + name for name in (
-        "new", "action", "acknowledge", "finish",
-    )),
-    "journal-mutation-authority": ("journal_protocol::admit_mutation",),
     "journal-cleanup": tuple("journal_protocol::CleanupProgress::" + name for name in (
         "new", "action", "acknowledge",
     )),
@@ -200,10 +186,6 @@ MUTANTS = (
            "            if ed != ad {", "            if false {"),
     Mutant("conda-final-prefix", "conda_admission.rs", "conda_admission::admit_response",
            "            } else if ep != ap {", "            } else if false {"),
-    Mutant("classifier", "selection.rs", "selection::classify", "(Some(_), _) => Classification::Ambiguous,", "(Some(_), _) => Classification::Committed,"),
-    Mutant("classifier-transaction-identity", "selection.rs", "selection::classify",
-           "(Some(_), Some(current)) if current == facts.target =>",
-           "(Some(_), Some(current)) if current.generation() == facts.target.generation() =>"),
     Mutant("activation-interrupted-attempt", "activation.rs", "activation::next_attempt",
            "match attempt.checked_next() {", "match Some(*attempt) {"),
     Mutant("activation-stale-outcome", "activation.rs", "activation::finish_attempt",
@@ -215,11 +197,6 @@ MUTANTS = (
     Mutant("ownership-intact-takeover", "ownership.rs", "ownership::plan_copy",
            "Some((written, false)) if live == written => {}",
            "Some((written, true)) if live == written => {}"),
-    Mutant("gc-roots-in-deletion", "retention.rs", "retention::plan_delete", "if !contains_identity(referenced, c) {", "if contains_identity(referenced, c) {"),
-    Mutant("gc-newest-prefix", "retention.rs", "retention::plan_prune",
-           "let g = generations[i];", "let g = generations[generations.len() - 1 - i];"),
-    Mutant("generation-duplicate", "generation.rs", "generation::GenerationInventory::new",
-           "if ids[i - 1].number >= ids[i].number {", "if ids[i - 1].number > ids[i].number {"),
     Mutant("merge-splice", "merge.rs", "merge::splice_bytes", "    out.extend_from_slice(&text[cursor..]);", ""),
     Mutant("merge-scanner-utf8", "merge/scanner.rs", "merge::scanner::scan",
            "span: Span { start: active.start, end },",
@@ -330,17 +307,6 @@ MUTANTS = (
     Mutant("survey-unchanged-publication", "update_survey.rs", "update_survey::UpdateSummary::publishes_lock",
            "{ mode == UpdateMode::Publish && self.counts.failed == 0 && self.counts.changed != 0 }",
            "{ mode == UpdateMode::Publish && self.counts.failed == 0 }"),
-    Mutant("journal-publication-file-barrier", "journal_protocol.rs", "journal_protocol::RecordPublication::acknowledge",
-           "self.next = match action {\n            PublicationAction::Stage => PublicationAction::SyncFile,",
-           "self.next = match action {\n            PublicationAction::Stage => PublicationAction::PublishName,"),
-    Mutant("journal-publication-failed-ack", "journal_protocol.rs", "journal_protocol::RecordPublication::acknowledge",
-           "if !succeeded || action != self.next {", "if action != self.next {"),
-    Mutant("journal-publication-early-authority", "journal_protocol.rs", "journal_protocol::RecordPublication::finish",
-           "if self.next == PublicationAction::Complete { Some(DurableRecord { role: self.role }) }",
-           "if self.next == PublicationAction::PublishName { Some(DurableRecord { role: self.role }) }"),
-    Mutant("journal-mutation-role-confusion", "journal_protocol.rs", "journal_protocol::admit_mutation",
-           "if marker.role == RecordRole::RunMarker && entry.role == RecordRole::MutationEntry {",
-           "if marker.role == RecordRole::RunMarker || entry.role == RecordRole::MutationEntry {"),
     Mutant("journal-cleanup-uncommitted-authority", "journal_protocol.rs", "journal_protocol::CleanupProgress::new",
            "reconciled: if scope == CleanupScope::Committed { total } else { 0 },",
            "reconciled: total,"),
@@ -443,20 +409,20 @@ def main() -> None:
             evidence.mutant(status, path, expected, crate.parent.parent)
             print(f"calibration: {mutation.name} rejected in {','.join(expected)}", flush=True)
         # A real unrelated failing lemma in the same source file cannot
-        # impersonate the classifier mutant's named production failure.
+        # impersonate the ownership mutant's named production failure.
         crate = copy_crate(temporary / "unrelated-lemma")
-        path = crate / "src/selection.rs"
+        path = crate / "src/ownership.rs"
         source = path.read_text()
         prefix, suffix = source.rsplit("}", 1)
         path.write_text(prefix + "pub proof fn unrelated_calibration_failure() ensures false {}\n}" + suffix)
         status, evidence = verify(crate, temporary / "unrelated-target")
-        evidence.mutant(status, path, ("selection::unrelated_calibration_failure",), crate.parent.parent)
+        evidence.mutant(status, path, ("ownership::unrelated_calibration_failure",), crate.parent.parent)
         try:
-            evidence.mutant(status, path, ("selection::classify",), crate.parent.parent)
+            evidence.mutant(status, path, ("ownership::plan_copy",), crate.parent.parent)
         except EvidenceError:
-            print("calibration: unrelated lemma refused as classifier evidence", flush=True)
+            print("calibration: unrelated lemma refused as ownership evidence", flush=True)
         else:
-            raise EvidenceError("unrelated lemma falsely calibrated classifier")
+            raise EvidenceError("unrelated lemma falsely calibrated ownership")
         print(f"VERUS_CALIBRATIONS={len(MUTANTS) + 1}", flush=True)
         from check_collector_verus import check as check_collector
         check_collector(temporary)

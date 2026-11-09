@@ -74,7 +74,7 @@ class Consumer:
             "limits": [
                 "Private non-publishing candidate, not a signed or promoted release.",
                 "Linux/WSL x86_64 only; no ARM, macOS, Windows, private el9 kernel or glibc hardware qualification.",
-                "No fuzz engine or corpus replay (REL-FUZZ-2026-09-27).",
+                "No fuzz engine or corpus replay.",
                 "Tool-image/build caches may be retained; every command below executes anew in fresh consumer homes.",
             ],
         }
@@ -138,9 +138,7 @@ class Consumer:
             require(not self.run(["git", "status", "--porcelain", "--untracked-files=no"]).strip(), "tracked candidate source is dirty")
         require(commit is not None and len(commit) == 40 and all(c in "0123456789abcdef" for c in commit),
                 "require exact GRIPSACK_CANDIDATE_COMMIT when image has no .git")
-        image = os.environ.get("GRIPSACK_TOOL_IMAGE", "")
-        require(image.startswith("sha256:") and len(image) == 71, "require immutable GRIPSACK_TOOL_IMAGE image ID")
-        self.receipt["source"] = {"commit": commit, "tool_image": image, "contracts": {}}
+        self.receipt["source"] = {"commit": commit, "contracts": {}}
         for relative in ("Cargo.toml", "Cargo.lock", "typescript/package.json", "typescript/package-lock.json",
                          "tools/conda-helper/Cargo.toml", "tools/conda-helper/Cargo.lock",
                          "crates/gripsack-fetch/src/conda_pins.rs",
@@ -186,7 +184,7 @@ class Consumer:
         sdk = f"gripsack-core-{sdk_version}.tgz"
         notices = {"LICENSE-pixi": "pixi_git/LICENSE", "LICENSE-UV-MIT": "pixi_git/LICENSE-UV-MIT",
                    "LICENSE-rattler": "rattler_package_streaming/LICENSE"}
-        expected = {core, helper, sdk, *(f"{name}.sha256" for name in (core, helper)),
+        expected = {core, helper, sdk, "install.sh", *(f"{name}.sha256" for name in (core, helper)),
                     f"{helper}.manifest.json", *(f"{helper}.{suffix}" for suffix in notices)}
         actual = {path.name for path in dist.iterdir()}
         require(actual == expected, f"DIST inventory mismatch: missing={expected - actual}, unexpected={actual - expected}")

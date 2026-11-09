@@ -12,40 +12,38 @@ plugins for bespoke transports (`plan/0002`).
 ## Build & test — docker first
 
 Run the gates in containers, not on the host. The host has no toolchain
-contract; the image does.
+contract; the image does. Images build with BuildKit.
 
 ```
 docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
 docker compose run --build --rm ts-test   # typescript frontend tests (deno)
-docker compose run --build --rm e2e uv run --locked --no-sync pytest --ignore=test_persistence_matrix.py --ignore=test_golden.py
-docker compose run --build --rm -e VERSION=x.y.z release   # musl tarball → ./dist/
+docker compose run --build --rm e2e       # offline flow tests (real binary + real frontend)
+docker compose run --build --rm audit     # cargo audit, core + helper locks
+docker compose run --build --rm proofs    # Lean proofs of the kernel (plan/0056 F1)
+python3 scripts/release.py prepare        # release assets → ./dist/
+python3 scripts/release.py verify         # artifact checks + installed-consumer smoke
+docker compose run --build --rm diagram   # render docs/diagrams/*.d2
 ```
 
-The essential profile is `.ci/pilot.json`: Rust, frontend, ordinary offline flows,
-dependency audits, exact packaging and installed consumers. Changed features also
-need actual runtime smokes. `verification/release-handoff.md` lists the commands.
-GNU duplicate builds, TLC/TLAPS/Verus, broad mutation/fuzz campaigns, exhaustive
-persistence and two-build reproducibility are optional and run only on explicit
-owner request (`REL-PRACTICAL-051-2026-10-28`). Unrun does not mean passed.
+The required gates are `.ci/pilot.json` (test, ts-test, e2e, audit,
+package, smoke), run by the local Buildbot (see Workflow). Optional and only
+when asked: `model` (TLC), `tlaps`, `verify` (Verus), `fuzz`,
+`scripts/check_reproducible.sh`. `tlaps` and `verify` are being retired by
+plan/0056 as the Lean proofs replace them; don't extend them. Never
+dispatch fuzz without an owner request.
 
 `--build` after every source change or the image runs stale code. Host
 `cargo test` / `pytest e2e` are fine for fast iteration; always finish
 with the compose gates. `./dist/` and `target/` may contain root-owned
 files (container mounts) — delete via docker or `sudo`.
 
-The active target scope is Linux/WSL x86_64 only
-(`PLATFORM-LINUX-X64-2026-10-09`, plan0048). Other architectures, macOS and
-native Windows are outside scope. Expansion requires a later explicit owner
-decision and native evidence. Runtime safety remains required; optional assurance
-must not be represented as current-source qualification.
+Scope is Linux/WSL x86_64 only (`PLATFORM-LINUX-X64-2026-10-09`).
+Other architectures, macOS and native Windows are out of scope until an
+explicit owner decision.
 
-TLC (the `model` gate) writes run artifacts next to the spec —
-`specs/states/` fingerprint caches and `*_TTrace_*` counterexample
-traces, root-owned from the container. Commit the spec and its cfgs
-(`specs/Transaction.tla`, `specs/cfg/`), NEVER run debris (gitignored;
-the gate runs TLC with `-cleanup`). Keep a counterexample as a cfg
-that must FAIL, not as a committed trace — reproducible beats
-archived.
+TLC writes run artifacts next to the spec (`specs/states/`, `*_TTrace_*`,
+root-owned). Commit specs and cfgs, never run debris. Keep a
+counterexample as a cfg that must FAIL, not as a committed trace.
 
 ## Storage hygiene — standing owner authorization
 
@@ -72,7 +70,7 @@ replacement. The system-volume 128-GiB and state-volume 64-GiB floors remain;
 no qualification gate is waived. Restore B:'s 128-GiB reserve when commissioning
 the replacement drive and recording its new storage identity.
 
-Follow [the storage flow](verification/release-handoff.md#storage-hygiene-and-archive-relocation).
+Follow [the storage flow](docs/operations/storage.md).
 No blanket Docker/volume pruning, deletion of unmatched evidence, or unannounced
 WSL shutdown. Preserve in-use editor libraries rather than killing the editor.
 Guest free space and Windows VHDX space are different measurements.
@@ -86,7 +84,10 @@ permissions or preserved engine identity: verify both and run a retained image.
 
 | Path | Contents |
 |---|---|
-| `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the landed/deferred/rejected ledger — update it in the same PR |
+| `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the one-row-per-plan ledger — update it in the same PR |
+| `plan/0056-verified-foundation.md` | **the active epic**: rings, Lean-proved kernel, target crate layout, trim register, phase ledger |
+| `docs/diagrams/` | d2 sources + rendered SVGs (end-state architecture) |
+| `docs/operations/` | workstation operator runbooks (storage) |
 | `schema/ir/v10.json` | Current native workspace, service and portable-package authoring contract. Strict historical readers exist only for retained data; current execution admits IR10 |
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
 | `crates/gripsack-store` | store paths, generations, GC |
@@ -98,7 +99,7 @@ permissions or preserved engine identity: verify both and run a retained image.
 | `typescript/` | The typed workspace SDK (`@gripsack/core`); also embedded in the binary |
 | `e2e/` | pytest flow tests against the real binary + golden IR corpus |
 | `demos/` | VHS tapes |
-| `specs/` | the TLA+ transaction spec + TLC cfgs (plan/0028) |
+| `specs/` | TLA+ models: TLC cfgs are bug-finders; TLAPS proofs retire under plan/0056 F3 |
 | `.agents/skills/` | maintainer skills: IR evolution, e2e, demo capture, release, PR |
 | `skills/` | public skills: `gripsack-debug` (reading run logs), `gripsack-adopt` |
 | `crates/gripsack-trace` | run tracing: JSONL logs with causal spans |
@@ -148,6 +149,9 @@ stored data needed for rollback and integrity retains its original meaning.
 
 ## Contracts to read before changing behavior
 
+- `plan/0056-verified-foundation.md` — the active direction. It supersedes
+  0047's tooling decisions and 0048's verification/evidence/release contract.
+
 - `plan/0055-workspace-only-product.md` — current workspace-only API and
   clean alpha cutover; supersedes historical module and old-reader contracts.
 
@@ -180,40 +184,40 @@ stored data needed for rollback and integrity retains its original meaning.
   lockfile is the sole source of pinning.
 - Never auto-rollback on post-activation hook failure (0001 §3.8).
 
-## Plan 0048 implementation contract
+## Foundation rules (plan/0056)
 
-For work under `plan/0048-review-response-0.42.0.md`, read §6
-(release-blocking verification), §9 (mandatory scope and authorized
-deferrals) and §10 (code-quality acceptance) before changing code.
-Maintain its leaf-level execution/evidence record. An agent cannot
-downgrade NEXT work, substitute tests for a required proof, omit a
-caller/schema migration, or defer necessary module/type cleanup.
-Missing required evidence blocks release; only the owner's explicit
-decision changes that gate. Use meaningful domain/unit types and
-cohesive modules/crates, not terse APIs or naked policy numbers to
-minimize the diff. Existing workflow/protection notes below describe
-the baseline, not permission to bypass plan 0048's stronger gates.
+- **Rings.** Ring 0 kernel (pure decisions) and ring 1 protocol machines
+  (sans-IO) are proved in Lean over the Aeneas translation of the shipped
+  Rust. Ring 2 host code stays small with registered assumptions; ring 3
+  admits untrusted input. Move code inward to gain guarantees.
+- **Kernel code** (`gripsack-kernel`, once it exists): no IO, no floats, no
+  `dyn`, no dependencies. Change it together with its Lean proofs; the
+  `proofs` gate checks the committed translation has not drifted.
+- **One proof language.** Don't add new Verus contracts, TLAPS proofs or
+  hand-mirrored Rust "model" explorers. Never close a theorem with `sorry`
+  or an axiom that assumes the claim; the axiom audit rejects it.
+- **The survival rule.** An artifact stays only if it is a machine-checked
+  proof, a test guarding user-visible behaviour, or a counterexample finder
+  that caught a real bug. No committed logs, receipts, evidence indexes,
+  waiver IDs or checkers of checkers.
+- **The release rule.** A release is the required gates green on the exact
+  source. Nothing hand-assembled.
 
 ## Workflow
 
-- Exact-source practical local qualification is the release acceptance authority
-  (`LOCAL-PRACTICAL-QUALIFICATION-2026-10-28`, plans0048/0055).
-  The selected essential profile replaces the historical 17-gate/96-partition
-  requirement. Additional assurance is opt-in and explicitly unrun unless
-  executed. No assumed HP-mini access, new signer or hosted duplicate build
-  is a prerequisite; publication remains manual and unsigned.
-- `ci`, `examples`, `repro` and `demo` are explicit manual diagnostics or
-  maintenance only, not automatic acceptance. Do not dispatch them for release
-  qualification. Pin-update proposals never dispatch hosted builds.
-- Main requires the strict `local-practical-qualification` status, not the
-  retired hosted `test` context. Status descriptions and evidence must identify
-  their actual source and check scope; a status alone is not release authority.
-- Releases use immutable `core-vX.Y.Z` and coordinated locally prepared
-  core/SDK/helper assets. The owner chose unsigned, Actions-free publication
-  after practical local qualification; no signer or registry publication is
-  required. Existing verified installer/updater checks are not bypassed.
-- The website has no signature requirement. Build static pages locally from a
-  selected core commit, then use the site's `website/publish.py` for the
-  publish-only Pages job. Core release/demo workflows do not dispatch site builds.
-- The website lives in `gripsack-dev/gripsack-dev.github.io` — edit
-  there, not here.
+- `main` is protected and requires the `local-practical-qualification`
+  status. Qualify the exact source on the owner's local Buildbot
+  (`cd ~/workspace/ci-infra && python3 -m ci_infra qualify <clean checkout>`,
+  see `~/workspace/SHARED-BUILDBOT-CI-PLAN.md` §15), then post the status with
+  `python3 scripts/release.py status <candidate_id>`. `ci-infra` and the
+  shared plan serve several projects — don't edit them from here.
+- Hosted workflows (`ci`, `demo`, `audit`, `upstream-watch`,
+  `template-mirror`, `fuzz`) are diagnostics or maintenance and never gate
+  anything.
+- Releases: `python3 scripts/release.py publish <candidate_id> --notes N.md
+  [--yes]` uploads the qualified bytes (never rebuilt) as immutable
+  `core-vX.Y.Z` matching the `gripsack` crate version. Unsigned,
+  GitHub-asset-only; no npm/crates.io. See `.agents/skills/gripsack-release`.
+- The website lives in `gripsack-dev/gripsack-dev.github.io` — edit there,
+  not here. Build static pages locally from a selected core commit and
+  publish with the site's `website/publish.py`.
