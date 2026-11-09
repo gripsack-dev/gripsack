@@ -291,7 +291,7 @@ moment their replacement is green.
 | `scripts/release_*.py` + tests (~6k lines) | replace with one `release-core.yml` (build → verify tarball → publish) and a ≤150-line installed-consumer smoke | F0, after one release goes out on the new flow |
 | `verification/guarantees.md` | freeze as historical; replaced by generated claims | now (freeze) / F3 (replace) |
 | Fuzz in the per-push gate + waiver machinery (`GRIPSACK_FUZZ_WAIVER`, `REL-*` IDs) | remove; weekly only | now |
-| Fuzz targets `merge`, `store_gc` | delete | after K4/K5 proofs |
+| Fuzz targets `merge`, `store_gc` | delete (`store_gc` deleted with K4, §17) | after K4/K5 proofs |
 | GNU duplicate build, two-build repro, `mutants` campaign jobs | delete jobs (repro stays an on-demand script) | now |
 | TLAPS proofs (`*Proofs.tla`), `check_tlaps.py`, `tlaps` service | delete | after P1–P3 in Lean |
 | Remaining TLA+ | keep ≤5 TLC models that found real bugs (Transaction, Activation, UpdatePublication, ProcessSupervision, CredentialRouting candidates); delete the rest and the `MC`/bridge/witness modules | F3 |
@@ -355,6 +355,10 @@ the crash e2e run both ways for one release before the legacy path goes.
    record in §14.
 3. Leaf + journal-run sub-machine; port `journal_protocol` to Lean.
 4. GC machine incl. root derivation from manifests; `retention` Verus goes.
+   **Done 2026-11-09** (branch `foundation/f2-gc`): the kernel GC machine
+   decides every deletion, K4 and K4′ proved, the staging reaper (0058
+   item 4) folded in; record in §17. The `retention` Verus had already gone
+   in F1 (§13.2), so the `check_verus` floor does not move.
 5. Activation machine (ledger order, authorize/supersede, attempts).
 6. Planner into the kernel (copy/template/link/merge/remove/restore per
    unit; block generation on bytes). Fix FND-1. `lineage_model`,
@@ -1209,3 +1213,175 @@ passed in 11m50s.
    the unit.
 6. Not addressed here (review §2.1): `rollback` with no argument still
    targets current−1 by number rather than the last selected generation.
+
+## 17. F2 step 4 record — the GC machine (K4, K4′)
+
+- Branch `foundation/f2-gc` from `main` at `524f576`; date 2026-11-09.
+- Question: can collection be the proved kernel's sans-IO machine, deciding
+  every deletion — generation retirement, payload and prior removal, and
+  the stale-staging reaper of 0058 item 4 — with K4 and K4′ proved over the
+  shipped code and the host executing only what it is commanded?
+
+### 17.1 Before: what was proved, what was trusted
+
+F1 moved three pure functions into the kernel (`admit_gc`, `plan_prune`,
+`plan_delete`). Everything between them was host code: the predecessor
+closure (`gc/directory_roots.rs::admit`, a fixpoint over manifests), root
+derivation from manifests, the effect order, and the decision of *which*
+effects to issue. `plan_delete` was proved over whatever flat root list the
+host built, so "roots include the closure of every retained manifest" (K4′)
+was not a theorem, and nothing tied an issued deletion to the admitted
+inventory.
+
+Defect checked (0058 item 4, §4.3): a publisher killed between staging and
+rename leaves `generations/.staging-<N>-<pid>`, and nothing ever removed it.
+Reproduced on the baseline: `gc::tests::stale_generation_staging_is_reaped`
+failed at "stale staging must be reaped"; it passes after. The
+`generations.rs` assertion on `.staging-1` (a name never created) was
+vacuous; it now asserts no `.staging-*` remains, and the canonical name has
+one parser (`generations::is_staging_name`) beside the one writer.
+
+### 17.2 The machine (`crates/gripsack-kernel/src/gc.rs`, helpers in `retention.rs`)
+
+`gc_step(GcState, Event) -> (GcState, Command)`, one command outstanding.
+
+- **Reads:** `ReadInventory` → `Inventory{recovery_pending, current,
+  generations}`; `ReadManifest(g)` (newest first, one per inventoried
+  generation; the event must name exactly that generation) →
+  `Manifest{id, predecessors, roots}`; `ReadRoots` → the workspace and
+  schedule roots (ring 3, tested, not proved); `ReadCandidates` → every
+  entry of `store/`, `prior/` and every canonical
+  `generations/.staging-<N>-<pid>`, each with the inode stamp the host saw.
+- **Decides:** admission (`admit_gc`), the prune plan (`plan_prune`), each
+  generation's `Fate` as its manifest arrives (retired only if pruned and no
+  retained newer manifest names it — reading newest first makes this the
+  closure in one pass, since receipt predecessors are strictly older), the
+  closure check over all fates (`closure`: retained predecessors are
+  inventoried, no retired generation is needed), and the deletion set
+  (`plan_delete` over `rooted` = pinned by a retained manifest or named by
+  an external root).
+- **Commands (collect mode, after `Plan`):** `SealFloor`; `Retire{generation,
+  current}` per retired generation, newest first; `Barrier`; `Delegate`
+  (the directory domain retires the receipts the retired generations held,
+  step 9); `Remove{candidate, expect}` per doomed candidate; `Finish`. A
+  preview finishes at `Plan`.
+- **Refusals:** `RecoveryPending`, `CorruptCurrent`,
+  `MissingPredecessor{generation}`, `Malformed`, `Drifted`, `Failed`,
+  `Protocol`.
+
+The staging reaper fits cleanly: publishers hold the lifecycle session, so
+under gc's session every canonical staging directory is stale; nothing names
+one, so it is a candidate no root names. Non-canonical names are not
+candidates.
+
+### 17.3 Driver (`crates/gripsack-exec/src/gc.rs`)
+
+`gc()` runs the loop. `Host` answers reads from the pinned home (journal
+and activation pending state, `GenerationDirectory`, manifests admitted with
+effect authority or inspected in a dry run, root inventories,
+`gc/inventory.rs::Collectable`) and executes only commanded effects:
+`Retire` re-reads `current` and answers `Failed(Drift)` if it is not the
+command's `current`; `Remove` re-reads the entry's `(dev, inode)` through
+the pinned directory and answers `Failed(Drift)` on mismatch; `Plan` reports
+and sizes the decision (every fallible size read precedes the first
+effect, as before). `GenerationDirectory::prune` is split into the commanded
+`admit_retirements`/`seal_floor`/`retire`/`seal`. Refusal messages are the
+old ones. `GcReport` gains `staging_removed`; `grip gc` prints "removed
+stale staging …".
+
+### 17.4 Proofs (`proofs/Kernel/Gc.lean`, `Retention.lean`; `Audit.lean`: 213 theorems, 48 claims, standard axioms only)
+
+Over every execution (`Run` from `GcState::new` in either mode, invariant
+`Inv` by phase, `step_spec`):
+
+- `gc_effects_admitted` (K4): an effect (`SealFloor`, `Retire`, `Barrier`,
+  `Delegate`, `Remove`) is issued only in collect mode, from an inventory
+  with no recovery or activation pending and `current` inventoried.
+  `gc_preview_effect_free`: a preview issues none.
+- `gc_retire_pruned` (K4): a retired generation is in the prune plan of the
+  admitted inventory, no retained manifest names it as a predecessor, and
+  the command carries the inventoried `current` for the driver's re-check.
+  `gc_never_retires_current`: never `current`, only inventoried
+  generations.
+- `gc_retire_newest_first`: when a generation is retired, every retired
+  generation before it in the manifest order (the inventory reversed) was
+  already retired — an interrupted batch never strands a live receipt's
+  predecessor.
+- `gc_remove_unreferenced` (K4, deletions ⊆ candidates − roots): a removal
+  names an inventoried candidate, carries its inventoried stamp, and no
+  retained manifest pins it and no external root names it.
+  `gc_doomed_exact`: the deletion set is exactly those candidates.
+- `gc_retained_closed` (K4′): at every effect, every inventoried
+  generation's manifest was read, and every retained generation's
+  predecessors are inventoried and retained — so the roots are the closure
+  of every retained manifest.
+- `gc_remove_after_retirement`: every removal follows the retirement of
+  every retired generation, the barrier on `generations/`, and the
+  delegated retirement of their receipts.
+- Helper claims `closure_spec`, `rooted_spec`; `plan_delete_spec` restated
+  over the structured roots.
+- Mutants (`proofs/mutants.py`, 41 total, 10 new, 1 updated), each rejected
+  by exactly the named theorem: `gc-roots-in-deletion` (updated,
+  `plan_delete_loop_spec`), `gc-external-roots-ignored` (`rooted_spec`),
+  `gc-closure-ignores-needed` and `gc-closure-ignores-missing`
+  (`closes_spec`), `gc-retires-unpruned` (`fate_spec`),
+  `gc-pending-admitted` (`on_inventory_spec`), `gc-manifest-unchecked`
+  (`on_manifest_spec`), `gc-remove-unstamped` (`remove_next_spec`),
+  `gc-preview-collects`, `gc-retirement-skipped` and
+  `gc-remove-before-delegate` (`step_spec`).
+
+### 17.5 Tests
+
+- Kernel explorer `crates/gripsack-kernel/tests/gc.rs`: every history of up
+  to three generations (each naming none, an older or a missing
+  predecessor, pinning none or one of three paths), every `current` and
+  `keep`, with and without an external root, collect and preview, pending
+  recovery, a corrupt current and a drifted removal, driven through the
+  shipped `gc_step` on a model home. The oracle is independent of the kernel
+  (prune plan's complement closed by fixpoint): the generations and payloads
+  left are exactly that set and its roots; previews and pending recovery
+  change nothing; a missing predecessor stops before any effect; retirement
+  is newest first; no removal precedes the barrier. Calibrated by hand
+  against two kernel mutants (external roots ignored; fate ignoring the
+  closure): both fail it.
+- Host: `stale_generation_staging_is_reaped` (new, failing before); the two
+  closure tests of `directory_roots` now run through `gc()` (they check the
+  host decodes migration receipts into predecessors); the interrupted-batch
+  test drives the commanded retirement steps in the kernel's order;
+  `root_model.rs` (real roots: payloads, build closures, priors; eight
+  recovery admissions; pinned removal under root replacement) unchanged in
+  substance. e2e: `test_gc_admission.py::test_gc_reaps_staging_left_by_a_dead_publisher`.
+
+### 17.6 Deleted
+
+`gc/directory_roots.rs::admit` (the host's predecessor fixpoint: the kernel
+decides and proves it), `GenerationDirectory::prune`, the old flat
+`plan_delete` and its proof, `gc::tests::never_prunes_the_current_generation`
+(now `gc_never_retires_current`), and the `store_gc` fuzz target with its
+corpus (its assertions are K4/K4′; trim register). No GC Verus remained
+after F1, so `check_verus` is unchanged (floor 382).
+
+GATES_PLACEHOLDER
+
+### 17.7 Deviations and what is deferred
+
+1. **No MemFs crash exploration of gc.** As for rollback (§16.7), the
+   driver acts through `gripsack_fs`, not `gripsack-host::Storage`; the
+   crash order the old code relied on (floor, retirements, barrier, then
+   payloads) is now a theorem (`gc_remove_after_retirement`), and the
+   existing e2e prune-barrier oracle still runs.
+2. **The directory domain stays delegated** (`Delegate`): staging
+   retirement of directory-transition receipts and clearing `.retired-N`
+   are host code until step 9. They act only on `.retiring-`/`.retired-`
+   names, which only commanded retirements (or an earlier run's) create.
+3. **Ring-3 inputs are tested, not proved:** the manifest-to-roots decoding
+   (store paths, build closures, prior blobs, receipt predecessors), the
+   workspace and schedule roots, the pending-state reads, and the
+   classification of `generations/` entries into generations, retirements
+   and staging.
+4. **S5 residue:** between a re-check and its act (stat then rename/unlink)
+   an external writer can still race; `remove_dir_all` is not atomic.
+5. **Behaviour change:** gc now refuses ("run gc again") when `current`
+   changes before a retirement or an entry is replaced between inventory and
+   removal; before, it acted on the stale inventory. Under the lifecycle
+   session only an external writer can cause either.
