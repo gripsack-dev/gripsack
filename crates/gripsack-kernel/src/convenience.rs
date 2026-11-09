@@ -84,6 +84,7 @@ use crate::{
     Classification,
     ids::{CmdId, DestId, Digest},
     journal::{DurableRecord, MutationAuthority, PublicationAction, RecordPublication, RecordRole},
+    ownership::{Consent, Decision as UnitDecision, Recorded, Refusal as UnitRefusal, TakeOver},
     recover::{
         Command, Decision, Delegated, Effect, EntryFacts, Event, Failure, Ident, Intended,
         JournalFacts, JournalName, Live, MarkerFacts, Outcome, Phase, Prior, RecoverState, Refusal,
@@ -136,6 +137,11 @@ copy_impls!(
     Phase,
     Verdict,
     RecoverState,
+    Recorded,
+    TakeOver,
+    Consent,
+    UnitRefusal,
+    UnitDecision,
 );
 
 macro_rules! same_eq {
@@ -171,7 +177,49 @@ same_eq!(
     Outcome => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
     Phase => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
     Verdict => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Recorded => |a, b| match (a, b) {
+        (Recorded::Unrecorded, Recorded::Unrecorded) => true,
+        (Recorded::Observed, Recorded::Observed) => true,
+        (Recorded::Wrote(a), Recorded::Wrote(b)) => a.same(b),
+        _ => false,
+    },
+    TakeOver => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    UnitRefusal => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    UnitDecision => |a, b| match (a, b) {
+        (UnitDecision::Refuse(a), UnitDecision::Refuse(b)) => a == b,
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
 );
+
+impl fmt::Debug for Recorded {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Recorded::Unrecorded => f.write_str("Unrecorded"),
+            Recorded::Observed => f.write_str("Observed"),
+            Recorded::Wrote(ident) => f.debug_tuple("Wrote").field(ident).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Consent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Consent")
+            .field("take_over", &self.take_over)
+            .finish()
+    }
+}
+
+impl fmt::Debug for UnitDecision {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnitDecision::Create => f.write_str("Create"),
+            UnitDecision::Satisfied => f.write_str("Satisfied"),
+            UnitDecision::ReplaceOwn => f.write_str("ReplaceOwn"),
+            UnitDecision::TakeOver => f.write_str("TakeOver"),
+            UnitDecision::Refuse(why) => f.debug_tuple("Refuse").field(why).finish(),
+        }
+    }
+}
 
 impl Default for RecoverState {
     fn default() -> Self {
@@ -290,6 +338,12 @@ unit_debug!(
         Refused
     },
     Route { Leaf, Delegated },
+    TakeOver { Withheld, Granted },
+    UnitRefusal {
+        Drifted,
+        Unowned,
+        Unsupported
+    },
     Decision {
         Restore,
         Unchanged,

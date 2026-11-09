@@ -4,6 +4,8 @@
 
 use super::*;
 use crate::ctx::ExecError;
+use gripsack_kernel::ownership::{Consent, Decision, Recorded, Refusal, TakeOver, decide_unit};
+use gripsack_kernel::recover::{Ident, Intended as KernelIntended, Live};
 use store::journal::{Intended, ObjectIdentity};
 
 mod link;
@@ -19,8 +21,79 @@ pub(crate) use restore::plan_restore_op;
 pub use write::WritePermissions;
 use write::{plan_migration_write, plan_write};
 
+/// The lineage record of one destination: the previous generation's
+/// manifest entry and the store root that generation deployed from. An
+/// owned link's recorded identity is the exact link gripsack wrote,
+/// `store_path/from`; ownership never follows from where a live link
+/// points (plan/0056 K1).
+#[derive(Clone, Copy)]
+pub struct PreviousRecord<'a> {
+    pub entry: &'a store::DeployedEntry,
+    pub store_path: &'a Path,
+}
+
+impl PreviousRecord<'_> {
+    /// What gripsack recorded writing at this destination, as the kernel's
+    /// [`Recorded`]. Preserved drift is an observation and confers nothing.
+    /// `observed` admits legacy template receipts (a bytes-only hash plus the
+    /// landed mode): only an exact match with the live file denotes it.
+    pub(crate) fn recorded(&self, observed: Option<&crate::deploy::Observation>) -> Recorded {
+        let entry = self.entry;
+        if entry.preserved_drift {
+            return Recorded::Observed;
+        }
+        match entry.ownership.policy() {
+            Ownership::Owned => Recorded::Wrote(store::hash::kernel::link(
+                self.store_path
+                    .join(&entry.from)
+                    .as_os_str()
+                    .as_encoded_bytes(),
+            )),
+            Ownership::TrackedCopy | Ownership::Template => match observed {
+                Some(crate::deploy::Observation::File { bytes, mode })
+                    if entry.matches_file(bytes, *mode) =>
+                {
+                    Recorded::Wrote(store::hash::kernel::file(&store::canonical_bytes_identity(
+                        bytes, *mode,
+                    )))
+                }
+                _ => store::hash::kernel::recorded_file(&entry.hash)
+                    .map_or(Recorded::Observed, Recorded::Wrote),
+            },
+            // a managed block is not a whole-object unit (K5, not K1)
+            Ownership::Merge => Recorded::Observed,
+        }
+    }
+}
+
+/// An observation as the kernel's [`Live`]: a file is its mode-aware
+/// identity, a link the digest of its target bytes.
+pub(crate) fn kernel_live(observed: Option<&crate::deploy::Observation>) -> Live {
+    match observed {
+        None => Live::Absent,
+        Some(crate::deploy::Observation::File { bytes, mode }) => Live::Obj(
+            store::hash::kernel::file(&store::canonical_bytes_identity(bytes, *mode)),
+        ),
+        Some(crate::deploy::Observation::Symlink { target }) => {
+            Live::Obj(store::hash::kernel::link(target.as_encoded_bytes()))
+        }
+    }
+}
+
+/// The user's take-over answer for one destination as the kernel's
+/// [`Consent`] (`--take-over`, an adoption set, or nothing).
+pub fn take_over_consent(granted: bool) -> Consent {
+    Consent {
+        take_over: if granted {
+            TakeOver::Granted
+        } else {
+            TakeOver::Withheld
+        },
+    }
+}
+
 /// Everything a planner needs to know about one destination — the
-/// ONE observation, the lineage record, the run's take-over scope.
+/// ONE observation, the lineage record, the user's consent.
 /// (A struct, not nine positional arguments: each field is named at
 /// the call site.)
 pub struct DestView<'a> {
@@ -28,11 +101,10 @@ pub struct DestView<'a> {
     pub entry: &'a DeploymentEntry,
     /// The canonical physical destination (0030 §P0-1).
     pub dest: PathBuf,
-    /// The home the store lives under (link "ours" is target-under-home).
     pub home: &'a Path,
     pub observed: Option<crate::deploy::Observation>,
-    pub prev: Option<&'a store::DeployedEntry>,
-    pub take_over: bool,
+    pub prev: Option<PreviousRecord<'a>>,
+    pub consent: Consent,
 }
 
 impl DestView<'_> {
@@ -46,6 +118,24 @@ impl DestView<'_> {
                 ObjectIdentity::File(store::canonical_bytes_identity(bytes, *mode))
             }
         })
+    }
+
+    /// The previous generation's entry for this destination.
+    pub(crate) fn prev_entry(&self) -> Option<&store::DeployedEntry> {
+        self.prev.map(|record| record.entry)
+    }
+
+    /// The proved per-unit decision (plan/0056 K1) for deploying `intended`.
+    pub(crate) fn decide(&self, intended: Ident) -> Decision {
+        let recorded = self.prev.map_or(Recorded::Unrecorded, |record| {
+            record.recorded(self.observed.as_ref())
+        });
+        decide_unit(
+            &recorded,
+            &kernel_live(self.observed.as_ref()),
+            &KernelIntended::Obj(intended),
+            &self.consent,
+        )
     }
 
     fn base(&self, kind: OpKind, authority: Option<Authority>, intended: Intended) -> Op {
@@ -84,12 +174,10 @@ impl DestView<'_> {
 
 /// What the mode's decision needs beyond the view.
 pub enum ModeInput<'a> {
-    /// Owned link: the store payload it points at, its content hash,
-    /// and whether the live link already points there.
+    /// Owned link: the store payload it points at and its content hash.
     Link {
         source: &'a Path,
         content_hash: store::hash::ManifestHash,
-        already: bool,
     },
     /// Tracked copy / template: content plus source policy or exact restoration.
     Write {
@@ -111,19 +199,18 @@ pub enum ModeInput<'a> {
 }
 
 /// The per-destination decision (0034): one Op out, per the mode's
-/// rule — plan_copy for copies/templates, plan_link for owned links,
-/// the block hash for merge. THE function plan/apply/rollback share.
+/// rule — the kernel's `decide_unit` for copies, templates and owned
+/// links, the block hash for merge. THE function plan/apply/rollback share.
 pub(crate) fn plan_entry_op(view: &DestView, input: ModeInput) -> Result<Op, ExecError> {
     match input {
         ModeInput::Link {
             source,
             content_hash,
-            already,
-        } => Ok(plan_link(view, source, content_hash, already)),
+        } => plan_link(view, source, content_hash),
         ModeInput::Write {
             content,
             permissions,
-        } => Ok(plan_write(view, content, permissions)),
+        } => plan_write(view, content, permissions),
         ModeInput::MigrationWrite {
             authorization,
             content,

@@ -107,12 +107,26 @@ pub(crate) fn plan_remove_op(
         }
     }
     // the drift guard runs FIRST (0026 §6) — a kept destination is
-    // never journaled at all
-    if !crate::deploy::intact_deployed(&dest, entry, store_path) {
-        if dest.symlink_metadata().is_ok() {
-            return kept(format!("kept {} — modified since deploy", entry.to));
+    // never journaled at all. The kernel's decision for a removal: only
+    // gripsack's exact last write goes (K1); absence is already done.
+    let observation = crate::deploy::observe(&dest_dir, &dest_name)
+        .map_err(|e| fail(format!("cannot inspect {}: {e}", entry.to)))?;
+    let recorded = PreviousRecord { entry, store_path }.recorded(observation.as_ref());
+    match decide_unit(
+        &recorded,
+        &kernel_live(observation.as_ref()),
+        &KernelIntended::Removed,
+        &take_over_consent(false),
+    ) {
+        Decision::ReplaceOwn => {}
+        Decision::Satisfied => return Ok(None), // already gone
+        Decision::Create | Decision::TakeOver => {
+            return Err(fail(format!(
+                "planner bug: a removal of {} decided to write",
+                entry.to
+            )));
         }
-        return Ok(None); // already gone
+        Decision::Refuse(_) => return kept(format!("kept {} — modified since deploy", entry.to)),
     }
     let intended =
         crate::deploy::restore::prune_intent(entry, home).map_err(|e| fail(format!("{e}")))?;

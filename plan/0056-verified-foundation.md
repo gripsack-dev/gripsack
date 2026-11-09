@@ -211,7 +211,7 @@ the Lean sources with their axioms.
 
 | ID | Defect | Evidence | Fix lands in |
 |---|---|---|---|
-| FND-1 | A recorded (owned) symlink is re-pointed whatever is live: if the user replaced it with their own file, the next apply overwrites it. Breaks the drift promise for links | `gripsack-policy/src/ownership.rs:103` (`recorded ⇒ Link`), `ops/plan/link.rs:18`; `lineage_model.rs:199` encodes it as intended | F2 step 6 (planner), with a failing-before e2e |
+| FND-1 | A recorded (owned) symlink is re-pointed whatever is live: if the user replaced it with their own file, the next apply overwrites it. Breaks the drift promise for links | `gripsack-policy/src/ownership.rs:103` (`recorded ⇒ Link`), `ops/plan/link.rs:18`; `lineage_model.rs:199` encodes it as intended | **Fixed** in F2 step 6 part 1 (§15), together with the store-prefix widening (design review finding 3) |
 | FND-2 | Rollback backfills `generations/<n>/env/profile.sh` into an existing generation and deletes the legacy env file outside the journal | `gripsack-exec/src/env.rs:27-49`, called from `rollback.rs:72` | F2 step 8 |
 | FND-3 | Suspected: on a case-insensitive mount, re-spelling only a destination's case deploys the new spelling, then prunes the old one — the same inode | admission folds (`deploy/destinations.rs:26`) but prune compares raw `PathBuf` keys (`apply.rs:443-486`) | needs a reproducer first; F2 step 7 |
 
@@ -359,6 +359,13 @@ the crash e2e run both ways for one release before the legacy path goes.
 6. Planner into the kernel (copy/template/link/merge/remove/restore per
    unit; block generation on bytes). Fix FND-1. `lineage_model`,
    `ops/model`, `mode_model` become kernel property tests, then go.
+   **Part 1 done 2026-11-09** (branch `foundation/f2-ownership`, taken ahead
+   of steps 3–5 by owner priority): the per-unit ownership decision
+   `ownership::decide_unit` for copy/template/link/remove/restore, K1 proved,
+   FND-1 and the store-link widening fixed, `lineage_model` moved to a
+   kernel property test; record in §15. Remaining: merge (K5, block
+   generation on bytes), and `ops/model`/`mode_model` (they check the host
+   lifting, which the kernel cannot see).
 7. Apply machine end to end (`mutated` flag replaces `ReportKind`); directory
    transitions are an opaque `DirectoryStep` still run by legacy code.
    Reproduce/fix FND-3.
@@ -861,4 +868,146 @@ destinations byte-identical); the numeric-commit mutant (caught). Plus the
 step-1 calibrations (0.19.1 and 0.19.2 cleanups resurrect after power loss;
 kill alone does not), the wedge (refused by name, state untouched, repair
 completes) and the S5 window.
+
+## 15. F2 step 6 part 1 record — the ownership decision (K1)
+
+- Branch `foundation/f2-ownership` from `main` at `7f1408c`; date
+  2026-11-09. Taken before steps 3–5 because the owner prioritised the
+  guarantees users feel (design review finding 1).
+- Question: can the per-unit "may gripsack touch this destination?"
+  decision be the proved kernel's, with the existing planner calling it,
+  and does that fix FND-1 and the `$GRIPSACK_HOME` link widening?
+
+### 15.1 Step 3 is not a prerequisite
+
+Step 3 is the leaf + journal-run sub-machine: the *effect* protocol (capture
+prior, publish record, mutate under re-check). The ownership question is
+answered before any of that, from three identities and consent, and the
+existing journal re-check already pins the decision to the observed object
+(S5). So the decision is a pure function the planner calls; no machine is
+needed, and K1 as stated in §5 is a property of that function. When step 3
+and step 7 land, the apply machine calls the same function per unit.
+
+### 15.2 The decision (`crates/gripsack-kernel/src/ownership.rs`)
+
+`decide_unit(&Recorded, &Live, &Intended, &Consent) -> Decision`, reusing
+the recover vocabulary (`Ident = File(Digest)|Link(Digest)`,
+`Live = Absent|Obj|Unsupported`, `Intended = Removed|Obj`).
+
+- `Recorded = Unrecorded | Observed | Wrote(Ident)`: no record; a preserved-
+  drift observation (confers nothing); the exact object gripsack last wrote.
+  The host derives it from the previous generation's entry **and its store
+  root**: an owned link's recorded identity is the link `store_path/from`, a
+  copy/template's is its manifest hash (legacy template receipts admitted
+  only by an exact match with the live file). A record whose hash is not a
+  SHA-256 identity is `Observed`.
+- `Consent { take_over: Withheld | Granted }`: the only consent the product
+  has (`--take-over`, `--take-over=<dest>`, the plan/adopt adoption set),
+  scoped per destination by the host. There is no separate "adopt" flag in
+  the planner; adoption is take-over.
+- `Decision = Create | Satisfied | ReplaceOwn | TakeOver | Refuse(Drifted |
+  Unowned | Unsupported)`. Order: unsupported refused; absent created (a
+  removal is already done); gripsack's own write kept when it is the intent,
+  replaced otherwise; consent absorbs anything else (also bytes that already
+  match: a take-over opens an epoch); a foreign object equal to the intent is
+  satisfied (reconvergence); otherwise refused, `Drifted` when a record
+  exists, `Unowned` when none does. Take-over never authorizes a removal.
+- Copies/templates: identical to the old `plan_copy` truth table
+  (`Preserve` ≡ `Refuse(Drifted|Unowned)`, which the host still records as
+  preserved drift). Links: the decision is now the same rule; a refusal
+  stops apply (`Authority::Foreign`, new `Authority::Drifted` with the
+  message "changed since gripsack deployed it"), rollback keeps and notes.
+
+### 15.3 Proofs (`proofs/Kernel/Ownership.lean`; `Audit.lean`: 110 theorems, 26 claims, standard axioms only)
+
+- `decide_unit_k1` (K1): `Writes d → live = Absent ∨ (∃ o, live = Obj o ∧
+  recorded = Wrote o) ∨ (consent = Granted ∧ ∃ o, live = Obj o)`.
+- `decide_unit_drift_never_written`: consent withheld and `recorded ≠ Wrote
+  o` for the live `Obj o` ⇒ no write.
+- `decide_unit_owned_drift_refused` (FND-1): `Wrote w`, live `Obj o`, `o ≠
+  w`, no consent, intent not `o` ⇒ `Refuse Drifted`.
+- `decide_unit_unrecorded_refused`: `Unrecorded`, live `Obj o`, no consent,
+  intent not `o` ⇒ `Refuse Unowned`.
+- `decide_unit_identity_only`: for every injective `f : Ident → Ident`,
+  renaming recorded/live/intended by `f` leaves the decision unchanged — the
+  decision sees a link's target only through identity equality.
+- `decide_unit_takeover_acquires`, `decide_unit_progress` (absent ⇒ create;
+  own write ⇒ satisfied or replace, whatever the consent),
+  `decide_unit_unsupported_refused`, `Decision.writes_spec`.
+- Every claim unfolds the shipped helpers itself (one shared tactic), so a
+  mutant is rejected by the claims it falsifies, not by a helper lemma.
+  Mutants (`proofs/mutants.py`, 22 total, 3 new), each rejected by exactly:
+  `ownership-recorded-overwrites-live` (FND-1: `Wrote(_) => true`) by
+  `k1`, `drift_never_written`, `owned_drift_refused`;
+  `ownership-link-target-confers` (an unrecorded *link* counts as ours — the
+  prefix rule's kernel analogue) by `k1`, `drift_never_written`,
+  `unrecorded_refused`, `identity_only`; `ownership-consent-ignored` by `k1`,
+  `drift_never_written`, `owned_drift_refused`, `unrecorded_refused`,
+  `takeover_acquires`.
+
+### 15.4 Wiring
+
+- `ops::plan::DestView` carries `prev: Option<PreviousRecord { entry,
+  store_path }>` and `consent: Consent` (no bools); `DestView::decide` builds
+  the kernel inputs. `plan_link`, `plan_write`, `plan_migration_write` (the
+  admitted predecessor link is the recorded identity; anything but
+  `ReplaceOwn` is refused) and the non-merge branch of `plan_remove_op`
+  (intent `Removed`, no consent) call `decide_unit`. `previous_ownership`,
+  `plan_restore_op` and rollback pass the recording generation's store path.
+- Kernel identities are built in one place, `gripsack_store::hash::kernel`
+  (also used by the recover driver now): a file is its mode-aware identity,
+  a link the SHA-256 of its target bytes.
+- Merge stays outside (`Recorded::Observed` if asked): K5 territory.
+
+### 15.5 Tests
+
+- e2e (failing before, passing after; `e2e/test_ownership_modes.py`):
+  `test_user_replacement_of_an_owned_link_is_refused_until_take_over[file|link]`,
+  `test_user_link_into_the_store_is_not_ours`,
+  `test_rollback_keeps_a_user_replacement_of_an_owned_link`. Before: all four
+  failed — apply/rollback re-pointed the user's object.
+- Two existing e2e encoded the old behaviour and were updated:
+  `test_a_repaired_destination_cuts_a_generation` relied on FND-1 (a
+  user-re-pointed owned link silently repaired); it now refuses, and the
+  repair is `--take-over`, which still cuts a generation that rollback
+  undoes. `test_preserved_copy_blocks_a_mode_switch_to_owned` keeps its
+  behaviour (refuse, edit stands) and now sees the drift message.
+- `crates/gripsack-kernel/tests/ownership_lineage.rs` (from `lineage_model`):
+  every sequence to depth 6 over copy and link modes with user files, user
+  links and user links into the store, driving `decide_unit` for deploy and
+  prune; oracles: a run without take-over never changes a live object that
+  is not gripsack's last write, own destinations converge, the origin
+  survives the epoch and returns at its end, aliases are rejected. A
+  calibration replays the legacy link rule and requires the explorer to
+  find both FND-1 and the widening.
+- `ops/model.rs` now uses the kernel as its oracle and adds
+  `owned_links_follow_recorded_identity_only` (lifting of both defects).
+- Copy/template: checked for the same bug class; none. `plan_copy` already
+  required live = last managed write (or consent); the kernel decision is
+  the same table, and the existing drift e2e pass unchanged.
+
+### 15.6 Deleted
+
+`gripsack-policy/src/ownership.rs` (`plan_copy`, `plan_link`, their Verus
+contracts; `check_verus.py` floor 384 → 382, its two mutants and the
+unrelated-lemma calibration retargeted to `merge.rs`),
+`gripsack-exec/src/lineage_model.rs` (its truth-table tests are the Lean
+claims, plan/0057 D7; its explorer moved to the kernel),
+`deploy::intact_deployed`, the `deploy` re-exports of the policy functions,
+and `ModeInput::Link::already` (equality is the kernel's).
+
+### 15.7 Deviations
+
+1. Step 6 is split: this is the ownership decision only. Merge/block
+   generation (K5) and the rest of step 6 stay.
+2. `ops/model.rs` and `mode_model.rs` stay: they test the host lifting
+   (observation, receipt, permission policy, execution) that the kernel
+   cannot see; they now use the kernel as their oracle.
+3. One behaviour beyond the two defects follows from deciding by recorded
+   identity: when a declaration switches from link to copy without a
+   directory migration, gripsack's own intact link is replaced by the file
+   (`ReplaceOwn`) instead of being kept as drift. K1 permits it (the live
+   object is gripsack's last write).
+4. A re-pointed own link now reports `Authority::Update` ("update") instead
+   of `Fresh` ("new").
 

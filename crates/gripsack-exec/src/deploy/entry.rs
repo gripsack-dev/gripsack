@@ -11,7 +11,8 @@ pub(crate) struct DeploymentInput<'a> {
     pub owner: &'a str,
     pub store_path: &'a Path,
     pub entry: &'a DeploymentEntry,
-    pub previous: &'a std::collections::BTreeMap<store::OwnershipKey, &'a store::DeployedEntry>,
+    pub previous:
+        &'a std::collections::BTreeMap<store::OwnershipKey, crate::ops::PreviousRecord<'a>>,
     pub block_id: Option<&'a store::ManagedBlockId>,
     pub migration: Option<&'a super::Migration>,
 }
@@ -139,26 +140,20 @@ pub(crate) fn deploy_entry(
             observe(&dest_dir, &dest_name)?
         },
         prev,
-        take_over: ctx.takes_over(&entry.to),
+        consent: crate::ops::take_over_consent(ctx.takes_over(&entry.to)),
     };
     let migration_entry = migration.and_then(|migration| migration.entry(&dest));
     if let Some(authorization) = migration_entry {
         authorization.reobserve(&view)?;
     }
     let op = match &entry.mode {
-        Ownership::Owned => {
-            let already = std::fs::read_link(&dest)
-                .map(|t| t == source)
-                .unwrap_or(false);
-            crate::ops::plan_entry_op(
-                &view,
-                crate::ops::ModeInput::Link {
-                    source: &source,
-                    content_hash: store::canonical_file_hash(&source)?.into(),
-                    already,
-                },
-            )?
-        }
+        Ownership::Owned => crate::ops::plan_entry_op(
+            &view,
+            crate::ops::ModeInput::Link {
+                source: &source,
+                content_hash: store::canonical_file_hash(&source)?.into(),
+            },
+        )?,
         Ownership::TrackedCopy | Ownership::Template => {
             let content: &[u8] = match &rendered {
                 Some(r) => r.as_slice(),
@@ -202,14 +197,19 @@ pub(crate) fn deploy_entry(
             )?
         }
     };
-    // a foreign destination blocks apply (the renderer shows the same
-    // op as "needs --take-over")
-    if op.authority() == Some(crate::ops::Authority::Foreign) {
+    // a foreign or drifted owned destination blocks apply (the renderer
+    // shows the same op as "needs --take-over"); nothing is written
+    let refusal = match op.authority() {
+        Some(crate::ops::Authority::Foreign) => Some("exists and was not deployed by gripsack"),
+        Some(crate::ops::Authority::Drifted) => Some("changed since gripsack deployed it"),
+        _ => None,
+    };
+    if let Some(why) = refusal {
         return Err(ExecError::Step {
             output: output.to_string(),
             step: "deploy".into(),
             detail: format!(
-                "{} exists and was not deployed by gripsack — move it away or use --take-over",
+                "{} {why} — it is left untouched; move it away or use --take-over",
                 entry.to
             ),
         });
@@ -235,8 +235,8 @@ pub(crate) fn deploy_entry(
             });
         }
         None => {
-            if let Some(prev_entry) = prev {
-                out.push((*prev_entry).clone());
+            if let Some(record) = prev {
+                out.push(record.entry.clone());
             }
         }
     }

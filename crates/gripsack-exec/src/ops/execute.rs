@@ -56,6 +56,10 @@ pub(crate) fn execute_op(
                     "{} exists, not deployed by gripsack — kept (needs --take-over)",
                     op.declared_to()
                 ),
+                Some(Authority::Drifted) => format!(
+                    "{} changed since gripsack deployed it — kept (needs --take-over)",
+                    op.declared_to()
+                ),
                 _ => format!("{} drifted — kept", op.declared_to()),
             };
             tracing::warn!("{}", note);

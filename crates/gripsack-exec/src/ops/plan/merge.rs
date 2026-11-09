@@ -30,7 +30,7 @@ pub(super) fn plan_merge(
         mode: live_mode, ..
     }) = &view.observed
         && !blocks.is_empty()
-        && blocks.mode_conflicts(*live_mode, view.prev)
+        && blocks.mode_conflicts(*live_mode, view.prev_entry())
     {
         // An explicitly non-authoritative observation of the whole hosting text.
         return Ok(view

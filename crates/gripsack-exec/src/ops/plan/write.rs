@@ -1,4 +1,5 @@
-//! Whole-file permissions, copy/template authority and explicit migration writes.
+//! Whole-file permissions, copy/template authority through the kernel's
+//! per-unit decision (plan/0056 K1), and explicit migration writes.
 use super::*;
 
 /// Ordinary deployment follows source executability without widening
@@ -22,7 +23,7 @@ impl WritePermissions {
                 };
             }
         };
-        let Some(prev) = view.prev.filter(|entry| {
+        let Some(prev) = view.prev_entry().filter(|entry| {
             matches!(
                 entry.ownership.policy(),
                 Ownership::TrackedCopy | Ownership::Template
@@ -44,50 +45,21 @@ impl WritePermissions {
     }
 }
 
-pub(super) fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) -> Op {
-    use crate::deploy::CopyPlan;
+pub(super) fn plan_write(
+    view: &DestView,
+    content: &[u8],
+    permissions: WritePermissions,
+) -> Result<Op, ExecError> {
     let observed_mode = match &view.observed {
         Some(crate::deploy::Observation::File { mode, .. }) => Some(*mode),
         _ => None,
     };
     let intent_mode = permissions.resolve(view);
-    let desired_hash: store::hash::ManifestHash =
-        store::canonical_bytes_identity(content, intent_mode).into();
-    // the manifest-domain live identity, mode-aware for every surface
-    // that lands bytes (0043: templates joined copies); a foreign link
-    // hashes its target
-    let live = match &view.observed {
-        None => None,
-        Some(crate::deploy::Observation::Symlink { target }) => {
-            Some(store::canonical_bytes_hash(target.as_encoded_bytes()).to_string())
-        }
-        Some(crate::deploy::Observation::File { bytes, mode }) => {
-            Some(store::canonical_bytes_identity(bytes, *mode).to_string())
-        }
-    };
-    // Admit old template receipts before policy dispatch. Only an intact,
-    // non-preserved bytes-and-mode receipt denotes the live identity; this
-    // must hold with take-over too, or a legacy managed file becomes a prior.
-    let prev_pair = view
-        .prev
-        .map(|entry| match (&view.observed, live.as_deref()) {
-            (Some(crate::deploy::Observation::File { bytes, mode }), Some(live))
-                if entry.ownership.policy() == Ownership::Template
-                    && entry.hash.as_str() != live
-                    && entry.matches_file(bytes, *mode) =>
-            {
-                (live, false)
-            }
-            _ => (entry.hash.as_str(), entry.preserved_drift),
-        });
-    let plan = crate::deploy::plan_copy(
-        desired_hash.as_str(),
-        live.as_deref(),
-        prev_pair,
-        view.take_over,
-    );
-    let mut op = match plan {
-        CopyPlan::Satisfied => {
+    let desired = store::canonical_bytes_identity(content, intent_mode);
+    let desired_hash: store::hash::ManifestHash = desired.clone().into();
+    let decision = view.decide(store::hash::kernel::file(&desired));
+    let mut op = match decision {
+        Decision::Satisfied => {
             // satisfied means managed (0029 §2): the record clears any
             // prior preserve mark and holds the desired identity — an
             // observation recorded as drift must not stick forever
@@ -102,8 +74,8 @@ pub(super) fn plan_write(view: &DestView, content: &[u8], permissions: WritePerm
             )
             .with_produces(view.produces(desired_hash, landed_mode, false))
         }
-        CopyPlan::Fresh | CopyPlan::Update => {
-            let update = matches!(plan, CopyPlan::Update);
+        Decision::Create | Decision::ReplaceOwn => {
+            let update = matches!(decision, Decision::ReplaceOwn);
             let mode = intent_mode;
             view.base(
                 OpKind::Write {
@@ -121,7 +93,7 @@ pub(super) fn plan_write(view: &DestView, content: &[u8], permissions: WritePerm
             )
             .with_produces(view.produces(desired_hash, Some(mode), false))
         }
-        CopyPlan::TakeOver => {
+        Decision::TakeOver => {
             // adoption keeps the live mode (0033 R1)
             let mode = match &view.observed {
                 Some(crate::deploy::Observation::File { mode, .. }) => *mode,
@@ -141,19 +113,26 @@ pub(super) fn plan_write(view: &DestView, content: &[u8], permissions: WritePerm
             )
             .with_produces(view.produces(written_hash, Some(mode), false))
         }
-        CopyPlan::Preserve => {
+        Decision::Refuse(Refusal::Unsupported) => return Err(super::link::unsupported(view)),
+        Decision::Refuse(Refusal::Drifted | Refusal::Unowned) => {
             // the record holds the OBSERVED identity, marked preserved
-            // (0029 §2) — it authorizes nothing
+            // (0029 §2) — it authorizes nothing. A foreign link hashes its
+            // target in the bytes domain.
+            let observed_hash: store::hash::ManifestHash = match &view.observed {
+                Some(crate::deploy::Observation::Symlink { target }) => {
+                    store::canonical_bytes_hash(target.as_encoded_bytes()).into()
+                }
+                Some(crate::deploy::Observation::File { bytes, mode }) => {
+                    store::canonical_bytes_identity(bytes, *mode).into()
+                }
+                None => unreachable!("the kernel refuses only a live object"),
+            };
             view.base(
                 OpKind::Preserved,
                 None,
                 Intended::Object(view.observed_identity().expect("preserve implies live")),
             )
-            .with_produces(view.produces(
-                store::hash::ManifestHash::from_raw(live.expect("Preserve implies a live object")),
-                observed_mode,
-                true,
-            ))
+            .with_produces(view.produces(observed_hash, observed_mode, true))
         }
     };
     if let Some(produced) = op.produces_mut()
@@ -162,7 +141,7 @@ pub(super) fn plan_write(view: &DestView, content: &[u8], permissions: WritePerm
     {
         produced.source_executable = Some(executable);
     }
-    op
+    Ok(op)
 }
 
 pub(super) fn plan_migration_write(
@@ -172,6 +151,26 @@ pub(super) fn plan_migration_write(
     permissions: WritePermissions,
 ) -> Result<Op, ExecError> {
     authorization.reobserve(view)?;
+    let mode = permissions.resolve(view);
+    let identity = store::canonical_bytes_identity(content, mode);
+    // The admitted predecessor link is the recorded identity: the kernel
+    // authorizes replacing exactly that link, nothing else.
+    let decision = decide_unit(
+        &authorization.recorded(),
+        &kernel_live(view.observed.as_ref()),
+        &KernelIntended::Obj(store::hash::kernel::file(&identity)),
+        &take_over_consent(false),
+    );
+    if decision != Decision::ReplaceOwn {
+        return Err(ExecError::Step {
+            output: view.output.into(),
+            step: "migrate".into(),
+            detail: format!(
+                "{}: predecessor changed after migration admission",
+                view.entry.to
+            ),
+        });
+    }
     if !matches!(
         view.entry.mode,
         Ownership::TrackedCopy | Ownership::Template
@@ -182,8 +181,6 @@ pub(super) fn plan_migration_write(
             detail: "migration write requires a whole-file destination".into(),
         });
     }
-    let mode = permissions.resolve(view);
-    let identity = store::canonical_bytes_identity(content, mode);
     let mut produced = view.produces(identity.clone().into(), Some(mode), false);
     if let Some(produced) = &mut produced
         && let WritePermissions::Source { executable } = permissions

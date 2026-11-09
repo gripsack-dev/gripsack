@@ -178,7 +178,9 @@ pub fn decide(entry: &EntryFacts, live: &Live) -> Decision {
     }
 }
 
-fn intends(intended: &Intended, object: &Ident) -> bool {
+/// Whether `object` is the intended post-state (shared with the ownership
+/// decision).
+pub(crate) fn intends(intended: &Intended, object: &Ident) -> bool {
     match intended {
         Intended::Removed => false,
         Intended::Obj(ident) => ident.same(object),

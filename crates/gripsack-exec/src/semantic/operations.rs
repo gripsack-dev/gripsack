@@ -30,6 +30,7 @@ pub enum OperationAuthority {
     Update,
     TakeOver,
     Foreign,
+    Drifted,
     None,
 }
 #[derive(Debug, Serialize)]
@@ -129,6 +130,7 @@ fn explain_one(op: &Op) -> OperationExplanation {
             Some(Authority::Update) => OperationAuthority::Update,
             Some(Authority::TakeOver) => OperationAuthority::TakeOver,
             Some(Authority::Foreign) => OperationAuthority::Foreign,
+            Some(Authority::Drifted) => OperationAuthority::Drifted,
             None => OperationAuthority::None,
         },
         ownership: op.mode().clone(),

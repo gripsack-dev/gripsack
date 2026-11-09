@@ -82,10 +82,5 @@ pub fn waves(ir: &Ir) -> Result<Vec<Vec<String>>, PlanError> {
     Ok(vec![build_order(ir)?])
 }
 
-/// The ownership-lineage model (plan/0029) — drives the real
-/// `plan_copy` decision function over every action sequence.
-#[cfg(test)]
-mod lineage_model;
-
 #[cfg(all(test, unix))]
 mod mode_model;
