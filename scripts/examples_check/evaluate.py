@@ -20,6 +20,9 @@ import platform
 import re
 import subprocess
 
+# A hung frontend or `grip check` must fail the gate, not stall it (plan/0057).
+STEP_TIMEOUT = 600
+
 from .extract import Block, CheckFailure
 from .fixtures import scaffold, fresh_home
 
@@ -58,7 +61,7 @@ def frontend_eval(sdk_src, deno, repo, inputs: dict, home) -> dict:
         str(sdk_src / "src/cli.ts"), str(repo), "--inputs", str(inputs_path),
     ]
     res = subprocess.run(
-        cmd, cwd=repo, env=minimal_env(home), capture_output=True, text=True,
+        cmd, cwd=repo, env=minimal_env(home), capture_output=True, text=True, timeout=STEP_TIMEOUT,
     )
     if res.returncode != 0:
         raise CheckFailure(
@@ -80,7 +83,7 @@ def core_check(grip, deno, repo, home, expect_outputs: dict) -> int:
     })
     inspected = subprocess.run(
         [str(grip), "trust", "inspect", str(repo), "--json"],
-        cwd=repo, env=env, capture_output=True, text=True,
+        cwd=repo, env=env, capture_output=True, text=True, timeout=STEP_TIMEOUT,
     )
     if inspected.returncode:
         raise CheckFailure(f"fixture source inspection failed:\n{inspected.stderr[-2000:]}")
@@ -88,14 +91,14 @@ def core_check(grip, deno, repo, home, expect_outputs: dict) -> int:
     approved = subprocess.run(
         [str(grip), "trust", "add", str(repo),
          "--bundle", source["bundle_digest"], "--policy", source["policy_digest"]],
-        cwd=repo, env=env, capture_output=True, text=True,
+        cwd=repo, env=env, capture_output=True, text=True, timeout=STEP_TIMEOUT,
     )
     if approved.returncode:
         raise CheckFailure(f"fixture source approval failed:\n{approved.stderr[-2000:]}")
     cmd = [str(grip), "check", "--json"]
     res = subprocess.run(
         cmd, cwd=repo, env=env,
-        capture_output=True, text=True,
+        capture_output=True, text=True, timeout=STEP_TIMEOUT,
     )
     if res.returncode != 0:
         raise CheckFailure(

@@ -8,7 +8,6 @@ that safe are proved in Lean, over the Rust that ships.
 
 **Alpha · Linux x86_64 and WSL2 only.** Documentation: [gripsack.dev](https://gripsack.dev).
 
-![grip apply, an edit, apply again, then grip rollback](demos/demo-rollback.gif)
 
 ## Why
 
