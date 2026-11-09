@@ -1343,6 +1343,7 @@ name = "gripsack-host"
 version = "0.52.0"
 dependencies = [
  "gripsack-fs",
+ "gripsack-kernel",
  "rustix",
  "tempfile",
 ]

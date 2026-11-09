@@ -1,38 +1,94 @@
-//! F2 step 1 exit (plan/0056 §9): `MemFs` must rediscover the 0.19.1/0.19.2
-//! "resurrection" when the journal cleanup's entry barrier is removed, and
-//! the shipped two-barrier order must survive every crash.
+//! Journal recovery under crashes (plan/0056 F2 steps 1–2).
 //!
-//! The bug (CHANGELOG 0.19.2, plan/0020 amendment, `journal/marker.rs`
-//! `cleanup`): after a committed run, cleanup deletes the per-destination
-//! entries and the run marker. Recovery reads "entries without a marker" as
-//! an uncommitted legacy run and restores the entries' priors. If a power
-//! loss keeps the marker's unlink but drops an entry's, the committed
-//! generation's content is overwritten with the previous generation's.
-//! A kill cannot produce that state (the page cache survives in order), so
-//! only S3's power-loss subsets find it.
+//! The run below is the shipped apply at storage-op level (`begin_run` →
+//! `Journal::write` → leaf mutation → flip → `commit_run`), hand-written
+//! because the apply machine is F2 step 7. Recovery is **not** hand-written:
+//! it is the kernel's recover machine driven by `gripsack_host::recover`
+//! over `MemFs`, through a small test host that speaks this file's journal
+//! wire. Every crash of the run — kill and every power-loss subset — is
+//! followed by a recovery that is itself crashed everywhere, and then by a
+//! recovery to completion; the oracle is checked on every image.
 //!
-//! The run and recovery below are the shipped protocol at storage-op level
-//! (`begin_run` → `Journal::write` → leaf mutation → flip → `commit_run`;
-//! `reconcile`), cut down to one destination and no directory records.
+//! The oracle (plan/0020's sentence; the cases of the deleted
+//! `journal/model.rs` and `repeated_model.rs`): after recovery the journal
+//! is empty, `current` names the previous or the target selection, and each
+//! destination holds the content of the selected generation — or a
+//! post-crash user edit, which is never overwritten. When `current` matches
+//! neither selection, recovery refuses and changes nothing.
+//!
+//! Calibration: the 0.19.1 (no barrier) and 0.19.2 (trailing barrier only)
+//! commit cleanups resurrect priors after a power loss, and a host that
+//! commits by generation number (the pre-0028 direction heuristic) breaks
+//! the oracle. S5: an external write the driver's re-check can see is never
+//! overwritten; the window after it is measured, not assumed.
 
 mod support;
 
-use gripsack_host::storage::{
-    Boundary, Crash, CrashKinds, Exploration, ExploreError, MemDir, MemFs, PendingBound,
-    Permissions, Storage,
+use gripsack_host::recover::{
+    Found, HostEntry, LeafSite, RecoverError, RecoverHost, Recovery, RestoreSource, Settled,
+    recover,
 };
+use gripsack_host::storage::{
+    Boundary, Crash, CrashKinds, Exploration, ExploreError, ExternalWrite, MemDir, MemFs, Name,
+    ObjectKind, Operation, PendingBound, Permissions, Storage, explore,
+};
+use gripsack_kernel::recover::{
+    Delegated, EntryFacts, Ident, Intended, JournalFacts, MarkerFacts, Outcome, Prior, Refusal,
+    Route,
+};
+use gripsack_kernel::selection::SelectionIdentity;
+use gripsack_kernel::{DestId, Digest, GenerationId};
+use std::cell::RefCell;
 use std::io;
+use std::path::{Path, PathBuf};
 use support::{WriteOrder, atomic_write, name, symlink_replace};
 
-const PRIOR: &[u8] = b"generation 1 bytes";
-const INTENDED: &[u8] = b"generation 2 bytes";
 const PREVIOUS: &str = "generations/1";
 const TARGET: &str = "generations/2";
 const RUN_MARKER: &str = "run.json";
-const ENTRY: &str = "dest.json";
 const DEST_MODE: Permissions = Permissions::new(0o644);
+const USER: &str = "user edit";
+/// Every text a destination ever holds in these runs.
+const TEXTS: &[&str] = &["one", "two", "mid", "old", "new", USER];
 
-/// `marker::cleanup`'s barrier placement.
+/// A destination's content in one generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Content {
+    Absent,
+    File(&'static str),
+    Link(&'static str),
+}
+
+const ONE: Content = Content::File("one");
+const TWO: Content = Content::File("two");
+const MID: Content = Content::File("mid");
+const EDITED: Content = Content::File(USER);
+
+fn intern(text: &str) -> Option<&'static str> {
+    TEXTS.iter().copied().find(|known| *known == text)
+}
+
+/// One destination the run changes.
+#[derive(Debug, Clone, Copy)]
+struct Dest {
+    at: &'static str,
+    prior: Content,
+    intended: Content,
+    /// Written twice: first `Some(first)`, then `intended` (journal v2's
+    /// immediate pre-state).
+    first: Option<Content>,
+}
+
+const fn dest(at: &'static str, prior: Content, intended: Content) -> Dest {
+    Dest {
+        at,
+        prior,
+        intended,
+        first: None,
+    }
+}
+
+/// `marker::cleanup`'s barrier placement in the run's `commit_run`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Cleanup {
     /// Shipped (0026 §5): unlink entries, fsync; unlink marker, fsync.
@@ -43,8 +99,60 @@ enum Cleanup {
     NoBarrier,
 }
 
-/// `$GRIPSACK_HOME` after generation 1 deployed, all durable.
-fn home() -> MemFs {
+/// How the run interleaves records and mutations of several destinations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Order {
+    /// record a, mutate a, record b, mutate b
+    Interleaved,
+    /// record a, record b, mutate a, mutate b
+    Batched,
+}
+
+#[derive(Debug, Clone)]
+struct Scenario {
+    /// A fresh machine: no generation selected before the run.
+    fresh: bool,
+    dests: Vec<Dest>,
+    order: Order,
+    cleanup: Cleanup,
+}
+
+impl Scenario {
+    fn one(dest: Dest) -> Self {
+        Self::many(vec![dest], Order::Interleaved)
+    }
+
+    fn many(dests: Vec<Dest>, order: Order) -> Self {
+        Self {
+            fresh: false,
+            dests,
+            order,
+            cleanup: Cleanup::TwoBarriers,
+        }
+    }
+}
+
+// ---- the run (apply at storage-op level) ---------------------------------
+
+fn put(fs: &MemFs, dir: &MemDir, at: &str, content: Content) -> io::Result<()> {
+    match content {
+        Content::File(text) => {
+            atomic_write(fs, dir, at, text.as_bytes(), DEST_MODE, WriteOrder::Shipped)
+        }
+        Content::Link(target) => symlink_replace(fs, dir, at, target),
+        Content::Absent => {
+            match fs.unlink(dir, &name(at)) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+                _ => {}
+            }
+            fs.sync_dir(dir)
+        }
+    }
+}
+
+/// `$GRIPSACK_HOME` (where the destinations also live, for brevity) after
+/// the previous generation deployed, all durable.
+fn home(scenario: &Scenario) -> MemFs {
     let fs = MemFs::new();
     let root = fs.root().unwrap();
     for at in ["generations", "journal"] {
@@ -52,13 +160,17 @@ fn home() -> MemFs {
             .unwrap();
     }
     let generations = fs.open_dir(&root, &name("generations")).unwrap();
-    for at in ["1", "2"] {
+    for at in ["1", "2", "3"] {
         fs.create_dir(&generations, &name(at), Permissions::new(0o755))
             .unwrap();
     }
-    atomic_write(&fs, &root, "dest", PRIOR, DEST_MODE, WriteOrder::Shipped).unwrap();
-    fs.symlink(&root, &name("current"), PREVIOUS.as_ref())
-        .unwrap();
+    for dest in &scenario.dests {
+        put(&fs, &root, dest.at, dest.prior).unwrap();
+    }
+    if !scenario.fresh {
+        fs.symlink(&root, &name("current"), PREVIOUS.as_ref())
+            .unwrap();
+    }
     fs.settled()
 }
 
@@ -78,47 +190,39 @@ fn publish_record(fs: &MemFs, journal: &MemDir, at: &str, bytes: &[u8]) -> io::R
     )
 }
 
-/// Entry and marker wire, reduced to what classification and restore read.
-fn encode_entry() -> Vec<u8> {
-    [b"dest\n".as_slice(), PRIOR, b"\n", INTENDED].concat()
-}
-
-struct Entry {
-    dest: String,
-    prior: Vec<u8>,
-    intended: Vec<u8>,
-}
-
-fn decode_entry(bytes: &[u8]) -> io::Result<Entry> {
-    let fields: Vec<&[u8]> = bytes.split(|&b| b == b'\n').collect();
-    match fields.as_slice() {
-        [dest, prior, intended] => Ok(Entry {
-            dest: String::from_utf8_lossy(dest).into_owned(),
-            prior: prior.to_vec(),
-            intended: intended.to_vec(),
-        }),
-        _ => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "torn journal entry",
-        )),
+fn encode(content: Content) -> String {
+    match content {
+        Content::Absent => "-".into(),
+        Content::File(text) => format!("F:{text}"),
+        Content::Link(target) => format!("L:{target}"),
     }
 }
 
-fn decode_marker(bytes: &[u8]) -> io::Result<(String, String)> {
-    let text = String::from_utf8_lossy(bytes);
-    match text.split_once('\n') {
-        Some((previous, target)) => Ok((previous.to_owned(), target.to_owned())),
-        None => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "torn run marker",
-        )),
+fn decode(field: &str) -> io::Result<Content> {
+    let torn = || io::Error::new(io::ErrorKind::InvalidData, "torn field");
+    match field.split_at_checked(2) {
+        _ if field == "-" => Ok(Content::Absent),
+        Some(("F:", text)) => intern(text).map(Content::File).ok_or_else(torn),
+        Some(("L:", target)) => intern(target).map(Content::Link).ok_or_else(torn),
+        _ => Err(torn()),
     }
+}
+
+/// One entry on the wire: dest, prior, immediate pre-state, intended.
+fn encode_entry(dest: &str, prior: Content, before: Content, intended: Content) -> Vec<u8> {
+    format!(
+        "{dest}\n{}\n{}\n{}",
+        encode(prior),
+        encode(before),
+        encode(intended)
+    )
+    .into_bytes()
 }
 
 /// `marker::cleanup` with the barrier placement under test.
-fn cleanup(fs: &MemFs, journal: &MemDir, entries: &[String], order: Cleanup) -> io::Result<()> {
+fn cleanup(fs: &MemFs, journal: &MemDir, entries: &[Name], order: Cleanup) -> io::Result<()> {
     for entry in entries {
-        fs.unlink(journal, &name(entry))?;
+        fs.unlink(journal, entry)?;
     }
     if order == Cleanup::TwoBarriers {
         fs.sync_dir(journal)?;
@@ -133,193 +237,559 @@ fn cleanup(fs: &MemFs, journal: &MemDir, entries: &[String], order: Cleanup) -> 
     Ok(())
 }
 
-fn entry_names(fs: &MemFs, journal: &MemDir) -> io::Result<Vec<String>> {
+fn entry_names(fs: &MemFs, journal: &MemDir) -> io::Result<Vec<Name>> {
     Ok(fs
         .read_dir(journal)?
         .into_iter()
-        .map(|entry| entry.as_os_str().to_string_lossy().into_owned())
-        .filter(|entry| entry != RUN_MARKER && !entry.starts_with('.') && entry.ends_with(".json"))
+        .filter(|entry| {
+            let text = entry.as_os_str().to_string_lossy();
+            text != RUN_MARKER && !text.starts_with('.') && text.ends_with(".json")
+        })
         .collect())
 }
 
 /// One committed apply: declare, record, mutate, flip, clean up.
-fn apply(fs: &MemFs, order: Cleanup) -> io::Result<()> {
+fn apply(fs: &MemFs, scenario: &Scenario) -> io::Result<()> {
     let root = fs.root()?;
     let journal = journal(fs)?;
+    let previous = if scenario.fresh { "none" } else { PREVIOUS };
     // begin_run: the marker is durable before any mutation
     publish_record(
         fs,
         &journal,
         RUN_MARKER,
-        format!("{PREVIOUS}\n{TARGET}").as_bytes(),
+        format!("{previous}\n{TARGET}").as_bytes(),
     )?;
-    // record the prior, durably, then mutate the destination
-    publish_record(fs, &journal, ENTRY, &encode_entry())?;
-    atomic_write(fs, &root, "dest", INTENDED, DEST_MODE, WriteOrder::Shipped)?;
+    let record = |dest: &Dest, before: Content, intended: Content| {
+        publish_record(
+            fs,
+            &journal,
+            &format!("{}.json", dest.at),
+            &encode_entry(dest.at, dest.prior, before, intended),
+        )
+    };
+    let first = |dest: &Dest| dest.first.unwrap_or(dest.intended);
+    match scenario.order {
+        Order::Interleaved => {
+            for dest in &scenario.dests {
+                record(dest, dest.prior, first(dest))?;
+                put(fs, &root, dest.at, first(dest))?;
+            }
+        }
+        Order::Batched => {
+            for dest in &scenario.dests {
+                record(dest, dest.prior, first(dest))?;
+            }
+            for dest in &scenario.dests {
+                put(fs, &root, dest.at, first(dest))?;
+            }
+        }
+    }
+    // repeated writes: the entry's immediate pre-state is the first write
+    for dest in &scenario.dests {
+        if let Some(written) = dest.first {
+            record(dest, written, dest.intended)?;
+            put(fs, &root, dest.at, dest.intended)?;
+        }
+    }
     // the flip: the commit point
     symlink_replace(fs, &root, "current", TARGET)?;
     // commit_run
     let entries = entry_names(fs, &journal)?;
-    cleanup(fs, &journal, &entries, order)
+    cleanup(fs, &journal, &entries, scenario.cleanup)
 }
 
-/// `reconcile`: classify by the marker against `current`, then clean up
-/// (committed) or restore priors under the drift guard (uncommitted, or
-/// entries with no marker — the legacy shape the bug produces).
-fn recover(fs: &MemFs, order: Cleanup) -> io::Result<()> {
-    let root = fs.root()?;
-    let journal = journal(fs)?;
-    for straggler in fs.read_dir(&journal)? {
-        if straggler
-            .as_os_str()
-            .to_string_lossy()
-            .starts_with(".tmp-write-")
-        {
-            fs.unlink(&journal, &straggler)?;
-            fs.sync_dir(&journal)?;
+// ---- the test host: this file's wire, for the kernel's recover machine ---
+
+/// Exact identities for short test contents: kind, length, mode and bytes
+/// laid into the digest (S7, collision resistance, is not under test here).
+fn digest(tag: u8, mode: u32, bytes: &[u8]) -> Digest {
+    assert!(bytes.len() <= 28, "test contents are short");
+    let mut out = [0u8; 32];
+    out[0] = tag;
+    out[1] = bytes.len() as u8;
+    out[2..4].copy_from_slice(&(mode as u16).to_le_bytes());
+    out[4..4 + bytes.len()].copy_from_slice(bytes);
+    Digest::from_bytes(out)
+}
+
+fn ident(content: Content) -> Option<Ident> {
+    match content {
+        Content::Absent => None,
+        Content::File(text) => Some(Ident::File(digest(b'F', DEST_MODE.bits(), text.as_bytes()))),
+        Content::Link(target) => Some(Ident::Link(digest(b'L', 0, target.as_bytes()))),
+    }
+}
+
+fn selection(text: &str) -> io::Result<SelectionIdentity> {
+    text.strip_prefix("generations/")
+        .and_then(|number| number.parse().ok())
+        .map(|number| SelectionIdentity::legacy(GenerationId::new(number)))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "torn selection"))
+}
+
+struct TestHost<'a> {
+    fs: &'a MemFs,
+    /// Mutant: commit whenever `current` is numerically at or before the
+    /// target (absent counts as zero) — the pre-0028 direction rule.
+    numeric_commit: bool,
+    marker: Option<MarkerFacts>,
+    entries: Vec<Name>,
+}
+
+impl<'a> TestHost<'a> {
+    fn new(fs: &'a MemFs, numeric_commit: bool) -> Self {
+        Self {
+            fs,
+            numeric_commit,
+            marker: None,
+            entries: Vec::new(),
         }
     }
-    let marker = match fs.read(&journal, &name(RUN_MARKER)) {
-        Ok(bytes) => Some(decode_marker(&bytes)?),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error),
-    };
-    let entries = entry_names(fs, &journal)?;
-    if marker.is_none() && entries.is_empty() {
-        return Ok(());
+}
+
+impl RecoverHost for TestHost<'_> {
+    type Storage = MemFs;
+
+    fn storage(&self) -> &MemFs {
+        self.fs
     }
-    let current = fs.read_link(&root, &name("current"))?;
-    let committed = match &marker {
-        Some((_, target)) if current.as_os_str() == target.as_str() => true,
-        Some((previous, _)) if current.as_os_str() == previous.as_str() => false,
-        Some(_) => return Err(io::Error::other("ambiguous journal selections")),
-        None => false,
-    };
-    if committed {
-        // seal the observed flip before the evidence goes
-        fs.sync_dir(&root)?;
-        return cleanup(fs, &journal, &entries, order);
-    }
-    for at in &entries {
-        let entry = decode_entry(&fs.read(&journal, &name(at))?)?;
-        let live = match fs.read(&root, &name(&entry.dest)) {
-            Ok(bytes) => Some(bytes),
+
+    fn read_journal(&mut self) -> io::Result<Option<JournalFacts>> {
+        let journal = match journal(self.fs) {
+            Ok(journal) => journal,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        // `read_uncommitted`: unpublished temp siblings are not metadata
+        for straggler in self.fs.read_dir(&journal)? {
+            if straggler
+                .as_os_str()
+                .to_string_lossy()
+                .starts_with(".tmp-write-")
+            {
+                self.fs.unlink(&journal, &straggler)?;
+                self.fs.sync_dir(&journal)?;
+            }
+        }
+        self.marker = match self.fs.read(&journal, &name(RUN_MARKER)) {
+            Ok(bytes) => {
+                let text = String::from_utf8_lossy(&bytes);
+                let (previous, target) = text
+                    .split_once('\n')
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "torn marker"))?;
+                Some(MarkerFacts {
+                    previous: match previous {
+                        "none" => None,
+                        previous => Some(selection(previous)?),
+                    },
+                    target: selection(target)?,
+                })
+            }
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             Err(error) => return Err(error),
         };
-        if live.as_deref() == Some(entry.intended.as_slice()) {
-            atomic_write(
-                fs,
-                &root,
-                &entry.dest,
-                &entry.prior,
-                DEST_MODE,
-                WriteOrder::Shipped,
-            )?;
-        } else if live.as_deref() == Some(entry.prior.as_slice()) {
-            // seal_observed_prior
-            let file = fs.open_file(&root, &name(&entry.dest))?;
-            fs.sync_file(&file)?;
-            fs.sync_dir(&root)?;
-        }
-        // anything else drifted after the crash: the user's now, kept
+        self.entries = entry_names(self.fs, &journal)?;
+        Ok(Some(JournalFacts {
+            entries: self.entries.len() as u32,
+            directories: 0,
+            reverse_roots: 0,
+            marker: self.marker,
+        }))
     }
-    cleanup(fs, &journal, &entries, order)
+
+    fn read_current(&mut self) -> io::Result<Option<SelectionIdentity>> {
+        let current = match self.fs.read_link(&self.fs.root()?, &name("current")) {
+            Ok(target) => Some(selection(&target.to_string_lossy())?),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        if self.numeric_commit
+            && let Some(marker) = self.marker
+            && current.is_none_or(|current| current.generation() <= marker.target.generation())
+        {
+            return Ok(Some(marker.target));
+        }
+        Ok(current)
+    }
+
+    fn read_entry(&mut self, index: u32) -> io::Result<HostEntry<MemDir>> {
+        let journal = journal(self.fs)?;
+        let bytes = self.fs.read(&journal, &self.entries[index as usize])?;
+        let text = String::from_utf8_lossy(&bytes);
+        let fields: Vec<&str> = text.split('\n').collect();
+        let [dest, prior, before, intended] = fields.as_slice() else {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "torn entry"));
+        };
+        let (prior, before, intended) = (decode(prior)?, decode(before)?, decode(intended)?);
+        let restore = match prior {
+            Content::Absent => RestoreSource::Absent,
+            Content::File(text) => RestoreSource::File {
+                bytes: text.as_bytes().to_vec(),
+                mode: DEST_MODE,
+            },
+            Content::Link(target) => RestoreSource::Link {
+                target: PathBuf::from(target),
+            },
+        };
+        Ok(HostEntry {
+            facts: EntryFacts {
+                dest: DestId::new(index),
+                prior: ident(prior).map_or(Prior::Absent, Prior::Obj),
+                before: if before == prior { None } else { ident(before) },
+                intended: ident(intended).map_or(Intended::Removed, Intended::Obj),
+                route: Route::Leaf,
+            },
+            site: Some(LeafSite {
+                parent: self.fs.root()?,
+                name: name(dest),
+                restore,
+            }),
+        })
+    }
+
+    fn file_ident(&self, bytes: &[u8], mode: Permissions) -> Ident {
+        Ident::File(digest(b'F', mode.bits(), bytes))
+    }
+
+    fn link_ident(&self, target: &Path) -> Option<Ident> {
+        target
+            .to_str()
+            .map(|target| Ident::Link(digest(b'L', 0, target.as_bytes())))
+    }
+
+    fn staging_name(&self, at: &Name, link: bool) -> Name {
+        let prefix = if link { ".tmp-link-" } else { ".tmp-write-" };
+        name(&format!("{prefix}{}", at.as_os_str().to_string_lossy()))
+    }
+
+    fn delegate(&mut self, step: Delegated) -> io::Result<()> {
+        Err(io::Error::other(format!(
+            "no directory records in these runs, yet {step:?} was scheduled"
+        )))
+    }
+
+    fn journal_dir(&self) -> io::Result<MemDir> {
+        journal(self.fs)
+    }
+
+    fn record_name(&self, index: u32) -> io::Result<Name> {
+        Ok(self.entries[index as usize].clone())
+    }
+
+    fn marker_name(&self) -> Name {
+        name(RUN_MARKER)
+    }
+
+    fn selection_dir(&self) -> io::Result<MemDir> {
+        self.fs.root()
+    }
 }
 
-/// P2 in the small: after recovery the journal is empty, `current` names a
-/// published generation, and the destination holds exactly that
-/// generation's bytes.
-fn recovered_state_is_consistent(fs: &MemFs) -> Result<(), String> {
+fn run_recovery(fs: &MemFs) -> Result<Recovery, RecoverError> {
+    recover(&mut TestHost::new(fs, false))
+}
+
+// ---- the oracle -----------------------------------------------------------
+
+fn content_at(fs: &MemFs, at: &str) -> Result<Content, String> {
+    let root = fs.root().map_err(|e| e.to_string())?;
+    let known = |text: String| intern(&text).ok_or(format!("{at} holds unknown {text:?}"));
+    match fs.metadata(&root, &name(at)) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Content::Absent),
+        Err(error) => Err(error.to_string()),
+        Ok(meta) => match meta.kind {
+            ObjectKind::File if meta.permissions == DEST_MODE => {
+                let bytes = fs.read(&root, &name(at)).map_err(|e| e.to_string())?;
+                Ok(Content::File(known(
+                    String::from_utf8_lossy(&bytes).into(),
+                )?))
+            }
+            ObjectKind::Symlink => {
+                let target = fs.read_link(&root, &name(at)).map_err(|e| e.to_string())?;
+                Ok(Content::Link(known(target.to_string_lossy().into())?))
+            }
+            other => Err(format!("{at} is {other:?} at {}", meta.permissions)),
+        },
+    }
+}
+
+/// After recovery: the journal is empty, `current` names the previous or
+/// the target selection, every destination holds that generation's
+/// content — except the `edited` ones, which hold the user's edit.
+fn recovered_state_is_consistent(
+    fs: &MemFs,
+    scenario: &Scenario,
+    edited: &[&str],
+) -> Result<(), String> {
     let root = fs.root().map_err(|e| e.to_string())?;
     let journal = journal(fs).map_err(|e| e.to_string())?;
     let left = fs.read_dir(&journal).map_err(|e| e.to_string())?;
     if !left.is_empty() {
         return Err(format!("journal not cleared: {left:?}"));
     }
-    let current = fs
-        .read_link(&root, &name("current"))
-        .map_err(|e| format!("current unreadable: {e}"))?;
-    let dest = fs
-        .read(&root, &name("dest"))
-        .map_err(|e| format!("dest unreadable: {e}"))?;
-    let expected = match current.to_str() {
-        Some(PREVIOUS) => PRIOR,
-        Some(TARGET) => INTENDED,
-        _ => return Err(format!("current names {current:?}")),
+    let committed = match fs.read_link(&root, &name("current")) {
+        Ok(current) if current.as_os_str() == TARGET => true,
+        Ok(current) if current.as_os_str() == PREVIOUS && !scenario.fresh => false,
+        Err(error) if error.kind() == io::ErrorKind::NotFound && scenario.fresh => false,
+        other => return Err(format!("current is {other:?}")),
     };
-    if dest == expected {
-        Ok(())
-    } else if current.as_os_str() == TARGET && dest == PRIOR {
-        Err(
-            "RESURRECTION: current selects generation 2 but recovery restored \
-             generation 1's prior into dest"
-                .into(),
-        )
-    } else {
-        Err(format!(
-            "dest holds {:?} under {current:?}",
-            String::from_utf8_lossy(&dest)
-        ))
+    for dest in &scenario.dests {
+        let found = content_at(fs, dest.at)?;
+        let expected = if edited.contains(&dest.at) {
+            EDITED
+        } else if committed {
+            dest.intended
+        } else {
+            dest.prior
+        };
+        if found != expected {
+            if committed && found == dest.prior {
+                return Err(format!(
+                    "RESURRECTION: current selects the target but recovery restored \
+                     {}'s prior {found:?}",
+                    dest.at
+                ));
+            }
+            return Err(format!(
+                "{} holds {found:?}, expected {expected:?} (committed: {committed})",
+                dest.at
+            ));
+        }
     }
+    Ok(())
 }
 
-/// Recover to completion on a crashed image, then check.
-fn recovers(fs: MemFs, order: Cleanup) -> Result<(), String> {
-    recover(&fs, order).map_err(|e| format!("recovery failed: {e}"))?;
-    recovered_state_is_consistent(&fs)
+/// The user's editor replacing `at`: a complete, durable new file.
+fn edit(fs: &MemFs, at: &str) -> Result<(), String> {
+    let root = fs.root().map_err(|e| e.to_string())?;
+    atomic_write(
+        fs,
+        &root,
+        at,
+        USER.as_bytes(),
+        DEST_MODE,
+        WriteOrder::Shipped,
+    )
+    .map_err(|e| e.to_string())
 }
 
-fn explore_apply(
-    order: Cleanup,
+/// Crash the run everywhere; on every image optionally let the user edit
+/// `edits.0`, then (if asked) crash the recovery everywhere too, optionally
+/// let the user edit `edits.1`, and recover to completion.
+fn explore_run(
+    scenario: &Scenario,
     kinds: CrashKinds,
     crash_recovery_too: bool,
+    edits: (Option<&'static str>, Option<&'static str>),
+    numeric_commit: bool,
 ) -> Result<Exploration, ExploreError> {
-    let mut nested = Exploration::default();
-    let result = gripsack_host::storage::explore(
-        &home(),
+    let nested = RefCell::new(Exploration::default());
+    let recover_with = |fs: &MemFs| {
+        recover(&mut TestHost::new(fs, numeric_commit))
+            .map(drop)
+            .map_err(RecoverError::into_io)
+    };
+    let finish = |fs: MemFs, edited: &[&str]| {
+        recover_with(&fs).map_err(|e| format!("recovery failed: {e}"))?;
+        recovered_state_is_consistent(&fs, scenario, edited)
+    };
+    let outer = explore(
+        &home(scenario),
         kinds,
         PendingBound::default(),
-        |fs| apply(fs, order),
+        |fs| apply(fs, scenario),
         |image, _| {
-            if !crash_recovery_too {
-                return recovers(image, order);
+            let mut edited: Vec<&str> = Vec::new();
+            if let Some(at) = edits.0 {
+                edit(&image, at)?;
+                edited.push(at);
             }
-            // crash the first recovery anywhere too, then recover again
-            let inner = gripsack_host::storage::explore(
+            if !crash_recovery_too {
+                return finish(image, &edited);
+            }
+            let inner = explore(
                 &image,
                 kinds,
                 PendingBound::default(),
-                |fs| recover(fs, order),
-                |again, _| recovers(again, order),
+                recover_with,
+                |again, _| {
+                    let mut edited = edited.clone();
+                    if let Some(at) = edits.1 {
+                        edit(&again, at)?;
+                        edited.push(at);
+                    }
+                    finish(again, &edited)
+                },
             )
             .map_err(|error| format!("during recovery: {error}"))?;
+            let mut nested = nested.borrow_mut();
             nested.cuts += inner.cuts;
             nested.images += inner.images;
             Ok(())
         },
-    );
-    result.map(|outer| Exploration {
+    )?;
+    let nested = nested.into_inner();
+    Ok(Exploration {
         cuts: outer.cuts + nested.cuts,
         images: outer.images + nested.images,
     })
 }
 
+fn explored(scenario: &Scenario) -> Exploration {
+    let explored = explore_run(scenario, CrashKinds::Both, true, (None, None), false)
+        .unwrap_or_else(|error| panic!("{scenario:?}\n{error}"));
+    eprintln!("{scenario:?}: {explored:?}");
+    assert!(explored.images > explored.cuts);
+    explored
+}
+
+// ---- every crash, every recovery crash ------------------------------------
+
 #[test]
-fn shipped_two_barrier_cleanup_survives_every_crash_and_every_recovery_crash() {
-    let explored = explore_apply(Cleanup::TwoBarriers, CrashKinds::Both, true)
-        .unwrap_or_else(|error| panic!("{error}"));
-    eprintln!("two-barrier cleanup: {explored:?}");
-    assert!(explored.cuts > 20 && explored.images > explored.cuts);
+fn shipped_cleanup_survives_every_crash_and_every_recovery_crash() {
+    // the step-1 exit, now with the kernel machine recovering
+    let explored = explored(&Scenario::one(dest("dest", ONE, TWO)));
+    assert!(explored.cuts > 20);
 }
 
 #[test]
+fn every_entry_shape_recovers_on_fresh_and_existing_machines() {
+    let shapes = [
+        dest("dest", Content::Absent, TWO),      // create
+        dest("dest", ONE, Content::Absent),      // remove (prune)
+        dest("dest", Content::Link("old"), TWO), // link → file
+        dest("dest", ONE, Content::Link("new")), // file → link
+        dest("dest", Content::Link("old"), Content::Link("new")),
+    ];
+    for shape in shapes {
+        for fresh in [false, true] {
+            let mut scenario = Scenario::one(shape);
+            scenario.fresh = fresh;
+            explored(&scenario);
+        }
+    }
+}
+
+#[test]
+fn repeated_writes_restore_the_run_original_prior() {
+    for prior in [ONE, Content::Absent] {
+        let mut repeated = dest("dest", prior, TWO);
+        repeated.first = Some(MID);
+        explored(&Scenario::one(repeated));
+    }
+}
+
+#[test]
+fn independent_destinations_recover_in_every_record_order() {
+    for order in [Order::Interleaved, Order::Batched] {
+        explored(&Scenario::many(
+            vec![dest("a", ONE, TWO), dest("b", Content::Absent, MID)],
+            order,
+        ));
+    }
+}
+
+// ---- post-crash edits, ambiguity, the commit mutant -----------------------
+
+#[test]
+fn edits_after_each_crash_are_never_overwritten() {
+    let scenario = Scenario::many(
+        vec![dest("a", ONE, TWO), dest("b", ONE, MID)],
+        Order::Interleaved,
+    );
+    // an edit after the run's crash, and another after the recovery's crash
+    // (possibly after `b` was already restored)
+    for edits in [(Some("a"), None), (None, Some("b")), (Some("a"), Some("b"))] {
+        explore_run(&scenario, CrashKinds::Both, true, edits, false)
+            .unwrap_or_else(|error| panic!("{edits:?}\n{error}"));
+    }
+}
+
+/// The journal's published records (temp siblings excluded) with bytes.
+fn journal_records(fs: &MemFs) -> Vec<(Name, Vec<u8>)> {
+    let journal = journal(fs).unwrap();
+    fs.read_dir(&journal)
+        .unwrap()
+        .into_iter()
+        .filter(|at| !at.as_os_str().to_string_lossy().starts_with('.'))
+        .map(|at| {
+            let bytes = fs.read(&journal, &at).unwrap();
+            (at, bytes)
+        })
+        .collect()
+}
+
+#[test]
+fn ambiguous_current_retains_the_journal_and_touches_nothing() {
+    let scenario = Scenario::many(
+        vec![dest("a", ONE, TWO), dest("b", Content::Absent, MID)],
+        Order::Interleaved,
+    );
+    let contents = |fs: &MemFs| -> Vec<Content> {
+        scenario
+            .dests
+            .iter()
+            .map(|dest| content_at(fs, dest.at).unwrap())
+            .collect()
+    };
+    let mut refused = 0;
+    explore(
+        &home(&scenario),
+        CrashKinds::Kill,
+        PendingBound::default(),
+        |fs| apply(fs, &scenario),
+        |image, point| {
+            // a third selection, neither previous nor target
+            let root = image.root().unwrap();
+            symlink_replace(&image, &root, "current", "generations/3").unwrap();
+            let records = journal_records(&image);
+            let before = contents(&image);
+            let marked = records.iter().any(|(at, _)| *at == name(RUN_MARKER));
+            match run_recovery(&image) {
+                Err(RecoverError::Refused {
+                    refusal: Refusal::Ambiguous,
+                    ..
+                }) => refused += 1,
+                Ok(_) if !marked => return Ok(()),
+                other => return Err(format!("{point:?}: expected Ambiguous, got {other:?}")),
+            }
+            if journal_records(&image) != records || contents(&image) != before {
+                return Err(format!("{point:?}: an ambiguous recovery changed state"));
+            }
+            Ok(())
+        },
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert!(refused > 10, "the marker window was explored ({refused})");
+}
+
+#[test]
+fn numeric_commit_mutant_breaks_the_oracle() {
+    for fresh in [false, true] {
+        let mut scenario = Scenario::one(dest("dest", ONE, TWO));
+        scenario.fresh = fresh;
+        let error = explore_run(&scenario, CrashKinds::Kill, false, (None, None), true)
+            .expect_err("committing by generation number must be caught");
+        let violation = error.violation().expect("an oracle violation");
+        assert!(
+            violation.failure.contains("holds"),
+            "fresh={fresh}: {violation}"
+        );
+    }
+}
+
+// ---- the 0.19.x resurrections (step 1's calibration) ----------------------
+
+#[test]
 fn removing_the_entry_barrier_resurrects_priors_after_power_loss() {
+    let mut scenario = Scenario::one(dest("dest", ONE, TWO));
+    scenario.cleanup = Cleanup::TrailingBarrier;
     // A kill never finds it: the page cache keeps the unlinks in order.
-    explore_apply(Cleanup::TrailingBarrier, CrashKinds::Kill, true)
+    explore_run(&scenario, CrashKinds::Kill, true, (None, None), false)
         .unwrap_or_else(|error| panic!("kill alone must not resurrect: {error}"));
 
-    let error = explore_apply(Cleanup::TrailingBarrier, CrashKinds::PowerLoss, false)
+    let error = explore_run(&scenario, CrashKinds::PowerLoss, false, (None, None), false)
         .expect_err("MemFs must find the 0.19.2 resurrection");
     let violation = error.violation().expect("a resurrection, not a run error");
     eprintln!("{violation}");
@@ -334,10 +804,10 @@ fn removing_the_entry_barrier_resurrects_priors_after_power_loss() {
         .filter(|(_, event)| event.boundary == Boundary::Unlink)
         .filter_map(|(i, event)| {
             let at = event.name.as_ref()?.as_os_str().to_string_lossy();
-            (at == ENTRY || at == RUN_MARKER).then(|| (violation.first + i, at.into_owned()))
+            (at == "dest.json" || at == RUN_MARKER).then(|| (violation.first + i, at.into_owned()))
         })
         .collect();
-    let entry = unlinks.iter().find(|(_, at)| at == ENTRY).unwrap().0;
+    let entry = unlinks.iter().find(|(_, at)| at == "dest.json").unwrap().0;
     let marker = unlinks.iter().find(|(_, at)| at == RUN_MARKER).unwrap().0;
     assert!(lost.contains(&entry), "entry unlink lost");
     assert!(!lost.contains(&marker), "marker unlink survived");
@@ -345,8 +815,181 @@ fn removing_the_entry_barrier_resurrects_priors_after_power_loss() {
 
 #[test]
 fn the_0_19_1_cleanup_without_barriers_resurrects_after_returning() {
-    let error = explore_apply(Cleanup::NoBarrier, CrashKinds::PowerLoss, false)
+    let mut scenario = Scenario::one(dest("dest", ONE, TWO));
+    scenario.cleanup = Cleanup::NoBarrier;
+    let error = explore_run(&scenario, CrashKinds::PowerLoss, false, (None, None), false)
         .expect_err("MemFs must find the 0.19.1 resurrection");
     let violation = error.violation().expect("a resurrection");
     assert!(violation.failure.starts_with("RESURRECTION"), "{violation}");
+}
+
+// ---- the unrestorable-entry wedge (0058 item 1) ---------------------------
+
+/// The run crashed after creating `dest` (prior absent); the user then put a
+/// directory there. Recovery refuses by name and changes nothing; once the
+/// directory is moved aside, recovery completes.
+#[test]
+fn a_directory_where_a_file_is_restored_is_refused_by_name_until_moved() {
+    let scenario = Scenario::one(dest("dest", Content::Absent, TWO));
+    let mut wedged = 0;
+    explore(
+        &home(&scenario),
+        CrashKinds::Kill,
+        PendingBound::default(),
+        |fs| apply(fs, &scenario),
+        |image, point| {
+            if content_at(&image, "dest") != Ok(TWO) {
+                return Ok(());
+            }
+            let root = image.root().unwrap();
+            let journal_dir = journal(&image).unwrap();
+            let recorded = image.read(&journal_dir, &name("dest.json")).is_ok();
+            let committed = image
+                .read_link(&root, &name("current"))
+                .is_ok_and(|current| current.as_os_str() == TARGET);
+            image.unlink(&root, &name("dest")).unwrap();
+            image
+                .create_dir(&root, &name("dest"), Permissions::new(0o755))
+                .unwrap();
+            let user_dir = image.open_dir(&root, &name("dest")).unwrap();
+            atomic_write(
+                &image,
+                &user_dir,
+                "keep",
+                USER.as_bytes(),
+                DEST_MODE,
+                WriteOrder::Shipped,
+            )
+            .unwrap();
+            match run_recovery(&image) {
+                Err(RecoverError::Refused {
+                    refusal: Refusal::Unrestorable { entry: 0, .. },
+                    found: Some(Found::Directory),
+                }) if recorded && !committed => wedged += 1,
+                Ok(_) if !recorded || committed => return Ok(()),
+                other => return Err(format!("{point:?}: {other:?}")),
+            }
+            // fail-closed: the entry and the user's directory are intact
+            if image.read(&journal_dir, &name("dest.json")).is_err()
+                || image.read(&user_dir, &name("keep")).ok() != Some(USER.as_bytes().to_vec())
+            {
+                return Err(format!("{point:?}: the refusal changed state"));
+            }
+            // the repair: move it aside, recover again
+            image
+                .rename(&root, &name("dest"), &root, &name("dest.aside"))
+                .unwrap();
+            let recovery = run_recovery(&image).map_err(|e| format!("after repair: {e}"))?;
+            if !matches!(recovery.outcome, Outcome::Recovered) {
+                return Err(format!("after repair: {:?}", recovery.outcome));
+            }
+            recovered_state_is_consistent(&image, &scenario, &[])?;
+            let aside = image.open_dir(&root, &name("dest.aside")).unwrap();
+            if image.read(&aside, &name("keep")).ok() != Some(USER.as_bytes().to_vec()) {
+                return Err("the moved directory lost the user's file".into());
+            }
+            Ok(())
+        },
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert!(wedged > 0, "the wedge window was explored");
+}
+
+// ---- S5: external writers -------------------------------------------------
+
+/// A crashed run left `dest` holding the run's write; recovery restores the
+/// prior. An external write of `dest` is landed before each storage call of
+/// that recovery in turn. Whenever the driver's re-check (its last lookup of
+/// `dest` by name before the rename that restores it) can see the write, the
+/// user's bytes survive — kept as a foreign edit when the decision saw them,
+/// or left alone by a drift refusal when only the re-check did. The only
+/// operations at which they are overwritten lie between that lookup and the
+/// rename: the named residual window.
+#[test]
+fn recovery_never_overwrites_an_external_write_its_recheck_sees() {
+    for prior in [ONE, Content::Link("old")] {
+        let scenario = Scenario::one(dest("dest", prior, TWO));
+        let crashed = home(&scenario);
+        let total = {
+            let probe = crashed.snapshot();
+            apply(&probe, &scenario).unwrap();
+            probe.effects()
+        };
+        // the run, killed after its mutation of dest landed, before the flip
+        let image = (0..total)
+            .map(|cut| {
+                let fs = crashed.snapshot();
+                fs.crash_at(cut);
+                let _ = apply(&fs, &scenario);
+                fs.kill()
+            })
+            .find(|fs| {
+                content_at(fs, "dest") == Ok(TWO)
+                    && fs.read_link(&fs.root().unwrap(), &name("current")).ok()
+                        == Some(PREVIOUS.into())
+            })
+            .expect("a crash after the mutation, before the flip");
+        // obtained once, so later snapshots number their operations alike
+        let root = image.root().unwrap();
+
+        // locate the act and the re-check in an undisturbed recovery
+        let probe = image.snapshot();
+        let first = probe.operations().len();
+        run_recovery(&probe).unwrap();
+        let operations = probe.operations();
+        let named_dest = |op: &Operation| op.name.as_ref() == Some(&name("dest"));
+        let act = (first..operations.len())
+            .find(|&i| {
+                operations[i].boundary == Some(Boundary::FilePublish) && named_dest(&operations[i])
+            })
+            .expect("the restoring rename");
+        let recheck = (first..act)
+            .rev()
+            .find(|&i| operations[i].boundary.is_none() && named_dest(&operations[i]))
+            .expect("the re-check lookup");
+
+        let mut overwritten = Vec::new();
+        for at in first..=operations.len() {
+            let fs = image.snapshot();
+            fs.inject(
+                at,
+                ExternalWrite {
+                    dir: root,
+                    name: name("dest"),
+                    bytes: USER.as_bytes().to_vec(),
+                    permissions: DEST_MODE,
+                },
+            );
+            let result = run_recovery(&fs);
+            if content_at(&fs, "dest") != Ok(EDITED) {
+                overwritten.push(at);
+                assert!(
+                    at > recheck && at <= act,
+                    "{prior:?}: the write before operation {at} was visible to the \
+                     re-check (lookup {recheck}, act {act}) and was overwritten: {result:?}"
+                );
+            } else if at <= recheck {
+                match &result {
+                    Ok(recovery) => assert!(
+                        recovery
+                            .notes
+                            .iter()
+                            .any(|note| note.settled == Settled::Kept),
+                        "{prior:?}: at {at} the edit survived unreported"
+                    ),
+                    Err(RecoverError::Refused {
+                        refusal: Refusal::Drifted { .. },
+                        ..
+                    }) => {}
+                    Err(other) => panic!("{prior:?}: at {at}: {other}"),
+                }
+            }
+        }
+        // the window exists, and only between the re-check and the act
+        assert!(!overwritten.is_empty(), "{prior:?}: the S5 window exists");
+        eprintln!(
+            "{prior:?}: S5 window of {} operation(s) between re-check {recheck} and act {act}",
+            overwritten.len()
+        );
+    }
 }
