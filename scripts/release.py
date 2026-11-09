@@ -278,7 +278,6 @@ def prepare(args):
             "cp -r /app/typescript /tmp/sdk && cd /tmp/sdk"
             " && npm ci --no-audit --no-fund && npm run build"
             " && npm pack --silent --pack-destination /out", profile="tools")
-    run([sys.executable, "scripts/release_installer.py", "--check"])
     shutil.copyfile(ROOT / "install.sh", dist / "install.sh")
     print(f"prepared {len(asset_names(version))} assets for {version} in {dist}")
 

@@ -4,6 +4,14 @@ User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
 
+## [Unreleased]
+
+### Fixed
+
+- `install.sh` and `grip self-update` work again. They download the release
+  tarball and its published `.sha256`, verify it, and install atomically.
+  They no longer need the GitHub CLI, Python or a signed release manifest.
+
 ## [0.52.0] — Verified foundation, phase one
 
 A foundation release: no command or workspace authoring changes. It starts

@@ -1,5 +1,6 @@
 //! Durable self-update for release installs; other channels retain delegation.
 
+mod http;
 mod installation;
 mod payload;
 mod verified;
@@ -14,7 +15,7 @@ pub struct SelfUpdateArgs {
     /// Verify release availability without replacing the installed executable.
     #[arg(long, conflicts_with = "reinstall")]
     check: bool,
-    /// Reverify and atomically replace the same signed version.
+    /// Reverify and atomically replace the same release version.
     #[arg(long, conflicts_with = "check")]
     reinstall: bool,
     /// Select an exact stable release; older state readers are never installed.
@@ -107,8 +108,7 @@ fn run(args: &SelfUpdateArgs) -> Result<String, String> {
     if args.reinstall && !direct {
         return Err("--reinstall applies only to direct release installations; use the installation manager's repair operation".into());
     }
-    // Check-only and delegated installs do not lock or stage an executable;
-    // signature verification still needs private temporary metadata.
+    // Check-only and delegated installs do not lock or stage an executable.
     let pinned = if direct && !args.check {
         Some(installation::Installation::pin(&exe).map_err(|e| e.to_string())?)
     } else {
@@ -118,8 +118,7 @@ fn run(args: &SelfUpdateArgs) -> Result<String, String> {
         .prefix("grip-self-update-")
         .tempdir()
         .map_err(|e| format!("cannot stage self-update: {e}"))?;
-    let release = verified::admit(staging.path(), args.version.as_deref(), true)?;
-    let latest = release.version;
+    let latest = verified::resolve(args.version.as_deref())?;
     if !direct || args.check {
         let current = env!("CARGO_PKG_VERSION");
         if !should_replace(args, &latest, current)? {
@@ -153,10 +152,7 @@ fn run(args: &SelfUpdateArgs) -> Result<String, String> {
         return Ok(format!("grip {current} is current"));
     }
 
-    let admitted = verified::admit(staging.path(), Some(&latest), false)?;
-    if admitted.version != latest || admitted.manifest_sha256 != release.manifest_sha256 {
-        return Err("release manifest changed between selection and admission".into());
-    }
+    verified::stage(&latest, staging.path())?;
     let candidate = payload::select(staging.path()).map_err(|e| e.to_string())?;
     let candidate_version = payload::version(&candidate)?;
     if candidate_version.trim_start_matches('v') != latest.trim_start_matches('v') {
@@ -184,7 +180,7 @@ fn run(args: &SelfUpdateArgs) -> Result<String, String> {
     }
     if args.reinstall && parse_version(&latest) == parse_version(&current) {
         return Ok(format!(
-            "reinstalled {latest} — verified replacement takes effect on next launch"
+            "reinstalled {latest} — replacement takes effect on next launch"
         ));
     }
     let anchor: String = latest.chars().filter(|c| c.is_ascii_digit()).collect();
