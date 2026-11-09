@@ -4,7 +4,6 @@
 
 mod body;
 mod failure;
-mod public;
 mod request;
 mod retry;
 mod roots;

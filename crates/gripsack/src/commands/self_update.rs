@@ -1,5 +1,6 @@
 //! Durable self-update for release installs; other channels retain delegation.
 
+mod http;
 mod installation;
 mod payload;
 mod verified;
@@ -117,8 +118,7 @@ fn run(args: &SelfUpdateArgs) -> Result<String, String> {
         .prefix("grip-self-update-")
         .tempdir()
         .map_err(|e| format!("cannot stage self-update: {e}"))?;
-    let fetch = gripsack_fetch::FetchContext::default();
-    let latest = verified::resolve(&fetch, args.version.as_deref())?;
+    let latest = verified::resolve(args.version.as_deref())?;
     if !direct || args.check {
         let current = env!("CARGO_PKG_VERSION");
         if !should_replace(args, &latest, current)? {
@@ -152,7 +152,7 @@ fn run(args: &SelfUpdateArgs) -> Result<String, String> {
         return Ok(format!("grip {current} is current"));
     }
 
-    verified::stage(&fetch, &latest, staging.path())?;
+    verified::stage(&latest, staging.path())?;
     let candidate = payload::select(staging.path()).map_err(|e| e.to_string())?;
     let candidate_version = payload::version(&candidate)?;
     if candidate_version.trim_start_matches('v') != latest.trim_start_matches('v') {

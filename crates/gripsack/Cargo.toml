@@ -30,6 +30,12 @@ gripsack-exec.workspace = true
 gripsack-fetch.workspace = true
 flate2 = "1"
 tar = "0.4"
+# Same HTTP/TLS stack as gripsack-fetch (rustls only, never openssl); kept local
+# so the Conda helper's pinned gripsack-fetch sources stay untouched.
+ureq = { version = "2.12.1", default-features = false }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+rustls-native-certs = "0.8"
+url = "2"
 serde.workspace = true
 serde_json.workspace = true
 gripsack-process.workspace = true

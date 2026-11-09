@@ -2,13 +2,14 @@
 //! Resolve the version, download the tarball and its `.sha256` sidecar,
 //! compare digests, and extract `grip` into the staging directory.
 
-use gripsack_fetch::FetchContext;
+use super::http;
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 const TARGET: &str = "x86_64-unknown-linux-musl";
 const MAX_BINARY_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_TARBALL_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Release downloads always come from GitHub; debug builds (used by tests)
 /// may redirect them with `GRIPSACK_RELEASE_BASE_URL`.
@@ -29,12 +30,11 @@ fn ensure_supported_platform() -> Result<(), String> {
 }
 
 /// The exact requested version, or the one GitHub's `releases/latest` redirects to.
-pub(super) fn resolve(fetch: &FetchContext, requested: Option<&str>) -> Result<String, String> {
+pub(super) fn resolve(requested: Option<&str>) -> Result<String, String> {
     if let Some(version) = requested {
         return Ok(version.to_owned());
     }
-    let location = fetch
-        .redirect_location(&format!("{}/releases/latest", base_url()))
+    let location = http::redirect_location(&format!("{}/releases/latest", base_url()))
         .map_err(|e| format!("cannot resolve the latest release: {e}"))?;
     let version = location
         .rsplit_once("/core-v")
@@ -45,22 +45,20 @@ pub(super) fn resolve(fetch: &FetchContext, requested: Option<&str>) -> Result<S
 }
 
 /// Download, verify and extract `grip` as `<staging>/grip`.
-pub(super) fn stage(fetch: &FetchContext, version: &str, staging: &Path) -> Result<(), String> {
+pub(super) fn stage(version: &str, staging: &Path) -> Result<(), String> {
     ensure_supported_platform()?;
     let name = format!("gripsack-{version}-{TARGET}.tar.gz");
     let url = format!("{}/releases/download/core-v{version}/{name}", base_url());
-    let tarball = fetch
-        .download_public(&url)
+    let (tarball, digest) = http::download(&url, MAX_TARBALL_BYTES)
         .map_err(|e| format!("cannot download {name}: {e}"))?;
-    let sidecar = fetch
-        .download_public(&format!("{url}.sha256"))
+    let (sidecar, _) = http::download(&format!("{url}.sha256"), 4096)
         .map_err(|e| format!("cannot download {name}.sha256: {e}"))?;
-    let sidecar = std::fs::read_to_string(sidecar.file.path()).map_err(|e| e.to_string())?;
+    let sidecar = std::fs::read_to_string(sidecar.path()).map_err(|e| e.to_string())?;
     let expected = expected_digest(&sidecar, &name)?;
-    if tarball.hash.as_str() != expected {
+    if digest != expected {
         return Err(format!("checksum mismatch for {name}; nothing installed"));
     }
-    extract_grip(tarball.file.path(), &staging.join("grip"))
+    extract_grip(tarball.path(), &staging.join("grip"))
 }
 
 /// `<hex>  <name>` as written by `sha256sum`.

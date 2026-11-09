@@ -1197,12 +1197,16 @@ dependencies = [
  "libc",
  "owo-colors",
  "rustix",
+ "rustls",
+ "rustls-native-certs",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tar",
  "tempfile",
  "tracing",
+ "ureq",
+ "url",
 ]
 
 [[package]]
