@@ -1,3 +1,5 @@
+> **Superseded by [0058](0058-handover-final.md).** Starting point only; 0058 re-checked each item against the 0.52 tree.
+
 <!-- Appendix to plan/0056 §9 "Handover reconciliation". Generated 2026-11-08 by a read-only review of origin/main @187d741; ~30 statuses verified in code, the rest from plan/release records. Spot-check by the integrator: create_temp AlreadyExists→remove_file (gripsack-fs/src/lib.rs:115) and missing SECURITY.md confirmed; generation .staging-* residue only partly confirmed (directory staging IS retired by gc/directory_roots.rs) — re-verify before acting. -->
 
 # Original handover reconciliation (input to plan 0056 §9)

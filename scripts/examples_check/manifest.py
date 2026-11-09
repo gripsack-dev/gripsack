@@ -13,6 +13,13 @@ The checker captures these inputs offline; realization is a separate gate.
 EXAMPLES = [
     {"id": "homepage", "source": "website/index.html", "locator": {"window": "gripsack.ts"},
      "kind": "workspace", "expect_outputs": {"dotfiles": "profile"}},
+    {"id": "homepage-packages", "source": "website/index.html", "locator": {"window": "gripsack.ts · packages"},
+     "kind": "workspace", "expect_outputs": {"ripgrep": "package", "search": "environment"},
+     "ir": [("output", "ripgrep", "commands", {"rg": "rg"})]},
+    {"id": "homepage-service", "source": "website/index.html", "locator": {"window": "gripsack.ts · service"},
+     "kind": "workspace", "expect_outputs": {"postgres": "service", "database-ready": "task"}},
+    {"id": "homepage-task", "source": "website/index.html", "locator": {"window": "gripsack.ts · task"},
+     "kind": "workspace", "expect_outputs": {"shell": "package", "dev": "environment", "greet": "task"}},
     {"id": "readme", "source": "core/README.md", "locator": {"fence": 0},
      "kind": "workspace", "expect_outputs": {"dotfiles": "profile"}},
     {"id": "workspaces", "file": "workspaces.md", "locator": {"fence": 0},

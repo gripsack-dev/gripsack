@@ -13,7 +13,7 @@
         "scripts/local_ci.py",
         "test"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 2700,
       "inputs": [],
       "outputs": []
     },
@@ -24,7 +24,7 @@
         "scripts/local_ci.py",
         "ts-test"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 900,
       "inputs": [],
       "outputs": []
     },
@@ -35,7 +35,7 @@
         "scripts/local_ci.py",
         "proofs"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 5400,
       "inputs": [],
       "outputs": []
     },
@@ -46,7 +46,7 @@
         "scripts/local_ci.py",
         "e2e"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 3600,
       "inputs": [],
       "outputs": []
     },
@@ -68,7 +68,7 @@
         "scripts/local_ci.py",
         "package"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 3600,
       "inputs": [],
       "outputs": [
         "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz",
@@ -90,7 +90,7 @@
         "scripts/local_ci.py",
         "smoke"
       ],
-      "timeout_seconds": 0,
+      "timeout_seconds": 2700,
       "inputs": [
         "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz",
         "dist/gripsack-0.52.0-x86_64-unknown-linux-musl.tar.gz.sha256",
@@ -122,11 +122,7 @@
     "repositories": {
       "site": {
         "url": "https://github.com/gripsack-dev/gripsack-dev.github.io.git",
-        "commit": "a9865115a5d5645a4f0635ef2f01f8b759675ec2"
-      },
-      "example": {
-        "url": "https://github.com/gripsack-dev/example-env-typescript.git",
-        "commit": "798945cd9c0fcf26f9379c36e2942d52113f15b2"
+        "commit": "a13fdbd7fd323b936ecb9c81ae92ccd92e79e2e8"
       }
     }
   }

@@ -22,6 +22,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import shlex
@@ -32,6 +33,8 @@ import sys
 import tarfile
 import tempfile
 import tomllib
+import urllib.error
+import urllib.request
 import zlib
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -189,6 +192,41 @@ def owner() -> list[str]:
 
 # --- prepare -------------------------------------------------------------------
 
+def tag_published(version: str) -> bool:
+    """Whether `version`'s release is public. Asked of GitHub over HTTPS, not
+    `origin`: a qualification checkout's origin is a frozen bundle with no tags."""
+    helper = asset_names(version)[2]
+    url = f"https://github.com/{REPOSITORY}/releases/download/{tag_for(version)}/{helper}.sha256"
+    request = urllib.request.Request(url, method="HEAD")
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.status == 200
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        raise
+
+
+def pinned_helper_digest() -> str:
+    text = (ROOT / "crates/gripsack-fetch/src/conda_pins.rs").read_text()
+    match = re.search(r"LinuxX86_64Musl,\s*\"([0-9a-f]{64})\"", text)
+    require(match is not None, "no linux-x86_64-musl helper pin in conda_pins.rs")
+    return match.group(1)
+
+
+def fetch_published_helper(version: str, directory: Path):
+    """Download the published helper set for `version`; require the pinned digest."""
+    directory.mkdir(parents=True, exist_ok=True)
+    base = f"https://github.com/{REPOSITORY}/releases/download/{tag_for(version)}"
+    for name in asset_names(version)[2:8]:
+        with urllib.request.urlopen(f"{base}/{name}", timeout=120) as response:
+            (directory / name).write_bytes(response.read())
+    helper = asset_names(version)[2]
+    require(sha256(directory / helper) == pinned_helper_digest(),
+            f"published {helper} does not match the committed pin")
+    print(f"reusing published {helper} ({pinned_helper_digest()[:12]}…, matches the pin)")
+
+
 def prepare(args):
     version = workspace_version()
     dist = ROOT / "dist"
@@ -200,7 +238,17 @@ def prepare(args):
             raise ReleaseError(f"dist/{name} is not removable (root-owned?); clean dist/ via docker")
     core = ["run", "--build", "--rm", "-e", f"VERSION={version}", "-e", f"TARGET={TARGET}", *owner(), "release"]
     helper = f"gripsack-conda-{version}-{TARGET}"
-    if args.helper_from:
+    helper_from = args.helper_from
+    if not helper_from and tag_published(version):
+        # Between releases the version's helper is already published and
+        # pinned; main ships those bytes, so reuse them (pin-checked) rather
+        # than rebuild. The `test` gate still builds, lints and tests the
+        # helper source on every candidate. Only a release-bump candidate
+        # (unpublished version) rebuilds and measures it (plan/0057).
+        helper_from = ROOT / "dist" / ".published-helper"
+        fetch_published_helper(version, helper_from)
+    if helper_from:
+        args.helper_from = helper_from
         compose(*core)
         # Reuse previously measured bytes; verify still checks them against the pin.
         for name in asset_names(version)[2:8]:
@@ -282,7 +330,7 @@ def verify_assets(dist: Path, version: str, installer: bytes):
 
 
 def external_checkouts() -> dict[str, Path]:
-    """Fresh checkouts of the pinned website and example repositories."""
+    """Fresh checkout of the pinned website repository."""
     pins = json.loads((ROOT / ".ci/pilot.json").read_text())["external_inputs"]["repositories"]
     base = ROOT / "local-ci/external"
     checkouts = {}
@@ -311,7 +359,7 @@ def smoke(dist: Path):
             "-v", f"{dist.resolve()}:/app/dist:ro", "-v", f"{report}:/app/local-ci",
             *(arg for name, path in checkouts.items() for arg in ("-v", f"{path}:/app/{name}:ro")),
             "tools", "python3", "scripts/local_artifact_consumers.py", "--dist", "/app/dist",
-            "--site", "/app/site", "--example", "/app/example",
+            "--site", "/app/site",
             "--report", "/app/local-ci/consumers.json", profile="tools")
 
 

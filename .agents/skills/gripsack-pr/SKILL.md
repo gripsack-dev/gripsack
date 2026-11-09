@@ -33,8 +33,8 @@ description: Author gripsack PRs — template and evidence contract
 - **Behavior changes**: e2e output showing the flow (apply/rollback
   transcript against a fixture env repo), pasted in a fenced block.
 - **CLI output changes**: paste the before/after terminal text.
-- **Visual/demo-worthy**: extend `demos/demo.tape`; the demo workflow
-  re-renders (gripsack-demo-capture skill). Don't commit one-off GIFs.
+- **Visual/user-facing**: explain flows with the website's animated diagrams
+  (gripsack-dev.github.io) or `docs/diagrams/*.d2`, not terminal recordings.
 - **IR changes**: show current emitted workspace IR and rejection of retired
   envelopes; retained storage behavior is a separate lifecycle check.
 
