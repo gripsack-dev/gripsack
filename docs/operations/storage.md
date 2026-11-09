@@ -3,7 +3,60 @@
 Operator runbook for the owner's WSL/Docker workstation (local Buildbot,
 Docker storage, Seagate archive). Moved verbatim from the retired
 `verification/release-handoff.md` by plan 0056 F0; it is machine operations
-guidance, not release evidence.
+guidance, not release evidence. The first section is for every Gripsack
+user: repairing a journal whose recovery refused (plan 0058 item 1).
+
+## Repairing a pending journal (recovery refused)
+
+An `apply` or `rollback` that is killed, or loses power, leaves a journal in
+`$GRIPSACK_HOME/journal` (default `~/.local/share/gripsack/journal`): a run
+marker and one record per destination it touched. The next `apply`,
+`rollback` (and `gc`, which waits for it) recovers first: an interrupted run
+whose selection never flipped has every destination put back to its prior; a
+run that did flip only has its journal cleared. A destination you edited
+since the crash is kept, with a warning.
+
+Recovery refuses — changes nothing, keeps the journal, and stops the command
+— when it cannot establish what is at a destination: a directory, a FIFO,
+socket or device, or a symlink whose target is not UTF-8 now stands where the
+interrupted run wrote a file or link. It never deletes your data to make
+progress. The error names the destination:
+
+```
+recovery cannot restore /home/me/.config/app/settings.toml: it is now a
+directory, which the journal cannot identify (the interrupted run left the
+file it wrote; recovery restores nothing (absent)). ...
+```
+
+1. Inspect: `grip doctor` lists the pending journal — whether the run
+   committed, each destination, what recovery will do there, and for a
+   blocked one what it expected and what it found:
+
+   ```
+   MISS  journal: an interrupted run left recovery pending (a run marker, 1 uncommitted entry); ...
+         run: uncommitted (the selection never flipped): every entry is restored to its prior
+         /home/me/.config/app/settings.toml: BLOCKED: found a directory, which the journal cannot identify
+           expected: the interrupted run left the file it wrote; recovery restores nothing (absent)
+           fix: move /home/me/.config/app/settings.toml aside (it is yours; nothing is deleted), ...
+   ```
+
+2. Move the blocking object aside — it is yours, nothing has touched it:
+   `mv ~/.config/app/settings.toml ~/.config/app/settings.toml.mine`.
+3. Run `grip apply` (or the `grip rollback` you were running). Recovery
+   finishes first — restoring the prior, which may be "absent" — and the
+   command continues. `grip doctor` then reports `journal: nothing pending`.
+4. Bring your object back if you want it there; the next `apply` treats it
+   like any other unmanaged file (it asks before taking it over).
+
+Other refusals `grip doctor` shows: `AMBIGUOUS` (the `current` selection
+matches neither the interrupted run's target nor its predecessor — someone
+changed `current` by hand; restore it, or inspect the journal before
+deleting anything), an unadmissible or quarantined record (inspect
+`journal/quarantine`, then remove it), and a record that cannot be evaluated
+(usually an unreadable prior blob under `$GRIPSACK_HOME/prior`). Deleting
+the journal by hand discards the only record of what the interrupted run
+changed; do it only after you have put every listed destination back
+yourself.
 
 ## Storage hygiene and archive relocation
 
