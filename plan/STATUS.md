@@ -7,9 +7,10 @@ change as the plan. Long-form release/evidence narratives were removed by
 
 ## Now
 
-- **Latest release:** 0.52.0 (pending publication) after [core-v0.51.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.51.0) (2026-10-31), Linux/WSL x86_64 only.
+- **Latest release:** [core-v0.52.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.52.0) (2026-11-09), Linux/WSL x86_64 only.
 - **Active plan:** [0056 — verified foundation](0056-verified-foundation.md), approved 2026-11-08.
   Its ledger (§9 phases, §13+ records) is the source of truth for the epic.
+- **Independent design review:** [2026-11](../docs/reviews/2026-11-design-review.md) — findings are leads; each is verified before it changes a plan.
 - **Superseded by 0056:** 0047 tooling decisions; 0048 §6 (M-V1–M-V8), §9–§10 as
   release gates and its evidence/receipt contract; the formal and evidence
   parts of 0049–0055. Runtime safety contracts are kept and become theorems.
@@ -74,8 +75,9 @@ change as the plan. Long-form release/evidence narratives were removed by
 | 0053 | CI and release-flow migration | Buildbot local qualification |
 | 0054 | Workspace ergonomics and original handover completion | 0.48 |
 | 0055 | One workspace surface | 0.50–0.51 |
-| 0056 | Verified foundation: Lean-proved kernel, rings, trim | F0 + F1 (GO) in 0.52.0; F2 step 1 (`gripsack-host` Storage/RealFs/MemFs, resurrection rediscovered) on `foundation/f2-storage`; F2 step 2 (kernel recover machine, Lean (a)–(d), wedge refused by name + doctor view) on `foundation/f2-recover` |
-| 0057 | Fast qualification: cache mounts, one dev profile, parallel e2e/mutants/package, theorem-backed test trim | landing after 0.52.0 |
+| 0056 | Verified foundation: Lean-proved kernel, rings, trim | F0 + F1 (GO) in 0.52.0; F2 step 1 (`gripsack-host` Storage/RealFs/MemFs, resurrection rediscovered) in review; F2 step 2 (kernel recover machine, Lean (a)–(d), wedge refused by name + doctor view) on `foundation/f2-recover` |
+| 0057 | Fast qualification: cache mounts, one dev profile, parallel e2e/mutants/package, theorem-backed test trim | landed in 0.52.0 (qualified in ~20 min warm, 36 min cold) |
+| 0058 | Handover final reconciliation (supersedes 0056a): 25 landed, 18 obsolete, 13 pending, 3 rejected | landed (docs) |
 
 ## Settled rejections (all eras)
 

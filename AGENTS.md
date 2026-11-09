@@ -98,9 +98,8 @@ permissions or preserved engine identity: verify both and run a retained image.
 | `crates/gripsack` | the `grip` CLI |
 | `typescript/` | The typed workspace SDK (`@gripsack/core`); also embedded in the binary |
 | `e2e/` | pytest flow tests against the real binary + golden IR corpus |
-| `demos/` | VHS tapes |
 | `specs/` | TLA+ models: TLC cfgs are bug-finders; TLAPS proofs retire under plan/0056 F3 |
-| `.agents/skills/` | maintainer skills: IR evolution, e2e, demo capture, release, PR |
+| `.agents/skills/` | maintainer skills: IR evolution, e2e, release, PR |
 | `skills/` | public skills: `gripsack-debug` (reading run logs), `gripsack-adopt` |
 | `crates/gripsack-trace` | run tracing: JSONL logs with causal spans |
 
@@ -211,7 +210,7 @@ stored data needed for rollback and integrity retains its original meaning.
   see `~/workspace/SHARED-BUILDBOT-CI-PLAN.md` §15), then post the status with
   `python3 scripts/release.py status <candidate_id>`. `ci-infra` and the
   shared plan serve several projects — don't edit them from here.
-- Hosted workflows (`ci`, `demo`, `audit`, `upstream-watch`,
+- Hosted workflows (`audit`, `upstream-watch`,
   `template-mirror`, `fuzz`) are diagnostics or maintenance and never gate
   anything.
 - Releases: `python3 scripts/release.py publish <candidate_id> --notes N.md
