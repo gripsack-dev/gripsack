@@ -33,6 +33,7 @@ import sys
 import tarfile
 import tempfile
 import tomllib
+import urllib.error
 import urllib.request
 import zlib
 
@@ -192,7 +193,18 @@ def owner() -> list[str]:
 # --- prepare -------------------------------------------------------------------
 
 def tag_published(version: str) -> bool:
-    return bool(capture(["git", "ls-remote", "--tags", "origin", f"refs/tags/{tag_for(version)}"]))
+    """Whether `version`'s release is public. Asked of GitHub over HTTPS, not
+    `origin`: a qualification checkout's origin is a frozen bundle with no tags."""
+    helper = asset_names(version)[2]
+    url = f"https://github.com/{REPOSITORY}/releases/download/{tag_for(version)}/{helper}.sha256"
+    request = urllib.request.Request(url, method="HEAD")
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.status == 200
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        raise
 
 
 def pinned_helper_digest() -> str:
