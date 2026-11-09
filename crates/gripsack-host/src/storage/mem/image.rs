@@ -150,12 +150,13 @@ impl Update {
                     data[start..end].copy_from_slice(bytes);
                 }
             }
-            Update::Mode { ino, permissions } => match image.nodes.get_mut(ino) {
-                Some(Node::File { permissions: p, .. } | Node::Dir { permissions: p, .. }) => {
+            Update::Mode { ino, permissions } => {
+                if let Some(Node::File { permissions: p, .. } | Node::Dir { permissions: p, .. }) =
+                    image.nodes.get_mut(ino)
+                {
                     *p = *permissions;
                 }
-                _ => {}
-            },
+            }
         }
     }
 }
