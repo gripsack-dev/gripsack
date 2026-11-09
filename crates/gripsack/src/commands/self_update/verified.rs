@@ -4,6 +4,7 @@
 
 use gripsack_fetch::FetchContext;
 use std::io::{Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 const TARGET: &str = "x86_64-unknown-linux-musl";
@@ -91,6 +92,8 @@ fn extract_grip(tarball: &Path, output: &Path) -> Result<(), String> {
                 return Err("grip binary in the release tarball is implausibly large".into());
             }
             out.flush().map_err(|e| e.to_string())?;
+            std::fs::set_permissions(output, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| e.to_string())?;
             return Ok(());
         }
     }
