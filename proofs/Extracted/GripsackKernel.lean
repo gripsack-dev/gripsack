@@ -159,6 +159,66 @@ def generation.GenerationList.into_vec
   := do
   ok self.ids
 
+/-- [gripsack_kernel::ids::DestId]
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 25:0-27:1
+    Visibility: public -/
+structure ids.DestId where
+  index : Std.U32
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::DestId}::same]:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 39:4-41:5
+    Visibility: public -/
+def ids.DestId.same
+  (self : ids.DestId) (other : ids.DestId) : Result Bool := do
+  ok (self.index = other.index)
+
+/-- [gripsack_kernel::ids::DIGEST_BYTES]
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 44:0-44:35
+    Visibility: public -/
+@[global_simps, irreducible] def ids.DIGEST_BYTES : Std.Usize := 32#usize
+
+/-- [gripsack_kernel::ids::Digest]
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 48:0-50:1
+    Visibility: public -/
+structure ids.Digest where
+  bytes : Array Std.U8 32#usize
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
+    Visibility: public -/
+@[rust_loop_body]
+def ids.Digest.same_loop.body
+  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  if i < ids.DIGEST_BYTES
+  then
+    let i1 ← Array.index_usize self.bytes i
+    let i2 ← Array.index_usize other.bytes i
+    if i1 != i2
+    then ok (done false)
+    else let i3 ← i + 1#usize
+         ok (cont i3)
+  else ok (done true)
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop 0:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
+    Visibility: public -/
+@[rust_loop]
+def ids.Digest.same_loop
+  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) : Result Bool := do
+  loop
+    (fun i1 => ids.Digest.same_loop.body self other i1)
+    i
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 62:4-71:5
+    Visibility: public -/
+@[reducible]
+def ids.Digest.same
+  (self : ids.Digest) (other : ids.Digest) : Result Bool := do
+  ids.Digest.same_loop self other 0#usize
+
 /-- [gripsack_kernel::journal::RecordRole]
     Source: 'crates/gripsack-kernel/src/journal.rs', lines 12:0-15:1
     Visibility: public -/
@@ -370,6 +430,984 @@ def journal.admit_mutation
     then ok (some { entry })
     else ok none
   else ok none
+
+/-- [gripsack_kernel::recover::Ident]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 48:0-51:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Ident where
+| File : ids.Digest → recover.Ident
+| Link : ids.Digest → recover.Ident
+
+/-- [gripsack_kernel::recover::{gripsack_kernel::recover::Ident}::same]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 54:4-60:5
+    Visibility: public -/
+def recover.Ident.same
+  (self : recover.Ident) (other : recover.Ident) : Result Bool := do
+  match self with
+  | recover.Ident.File a =>
+    match other with
+    | recover.Ident.File b => ids.Digest.same a b
+    | recover.Ident.Link _ => ok false
+  | recover.Ident.Link a =>
+    match other with
+    | recover.Ident.File _ => ok false
+    | recover.Ident.Link b => ids.Digest.same a b
+
+/-- [gripsack_kernel::recover::Live]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 67:0-71:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Live where
+| Absent : recover.Live
+| Obj : recover.Ident → recover.Live
+| Unsupported : recover.Live
+
+/-- [gripsack_kernel::recover::{gripsack_kernel::recover::Live}::same]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 74:4-81:5
+    Visibility: public -/
+def recover.Live.same
+  (self : recover.Live) (other : recover.Live) : Result Bool := do
+  match self with
+  | recover.Live.Absent =>
+    match other with
+    | recover.Live.Absent => ok true
+    | recover.Live.Obj _ => ok false
+    | recover.Live.Unsupported => ok false
+  | recover.Live.Obj a =>
+    match other with
+    | recover.Live.Absent => ok false
+    | recover.Live.Obj b => recover.Ident.same a b
+    | recover.Live.Unsupported => ok false
+  | recover.Live.Unsupported =>
+    match other with
+    | recover.Live.Absent => ok false
+    | recover.Live.Obj _ => ok false
+    | recover.Live.Unsupported => ok true
+
+/-- [gripsack_kernel::recover::Prior]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 85:0-88:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Prior where
+| Absent : recover.Prior
+| Obj : recover.Ident → recover.Prior
+
+/-- [gripsack_kernel::recover::{gripsack_kernel::recover::Prior}::matches]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 92:4-98:5
+    Visibility: public -/
+def recover.Prior.matches
+  (self : recover.Prior) (live : recover.Live) : Result Bool := do
+  match self with
+  | recover.Prior.Absent =>
+    match live with
+    | recover.Live.Absent => ok true
+    | recover.Live.Obj _ => ok false
+    | recover.Live.Unsupported => ok false
+  | recover.Prior.Obj a =>
+    match live with
+    | recover.Live.Absent => ok false
+    | recover.Live.Obj b => recover.Ident.same a b
+    | recover.Live.Unsupported => ok false
+
+/-- [gripsack_kernel::recover::Intended]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 102:0-105:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Intended where
+| Removed : recover.Intended
+| Obj : recover.Ident → recover.Intended
+
+/-- [gripsack_kernel::recover::Route]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 109:0-112:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Route where
+| Leaf : recover.Route
+| Delegated : recover.Route
+
+/-- [gripsack_kernel::recover::EntryFacts]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 117:0-123:1
+    Visibility: public -/
+structure recover.EntryFacts where
+  dest : ids.DestId
+  prior : recover.Prior
+  before : Option recover.Ident
+  intended : recover.Intended
+  route : recover.Route
+
+/-- [gripsack_kernel::selection::TransactionId]
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 28:0-30:1
+    Visibility: public -/
+structure selection.TransactionId where
+  bytes : Array Std.U8 32#usize
+
+/-- [gripsack_kernel::selection::SelectionIdentity]
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 56:0-64:1
+    Visibility: public -/
+@[discriminant isize]
+inductive selection.SelectionIdentity where
+| Legacy : generation.GenerationId → selection.SelectionIdentity
+| Transaction :
+  generation.GenerationId →
+  selection.TransactionId →
+  selection.SelectionIdentity
+
+/-- [gripsack_kernel::recover::MarkerFacts]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 126:0-129:1
+    Visibility: public -/
+structure recover.MarkerFacts where
+  previous : Option selection.SelectionIdentity
+  target : selection.SelectionIdentity
+
+/-- [gripsack_kernel::recover::JournalFacts]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 134:0-139:1
+    Visibility: public -/
+structure recover.JournalFacts where
+  entries : Std.U32
+  directories : Std.U32
+  reverse_roots : Std.U32
+  marker : Option recover.MarkerFacts
+
+/-- [gripsack_kernel::recover::Decision]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 142:0-153:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Decision where
+| Restore : recover.Decision
+| Unchanged : recover.Decision
+| Preserve : recover.Decision
+| Refuse : recover.Decision
+
+/-- [gripsack_kernel::recover::precedes]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 186:0-191:1 -/
+def recover.precedes
+  (before : Option recover.Ident) (object : recover.Ident) : Result Bool := do
+  match before with
+  | none => ok false
+  | some ident => recover.Ident.same ident object
+
+/-- [gripsack_kernel::recover::intends]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 179:0-184:1 -/
+def recover.intends
+  (intended : recover.Intended) (object : recover.Ident) : Result Bool := do
+  match intended with
+  | recover.Intended.Removed => ok false
+  | recover.Intended.Obj ident => recover.Ident.same ident object
+
+/-- [gripsack_kernel::recover::decide]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 158:0-177:1
+    Visibility: public -/
+def recover.decide
+  (entry : recover.EntryFacts) (live : recover.Live) :
+  Result recover.Decision
+  := do
+  match live with
+  | recover.Live.Absent =>
+    match entry.prior with
+    | recover.Prior.Absent => ok recover.Decision.Unchanged
+    | recover.Prior.Obj _ => ok recover.Decision.Restore
+  | recover.Live.Obj object =>
+    let b ← recover.intends entry.intended object
+    if b
+    then ok recover.Decision.Restore
+    else
+      let b1 ← recover.Prior.matches entry.prior live
+      if b1
+      then ok recover.Decision.Unchanged
+      else
+        let b2 ← recover.precedes entry.before object
+        if b2
+        then ok recover.Decision.Restore
+        else ok recover.Decision.Preserve
+  | recover.Live.Unsupported => ok recover.Decision.Refuse
+
+/-- [gripsack_kernel::recover::JournalName]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 195:0-198:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.JournalName where
+| Record : Std.U32 → recover.JournalName
+| Marker : recover.JournalName
+
+/-- [gripsack_kernel::recover::Scope]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 201:0-206:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Scope where
+| Journal : recover.Scope
+| Selection : recover.Scope
+
+/-- [gripsack_kernel::recover::Delegated]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 209:0-216:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Delegated where
+| Committed : recover.Delegated
+| BeforeLeaves : recover.Delegated
+| AfterLeaves : recover.Delegated
+
+/-- [gripsack_kernel::recover::Effect]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 219:0-222:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Effect where
+| Restore : recover.Prior → recover.Effect
+
+/-- [gripsack_kernel::recover::Outcome]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 224:0-231:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Outcome where
+| NoJournal : recover.Outcome
+| Committed : recover.Outcome
+| Recovered : recover.Outcome
+
+/-- [gripsack_kernel::recover::Refusal]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 234:0-251:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Refusal where
+| Ambiguous : recover.Refusal
+| MarkerMissing : recover.Refusal
+| Malformed : recover.Refusal
+| Unrestorable : Std.U32 → ids.DestId → recover.Refusal
+| Drifted : Std.U32 → ids.DestId → recover.Refusal
+| NotRestored : Std.U32 → ids.DestId → recover.Refusal
+| Failed : recover.Refusal
+| Protocol : recover.Refusal
+
+/-- [gripsack_kernel::recover::Command]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 253:0-287:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Command where
+| ReadJournal : recover.Command
+| ReadCurrent : recover.Command
+| ReadEntry : Std.U32 → recover.Command
+| Observe : Std.U32 → ids.DestId → recover.Command
+| Mutate :
+  Std.U32 →
+  ids.DestId →
+  recover.Live →
+  recover.Effect →
+  recover.Command
+| Seal :
+  Std.U32 →
+  ids.DestId →
+  recover.Live →
+  recover.Prior →
+  recover.Command
+| Preserve : Std.U32 → ids.DestId → recover.Command
+| Delegate : recover.Delegated → recover.Command
+| Unlink : recover.JournalName → recover.Command
+| Barrier : recover.Scope → recover.Command
+| Finish : recover.Outcome → recover.Command
+| Abort : recover.Refusal → recover.Command
+
+/-- [gripsack_kernel::recover::Failure]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 289:0-294:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Failure where
+| Drift : recover.Failure
+| Io : Std.I32 → recover.Failure
+
+/-- [gripsack_kernel::recover::Event]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 296:0-306:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Event where
+| Start : recover.Event
+| NoJournal : recover.Event
+| JournalRead : recover.JournalFacts → recover.Event
+| CurrentRead : Option selection.SelectionIdentity → recover.Event
+| EntryRead : recover.EntryFacts → recover.Event
+| Observed : ids.DestId → recover.Live → recover.Event
+| Landed : recover.Live → recover.Event
+| Done : recover.Event
+| Failed : recover.Failure → recover.Event
+
+/-- [gripsack_kernel::recover::Phase]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 308:0-327:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Phase where
+| Start : recover.Phase
+| ReadingJournal : recover.Phase
+| ReadingCurrent : recover.Phase
+| SealingSelection : recover.Phase
+| SettlingDirectories : recover.Phase
+| OpeningLeaves : recover.Phase
+| ReadingEntry : recover.Phase
+| Observing : recover.Phase
+| Restoring : recover.Phase
+| Sealing : recover.Phase
+| Preserving : recover.Phase
+| ClosingLeaves : recover.Phase
+| UnlinkingRecord : recover.Phase
+| SyncingRecords : recover.Phase
+| UnlinkingMarker : recover.Phase
+| SyncingMarker : recover.Phase
+| Finished : recover.Phase
+| Aborted : recover.Phase
+
+/-- [gripsack_kernel::recover::Verdict]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 330:0-334:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Verdict where
+| Pending : recover.Verdict
+| Committed : recover.Verdict
+| Uncommitted : recover.Verdict
+
+/-- [gripsack_kernel::recover::RecoverState]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 336:0-349:1
+    Visibility: public -/
+structure recover.RecoverState where
+  phase : recover.Phase
+  journal : recover.JournalFacts
+  records : Std.U32
+  current : Option selection.SelectionIdentity
+  verdict : recover.Verdict
+  index : Std.U32
+  leaves_open : Bool
+  entry : Option recover.EntryFacts
+
+/-- [gripsack_kernel::recover::{gripsack_kernel::recover::RecoverState}::new]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 352:4-368:5
+    Visibility: public -/
+def recover.RecoverState.new : Result recover.RecoverState := do
+  ok
+    {
+      phase := recover.Phase.Start,
+      journal :=
+        {
+          entries := 0#u32,
+          directories := 0#u32,
+          reverse_roots := 0#u32,
+          marker := none
+        },
+      records := 0#u32,
+      current := none,
+      verdict := recover.Verdict.Pending,
+      index := 0#u32,
+      leaves_open := false,
+      entry := none
+    }
+
+/-- [gripsack_kernel::recover::refuse]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 371:0-374:1 -/
+def recover.refuse
+  (state : recover.RecoverState) (refusal : recover.Refusal) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  ok ({ state with phase := recover.Phase.Aborted }, recover.Command.Abort
+    refusal)
+
+/-- [gripsack_kernel::recover::failed_or_protocol]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 376:0-381:1 -/
+def recover.failed_or_protocol
+  (state : recover.RecoverState) (event : recover.Event) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  match event with
+  | recover.Event.Start => recover.refuse state recover.Refusal.Protocol
+  | recover.Event.NoJournal => recover.refuse state recover.Refusal.Protocol
+  | recover.Event.JournalRead _ =>
+    recover.refuse state recover.Refusal.Protocol
+  | recover.Event.CurrentRead _ =>
+    recover.refuse state recover.Refusal.Protocol
+  | recover.Event.EntryRead _ => recover.refuse state recover.Refusal.Protocol
+  | recover.Event.Observed _ _ => recover.refuse state recover.Refusal.Protocol
+  | recover.Event.Landed _ => recover.refuse state recover.Refusal.Protocol
+  | recover.Event.Done => recover.refuse state recover.Refusal.Protocol
+  | recover.Event.Failed _ => recover.refuse state recover.Refusal.Failed
+
+/-- [gripsack_kernel::recover::next_unlink]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 384:0-393:1 -/
+def recover.next_unlink
+  (state : recover.RecoverState) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  if state.index < state.records
+  then
+    ok ({ state with phase := recover.Phase.UnlinkingRecord },
+      recover.Command.Unlink (recover.JournalName.Record state.index))
+  else
+    ok ({ state with phase := recover.Phase.SyncingRecords },
+      recover.Command.Barrier recover.Scope.Journal)
+
+/-- [gripsack_kernel::recover::begin_cleanup]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 395:0-399:1 -/
+def recover.begin_cleanup
+  (state : recover.RecoverState) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  recover.next_unlink { state with index := 0#u32, entry := none }
+
+/-- [gripsack_kernel::recover::proceed]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 404:0-420:1 -/
+def recover.proceed
+  (state : recover.RecoverState) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  if state.journal.directories != 0#u32
+  then
+    if state.leaves_open
+    then
+      if state.index < state.journal.entries
+      then
+        ok ({ state with phase := recover.Phase.ReadingEntry },
+          recover.Command.ReadEntry state.index)
+      else
+        if state.journal.directories != 0#u32
+        then
+          ok ({ state with phase := recover.Phase.ClosingLeaves },
+            recover.Command.Delegate recover.Delegated.AfterLeaves)
+        else recover.begin_cleanup state
+    else
+      if state.index = state.journal.reverse_roots
+      then
+        ok
+          ({
+             state
+               with
+               phase := recover.Phase.OpeningLeaves, leaves_open := true
+           }, recover.Command.Delegate recover.Delegated.BeforeLeaves)
+      else
+        if state.index < state.journal.entries
+        then
+          ok ({ state with phase := recover.Phase.ReadingEntry },
+            recover.Command.ReadEntry state.index)
+        else
+          if state.journal.directories != 0#u32
+          then
+            ok ({ state with phase := recover.Phase.ClosingLeaves },
+              recover.Command.Delegate recover.Delegated.AfterLeaves)
+          else recover.begin_cleanup state
+  else
+    if state.index < state.journal.entries
+    then
+      ok ({ state with phase := recover.Phase.ReadingEntry },
+        recover.Command.ReadEntry state.index)
+    else
+      if state.journal.directories != 0#u32
+      then
+        ok ({ state with phase := recover.Phase.ClosingLeaves },
+          recover.Command.Delegate recover.Delegated.AfterLeaves)
+      else recover.begin_cleanup state
+
+/-- [gripsack_kernel::recover::advance]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 423:0-427:1 -/
+def recover.advance
+  (state : recover.RecoverState) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  let i ← state.index + 1#u32
+  recover.proceed { state with index := i, entry := none }
+
+/-- [gripsack_kernel::recover::on_journal]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 429:0-451:1 -/
+def recover.on_journal
+  (state : recover.RecoverState) (journal : recover.JournalFacts) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  if journal.reverse_roots > journal.entries
+  then recover.refuse state recover.Refusal.Malformed
+  else
+    let i ← core.num.U32.MAX - journal.entries
+    if journal.directories > i
+    then recover.refuse state recover.Refusal.Malformed
+    else
+      let i1 ← journal.entries + journal.directories
+      match journal.marker with
+      | none =>
+        if journal.directories != 0#u32
+        then
+          recover.refuse { state with journal, records := i1 }
+            recover.Refusal.MarkerMissing
+        else
+          recover.proceed
+            {
+              state
+                with
+                journal,
+                records := i1,
+                verdict := recover.Verdict.Uncommitted,
+                index := 0#u32
+            }
+      | some _ =>
+        ok
+          ({
+             state
+               with
+               phase := recover.Phase.ReadingCurrent, journal, records := i1
+           }, recover.Command.ReadCurrent)
+
+/-- [gripsack_kernel::selection::RecoveryFacts]
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 116:0-120:1
+    Visibility: public -/
+structure selection.RecoveryFacts where
+  previous : Option selection.SelectionIdentity
+  target : selection.SelectionIdentity
+  current : Option selection.SelectionIdentity
+
+/-- [gripsack_kernel::selection::TRANSACTION_ID_BYTES]
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 26:0-26:43
+    Visibility: public -/
+@[global_simps, irreducible]
+def selection.TRANSACTION_ID_BYTES : Std.Usize := 32#usize
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 44:8-51:5
+    Visibility: public -/
+@[rust_loop_body]
+def selection.TransactionId.same_loop.body
+  (self : selection.TransactionId) (other : selection.TransactionId)
+  (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  if i < selection.TRANSACTION_ID_BYTES
+  then
+    let i1 ← Array.index_usize self.bytes i
+    let i2 ← Array.index_usize other.bytes i
+    if i1 != i2
+    then ok (done false)
+    else let i3 ← i + 1#usize
+         ok (cont i3)
+  else ok (done true)
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]: loop 0:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 44:8-51:5
+    Visibility: public -/
+@[rust_loop]
+def selection.TransactionId.same_loop
+  (self : selection.TransactionId) (other : selection.TransactionId)
+  (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => selection.TransactionId.same_loop.body self other i1)
+    i
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 42:4-51:5
+    Visibility: public -/
+@[reducible]
+def selection.TransactionId.same
+  (self : selection.TransactionId) (other : selection.TransactionId) :
+  Result Bool
+  := do
+  selection.TransactionId.same_loop self other 0#usize
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::same]:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 95:4-110:5
+    Visibility: public -/
+def selection.SelectionIdentity.same
+  (self : selection.SelectionIdentity) (other : selection.SelectionIdentity) :
+  Result Bool
+  := do
+  match self with
+  | selection.SelectionIdentity.Legacy a =>
+    match other with
+    | selection.SelectionIdentity.Legacy b => generation.GenerationId.same a b
+    | selection.SelectionIdentity.Transaction _ _ => ok false
+  | selection.SelectionIdentity.Transaction a ta =>
+    match other with
+    | selection.SelectionIdentity.Legacy _ => ok false
+    | selection.SelectionIdentity.Transaction b tb =>
+      let b1 ← generation.GenerationId.same a b
+      if b1
+      then selection.TransactionId.same ta tb
+      else ok false
+
+/-- [gripsack_kernel::selection::Classification]
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 16:0-24:1
+    Visibility: public -/
+@[discriminant isize]
+inductive selection.Classification where
+| Committed : selection.Classification
+| Uncommitted : selection.Classification
+| Ambiguous : selection.Classification
+
+/-- [gripsack_kernel::selection::classify]:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 122:0-145:1
+    Visibility: public -/
+def selection.classify
+  (facts : selection.RecoveryFacts) : Result selection.Classification := do
+  match facts.current with
+  | none =>
+    match facts.previous with
+    | none => ok selection.Classification.Uncommitted
+    | some _ => ok selection.Classification.Ambiguous
+  | some current =>
+    let b ← selection.SelectionIdentity.same current facts.target
+    if b
+    then ok selection.Classification.Committed
+    else
+      match facts.previous with
+      | none => ok selection.Classification.Ambiguous
+      | some previous =>
+        let b1 ← selection.SelectionIdentity.same current previous
+        if b1
+        then ok selection.Classification.Uncommitted
+        else ok selection.Classification.Ambiguous
+
+/-- [gripsack_kernel::recover::on_current]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 453:0-481:1 -/
+def recover.on_current
+  (state : recover.RecoverState) (current : Option selection.SelectionIdentity)
+  :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  match state.journal.marker with
+  | none => recover.refuse { state with current } recover.Refusal.Protocol
+  | some marker =>
+    let c ←
+      selection.classify
+        { previous := marker.previous, target := marker.target, current }
+    match c with
+    | selection.Classification.Committed =>
+      ok
+        ({
+           state
+             with
+             phase := recover.Phase.SealingSelection,
+             current,
+             verdict := recover.Verdict.Committed
+         }, recover.Command.Barrier recover.Scope.Selection)
+    | selection.Classification.Uncommitted =>
+      recover.proceed
+        {
+          state
+            with
+            current, verdict := recover.Verdict.Uncommitted, index := 0#u32
+        }
+    | selection.Classification.Ambiguous =>
+      recover.refuse { state with current } recover.Refusal.Ambiguous
+
+/-- [gripsack_kernel::recover::on_entry]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 483:0-494:1 -/
+def recover.on_entry
+  (state : recover.RecoverState) (facts : recover.EntryFacts) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  match facts.route with
+  | recover.Route.Leaf =>
+    ok ({ state with phase := recover.Phase.Observing, entry := (some facts) },
+      recover.Command.Observe state.index facts.dest)
+  | recover.Route.Delegated => recover.advance state
+
+/-- [gripsack_kernel::recover::on_observed]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 496:0-536:1 -/
+def recover.on_observed
+  (state : recover.RecoverState) (dest : ids.DestId) (live : recover.Live) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  match state.entry with
+  | none => recover.refuse state recover.Refusal.Protocol
+  | some facts =>
+    let b ← ids.DestId.same facts.dest dest
+    if b
+    then
+      let d ← recover.decide facts live
+      match d with
+      | recover.Decision.Restore =>
+        ok ({ state with phase := recover.Phase.Restoring },
+          recover.Command.Mutate state.index dest live (recover.Effect.Restore
+          facts.prior))
+      | recover.Decision.Unchanged =>
+        ok ({ state with phase := recover.Phase.Sealing }, recover.Command.Seal
+          state.index dest live facts.prior)
+      | recover.Decision.Preserve =>
+        ok ({ state with phase := recover.Phase.Preserving },
+          recover.Command.Preserve state.index dest)
+      | recover.Decision.Refuse =>
+        recover.refuse state (recover.Refusal.Unrestorable state.index dest)
+    else recover.refuse state recover.Refusal.Protocol
+
+/-- [gripsack_kernel::recover::on_landed]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 538:0-556:1 -/
+def recover.on_landed
+  (state : recover.RecoverState) (live : recover.Live) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  match state.entry with
+  | none => recover.refuse state recover.Refusal.Protocol
+  | some facts =>
+    let b ← recover.Prior.matches facts.prior live
+    if b
+    then recover.advance state
+    else
+      recover.refuse state (recover.Refusal.NotRestored state.index facts.dest)
+
+/-- [gripsack_kernel::recover::on_restore_failed]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 558:0-575:1 -/
+def recover.on_restore_failed
+  (state : recover.RecoverState) (failure : recover.Failure) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  match failure with
+  | recover.Failure.Drift =>
+    match state.entry with
+    | none => recover.refuse state recover.Refusal.Protocol
+    | some facts =>
+      recover.refuse state (recover.Refusal.Drifted state.index facts.dest)
+  | recover.Failure.Io _ => recover.refuse state recover.Refusal.Failed
+
+/-- [gripsack_kernel::recover::finish]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 577:0-583:1 -/
+def recover.finish
+  (state : recover.RecoverState) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  match state.verdict with
+  | recover.Verdict.Pending =>
+    ok ({ state with phase := recover.Phase.Finished }, recover.Command.Finish
+      recover.Outcome.Recovered)
+  | recover.Verdict.Committed =>
+    ok ({ state with phase := recover.Phase.Finished }, recover.Command.Finish
+      recover.Outcome.Committed)
+  | recover.Verdict.Uncommitted =>
+    ok ({ state with phase := recover.Phase.Finished }, recover.Command.Finish
+      recover.Outcome.Recovered)
+
+/-- [gripsack_kernel::recover::recover_step]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 589:0-684:1
+    Visibility: public -/
+def recover.recover_step
+  (state : recover.RecoverState) (event : recover.Event) :
+  Result (recover.RecoverState × recover.Command)
+  := do
+  match state.phase with
+  | recover.Phase.Start =>
+    match event with
+    | recover.Event.Start =>
+      ok ({ state with phase := recover.Phase.ReadingJournal },
+        recover.Command.ReadJournal)
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.failed_or_protocol state recover.Event.Done
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.ReadingJournal =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      ok ({ state with phase := recover.Phase.Finished },
+        recover.Command.Finish recover.Outcome.NoJournal)
+    | recover.Event.JournalRead journal => recover.on_journal state journal
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.failed_or_protocol state recover.Event.Done
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.ReadingCurrent =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead current => recover.on_current state current
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.failed_or_protocol state recover.Event.Done
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.SealingSelection =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done =>
+      if state.journal.directories != 0#u32
+      then
+        ok ({ state with phase := recover.Phase.SettlingDirectories },
+          recover.Command.Delegate recover.Delegated.Committed)
+      else recover.begin_cleanup state
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.SettlingDirectories =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.begin_cleanup state
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.OpeningLeaves =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.proceed state
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.ReadingEntry =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead facts => recover.on_entry state facts
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.failed_or_protocol state recover.Event.Done
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.Observing =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed dest live => recover.on_observed state dest live
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.failed_or_protocol state recover.Event.Done
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.Restoring =>
+    match event with
+    | recover.Event.Start => recover.refuse state recover.Refusal.Protocol
+    | recover.Event.NoJournal => recover.refuse state recover.Refusal.Protocol
+    | recover.Event.JournalRead _ =>
+      recover.refuse state recover.Refusal.Protocol
+    | recover.Event.CurrentRead _ =>
+      recover.refuse state recover.Refusal.Protocol
+    | recover.Event.EntryRead _ =>
+      recover.refuse state recover.Refusal.Protocol
+    | recover.Event.Observed _ _ =>
+      recover.refuse state recover.Refusal.Protocol
+    | recover.Event.Landed live => recover.on_landed state live
+    | recover.Event.Done => recover.refuse state recover.Refusal.Protocol
+    | recover.Event.Failed failure => recover.on_restore_failed state failure
+  | recover.Phase.Sealing =>
+    match event with
+    | recover.Event.Start => recover.refuse state recover.Refusal.Protocol
+    | recover.Event.NoJournal => recover.refuse state recover.Refusal.Protocol
+    | recover.Event.JournalRead _ =>
+      recover.refuse state recover.Refusal.Protocol
+    | recover.Event.CurrentRead _ =>
+      recover.refuse state recover.Refusal.Protocol
+    | recover.Event.EntryRead _ =>
+      recover.refuse state recover.Refusal.Protocol
+    | recover.Event.Observed _ _ =>
+      recover.refuse state recover.Refusal.Protocol
+    | recover.Event.Landed _ => recover.refuse state recover.Refusal.Protocol
+    | recover.Event.Done => recover.advance state
+    | recover.Event.Failed failure => recover.on_restore_failed state failure
+  | recover.Phase.Preserving =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.advance state
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.ClosingLeaves =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.begin_cleanup state
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.UnlinkingRecord =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done =>
+      let i ← state.index + 1#u32
+      recover.next_unlink { state with index := i }
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.SyncingRecords =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done =>
+      ok ({ state with phase := recover.Phase.UnlinkingMarker },
+        recover.Command.Unlink recover.JournalName.Marker)
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.UnlinkingMarker =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done =>
+      ok ({ state with phase := recover.Phase.SyncingMarker },
+        recover.Command.Barrier recover.Scope.Journal)
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.SyncingMarker =>
+    match event with
+    | recover.Event.Start =>
+      recover.failed_or_protocol state recover.Event.Start
+    | recover.Event.NoJournal =>
+      recover.failed_or_protocol state recover.Event.NoJournal
+    | recover.Event.JournalRead _ => recover.failed_or_protocol state event
+    | recover.Event.CurrentRead _ => recover.failed_or_protocol state event
+    | recover.Event.EntryRead _ => recover.failed_or_protocol state event
+    | recover.Event.Observed _ _ => recover.failed_or_protocol state event
+    | recover.Event.Landed _ => recover.failed_or_protocol state event
+    | recover.Event.Done => recover.finish state
+    | recover.Event.Failed _ => recover.failed_or_protocol state event
+  | recover.Phase.Finished => recover.refuse state recover.Refusal.Protocol
+  | recover.Phase.Aborted => recover.refuse state recover.Refusal.Protocol
 
 /-- [gripsack_kernel::retention::GcAdmission]
     Source: 'crates/gripsack-kernel/src/retention.rs', lines 20:0-30:1
@@ -639,27 +1677,6 @@ def retention.plan_delete
   retention.plan_delete_loop referenced candidates (alloc.vec.Vec.new
     Std.Usize) 0#usize
 
-/-- [gripsack_kernel::selection::Classification]
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 16:0-24:1
-    Visibility: public -/
-@[discriminant isize]
-inductive selection.Classification where
-| Committed : selection.Classification
-| Uncommitted : selection.Classification
-| Ambiguous : selection.Classification
-
-/-- [gripsack_kernel::selection::TRANSACTION_ID_BYTES]
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 26:0-26:43
-    Visibility: public -/
-@[global_simps, irreducible]
-def selection.TRANSACTION_ID_BYTES : Std.Usize := 32#usize
-
-/-- [gripsack_kernel::selection::TransactionId]
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 28:0-30:1
-    Visibility: public -/
-structure selection.TransactionId where
-  bytes : Array Std.U8 32#usize
-
 /-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::from_bytes]:
     Source: 'crates/gripsack-kernel/src/selection.rs', lines 33:4-35:5
     Visibility: public -/
@@ -673,59 +1690,6 @@ def selection.TransactionId.from_bytes
 def selection.TransactionId.as_bytes
   (self : selection.TransactionId) : Result (Array Std.U8 32#usize) := do
   ok self.bytes
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 44:8-51:5
-    Visibility: public -/
-@[rust_loop_body]
-def selection.TransactionId.same_loop.body
-  (self : selection.TransactionId) (other : selection.TransactionId)
-  (i : Std.Usize) :
-  Result (ControlFlow Std.Usize Bool)
-  := do
-  if i < selection.TRANSACTION_ID_BYTES
-  then
-    let i1 ← Array.index_usize self.bytes i
-    let i2 ← Array.index_usize other.bytes i
-    if i1 != i2
-    then ok (done false)
-    else let i3 ← i + 1#usize
-         ok (cont i3)
-  else ok (done true)
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]: loop 0:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 44:8-51:5
-    Visibility: public -/
-@[rust_loop]
-def selection.TransactionId.same_loop
-  (self : selection.TransactionId) (other : selection.TransactionId)
-  (i : Std.Usize) :
-  Result Bool
-  := do
-  loop
-    (fun i1 => selection.TransactionId.same_loop.body self other i1)
-    i
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 42:4-51:5
-    Visibility: public -/
-@[reducible]
-def selection.TransactionId.same
-  (self : selection.TransactionId) (other : selection.TransactionId) :
-  Result Bool
-  := do
-  selection.TransactionId.same_loop self other 0#usize
-
-/-- [gripsack_kernel::selection::SelectionIdentity]
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 56:0-64:1
-    Visibility: public -/
-@[discriminant isize]
-inductive selection.SelectionIdentity where
-| Legacy : generation.GenerationId → selection.SelectionIdentity
-| Transaction :
-  generation.GenerationId →
-  selection.TransactionId →
-  selection.SelectionIdentity
 
 /-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::legacy]:
     Source: 'crates/gripsack-kernel/src/selection.rs', lines 67:4-69:5
@@ -766,57 +1730,5 @@ def selection.SelectionIdentity.transaction_id
   | selection.SelectionIdentity.Legacy _ => ok none
   | selection.SelectionIdentity.Transaction _ transaction =>
     ok (some transaction)
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::same]:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 95:4-110:5
-    Visibility: public -/
-def selection.SelectionIdentity.same
-  (self : selection.SelectionIdentity) (other : selection.SelectionIdentity) :
-  Result Bool
-  := do
-  match self with
-  | selection.SelectionIdentity.Legacy a =>
-    match other with
-    | selection.SelectionIdentity.Legacy b => generation.GenerationId.same a b
-    | selection.SelectionIdentity.Transaction _ _ => ok false
-  | selection.SelectionIdentity.Transaction a ta =>
-    match other with
-    | selection.SelectionIdentity.Legacy _ => ok false
-    | selection.SelectionIdentity.Transaction b tb =>
-      let b1 ← generation.GenerationId.same a b
-      if b1
-      then selection.TransactionId.same ta tb
-      else ok false
-
-/-- [gripsack_kernel::selection::RecoveryFacts]
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 116:0-120:1
-    Visibility: public -/
-structure selection.RecoveryFacts where
-  previous : Option selection.SelectionIdentity
-  target : selection.SelectionIdentity
-  current : Option selection.SelectionIdentity
-
-/-- [gripsack_kernel::selection::classify]:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 122:0-145:1
-    Visibility: public -/
-def selection.classify
-  (facts : selection.RecoveryFacts) : Result selection.Classification := do
-  match facts.current with
-  | none =>
-    match facts.previous with
-    | none => ok selection.Classification.Uncommitted
-    | some _ => ok selection.Classification.Ambiguous
-  | some current =>
-    let b ← selection.SelectionIdentity.same current facts.target
-    if b
-    then ok selection.Classification.Committed
-    else
-      match facts.previous with
-      | none => ok selection.Classification.Ambiguous
-      | some previous =>
-        let b1 ← selection.SelectionIdentity.same current previous
-        if b1
-        then ok selection.Classification.Uncommitted
-        else ok selection.Classification.Ambiguous
 
 end gripsack_kernel
