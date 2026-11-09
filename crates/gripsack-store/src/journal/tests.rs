@@ -739,3 +739,74 @@ fn recovery_cleanup_keeps_the_pinned_journal_after_a_directory_replacement() {
     assert!(!retained.join("run.json").exists());
     assert!(!retained.join(entry_name(&dest)).exists());
 }
+
+/// The unrestorable-entry wedge (0058 item 1): an interrupted run created
+/// `fresh` (prior absent); a directory now stands there. Recovery refuses by
+/// name, says what it expected and found and how to repair, changes
+/// nothing, and completes once the directory is moved aside.
+#[test]
+fn a_directory_at_an_entry_is_refused_by_name_until_moved_aside() {
+    let home = home();
+    let capability = cap(&home);
+    let run = new_run(&capability, home.path());
+    let fresh = home.path().join("fresh");
+    let prior = capture_at(&fresh, &run);
+    crash_record(
+        prior,
+        &file_intent(crate::hash::canonical_bytes_identity(b"crashed\n", 0o644)),
+    );
+    std::fs::create_dir(&fresh).unwrap();
+    std::fs::write(fresh.join("mine"), b"user data\n").unwrap();
+    let entries = || {
+        std::fs::read_dir(dir(home.path()))
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let before = entries();
+
+    let err = reconcile(&cap(&home), home.path()).unwrap_err();
+    let message = err.to_string();
+    for needle in [
+        fresh.to_str().unwrap(),
+        "a directory",
+        "restores nothing (absent)",
+        "Move",
+        "grip doctor",
+    ] {
+        assert!(message.contains(needle), "{needle:?} missing: {message}");
+    }
+    assert_eq!(entries(), before, "the journal is retained untouched");
+    assert_eq!(std::fs::read(fresh.join("mine")).unwrap(), b"user data\n");
+    let pending = inspect(&cap(&home), home.path()).unwrap().unwrap();
+    let blocked = pending
+        .blocked()
+        .expect("the view names the blocking entry");
+    assert_eq!(blocked.dest, fresh.to_str().unwrap());
+    assert_eq!(blocked.found, gripsack_host::recover::Found::Directory);
+
+    std::fs::rename(&fresh, home.path().join("fresh.aside")).unwrap();
+    reconcile(&cap(&home), home.path()).unwrap();
+    assert!(!fresh.exists());
+    assert!(inspect(&cap(&home), home.path()).unwrap().is_none());
+    assert_eq!(
+        std::fs::read(home.path().join("fresh.aside/mine")).unwrap(),
+        b"user data\n"
+    );
+}
+
+#[test]
+fn a_non_utf8_link_at_an_entry_is_refused_by_name() {
+    use std::os::unix::ffi::OsStrExt;
+    let home = home();
+    let capability = cap(&home);
+    let run = new_run(&capability, home.path());
+    let dest = home.path().join("link");
+    let prior = capture_at(&dest, &run);
+    crash_record(prior, &intent("/deployed/target"));
+    std::os::unix::fs::symlink(std::ffi::OsStr::from_bytes(b"\xff\xfe"), &dest).unwrap();
+    let err = reconcile(&cap(&home), home.path()).unwrap_err();
+    assert!(err.to_string().contains("non-UTF-8 target"), "{err}");
+    assert!(std::fs::symlink_metadata(&dest).is_ok(), "preserved");
+}

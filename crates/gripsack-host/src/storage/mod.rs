@@ -25,8 +25,8 @@ mod real;
 
 pub use gripsack_fs::fault::Boundary;
 pub use mem::{
-    Crash, CrashKinds, CrashPoint, Exploration, ExploreError, MemDir, MemFile, MemFs, PendingBound,
-    TraceEvent, Violation, explore,
+    Crash, CrashKinds, CrashPoint, Exploration, ExploreError, ExternalWrite, MemDir, MemFile,
+    MemFs, Operation, PendingBound, TraceEvent, Violation, explore,
 };
 pub use real::{RealDir, RealFile, RealFs};
 

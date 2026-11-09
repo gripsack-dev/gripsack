@@ -1,4 +1,5 @@
-//! grip doctor — the eval runtime check (0003 §8, plan/0013 D2).
+//! grip doctor — the eval runtime check (0003 §8, plan/0013 D2), and the
+//! pending journal when an interrupted run left one (0058 item 1).
 
 use crate::render::Palette;
 use std::process::ExitCode;
@@ -186,12 +187,127 @@ pub fn doctor(palette: Palette) -> ExitCode {
         }
     }
     println!("      home: {}", home.display());
+    ok &= journal(palette, &home);
 
     if ok {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// The pending journal, read-only (`journal::inspect`): what recovery will
+/// do with each entry before the next apply, rollback or gc — and, when it
+/// refuses one, which entry, what it expected and found, and the repair.
+/// `false` when recovery cannot proceed on its own.
+fn journal(palette: Palette, home: &std::path::Path) -> bool {
+    use gripsack_store::journal::{Decision, EntryOutlook, RunVerdict};
+    let capability = match gripsack_fs::open(home) {
+        Ok(capability) => capability,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return true,
+        Err(error) => {
+            println!(
+                "{}  journal: cannot open the home: {error}",
+                palette.error("MISS")
+            );
+            return false;
+        }
+    };
+    let view = match gripsack_store::journal::inspect(&capability, home) {
+        Ok(None) => {
+            println!("{}  journal: nothing pending", palette.good("ok  "));
+            return true;
+        }
+        Ok(Some(view)) => view,
+        Err(error) => {
+            println!(
+                "{}  journal: unreadable ({error}); recovery will refuse — inspect {}",
+                palette.error("MISS"),
+                home.join("journal").display()
+            );
+            return false;
+        }
+    };
+    let blocked = view.blocked().is_some()
+        || view
+            .verdict
+            .is_none_or(|verdict| verdict == RunVerdict::Ambiguous)
+        || !view.unadmitted.is_empty()
+        || view.pending.quarantined > 0;
+    println!(
+        "{}  journal: an interrupted run left recovery pending ({}); it runs before the next \
+         apply, rollback or gc",
+        if blocked {
+            palette.error("MISS")
+        } else {
+            palette.warn("warn")
+        },
+        view.pending
+    );
+    let run = match view.verdict {
+        Some(RunVerdict::Unmarked) => "no run marker: every entry is restored to its prior".into(),
+        Some(RunVerdict::Uncommitted) => {
+            "uncommitted (the selection never flipped): every entry is restored to its prior".into()
+        }
+        Some(RunVerdict::Committed) => {
+            "committed (the selection flipped): the journal is only cleared, content stands".into()
+        }
+        Some(RunVerdict::Ambiguous) => palette.error(
+            "AMBIGUOUS: `current` matches neither the run's target nor its predecessor — \
+             recovery refuses and changes nothing",
+        ),
+        None => palette.error("the run marker cannot be read — recovery refuses"),
+    };
+    println!("      run: {run}");
+    if view.directories > 0 {
+        println!(
+            "      {} directory transition record(s), recovered by the directory domain",
+            view.directories
+        );
+    }
+    for entry in &view.entries {
+        let outlook = match &entry.outlook {
+            EntryOutlook::Committed => "committed: the deployed content stands".to_string(),
+            EntryOutlook::Decided(Decision::Restore) => "the prior will be restored".to_string(),
+            EntryOutlook::Decided(Decision::Unchanged) => {
+                "the prior is already in place (it will be sealed)".to_string()
+            }
+            EntryOutlook::Decided(Decision::Preserve) => {
+                "changed since the interrupted run — your edit will be kept".to_string()
+            }
+            EntryOutlook::Decided(Decision::Refuse) => palette.error(&format!(
+                "BLOCKED: found {}, which the journal cannot identify",
+                entry.found
+            )),
+            EntryOutlook::Unreadable(error) => palette.error(&format!(
+                "cannot be evaluated ({error}); recovery will stop here"
+            )),
+        };
+        println!("      {}: {outlook}", entry.dest);
+        if entry.blocks() {
+            println!("        expected: {}", entry.expected);
+            println!(
+                "        {} move {} aside (it is yours; nothing is deleted), then run `grip apply` \
+                 again: recovery finishes first — see docs/operations/storage.md",
+                palette.warn("fix:"),
+                entry.dest
+            );
+        }
+    }
+    for rejected in &view.unadmitted {
+        println!(
+            "      {} {rejected} (it will be quarantined; recovery refuses until it is inspected)",
+            palette.error("unadmissible:")
+        );
+    }
+    if view.pending.quarantined > 0 {
+        println!(
+            "      {} inspect and remove {} to let recovery run",
+            palette.warn("fix:"),
+            home.join("journal/quarantine").display()
+        );
+    }
+    !blocked
 }
 
 fn installed_core(repo: &std::path::Path) -> Result<Option<String>, String> {

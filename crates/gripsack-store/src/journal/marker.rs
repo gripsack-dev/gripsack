@@ -253,13 +253,9 @@ pub(super) fn run_marker(journal: &Journal) -> io::Result<Option<RunMarker>> {
     }
 }
 
-/// One exact-selection kernel serves recovery, the concrete models and the
-/// Lean proofs (plan/0056).
+/// One exact-selection kernel serves recovery and the Lean proofs
+/// (plan/0056).
 pub(crate) use gripsack_kernel::{
     Classification,
     selection::{RecoveryFacts, classify},
 };
-
-#[cfg(test)]
-#[path = "repeated_model.rs"]
-mod repeated_model;

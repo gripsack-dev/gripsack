@@ -106,6 +106,31 @@ MUTANTS = (
            "    if marker.role.same(RecordRole::RunMarker) && entry.role.same(RecordRole::MutationEntry) {",
            "    if marker.role.same(RecordRole::RunMarker) || entry.role.same(RecordRole::MutationEntry) {",
            ("Gripsack.Kernel.admit_mutation_spec",)),
+    # recover (a): a foreign object that replaced the run's write is never restored over
+    Mutant("recover-guard-restores-foreign", "recover.rs",
+           "            } else {\n                Decision::Preserve\n            }",
+           "            } else {\n                Decision::Restore\n            }",
+           ("Gripsack.Kernel.decide_spec",)),
+    # recover (a): the restore must carry the observed object as the driver's re-check identity
+    Mutant("recover-guard-wrong-expect", "recover.rs",
+           "                    expect: live,\n                    effect: Effect::Restore(facts.prior),",
+           "                    expect: Live::Absent,\n                    effect: Effect::Restore(facts.prior),",
+           ("Gripsack.Kernel.on_observed_spec",)),
+    # recover (b): the 0.19.2 order — marker unlink before the record barrier
+    Mutant("recover-cleanup-barrier-swapped", "recover.rs",
+           "        state.phase = Phase::SyncingRecords;\n        (state, Command::Barrier(Scope::Journal))",
+           "        state.phase = Phase::UnlinkingMarker;\n        (state, Command::Unlink(JournalName::Marker))",
+           ("Gripsack.Kernel.next_unlink_spec",)),
+    # recover (c): an object without a journal identity is mutated instead of refused
+    Mutant("recover-mutates-unrestorable", "recover.rs",
+           "        Live::Unsupported => Decision::Refuse,",
+           "        Live::Unsupported => Decision::Restore,",
+           ("Gripsack.Kernel.decide_spec",)),
+    # recover (d): a committed run is restored as if uncommitted
+    Mutant("recover-restores-committed-run", "recover.rs",
+           "                Classification::Committed => {\n                    state.verdict = Verdict::Committed;\n                    state.phase = Phase::SealingSelection;\n                    (state, Command::Barrier(Scope::Selection))\n                }",
+           "                Classification::Committed => {\n                    state.verdict = Verdict::Uncommitted;\n                    state.index = 0;\n                    proceed(state)\n                }",
+           ("Gripsack.Kernel.on_current_spec",)),
 )
 
 # lake reports `error: <path>.lean:<line>:<col>: <message>`

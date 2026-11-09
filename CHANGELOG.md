@@ -12,6 +12,42 @@ User-visible changes per release. Design archaeology lives in
   tarball and its published `.sha256`, verify it, and install atomically.
   They no longer need the GitHub CLI, Python or a signed release manifest.
 
+- Crash recovery no longer wedges on a destination that became a directory
+  (or a FIFO, socket, device, or a symlink with a non-UTF-8 target) after an
+  interrupted `apply` or `rollback`. Recovery now refuses by name: the error
+  says which destination, what recovery expected there and what it found,
+  and how to repair it. Nothing is changed and the journal is kept; move the
+  object aside and run the command again. See "Repairing a pending journal"
+  in `docs/operations/storage.md`.
+
+### Added
+
+- `grip doctor` shows a pending journal: whether the interrupted run
+  committed, what recovery will do with each destination, and — when it
+  refuses one — the expected and found state and the fix.
+
+### Changed
+
+- Crash recovery runs as a state machine in `gripsack-kernel`, proved in
+  Lean: a restore only replaces the interrupted run's own write (or an
+  absence where a prior existed) and re-checks it immediately before
+  acting; an object without a journal identity is always refused; the run
+  marker is removed only after a barrier that follows every record removal;
+  and nothing is restored before the commit classification judged the run
+  uncommitted. Behaviour is otherwise unchanged. A destination that changes
+  while recovery is restoring it now stops recovery (journal kept) instead
+  of being overwritten.
+
+### Internal
+
+- The hand-written recovery models (`journal/model.rs`,
+  `repeated_model.rs`) are replaced by crash exploration of the shipped
+  recover machine over the in-memory storage model (every kill and
+  power-loss cut, recovery crashed again, external writes injected). Debug
+  builds keep the previous engine behind `GRIPSACK_ENGINE=legacy` for one
+  release.
+
+
 ## [0.52.0] — Verified foundation, phase one
 
 A foundation release: no command or workspace authoring changes. It starts

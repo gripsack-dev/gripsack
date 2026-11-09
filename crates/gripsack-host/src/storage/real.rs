@@ -34,6 +34,22 @@ impl RealFs {
     }
 }
 
+impl RealDir {
+    /// Pin the directory another handle names (for example a
+    /// `cap_std::fs::Dir` from the legacy store, which Linux opens `O_PATH`
+    /// and so can neither list nor fsync): `.` is reopened relative to it,
+    /// read-only, so the result is the same inode with a descriptor every
+    /// `*at` call and `fsync` accept.
+    pub fn pin(dir: impl rustix::fd::AsFd) -> io::Result<Self> {
+        Ok(Self(rustix::fs::openat(
+            dir,
+            ".",
+            DIR_FLAGS | OFlags::NOFOLLOW,
+            Mode::empty(),
+        )?))
+    }
+}
+
 const DIR_FLAGS: OFlags = OFlags::RDONLY
     .union(OFlags::DIRECTORY)
     .union(OFlags::CLOEXEC);

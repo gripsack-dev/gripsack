@@ -1,11 +1,15 @@
 //! gripsack ring-2 host (plan/0056 §3, §6).
 //!
-//! For now only the storage layer (F2 step 1): the [`storage::Storage`]
-//! trait that the protocol driver will act through, the thin
-//! [`storage::RealFs`] over `*at` syscalls, and the crash-injecting
-//! [`storage::MemFs`] that mirrors the storage model S1–S3 (plan/0056 §4).
-//! Nothing in the product calls this crate yet; F2 step 2 rewires the
-//! recover path onto it.
+//! The storage layer (F2 step 1): the [`storage::Storage`] trait the
+//! protocol drivers act through, the thin [`storage::RealFs`] over `*at`
+//! syscalls, and the crash-injecting [`storage::MemFs`] that mirrors the
+//! storage model S1–S3 and injects S5 external writes (plan/0056 §4).
+//!
+//! The recover driver (F2 step 2): [`recover::recover`] runs the kernel's
+//! recover machine over any `Storage`, re-checking each act against the
+//! identity the kernel decided on. The product's journal recovery
+//! (`gripsack-store`) drives it over `RealFs`.
 #![forbid(unsafe_code)]
 
+pub mod recover;
 pub mod storage;

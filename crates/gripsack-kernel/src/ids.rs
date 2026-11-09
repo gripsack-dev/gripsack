@@ -8,10 +8,10 @@
 //! [`TransactionId`]. The aliases name them as the plan's interface does
 //! without a second type.
 //!
-//! Not yet under proof: no decision module reaches this one, so it is not in
-//! `[package.metadata.charon] start_from` and the committed translation does
-//! not change. It enters the translation when the first machine (F2 step 2)
-//! uses it.
+//! Under proof since F2 step 2: the recover machine (`recover.rs`) carries
+//! [`DestId`] and [`Digest`], so the translation reaches them from there.
+//! [`CmdId`] is not used yet: a machine has one command outstanding and
+//! checks each event against its phase instead.
 use crate::{GenerationId, selection::TransactionId};
 
 /// `GenId` of the plan's interface: one generation number.

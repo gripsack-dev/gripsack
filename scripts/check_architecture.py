@@ -28,7 +28,7 @@ ALLOWED: dict[str, frozenset[str]] = {
     # plan/0056: the ring-0 kernel has no dependencies at all.
     "gripsack-kernel": frozenset(),
     # plan/0056 ring 2: inward only. gripsack-fs until the host absorbs it.
-    "gripsack-host": frozenset({"gripsack-fs", "rustix", "tempfile"}),
+    "gripsack-host": frozenset({"gripsack-fs", "gripsack-kernel", "rustix", "tempfile"}),
     "gripsack-policy": frozenset({"vstd"}),
     "gripsack-ir": frozenset({
         "gripsack-policy", "serde", "serde_json", "thiserror", "jsonschema",
@@ -36,7 +36,8 @@ ALLOWED: dict[str, frozenset[str]] = {
         "sha2", "vstd", "url",
     }),
     "gripsack-store": frozenset({
-        "gripsack-fs", "gripsack-ir", "gripsack-kernel", "gripsack-policy", "gripsack-process", "serde",
+        "gripsack-fs", "gripsack-host", "gripsack-ir", "gripsack-kernel", "gripsack-policy", "gripsack-process",
+        "serde",
         "serde_json",
         "toml", "sha2", "tempfile", "getrandom",
         # url: pure RFC3986 parsing for logical_text's file-URL mapping (no

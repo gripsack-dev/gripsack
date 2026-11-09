@@ -84,6 +84,11 @@ use crate::{
     Classification,
     ids::{CmdId, DestId, Digest},
     journal::{DurableRecord, MutationAuthority, PublicationAction, RecordPublication, RecordRole},
+    recover::{
+        Command, Decision, Delegated, Effect, EntryFacts, Event, Failure, Ident, Intended,
+        JournalFacts, JournalName, Live, MarkerFacts, Outcome, Phase, Prior, RecoverState, Refusal,
+        Route, Scope, Verdict,
+    },
     retention::GcAdmission,
     selection::{RecoveryFacts, SelectionIdentity, TransactionId},
 };
@@ -110,6 +115,27 @@ copy_impls!(
     GcAdmission,
     RecordRole,
     PublicationAction,
+    Ident,
+    Live,
+    Prior,
+    Intended,
+    Route,
+    EntryFacts,
+    MarkerFacts,
+    JournalFacts,
+    Decision,
+    JournalName,
+    Scope,
+    Delegated,
+    Effect,
+    Outcome,
+    Refusal,
+    Command,
+    Failure,
+    Event,
+    Phase,
+    Verdict,
+    RecoverState,
 );
 
 macro_rules! same_eq {
@@ -134,7 +160,24 @@ same_eq!(
     PublicationAction => |a, b| a.same(*b),
     Classification => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
     GcAdmission => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Ident => |a, b| a.same(b),
+    Live => |a, b| a.same(b),
+    Prior => |a, b| match (a, b) {
+        (Prior::Absent, Prior::Absent) => true,
+        (Prior::Obj(a), Prior::Obj(b)) => a.same(b),
+        _ => false,
+    },
+    Decision => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Outcome => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Phase => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Verdict => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
 );
+
+impl Default for RecoverState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl fmt::Debug for GenerationId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -246,7 +289,250 @@ unit_debug!(
         Complete,
         Refused
     },
+    Route { Leaf, Delegated },
+    Decision {
+        Restore,
+        Unchanged,
+        Preserve,
+        Refuse
+    },
+    Scope { Journal, Selection },
+    Delegated {
+        Committed,
+        BeforeLeaves,
+        AfterLeaves
+    },
+    Outcome {
+        NoJournal,
+        Committed,
+        Recovered
+    },
+    Verdict {
+        Pending,
+        Committed,
+        Uncommitted
+    },
+    Phase {
+        Start,
+        ReadingJournal,
+        ReadingCurrent,
+        SealingSelection,
+        SettlingDirectories,
+        OpeningLeaves,
+        ReadingEntry,
+        Observing,
+        Restoring,
+        Sealing,
+        Preserving,
+        ClosingLeaves,
+        UnlinkingRecord,
+        SyncingRecords,
+        UnlinkingMarker,
+        SyncingMarker,
+        Finished,
+        Aborted
+    },
 );
+
+impl fmt::Debug for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ident::File(digest) => f.debug_tuple("File").field(digest).finish(),
+            Ident::Link(digest) => f.debug_tuple("Link").field(digest).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Live {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Live::Absent => f.write_str("Absent"),
+            Live::Obj(ident) => f.debug_tuple("Obj").field(ident).finish(),
+            Live::Unsupported => f.write_str("Unsupported"),
+        }
+    }
+}
+
+impl fmt::Debug for Prior {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Prior::Absent => f.write_str("Absent"),
+            Prior::Obj(ident) => f.debug_tuple("Obj").field(ident).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Intended {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Intended::Removed => f.write_str("Removed"),
+            Intended::Obj(ident) => f.debug_tuple("Obj").field(ident).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for EntryFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EntryFacts")
+            .field("dest", &self.dest)
+            .field("prior", &self.prior)
+            .field("before", &self.before)
+            .field("intended", &self.intended)
+            .field("route", &self.route)
+            .finish()
+    }
+}
+
+impl fmt::Debug for MarkerFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MarkerFacts")
+            .field("previous", &self.previous)
+            .field("target", &self.target)
+            .finish()
+    }
+}
+
+impl fmt::Debug for JournalFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalFacts")
+            .field("entries", &self.entries)
+            .field("directories", &self.directories)
+            .field("reverse_roots", &self.reverse_roots)
+            .field("marker", &self.marker)
+            .finish()
+    }
+}
+
+impl fmt::Debug for JournalName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JournalName::Record(index) => f.debug_tuple("Record").field(index).finish(),
+            JournalName::Marker => f.write_str("Marker"),
+        }
+    }
+}
+
+impl fmt::Debug for Effect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Effect::Restore(prior) => f.debug_tuple("Restore").field(prior).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Refusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let entry = |f: &mut fmt::Formatter<'_>, name, entry: &u32, dest: &DestId| {
+            f.debug_struct(name)
+                .field("entry", entry)
+                .field("dest", dest)
+                .finish()
+        };
+        match self {
+            Refusal::Ambiguous => f.write_str("Ambiguous"),
+            Refusal::MarkerMissing => f.write_str("MarkerMissing"),
+            Refusal::Malformed => f.write_str("Malformed"),
+            Refusal::Unrestorable { entry: e, dest } => entry(f, "Unrestorable", e, dest),
+            Refusal::Drifted { entry: e, dest } => entry(f, "Drifted", e, dest),
+            Refusal::NotRestored { entry: e, dest } => entry(f, "NotRestored", e, dest),
+            Refusal::Failed => f.write_str("Failed"),
+            Refusal::Protocol => f.write_str("Protocol"),
+        }
+    }
+}
+
+impl fmt::Debug for Failure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Failure::Drift => f.write_str("Drift"),
+            Failure::Io(errno) => f.debug_tuple("Io").field(errno).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Command {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Command::ReadJournal => f.write_str("ReadJournal"),
+            Command::ReadCurrent => f.write_str("ReadCurrent"),
+            Command::ReadEntry(index) => f.debug_tuple("ReadEntry").field(index).finish(),
+            Command::Observe { entry, dest } => f
+                .debug_struct("Observe")
+                .field("entry", entry)
+                .field("dest", dest)
+                .finish(),
+            Command::Mutate {
+                entry,
+                dest,
+                expect,
+                effect,
+            } => f
+                .debug_struct("Mutate")
+                .field("entry", entry)
+                .field("dest", dest)
+                .field("expect", expect)
+                .field("effect", effect)
+                .finish(),
+            Command::Seal {
+                entry,
+                dest,
+                expect,
+                prior,
+            } => f
+                .debug_struct("Seal")
+                .field("entry", entry)
+                .field("dest", dest)
+                .field("expect", expect)
+                .field("prior", prior)
+                .finish(),
+            Command::Preserve { entry, dest } => f
+                .debug_struct("Preserve")
+                .field("entry", entry)
+                .field("dest", dest)
+                .finish(),
+            Command::Delegate(step) => f.debug_tuple("Delegate").field(step).finish(),
+            Command::Unlink(name) => f.debug_tuple("Unlink").field(name).finish(),
+            Command::Barrier(scope) => f.debug_tuple("Barrier").field(scope).finish(),
+            Command::Finish(outcome) => f.debug_tuple("Finish").field(outcome).finish(),
+            Command::Abort(refusal) => f.debug_tuple("Abort").field(refusal).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::Start => f.write_str("Start"),
+            Event::NoJournal => f.write_str("NoJournal"),
+            Event::JournalRead(journal) => f.debug_tuple("JournalRead").field(journal).finish(),
+            Event::CurrentRead(current) => f.debug_tuple("CurrentRead").field(current).finish(),
+            Event::EntryRead(facts) => f.debug_tuple("EntryRead").field(facts).finish(),
+            Event::Observed { dest, live } => f
+                .debug_struct("Observed")
+                .field("dest", dest)
+                .field("live", live)
+                .finish(),
+            Event::Landed { live } => f.debug_struct("Landed").field("live", live).finish(),
+            Event::Done => f.write_str("Done"),
+            Event::Failed(failure) => f.debug_tuple("Failed").field(failure).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for RecoverState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RecoverState")
+            .field("phase", &self.phase)
+            .field("journal", &self.journal)
+            .field("records", &self.records)
+            .field("current", &self.current)
+            .field("verdict", &self.verdict)
+            .field("index", &self.index)
+            .field("leaves_open", &self.leaves_open)
+            .field("entry", &self.entry)
+            .finish()
+    }
+}
 
 impl fmt::Debug for DestId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

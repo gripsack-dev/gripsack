@@ -6,10 +6,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
-# Ring 2 depends only inward. gripsack-fs supplies the fault-boundary
-# vocabulary until this crate absorbs it (plan/0056 §6, F2 step 10).
+# Ring 2 depends only inward: the kernel whose machines it drives, and
+# gripsack-fs, which supplies the fault-boundary vocabulary until this crate
+# absorbs it (plan/0056 §6, F2 step 10).
 [dependencies]
 gripsack-fs.workspace = true
+gripsack-kernel.workspace = true
 rustix = { version = "1", features = ["fs"] }
 
 [dev-dependencies]

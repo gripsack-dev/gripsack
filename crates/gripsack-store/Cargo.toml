@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 gripsack-fs.workspace = true
+gripsack-host.workspace = true
 gripsack-policy.workspace = true
 gripsack-kernel.workspace = true
 gripsack-process.workspace = true

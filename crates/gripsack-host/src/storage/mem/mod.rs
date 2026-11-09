@@ -29,6 +29,12 @@
 //!
 //! Every effect is recorded as a [`TraceEvent`] in the shared fault-boundary
 //! vocabulary; [`explore`] enumerates every crash cut and loss subset.
+//!
+//! S5 (external writers): every call, observation or effect, is numbered as
+//! an [`Operation`]. [`MemFs::inject`] arms one [`ExternalWrite`] — another
+//! process replacing a file — to land just before a chosen operation runs,
+//! so a test can place it between a driver's re-check and its act, or
+//! anywhere else, and state what the driver may and may not overwrite.
 mod explore;
 mod image;
 
@@ -85,6 +91,25 @@ struct Pending {
     update: Update,
 }
 
+/// One call into the storage, in order: an observation (`boundary: None`)
+/// or an effect. `name` is the directory entry it resolved, if any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Operation {
+    pub boundary: Option<Boundary>,
+    pub name: Option<Name>,
+}
+
+/// Another process (the user's editor) replacing `dir/name` with a new
+/// regular file. It lands durably at once: S5 writers are only *detected*,
+/// never crash-explored here.
+#[derive(Debug, Clone)]
+pub struct ExternalWrite {
+    pub dir: MemDir,
+    pub name: Name,
+    pub bytes: Vec<u8>,
+    pub permissions: Permissions,
+}
+
 #[derive(Debug, Clone, Default)]
 struct Faults {
     /// Crash when this many effects have completed (absolute trace length).
@@ -102,9 +127,41 @@ struct State {
     next_ino: Ino,
     trace: Vec<TraceEvent>,
     faults: Faults,
+    operations: Vec<Operation>,
+    /// The external write armed for operation `.0`.
+    injection: Option<(usize, ExternalWrite)>,
 }
 
 impl State {
+    /// Number and log one call; land an armed external write first.
+    fn operation(&mut self, boundary: Option<Boundary>, name: Option<&Name>) {
+        if let Some((at, _)) = &self.injection
+            && *at == self.operations.len()
+        {
+            let (_, write) = self.injection.take().expect("armed");
+            self.land(write);
+        }
+        self.operations.push(Operation {
+            boundary,
+            name: name.cloned(),
+        });
+    }
+
+    fn land(&mut self, write: ExternalWrite) {
+        let ino = self.allocate(Node::File {
+            data: write.bytes,
+            permissions: write.permissions,
+        });
+        for image in [&mut self.volatile, &mut self.durable] {
+            Update::Entry {
+                dir: write.dir.ino,
+                name: write.name.clone(),
+                target: Some(ino),
+            }
+            .apply(image);
+        }
+    }
+
     fn object(ino: Ino) -> ObjectId {
         ObjectId {
             filesystem: MEM_FILESYSTEM,
@@ -286,6 +343,8 @@ impl MemFs {
             next_ino: ROOT + 1,
             trace: Vec::new(),
             faults: Faults::default(),
+            operations: Vec::new(),
+            injection: None,
         })
     }
 
@@ -360,6 +419,8 @@ impl MemFs {
             next_ino: state.next_ino,
             trace: state.trace.clone(),
             faults: Faults::default(),
+            operations: state.operations.clone(),
+            injection: None,
         };
         (Self::from_state(next), lost)
     }
@@ -389,6 +450,22 @@ impl MemFs {
         self.lock().faults.crashed
     }
 
+    /// S5: land `write` immediately before operation number `at` (counted
+    /// over this filesystem's whole history, see [`MemFs::operations`]).
+    pub fn inject(&self, at: usize, write: ExternalWrite) {
+        self.lock().injection = Some((at, write));
+    }
+
+    /// Whether an armed external write has not landed yet.
+    pub fn injection_pending(&self) -> bool {
+        self.lock().injection.is_some()
+    }
+
+    /// Every call so far, observations included.
+    pub fn operations(&self) -> Vec<Operation> {
+        self.lock().operations.clone()
+    }
+
     fn effect<T>(
         &self,
         boundary: Boundary,
@@ -402,6 +479,7 @@ impl MemFs {
             state.faults.crashed = true;
             return Err(io::Error::other(Crashed));
         }
+        state.operation(Some(boundary), name);
         if let Some((at, errno)) = state.faults.fail_at
             && at == index
         {
@@ -417,11 +495,16 @@ impl MemFs {
         Ok(value)
     }
 
-    fn observe<T>(&self, observe: impl FnOnce(&State) -> io::Result<T>) -> io::Result<T> {
-        let state = self.lock();
+    fn observe<T>(
+        &self,
+        name: Option<&Name>,
+        observe: impl FnOnce(&State) -> io::Result<T>,
+    ) -> io::Result<T> {
+        let mut state = self.lock();
         if state.faults.crashed {
             return Err(io::Error::other(Crashed));
         }
+        state.operation(None, name);
         observe(&state)
     }
 }
@@ -431,11 +514,11 @@ impl Storage for MemFs {
     type File = MemFile;
 
     fn root(&self) -> io::Result<MemDir> {
-        self.observe(|_| Ok(MemDir { ino: ROOT }))
+        self.observe(None, |_| Ok(MemDir { ino: ROOT }))
     }
 
     fn open_dir(&self, parent: &MemDir, name: &Name) -> io::Result<MemDir> {
-        self.observe(|state| {
+        self.observe(Some(name), |state| {
             let ino = state.lookup(parent.ino, name)?;
             match state.node(ino) {
                 Node::Dir { .. } => Ok(MemDir { ino }),
@@ -508,7 +591,7 @@ impl Storage for MemFs {
     }
 
     fn open_file(&self, parent: &MemDir, name: &Name) -> io::Result<MemFile> {
-        self.observe(|state| {
+        self.observe(Some(name), |state| {
             let ino = state.lookup(parent.ino, name)?;
             match state.node(ino) {
                 Node::File { .. } => Ok(MemFile {
@@ -550,7 +633,7 @@ impl Storage for MemFs {
     }
 
     fn read_file(&self, file: &MemFile) -> io::Result<Vec<u8>> {
-        self.observe(|state| match state.node(file.ino) {
+        self.observe(None, |state| match state.node(file.ino) {
             Node::File { data, .. } => Ok(data.clone()),
             _ => Err(Errno::ISDIR.into()),
         })
@@ -619,14 +702,16 @@ impl Storage for MemFs {
     }
 
     fn read_link(&self, parent: &MemDir, name: &Name) -> io::Result<PathBuf> {
-        self.observe(|state| match state.node(state.lookup(parent.ino, name)?) {
-            Node::Symlink { target } => Ok(target.clone()),
-            _ => Err(Errno::INVAL.into()),
+        self.observe(Some(name), |state| {
+            match state.node(state.lookup(parent.ino, name)?) {
+                Node::Symlink { target } => Ok(target.clone()),
+                _ => Err(Errno::INVAL.into()),
+            }
         })
     }
 
     fn metadata(&self, parent: &MemDir, name: &Name) -> io::Result<Metadata> {
-        self.observe(|state| {
+        self.observe(Some(name), |state| {
             let ino = state.lookup(parent.ino, name)?;
             let (kind, len, permissions) = match state.node(ino) {
                 Node::File { data, permissions } => {
@@ -649,7 +734,7 @@ impl Storage for MemFs {
     }
 
     fn read_dir(&self, dir: &MemDir) -> io::Result<Vec<Name>> {
-        self.observe(|state| match state.volatile.entries(dir.ino) {
+        self.observe(None, |state| match state.volatile.entries(dir.ino) {
             Some(entries) => Ok(entries.keys().cloned().collect()),
             None => Err(Errno::NOTDIR.into()),
         })

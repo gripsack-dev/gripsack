@@ -1,7 +1,9 @@
 //! The ownership-lineage model (plan/0029, extending 0028's harness).
 //!
-//! The transaction model (journal/model.rs) proves the crash
-//! protocol. THIS model proves the ownership algebra: which bytes
+//! The crash protocol is the kernel's recover machine, proved in Lean
+//! (proofs/Kernel/Recover.lean) and crash-explored over MemFs
+//! (gripsack-host tests/journal_cleanup.rs). THIS model proves the
+//! ownership algebra: which bytes
 //! gripsack may replace, and whether the pre-adoption origin survives
 //! the whole epoch. The drift decision under test is the SHIPPED
 //! code — `plan_copy` is extracted from deploy.rs and both sides
