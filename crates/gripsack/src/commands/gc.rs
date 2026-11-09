@@ -32,7 +32,10 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
             if dry_run {
                 println!("{}", palette.dim("gc (dry run): nothing deleted"));
             }
-            if report.generations_removed.is_empty() && report.store_removed.is_empty() {
+            if report.generations_removed.is_empty()
+                && report.store_removed.is_empty()
+                && report.staging_removed.is_empty()
+            {
                 println!("{}", palette.dim("gc: nothing to collect"));
             } else {
                 if !report.generations_removed.is_empty() {
@@ -49,6 +52,13 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
                 }
                 for path in &report.store_removed {
                     println!("{} collected {}", palette.good("gc:"), path.display());
+                }
+                for path in &report.staging_removed {
+                    println!(
+                        "{} removed stale staging {}",
+                        palette.good("gc:"),
+                        path.display()
+                    );
                 }
                 if report.bytes_freed > 0 {
                     println!("{} freed", format_size(report.bytes_freed));

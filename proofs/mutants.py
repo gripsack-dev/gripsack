@@ -78,9 +78,59 @@ MUTANTS = (
            ("Gripsack.Kernel.plan_prune_loop_spec", "Gripsack.Kernel.plan_prune_spec")),
     # K4: deletions ⊆ candidates − roots; inverting deletes exactly the roots
     Mutant("gc-roots-in-deletion", "retention.rs",
-           "        if !contains_bytes(referenced, &candidates[i]) {",
-           "        if contains_bytes(referenced, &candidates[i]) {",
+           "        if !rooted(manifests, external, candidates[i].path()) {",
+           "        if rooted(manifests, external, candidates[i].path()) {",
            ("Gripsack.Kernel.plan_delete_loop_spec",)),
+    # K4: a workspace or schedule root does not protect its payload
+    Mutant("gc-external-roots-ignored", "retention.rs",
+           "    pinned(manifests, path) || contains_bytes(external, path)",
+           "    pinned(manifests, path)",
+           ("Gripsack.Kernel.rooted_spec",)),
+    # K4′: a retired generation that a retained one needs passes the closure
+    Mutant("gc-closure-ignores-needed", "retention.rs",
+           "            if required(manifests, generation) {\n                Some(Unclosed::Required { generation })",
+           "            if false {\n                Some(Unclosed::Required { generation })",
+           ("Gripsack.Kernel.closes_spec",)),
+    # K4′: a retained generation's predecessor outside the inventory passes the closure
+    Mutant("gc-closure-ignores-missing", "retention.rs",
+           "            if known(&manifest.facts.predecessors, inventory) {",
+           "            if true {",
+           ("Gripsack.Kernel.closes_spec",)),
+    # K4: a generation outside the prune plan (current, or within `keep`) is retired
+    Mutant("gc-retires-unpruned", "gc.rs",
+           "    if contains_generation(prune, generation) && !required(manifests, generation) {",
+           "    if !required(manifests, generation) {",
+           ("Gripsack.Kernel.Gc.fate_spec",)),
+    # K4: collection proceeds while recovery or activation is pending
+    Mutant("gc-pending-admitted", "gc.rs",
+           "    match admit_gc(facts.recovery_pending, facts.current, &facts.generations) {",
+           "    match admit_gc(false, facts.current, &facts.generations) {",
+           ("Gripsack.Kernel.Gc.on_inventory_spec",)),
+    # K4′: a manifest that is not the inventoried generation's is accepted
+    Mutant("gc-manifest-unchecked", "gc.rs",
+           "    if !facts.id.same(expected) {",
+           "    if false {",
+           ("Gripsack.Kernel.Gc.on_manifest_spec",)),
+    # K4: a preview acts
+    Mutant("gc-preview-collects", "gc.rs",
+           "                    Mode::Preview => {\n                        next.phase = Phase::Finished;\n                        (next, Command::Finish(Outcome::Previewed))\n                    }",
+           "                    Mode::Preview => {\n                        next.phase = Phase::SealingFloor;\n                        (next, Command::SealFloor)\n                    }",
+           ("Gripsack.Kernel.Gc.step_spec",)),
+    # removal re-check: the driver is not handed the inventoried object
+    Mutant("gc-remove-unstamped", "gc.rs",
+           "            let expect = state.candidates[candidate].stamp;",
+           "            let expect = Stamp {\n                filesystem: 0,\n                inode: 0,\n            };",
+           ("Gripsack.Kernel.Gc.remove_next_spec",)),
+    # order: a retired generation is skipped before the barrier
+    Mutant("gc-retirement-skipped", "gc.rs",
+           "        Phase::SealingFloor => match event {\n            Event::Done => {\n                let mut next = state;\n                next.index = 0;",
+           "        Phase::SealingFloor => match event {\n            Event::Done => {\n                let mut next = state;\n                next.index = 1;",
+           ("Gripsack.Kernel.Gc.step_spec",)),
+    # order: payloads go before the receipts' delegated retirement
+    Mutant("gc-remove-before-delegate", "gc.rs",
+           "                next.phase = Phase::Delegating;\n                (next, Command::Delegate)",
+           "                next.index = 0;\n                remove_next(next)",
+           ("Gripsack.Kernel.Gc.step_spec",)),
     # inventory admission must refuse duplicates (strict, not weak, ascent)
     Mutant("generation-duplicate", "generation.rs",
            "        if ids[i - 1].number >= ids[i].number {",

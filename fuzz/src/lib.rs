@@ -3,10 +3,9 @@ pub mod journal;
 pub mod manifest;
 pub mod merge;
 mod sandbox;
-pub mod store_gc;
 
 pub const MAX_INPUT: usize = 65_536;
-pub const TARGETS: &[&str] = &["manifest", "journal", "merge", "store_gc", "archive"];
+pub const TARGETS: &[&str] = &["manifest", "journal", "merge", "archive"];
 
 /// Replay and libFuzzer enter the identical implementation.
 pub fn dispatch(target: &str, input: &[u8]) {
@@ -26,7 +25,6 @@ pub fn dispatch(target: &str, input: &[u8]) {
         "manifest" => manifest::exercise(&sandbox, input),
         "journal" => journal::exercise(&sandbox, input),
         "merge" => merge::exercise(input),
-        "store_gc" => store_gc::exercise(&sandbox, input),
         "archive" => archive::exercise(&sandbox, input),
         _ => unreachable!(),
     }

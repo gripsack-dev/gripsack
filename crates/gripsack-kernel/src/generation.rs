@@ -93,6 +93,11 @@ impl GenerationList {
         }
     }
 
+    /// The inventory of a home with no generations.
+    pub fn empty() -> Self {
+        Self { ids: Vec::new() }
+    }
+
     pub fn as_slice(&self) -> &[GenerationId] {
         &self.ids
     }

@@ -409,3 +409,31 @@ def test_allocation_floor_sync_failure_prevents_pruning(sandbox, high_water):
             assert not retirement.exists()
             assert not (home / "generations/.retired-20").exists()
             assert int(counter.read_text()) == max(20, high_water or 0)
+
+
+def test_gc_reaps_staging_left_by_a_dead_publisher(sandbox):
+    """plan/0058 item 4: a publisher that died between staging and rename
+    leaves `generations/.staging-<N>-<pid>`. Publishers hold the lifecycle
+    lock, so gc (which holds it too) reaps every canonical one; a dry run
+    only reports it, and names that are not canonical stay."""
+    repo, home = setup(sandbox)
+    stale = home / "generations" / ".staging-3-4194304"
+    (stale / "env").mkdir(parents=True)
+    (stale / "manifest.json").write_text("{}")
+    (stale / "env" / "profile.sh").write_text("export A=1\n")
+    foreign = home / "generations" / ".staging-notes"
+    foreign.mkdir()
+
+    preview = grip("gc", "--dry-run", cwd=repo)
+    assert preview.returncode == 0, preview.stderr
+    assert f"removed stale staging {stale}" in preview.stdout
+    assert stale.is_dir()
+
+    collected = grip("gc", cwd=repo)
+    assert collected.returncode == 0, collected.stderr
+    assert f"removed stale staging {stale}" in collected.stdout
+    assert not stale.exists()
+    assert foreign.is_dir()
+    assert (home / "generations/1/manifest.json").is_file()
+    assert (home / "generations/2/manifest.json").is_file()
+    assert "nothing to collect" in grip("gc", cwd=repo).stdout

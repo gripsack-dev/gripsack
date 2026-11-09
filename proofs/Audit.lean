@@ -25,7 +25,12 @@ rollback machine (F2 step 8): every write installs the target generation's
 recorded identity (K2) into absence or gripsack's own write (K1), never inside
 a generation; a restore is reported only when it landed; the flip follows
 every unit, under a fresh transaction, onto a target that keeps its profile;
-an unrestorable unit aborts. -/
+an unrestorable unit aborts; and the GC machine (F2 step 4, K4/K4′): no effect
+while recovery or activation is pending or in a preview; a retired generation
+is pruned, never current, and needed by no retained manifest; a removed
+candidate is pinned by no retained manifest and named by no external root; the
+retained generations are closed under predecessors; removal follows the
+durable retirement. -/
 def claims : List Name := [
   ``Gripsack.Kernel.classify_committed_iff,
   ``Gripsack.Kernel.classify_uncommitted_iff,
@@ -64,6 +69,17 @@ def claims : List Name := [
   ``Gripsack.Kernel.Rollback.rollback_flip_admitted,
   ``Gripsack.Kernel.Rollback.rollback_unrestorable_aborts,
   ``Gripsack.Kernel.Rollback.rollback_delegated_refusal_aborts,
+  ``Gripsack.Kernel.closure_spec,
+  ``Gripsack.Kernel.rooted_spec,
+  ``Gripsack.Kernel.Gc.gc_effects_admitted,
+  ``Gripsack.Kernel.Gc.gc_preview_effect_free,
+  ``Gripsack.Kernel.Gc.gc_retire_pruned,
+  ``Gripsack.Kernel.Gc.gc_never_retires_current,
+  ``Gripsack.Kernel.Gc.gc_retire_newest_first,
+  ``Gripsack.Kernel.Gc.gc_remove_unreferenced,
+  ``Gripsack.Kernel.Gc.gc_doomed_exact,
+  ``Gripsack.Kernel.Gc.gc_retained_closed,
+  ``Gripsack.Kernel.Gc.gc_remove_after_retirement,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/
