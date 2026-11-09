@@ -432,7 +432,7 @@ def journal.admit_mutation
   else ok none
 
 /-- [gripsack_kernel::recover::Ident]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 48:0-51:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 50:0-53:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Ident where
@@ -440,7 +440,7 @@ inductive recover.Ident where
 | Link : ids.Digest → recover.Ident
 
 /-- [gripsack_kernel::recover::{gripsack_kernel::recover::Ident}::same]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 54:4-60:5
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 56:4-62:5
     Visibility: public -/
 def recover.Ident.same
   (self : recover.Ident) (other : recover.Ident) : Result Bool := do
@@ -455,7 +455,7 @@ def recover.Ident.same
     | recover.Ident.Link b => ids.Digest.same a b
 
 /-- [gripsack_kernel::recover::Live]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 67:0-71:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 69:0-73:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Live where
@@ -464,7 +464,7 @@ inductive recover.Live where
 | Unsupported : recover.Live
 
 /-- [gripsack_kernel::recover::{gripsack_kernel::recover::Live}::same]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 74:4-81:5
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 76:4-83:5
     Visibility: public -/
 def recover.Live.same
   (self : recover.Live) (other : recover.Live) : Result Bool := do
@@ -486,7 +486,7 @@ def recover.Live.same
     | recover.Live.Unsupported => ok true
 
 /-- [gripsack_kernel::recover::Prior]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 85:0-88:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 87:0-90:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Prior where
@@ -494,7 +494,7 @@ inductive recover.Prior where
 | Obj : recover.Ident → recover.Prior
 
 /-- [gripsack_kernel::recover::{gripsack_kernel::recover::Prior}::matches]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 92:4-98:5
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 94:4-100:5
     Visibility: public -/
 def recover.Prior.matches
   (self : recover.Prior) (live : recover.Live) : Result Bool := do
@@ -511,7 +511,7 @@ def recover.Prior.matches
     | recover.Live.Unsupported => ok false
 
 /-- [gripsack_kernel::recover::Intended]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 102:0-105:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 104:0-107:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Intended where
@@ -519,7 +519,7 @@ inductive recover.Intended where
 | Obj : recover.Ident → recover.Intended
 
 /-- [gripsack_kernel::recover::Route]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 109:0-112:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 111:0-114:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Route where
@@ -527,7 +527,7 @@ inductive recover.Route where
 | Delegated : recover.Route
 
 /-- [gripsack_kernel::recover::EntryFacts]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 117:0-123:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 119:0-125:1
     Visibility: public -/
 structure recover.EntryFacts where
   dest : ids.DestId
@@ -554,14 +554,14 @@ inductive selection.SelectionIdentity where
   selection.SelectionIdentity
 
 /-- [gripsack_kernel::recover::MarkerFacts]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 126:0-129:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 128:0-131:1
     Visibility: public -/
 structure recover.MarkerFacts where
   previous : Option selection.SelectionIdentity
   target : selection.SelectionIdentity
 
 /-- [gripsack_kernel::recover::JournalFacts]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 134:0-139:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 136:0-141:1
     Visibility: public -/
 structure recover.JournalFacts where
   entries : Std.U32
@@ -570,7 +570,7 @@ structure recover.JournalFacts where
   marker : Option recover.MarkerFacts
 
 /-- [gripsack_kernel::recover::Decision]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 142:0-153:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 144:0-155:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Decision where
@@ -580,7 +580,7 @@ inductive recover.Decision where
 | Refuse : recover.Decision
 
 /-- [gripsack_kernel::recover::precedes]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 186:0-191:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 188:0-193:1 -/
 def recover.precedes
   (before : Option recover.Ident) (object : recover.Ident) : Result Bool := do
   match before with
@@ -588,7 +588,7 @@ def recover.precedes
   | some ident => recover.Ident.same ident object
 
 /-- [gripsack_kernel::recover::intends]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 179:0-184:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 181:0-186:1 -/
 def recover.intends
   (intended : recover.Intended) (object : recover.Ident) : Result Bool := do
   match intended with
@@ -596,7 +596,7 @@ def recover.intends
   | recover.Intended.Obj ident => recover.Ident.same ident object
 
 /-- [gripsack_kernel::recover::decide]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 158:0-177:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 160:0-179:1
     Visibility: public -/
 def recover.decide
   (entry : recover.EntryFacts) (live : recover.Live) :
@@ -623,7 +623,7 @@ def recover.decide
   | recover.Live.Unsupported => ok recover.Decision.Refuse
 
 /-- [gripsack_kernel::recover::JournalName]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 195:0-198:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 197:0-200:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.JournalName where
@@ -631,7 +631,7 @@ inductive recover.JournalName where
 | Marker : recover.JournalName
 
 /-- [gripsack_kernel::recover::Scope]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 201:0-206:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 203:0-208:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Scope where
@@ -639,7 +639,7 @@ inductive recover.Scope where
 | Selection : recover.Scope
 
 /-- [gripsack_kernel::recover::Delegated]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 209:0-216:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 211:0-218:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Delegated where
@@ -648,14 +648,14 @@ inductive recover.Delegated where
 | AfterLeaves : recover.Delegated
 
 /-- [gripsack_kernel::recover::Effect]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 219:0-222:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 221:0-224:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Effect where
 | Restore : recover.Prior → recover.Effect
 
 /-- [gripsack_kernel::recover::Outcome]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 224:0-231:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 226:0-233:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Outcome where
@@ -664,7 +664,7 @@ inductive recover.Outcome where
 | Recovered : recover.Outcome
 
 /-- [gripsack_kernel::recover::Refusal]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 234:0-251:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 236:0-253:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Refusal where
@@ -678,7 +678,7 @@ inductive recover.Refusal where
 | Protocol : recover.Refusal
 
 /-- [gripsack_kernel::recover::Command]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 253:0-287:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 255:0-289:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Command where
@@ -706,7 +706,7 @@ inductive recover.Command where
 | Abort : recover.Refusal → recover.Command
 
 /-- [gripsack_kernel::recover::Failure]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 289:0-294:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 291:0-296:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Failure where
@@ -714,7 +714,7 @@ inductive recover.Failure where
 | Io : Std.I32 → recover.Failure
 
 /-- [gripsack_kernel::recover::Event]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 296:0-306:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 298:0-308:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Event where
@@ -729,7 +729,7 @@ inductive recover.Event where
 | Failed : recover.Failure → recover.Event
 
 /-- [gripsack_kernel::recover::Phase]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 308:0-327:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 310:0-329:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Phase where
@@ -753,7 +753,7 @@ inductive recover.Phase where
 | Aborted : recover.Phase
 
 /-- [gripsack_kernel::recover::Verdict]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 330:0-334:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 332:0-336:1
     Visibility: public -/
 @[discriminant isize]
 inductive recover.Verdict where
@@ -762,7 +762,7 @@ inductive recover.Verdict where
 | Uncommitted : recover.Verdict
 
 /-- [gripsack_kernel::recover::RecoverState]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 336:0-349:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 338:0-351:1
     Visibility: public -/
 structure recover.RecoverState where
   phase : recover.Phase
@@ -775,7 +775,7 @@ structure recover.RecoverState where
   entry : Option recover.EntryFacts
 
 /-- [gripsack_kernel::recover::{gripsack_kernel::recover::RecoverState}::new]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 352:4-368:5
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 354:4-370:5
     Visibility: public -/
 def recover.RecoverState.new : Result recover.RecoverState := do
   ok
@@ -797,7 +797,7 @@ def recover.RecoverState.new : Result recover.RecoverState := do
     }
 
 /-- [gripsack_kernel::recover::refuse]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 371:0-374:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 373:0-376:1 -/
 def recover.refuse
   (state : recover.RecoverState) (refusal : recover.Refusal) :
   Result (recover.RecoverState × recover.Command)
@@ -806,7 +806,7 @@ def recover.refuse
     refusal)
 
 /-- [gripsack_kernel::recover::failed_or_protocol]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 376:0-381:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 378:0-383:1 -/
 def recover.failed_or_protocol
   (state : recover.RecoverState) (event : recover.Event) :
   Result (recover.RecoverState × recover.Command)
@@ -825,7 +825,7 @@ def recover.failed_or_protocol
   | recover.Event.Failed _ => recover.refuse state recover.Refusal.Failed
 
 /-- [gripsack_kernel::recover::next_unlink]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 384:0-393:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 386:0-395:1 -/
 def recover.next_unlink
   (state : recover.RecoverState) :
   Result (recover.RecoverState × recover.Command)
@@ -839,7 +839,7 @@ def recover.next_unlink
       recover.Command.Barrier recover.Scope.Journal)
 
 /-- [gripsack_kernel::recover::begin_cleanup]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 395:0-399:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 397:0-401:1 -/
 def recover.begin_cleanup
   (state : recover.RecoverState) :
   Result (recover.RecoverState × recover.Command)
@@ -847,7 +847,7 @@ def recover.begin_cleanup
   recover.next_unlink { state with index := 0#u32, entry := none }
 
 /-- [gripsack_kernel::recover::proceed]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 404:0-420:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 406:0-422:1 -/
 def recover.proceed
   (state : recover.RecoverState) :
   Result (recover.RecoverState × recover.Command)
@@ -899,16 +899,19 @@ def recover.proceed
       else recover.begin_cleanup state
 
 /-- [gripsack_kernel::recover::advance]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 423:0-427:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 425:0-434:1 -/
 def recover.advance
   (state : recover.RecoverState) :
   Result (recover.RecoverState × recover.Command)
   := do
-  let i ← state.index + 1#u32
-  recover.proceed { state with index := i, entry := none }
+  let o ← lift (U32.checked_add state.index 1#u32)
+  match o with
+  | none =>
+    recover.refuse { state with entry := none } recover.Refusal.Malformed
+  | some next => recover.proceed { state with index := next, entry := none }
 
 /-- [gripsack_kernel::recover::on_journal]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 429:0-451:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 436:0-461:1 -/
 def recover.on_journal
   (state : recover.RecoverState) (journal : recover.JournalFacts) :
   Result (recover.RecoverState × recover.Command)
@@ -916,16 +919,15 @@ def recover.on_journal
   if journal.reverse_roots > journal.entries
   then recover.refuse state recover.Refusal.Malformed
   else
-    let i ← core.num.U32.MAX - journal.entries
-    if journal.directories > i
-    then recover.refuse state recover.Refusal.Malformed
-    else
-      let i1 ← journal.entries + journal.directories
+    let o ← lift (U32.checked_add journal.entries journal.directories)
+    match o with
+    | none => recover.refuse state recover.Refusal.Malformed
+    | some records =>
       match journal.marker with
       | none =>
         if journal.directories != 0#u32
         then
-          recover.refuse { state with journal, records := i1 }
+          recover.refuse { state with journal, records }
             recover.Refusal.MarkerMissing
         else
           recover.proceed
@@ -933,16 +935,13 @@ def recover.on_journal
               state
                 with
                 journal,
-                records := i1,
+                records,
                 verdict := recover.Verdict.Uncommitted,
                 index := 0#u32
             }
       | some _ =>
         ok
-          ({
-             state
-               with
-               phase := recover.Phase.ReadingCurrent, journal, records := i1
+          ({ state with phase := recover.Phase.ReadingCurrent, journal, records
            }, recover.Command.ReadCurrent)
 
 /-- [gripsack_kernel::selection::RecoveryFacts]
@@ -1055,7 +1054,7 @@ def selection.classify
         else ok selection.Classification.Ambiguous
 
 /-- [gripsack_kernel::recover::on_current]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 453:0-481:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 463:0-491:1 -/
 def recover.on_current
   (state : recover.RecoverState) (current : Option selection.SelectionIdentity)
   :
@@ -1088,7 +1087,7 @@ def recover.on_current
       recover.refuse { state with current } recover.Refusal.Ambiguous
 
 /-- [gripsack_kernel::recover::on_entry]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 483:0-494:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 493:0-504:1 -/
 def recover.on_entry
   (state : recover.RecoverState) (facts : recover.EntryFacts) :
   Result (recover.RecoverState × recover.Command)
@@ -1100,7 +1099,7 @@ def recover.on_entry
   | recover.Route.Delegated => recover.advance state
 
 /-- [gripsack_kernel::recover::on_observed]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 496:0-536:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 506:0-546:1 -/
 def recover.on_observed
   (state : recover.RecoverState) (dest : ids.DestId) (live : recover.Live) :
   Result (recover.RecoverState × recover.Command)
@@ -1128,7 +1127,7 @@ def recover.on_observed
     else recover.refuse state recover.Refusal.Protocol
 
 /-- [gripsack_kernel::recover::on_landed]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 538:0-556:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 548:0-566:1 -/
 def recover.on_landed
   (state : recover.RecoverState) (live : recover.Live) :
   Result (recover.RecoverState × recover.Command)
@@ -1143,7 +1142,7 @@ def recover.on_landed
       recover.refuse state (recover.Refusal.NotRestored state.index facts.dest)
 
 /-- [gripsack_kernel::recover::on_restore_failed]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 558:0-575:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 568:0-585:1 -/
 def recover.on_restore_failed
   (state : recover.RecoverState) (failure : recover.Failure) :
   Result (recover.RecoverState × recover.Command)
@@ -1157,7 +1156,7 @@ def recover.on_restore_failed
   | recover.Failure.Io _ => recover.refuse state recover.Refusal.Failed
 
 /-- [gripsack_kernel::recover::finish]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 577:0-583:1 -/
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 587:0-593:1 -/
 def recover.finish
   (state : recover.RecoverState) :
   Result (recover.RecoverState × recover.Command)
@@ -1174,7 +1173,7 @@ def recover.finish
       recover.Outcome.Recovered)
 
 /-- [gripsack_kernel::recover::recover_step]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 589:0-684:1
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 599:0-697:1
     Visibility: public -/
 def recover.recover_step
   (state : recover.RecoverState) (event : recover.Event) :
@@ -1360,8 +1359,10 @@ def recover.recover_step
     | recover.Event.Observed _ _ => recover.failed_or_protocol state event
     | recover.Event.Landed _ => recover.failed_or_protocol state event
     | recover.Event.Done =>
-      let i ← state.index + 1#u32
-      recover.next_unlink { state with index := i }
+      let o ← lift (U32.checked_add state.index 1#u32)
+      match o with
+      | none => recover.refuse state recover.Refusal.Malformed
+      | some index => recover.next_unlink { state with index }
     | recover.Event.Failed _ => recover.failed_or_protocol state event
   | recover.Phase.SyncingRecords =>
     match event with

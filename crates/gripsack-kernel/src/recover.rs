@@ -39,6 +39,8 @@
 //!
 //! Aeneas shape (lib.rs): no derives (impls in `convenience.rs`), equality as
 //! explicit `same` functions, owned `Copy` facts, no casts, no closures.
+//! Counters advance with `checked_add` (a pure `Option` in the translation)
+//! so every step is total: an overflow is a refusal, never a failed step.
 use crate::ids::{DestId, Digest};
 use crate::selection::{Classification, RecoveryFacts, SelectionIdentity, classify};
 
@@ -422,15 +424,23 @@ fn proceed(mut state: RecoverState) -> (RecoverState, Command) {
 /// The entry under decision is settled: move to the next one.
 fn advance(mut state: RecoverState) -> (RecoverState, Command) {
     state.entry = None;
-    state.index += 1;
-    proceed(state)
+    match state.index.checked_add(1) {
+        None => refuse(state, Refusal::Malformed),
+        Some(next) => {
+            state.index = next;
+            proceed(state)
+        }
+    }
 }
 
 fn on_journal(mut state: RecoverState, journal: JournalFacts) -> (RecoverState, Command) {
-    if journal.reverse_roots > journal.entries || journal.directories > u32::MAX - journal.entries {
+    if journal.reverse_roots > journal.entries {
         return refuse(state, Refusal::Malformed);
     }
-    state.records = journal.entries + journal.directories;
+    state.records = match journal.entries.checked_add(journal.directories) {
+        None => return refuse(state, Refusal::Malformed),
+        Some(records) => records,
+    };
     state.journal = journal;
     match journal.marker {
         Some(_) => {
@@ -652,11 +662,14 @@ pub fn recover_step(state: RecoverState, event: Event) -> (RecoverState, Command
             _ => failed_or_protocol(state, event),
         },
         Phase::UnlinkingRecord => match event {
-            Event::Done => {
-                let mut next = state;
-                next.index += 1;
-                next_unlink(next)
-            }
+            Event::Done => match state.index.checked_add(1) {
+                None => refuse(state, Refusal::Malformed),
+                Some(index) => {
+                    let mut next = state;
+                    next.index = index;
+                    next_unlink(next)
+                }
+            },
             _ => failed_or_protocol(state, event),
         },
         Phase::SyncingRecords => match event {
