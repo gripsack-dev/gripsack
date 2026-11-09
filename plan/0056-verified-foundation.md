@@ -1384,6 +1384,13 @@ never a wrong write. The explorer (§17.5) covers liveness.
   `managed_blocks/tests.rs`, and the decision table against the planner it
   replaced.
 
+Gates (docker, project `f2splice`, this branch): `proofs` passed in 799 s
+(no translation drift, 216 theorems, 46 claims, standard axioms only,
+41/41 mutants calibrated); `test` passed (fmt, clippy `-D warnings`, cargo
+test); `e2e` 682 passed in 18m50s. Not run: `verify` (the Verus gate whose
+floor and calibration this branch edits), `model` (whose list lost
+`MergeBoundary`), `ts-test`, fuzz.
+
 ### 17.6 Deleted
 
 `gripsack-policy/src/merge.rs` and `merge/scanner.rs` (the Verus splice and
