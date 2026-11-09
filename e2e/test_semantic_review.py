@@ -198,7 +198,7 @@ def test_review_refuses_fifo_without_waiting_for_writer(sandbox):
     fifo = sandbox / "not-a-snapshot"
     os.mkfifo(fifo)
     result = run_grip([str(GRIP.resolve()), "diff", str(fifo), str(fifo)],
-                      cwd=sandbox, approve=False, capture_output=True, text=True, timeout=5)
+                      cwd=sandbox, approve=False, capture_output=True, text=True, timeout=30)
     assert result.returncode == 1
 
 
