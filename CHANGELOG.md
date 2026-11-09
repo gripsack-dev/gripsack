@@ -8,6 +8,30 @@ User-visible changes per release. Design archaeology lives in
 
 ### Fixed
 
+- `rollback` restores exactly what the target generation deployed, or
+  refuses before switching. Every file and link is restored to the
+  identity that generation recorded (bytes and permission mode, or link
+  target), from bytes gripsack retained, and checked against that record
+  before anything is written. Older receipts that recorded no mode, or a
+  template whose recorded variables no longer reproduce its output, used to
+  be restored with a guessed mode or different bytes; rollback now names
+  the file and stops ("cannot restore … exactly"). Your own edits are still
+  kept, never overwritten.
+
+- A rollback that cannot restore a destination no longer switches anyway.
+  A managed block whose file is no longer text (for example, a `~/.bashrc`
+  you replaced with binary content) used to be skipped with a warning while
+  the generation was still selected as if it had been restored. Rollback
+  now refuses, undoes whatever it had already restored, and leaves the
+  current generation selected.
+
+- `rollback` never writes into an existing generation. Rolling back to a
+  generation from before 0.22 used to write that generation's shell profile
+  into it, and to delete the old `$GRIPSACK_HOME/env/profile.sh` outside
+  the transaction. Such a generation is now refused with a clear message
+  (re-apply that configuration instead); the generation and the old file
+  are left as they are.
+
 - `apply` no longer overwrites your replacement of a gripsack-managed
   symlink. If you replaced a link gripsack deployed with your own file or
   link, the next `apply` used to re-point it silently; it now stops, names

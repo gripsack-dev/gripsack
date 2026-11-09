@@ -212,7 +212,7 @@ the Lean sources with their axioms.
 | ID | Defect | Evidence | Fix lands in |
 |---|---|---|---|
 | FND-1 | A recorded (owned) symlink is re-pointed whatever is live: if the user replaced it with their own file, the next apply overwrites it. Breaks the drift promise for links | `gripsack-policy/src/ownership.rs:103` (`recorded ⇒ Link`), `ops/plan/link.rs:18`; `lineage_model.rs:199` encodes it as intended | **Fixed** in F2 step 6 part 1 (§15), together with the store-prefix widening (design review finding 3) |
-| FND-2 | Rollback backfills `generations/<n>/env/profile.sh` into an existing generation and deletes the legacy env file outside the journal | `gripsack-exec/src/env.rs:27-49`, called from `rollback.rs:72` | F2 step 8 |
+| FND-2 | Rollback backfills `generations/<n>/env/profile.sh` into an existing generation and deletes the legacy env file outside the journal | `gripsack-exec/src/env.rs:27-49`, called from `rollback.rs:72` | **Fixed** in F2 step 8 (§16): the backfill is gone, a target without its own profile is refused |
 | FND-3 | Suspected: on a case-insensitive mount, re-spelling only a destination's case deploys the new spelling, then prunes the old one — the same inode | admission folds (`deploy/destinations.rs:26`) but prune compares raw `PathBuf` keys (`apply.rs:443-486`) | needs a reproducer first; F2 step 7 |
 
 ## 6. Target layout
@@ -370,6 +370,12 @@ the crash e2e run both ways for one release before the legacy path goes.
    transitions are an opaque `DirectoryStep` still run by legacy code.
    Reproduce/fix FND-3.
 8. Rollback machine (per-unit loop, fresh selection); fix FND-2.
+   **Done 2026-11-09** (branch `foundation/f2-rollback`, stacked on step 6
+   part 1, taken ahead of steps 3–5/7 by owner priority): the kernel
+   rollback machine, K2 for rollback proved, exact restore or refusal
+   before the flip (design review finding 2), FND-2 fixed; record in §16.
+   Delegated, not decided by the kernel: managed blocks (K5) and the
+   destinations a directory transition owns (step 9).
 9. Directory domain fenced into host as a sub-protocol; its TLC models stay
    as bug-finders. Moving it into the kernel is F5 work — the largest risk.
 10. Dissolve `gripsack-store`/`-policy`/`-fs`; port or demote the remaining
@@ -1011,3 +1017,190 @@ and `ModeInput::Link::already` (equality is the kernel's).
 4. A re-pointed own link now reports `Authority::Update` ("update") instead
    of `Fresh` ("new").
 
+## 16. F2 step 8 record — rollback fidelity (K2 for rollback, FND-2)
+
+- Branch `foundation/f2-rollback`, stacked on `foundation/f2-ownership`
+  (PR #222, K1 `decide_unit`); date 2026-11-09. Taken before steps 3–5 and
+  7 because the design review's finding 2 is a user-facing guarantee.
+- Question: does rollback restore exactly what the target generation
+  deployed, and can that decision be the proved kernel's?
+
+### 16.1 The review's claims, checked (code at `0943a35`)
+
+Each claim has an e2e reproducer in `e2e/test_rollback_fidelity.py`, run
+against the baseline binary before any change (four failed, four passed).
+
+- **R1 "templates re-render from current source": refuted as stated; the
+  residue is real.** Rollback reads the template from the *target's* store
+  path (`ops/plan/restore.rs:33,59`), which is input-addressed and checked
+  against its recorded `tree256` before any write (`rollback.rs:372-397`).
+  Workspace templates (every generation the current frontend produces)
+  render into the store at preparation (`workspace/content.rs:281-312`,
+  `output` plus `result_digest`) and deploy as `tracked_copy`; no current
+  path deploys `Ownership::Template` (`workspace/preview.rs:349` refuses
+  it). So for current generations rollback already copied the retained
+  rendered bytes — `test_rollback_restores_the_rendered_bytes_after_the_template_source_changed`
+  passed before the change. The residue: older `template` receipts (0.16.1
+  "vars-in-manifest", 0001 §3.7) are re-rendered with recorded variables
+  (`restore.rs:67-76`) and the result was never compared with the recorded
+  identity. Reproducer `test_rollback_refuses_an_older_template_receipt_that_no_longer_renders_its_record`:
+  before, rollback exited 0, selected generation 1 and wrote
+  `email = "someone-else"` where the record named the `a@b.c` bytes.
+- **R2 "modes are guessed, nothing is checked against the record":
+  confirmed for older receipts.** A receipt without `file_mode` was
+  restored at the payload's exec-bit default (`restore.rs:77-90`) and
+  `plan_restore_op` compared nothing with `entry.hash`. Current receipts
+  always record the landed mode (`ops/plan/write.rs`), and
+  `test_rollback_restores_the_recorded_mode` passed before. Reproducer
+  `test_rollback_refuses_a_receipt_its_retained_bytes_do_not_reproduce`
+  (record says 0600, no mode recorded): before, rollback wrote 0644, exited
+  0 and flipped; the live identity differed from the record.
+- **R3 "no safe restore plan is a warning, then the flip": confirmed.**
+  `rollback.rs:307-314,343-350` pushed a warning and continued to the flip
+  (`rollback.rs:80`); reachable when a managed block's host file is no
+  longer UTF-8 text or no longer a file (`restore.rs:105-110`). Reproducer
+  `test_rollback_refuses_when_a_managed_block_cannot_be_restored`: before,
+  exit 0 with "skipped … no safe restore plan" and generation 1 selected.
+- **FND-2: confirmed.** `env.rs:27-49` (from `rollback.rs:72`) wrote
+  `generations/<n>/env/profile.sh` into the target and removed
+  `$GRIPSACK_HOME/env/profile.sh` outside the journal. Reproducer
+  `test_rollback_never_writes_into_the_target_generation`: before, the
+  profile was written into generation 1 and the legacy file deleted.
+- K6 already held apart from FND-2: rollback reserves a fresh transaction
+  (`journal/marker.rs:84`, `generations/selection.rs:52`) and publishes no
+  generation; `test_rollback_reselects_with_a_fresh_transaction` passes
+  before and after.
+
+### 16.2 Root cause: are the deployed bytes retained?
+
+Yes, for every generation the current product writes: tracked copies and
+workspace templates deploy from a store file whose bytes are what landed,
+the manifest records the landed mode and the mode-aware identity, and the
+store tree is verified before rollback. Only pre-workspace `template`
+receipts keep variables instead of bytes. No store format change is
+needed: rollback now accepts a restore source only if its identity IS the
+record (`ops::retained`, S7: equal digests mean equal bytes). An older
+receipt whose re-render or chosen mode does not reproduce the record is
+refused, not approximated. Storing rendered bytes for those receipts is
+impossible after the fact and unnecessary for new ones.
+
+### 16.3 The machine (`crates/gripsack-kernel/src/rollback.rs`)
+
+`rollback_step(RollbackState, Event) -> (RollbackState, Command)`, one
+command outstanding, one unit at a time (host order: deepest destination
+first).
+
+- **Facts:** `PlanFacts { units, reselect: SelectionIdentity, previous,
+  profile: Retained|Missing }`; per unit `UnitFacts { dest, place:
+  Outside|Generation, route: Leaf|Delegated, current: Recorded, target:
+  Released(Intended)|Wrote{ident, bytes: Retained|Missing}|Preserved }`.
+  `Released` is where the target deploys nothing: gripsack's write is
+  removed or replaced by the take-over origin the epoch recorded (apply's
+  prune intent).
+- **Decision** `decide_restore`: the K1 decision `decide_unit` without
+  consent, asked about the target's identity (or a removal, for a release);
+  `Satisfied` → `Leave(Already)`, `Refuse(r)` → `Leave(Kept(r))`, a
+  preserved target → `Leave(Untouched)`; a write → `Write(install)` only if
+  the bytes are retained and the place is outside generation directories,
+  else `Refuse(Unrestorable|Protected)`.
+- **Commands:** `ReadPlan`, `ReadUnit(k)`, `Observe`, `Mutate{unit, dest,
+  expect, install}` (driver re-checks `expect`), `Delegate`,
+  `Report{unit, dest, settled}`, `Flip(selection)`, `Finish`, `Abort`.
+  `Landed{live}` must equal `install`, else `NotRestored`. `admit` refuses a
+  missing profile (FND-2) and a reselection whose transaction equals the
+  current one.
+
+### 16.4 Proofs (`proofs/Kernel/Rollback.lean`; `Audit.lean`: 157 theorems, 37 claims, standard axioms only)
+
+- `decide_restore_spec`: a `Write i` satisfies `Installs target i` (the
+  recorded identity from retained bytes, or the release), `place =
+  Outside`, and live is absent or gripsack's current write; the decision
+  never claims `Restored`.
+- `decide_restore_drift_kept` (K1), `decide_restore_unrestorable_refused`.
+- Over every run (`Run`, invariant `Inv`, `step_spec`):
+  `rollback_installs_target` (K2: a write answers the observation of the
+  unit under decision and installs that unit's target identity),
+  `rollback_write_k1`, `rollback_never_writes_generation`,
+  `rollback_restored_landed` (restored only when the landed object is the
+  install), `rollback_flip_after_every_unit` (the flip names the planned
+  selection and every unit `k < units` was reported),
+  `rollback_flip_admitted` (fresh transaction, retained profile).
+- R3 by name: `rollback_unrestorable_aborts`,
+  `rollback_delegated_refusal_aborts`.
+- Mutants (`proofs/mutants.py`, 31 total, 9 new), each rejected by exactly
+  the named theorems: `rollback-unretained-installed`
+  (`decide_restore_spec`, `decide_restore_unrestorable_refused`),
+  `rollback-installs-not-target` (`decide_restore_spec`),
+  `rollback-drift-overwritten` (`decide_restore_spec`,
+  `decide_restore_drift_kept`), `rollback-writes-generation`
+  (`decide_restore_spec`), `rollback-restored-unchecked`
+  (`on_landed_spec`), `rollback-flip-skips-unit` (`on_plan_spec`),
+  `rollback-unrestorable-settled` (`on_delegated_spec`,
+  `rollback_delegated_refusal_aborts`), `rollback-reused-transaction`
+  (`fresh_spec`), `rollback-profile-ignored` (`admit_spec`).
+  `mutants.py` attribution fix: `end <section>` no longer resets the
+  namespace (theorems after `end helpers` were reported unqualified).
+
+### 16.5 Wiring
+
+- `gripsack-exec/src/rollback/restore.rs` is the driver: it decodes both
+  manifests into `UnitFacts` (current record via `PreviousRecord::recorded`,
+  target via `ops::retained`, the release via the entry's prior blob, place
+  by the canonical destination under `$GRIPSACK_HOME/generations`), executes
+  `Mutate` through `plan_restore_op`/`plan_remove_op` and `execute_op` (the
+  journal re-check pins the object; a planner that no longer agrees answers
+  `Failed(Drift)`), observes `Landed`, writes the user notes for `Kept`,
+  and returns at `Flip`. `rollback_generation` checks the reselection is
+  the run's reservation, prepares activation, flips, and answers the
+  machine. Any refusal returns an error; the existing compensation
+  (journal reconcile) undoes this run's writes.
+- `ops::retained` / `plan_restore_op`: the restore source is accepted only
+  when it reproduces the record (owned link: payload hash; copy/template:
+  `matches_file`, which also admits pre-0043 bytes-only template hashes
+  with their recorded mode).
+- Delegated units (managed blocks, directory-transition destinations) keep
+  the legacy per-destination code, but "no safe restore plan" is now
+  `Refused`, which aborts.
+- `env::render_env_file` is deleted; `env::retains_profile` is the read-only
+  check behind `PlanFacts.profile`.
+
+### 16.6 Tests
+
+- e2e `test_rollback_fidelity.py` (8): four fail before / pass after (§16.1
+  R1 residue, R2, R3, FND-2); four pin what held (rendered template bytes,
+  recorded mode, a consistent older template receipt, fresh transaction).
+  `test_generation_history.py::test_rollback_never_rewrites_historical_generations`
+  is unchanged and passes.
+- Kernel explorer `crates/gripsack-kernel/tests/rollback.rs`: every plan of
+  up to two units over a small identity alphabet (≈33k runs) with a
+  simulated host: writes only over absence or gripsack's write, never in a
+  generation directory, exactly the target identity; a flip implies every
+  needed write happened from retained bytes; every refusal has a cause; a
+  host that lands the wrong object never reaches the flip.
+
+### 16.7 Deviations and what is deferred
+
+1. **No MemFs crash exploration of rollback.** The driver executes through
+   the real journal and `execute_op`, not `gripsack-host::Storage`; the
+   machine fits the driver pattern, but its effects do not yet. It becomes
+   possible when step 3 moves the leaf effect protocol (capture prior,
+   publish record, mutate under re-check) onto `Storage`; until then the
+   restore→flip window is covered by the existing crash e2e
+   (`after-rollback-restore`) and recovery by the proved recover machine.
+2. **Managed blocks (K5) are delegated.** Rollback splices the retained
+   block payload (store bytes verified by `tree256`) but does not compare it
+   with the block's recorded hash; that lands with the K5 splice in the
+   kernel (rest of step 6). An unrestorable block now refuses instead of
+   flipping.
+3. **Directory-transition destinations are delegated** to the directory
+   domain (step 9).
+4. **The legacy `$GRIPSACK_HOME/env/profile.sh` is no longer removed.** It
+   is inert since 0.22 (the rc line sources `current/env/profile.sh`); a
+   one-shot cleanup belongs in `grip doctor` or the migration path the
+   review proposes for legacy readers, not in rollback.
+5. **Behaviour change:** where the current generation recorded preserved
+   drift and the destination is now absent, rollback creates the target's
+   recorded object (K1 allows writing into absence); the old code skipped
+   the unit.
+6. Not addressed here (review §2.1): `rollback` with no argument still
+   targets current−1 by number rather than the last selected generation.

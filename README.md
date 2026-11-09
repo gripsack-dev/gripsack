@@ -23,8 +23,9 @@ one file and treats applying it like a database treats a transaction:
   destination is re-checked for your own edits, and one atomic rename makes
   the new generation current.
 - **Keep a way back.** Every applied state is a retained generation.
-  `grip rollback` reselects one from retained bytes; nothing is rebuilt and
-  your local edits are preserved.
+  `grip rollback` reselects one and restores each file to exactly what it
+  deployed, from retained bytes and checked against its record, or refuses
+  before switching; nothing is rebuilt and your local edits are preserved.
 - **Proved where it matters.** The commit, garbage-collection and journal
   decisions live in a dependency-free kernel crate that is translated to Lean 4
   and proved there. [What is proved, assumed and not claimed →](https://gripsack.dev/docs/guarantees.html)
