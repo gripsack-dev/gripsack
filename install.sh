@@ -23,7 +23,7 @@ for tool in curl tar sha256sum; do
 done
 
 if [ -z "$version" ]; then
-  tag=$(curl -fsS -o /dev/null -w '%{url_effective}' -L "$base/releases/latest") ||
+  tag=$(curl -fsS --retry 3 -o /dev/null -w '%{url_effective}' -L "$base/releases/latest") ||
     die 'cannot resolve the latest release'
   version=${tag##*/core-v}
 fi
@@ -37,8 +37,8 @@ dest=${GRIPSACK_BIN:-$HOME/.local/bin}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT INT TERM
 
-curl -fsSL -o "$work/$name.tar.gz" "$url/$name.tar.gz" || die "cannot download $name.tar.gz"
-curl -fsSL -o "$work/$name.tar.gz.sha256" "$url/$name.tar.gz.sha256" || die 'cannot download the checksum'
+curl -fsSL --retry 3 -o "$work/$name.tar.gz" "$url/$name.tar.gz" || die "cannot download $name.tar.gz"
+curl -fsSL --retry 3 -o "$work/$name.tar.gz.sha256" "$url/$name.tar.gz.sha256" || die 'cannot download the checksum'
 (cd "$work" && sha256sum -c "$name.tar.gz.sha256" >/dev/null 2>&1) ||
   die "checksum mismatch for $name.tar.gz; nothing installed"
 
