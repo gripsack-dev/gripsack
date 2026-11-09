@@ -44,8 +44,7 @@ reproduces the package and smoke gates in any checkout (a dry run; nothing is pu
 
 ## Notes
 
-- Release notes lead with product changes. Checksums are transport integrity,
-  not signatures; the signed installer/updater does not admit unsigned releases.
+- Release notes lead with product changes. Installer and self-update verify the published SHA-256 sidecar; nothing is signed.
 - Existing tags and assets are immutable. Optional campaigns (model, tlaps,
   verify, fuzz, two-build repro) are not part of a release unless run and
   reported; never dispatch fuzz without an owner request.
