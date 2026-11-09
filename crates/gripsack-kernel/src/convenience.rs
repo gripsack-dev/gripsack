@@ -82,6 +82,7 @@ impl GenerationList {
 
 use crate::{
     Classification,
+    ids::{CmdId, DestId, Digest},
     journal::{DurableRecord, MutationAuthority, PublicationAction, RecordPublication, RecordRole},
     retention::GcAdmission,
     selection::{RecoveryFacts, SelectionIdentity, TransactionId},
@@ -99,6 +100,9 @@ macro_rules! copy_impls {
 }
 copy_impls!(
     GenerationId,
+    DestId,
+    Digest,
+    CmdId,
     Classification,
     TransactionId,
     SelectionIdentity,
@@ -121,6 +125,9 @@ macro_rules! same_eq {
 }
 same_eq!(
     GenerationId => |a, b| a.same(*b),
+    DestId => |a, b| a.same(*b),
+    Digest => |a, b| a.same(b),
+    CmdId => |a, b| a.same(*b),
     TransactionId => |a, b| a.same(b),
     SelectionIdentity => |a, b| a.same(b),
     RecordRole => |a, b| a.same(*b),
@@ -240,3 +247,53 @@ unit_debug!(
         Refused
     },
 );
+
+impl fmt::Debug for DestId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("DestId").field(&self.value()).finish()
+    }
+}
+
+impl fmt::Debug for CmdId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CmdId").field(&self.value()).finish()
+    }
+}
+
+impl fmt::Debug for Digest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Digest(")?;
+        for byte in self.as_bytes() {
+            write!(f, "{byte:02x}")?;
+        }
+        f.write_str(")")
+    }
+}
+
+// Interned indices order and hash by their one number, like GenerationId.
+macro_rules! numeric_order {
+    ($($type:ty),* $(,)?) => {$(
+        impl Ord for $type {
+            fn cmp(&self, other: &Self) -> Ordering {
+                self.value().cmp(&other.value())
+            }
+        }
+        impl PartialOrd for $type {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+        impl hash::Hash for $type {
+            fn hash<H: hash::Hasher>(&self, state: &mut H) {
+                self.value().hash(state);
+            }
+        }
+    )*};
+}
+numeric_order!(DestId, CmdId);
+
+impl hash::Hash for Digest {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.as_bytes().hash(state);
+    }
+}

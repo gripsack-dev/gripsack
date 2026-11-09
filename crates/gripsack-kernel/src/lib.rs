@@ -19,9 +19,11 @@ extern crate alloc;
 
 pub mod convenience;
 pub mod generation;
+pub mod ids;
 pub mod journal;
 pub mod retention;
 pub mod selection;
 
 pub use generation::{GenerationId, GenerationList};
+pub use ids::{CmdId, DestId, Digest, GenId, TxId};
 pub use selection::Classification;

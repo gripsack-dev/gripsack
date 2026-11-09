@@ -1339,6 +1339,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gripsack-host"
+version = "0.52.0"
+dependencies = [
+ "gripsack-fs",
+ "rustix",
+ "tempfile",
+]
+
+[[package]]
 name = "gripsack-ir"
 version = "0.52.0"
 dependencies = [
