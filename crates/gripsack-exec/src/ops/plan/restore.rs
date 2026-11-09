@@ -183,6 +183,10 @@ pub(crate) fn plan_restore_op(
                     permissions: entry
                         .file_mode
                         .map_or(WritePermissions::Preserve, WritePermissions::Exact),
+                    // the kernel restores the payload only if it is the record
+                    source: BlockSource::Retained {
+                        recorded: &entry.hash,
+                    },
                 },
             )?
         }

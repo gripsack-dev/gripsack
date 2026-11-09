@@ -299,7 +299,7 @@ mod model;
 
 pub(crate) use execute::execute_op;
 pub(crate) use plan::{
-    DestView, ModeInput, PreviousRecord, Retained, WritePermissions, kernel_live, plan_entry_op,
-    plan_remove_op, plan_restore_op, retained, take_over_consent,
+    BlockSource, DestView, ModeInput, PreviousRecord, Retained, WritePermissions, kernel_live,
+    plan_entry_op, plan_remove_op, plan_restore_op, retained, take_over_consent,
 };
 pub use preview::preview_ops;

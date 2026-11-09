@@ -118,14 +118,18 @@ pub fn verify_store(
                 let actual = match entry.ownership.policy() {
                     gripsack_store::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
                         let text = String::from_utf8_lossy(&b);
-                        let legacy = gripsack_store::canonical_bytes_hash(
-                            text.trim_end_matches('\n').as_bytes(),
-                        );
-                        if legacy.as_str() == entry.hash.as_str() {
-                            legacy.to_string()
-                        } else {
-                            crate::managed_blocks::content_hash(&text).to_string()
-                        }
+                        // historical block domains: trailing newlines trimmed
+                        // (pre-0.19), then trim + CRLF → LF (0.19–0.52, which
+                        // differs from the kernel's normal form only where it
+                        // was unstable, plan/0056 FND-4)
+                        let trimmed = text.trim_end_matches('\n');
+                        let older = text.trim_end_matches(['\r', '\n']).replace("\r\n", "\n");
+                        [trimmed.as_bytes(), older.as_bytes()]
+                            .into_iter()
+                            .map(gripsack_store::canonical_bytes_hash)
+                            .find(|hash| hash.as_str() == entry.hash.as_str())
+                            .unwrap_or_else(|| crate::managed_blocks::content_hash(&text))
+                            .to_string()
                     }),
                     gripsack_store::Ownership::Template => std::fs::read(&src)
                         .ok()

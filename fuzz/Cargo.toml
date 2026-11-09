@@ -37,11 +37,6 @@ path = "fuzz_targets/journal.rs"
 required-features = ["fuzzing"]
 
 [[bin]]
-name = "merge"
-path = "fuzz_targets/merge.rs"
-required-features = ["fuzzing"]
-
-[[bin]]
 name = "store_gc"
 path = "fuzz_targets/store_gc.rs"
 required-features = ["fuzzing"]

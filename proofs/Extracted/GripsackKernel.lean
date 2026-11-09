@@ -20,6 +20,2596 @@ set_option maxRecDepth 2048
 
 namespace gripsack_kernel
 
+/-- [gripsack_kernel::block::OPEN_KEY]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 59:0-59:52 -/
+@[global_simps, irreducible]
+def block.OPEN_KEY : Array Std.U8 20#usize :=
+  Array.make 20#usize [
+    62#u8, 62#u8, 62#u8, 32#u8, 103#u8, 114#u8, 105#u8, 112#u8, 115#u8, 97#u8,
+    99#u8, 107#u8, 32#u8, 109#u8, 111#u8, 100#u8, 117#u8, 108#u8, 101#u8, 61#u8
+    ]
+
+/-- [gripsack_kernel::block::CLOSE_KEY]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 61:0-61:53 -/
+@[global_simps, irreducible]
+def block.CLOSE_KEY : Array Std.U8 20#usize :=
+  Array.make 20#usize [
+    60#u8, 60#u8, 60#u8, 32#u8, 103#u8, 114#u8, 105#u8, 112#u8, 115#u8, 97#u8,
+    99#u8, 107#u8, 32#u8, 109#u8, 111#u8, 100#u8, 117#u8, 108#u8, 101#u8, 61#u8
+    ]
+
+/-- [gripsack_kernel::block::HEADER]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 64:0-64:100 -/
+@[global_simps, irreducible]
+def block.HEADER : Array Std.U8 61#usize :=
+  Array.make 61#usize [
+    33#u8, 33#u8, 32#u8, 109#u8, 97#u8, 110#u8, 97#u8, 103#u8, 101#u8, 100#u8,
+    32#u8, 98#u8, 121#u8, 32#u8, 103#u8, 114#u8, 105#u8, 112#u8, 115#u8, 97#u8,
+    99#u8, 107#u8, 32#u8, 226#u8, 128#u8, 148#u8, 32#u8, 101#u8, 100#u8,
+    105#u8, 116#u8, 32#u8, 116#u8, 104#u8, 101#u8, 32#u8, 109#u8, 111#u8,
+    100#u8, 117#u8, 108#u8, 101#u8, 44#u8, 32#u8, 110#u8, 111#u8, 116#u8,
+    32#u8, 116#u8, 104#u8, 105#u8, 115#u8, 32#u8, 98#u8, 108#u8, 111#u8, 99#u8,
+    107#u8, 32#u8, 33#u8, 33#u8
+    ]
+
+/-- [gripsack_kernel::block::SHA_KEY]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 65:0-65:34 -/
+@[global_simps, irreducible]
+def block.SHA_KEY : Array Std.U8 4#usize :=
+  Array.make 4#usize [ 115#u8, 104#u8, 97#u8, 61#u8 ]
+
+/-- [gripsack_kernel::block::MODE_KEY]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 66:0-66:36 -/
+@[global_simps, irreducible]
+def block.MODE_KEY : Array Std.U8 5#usize :=
+  Array.make 5#usize [ 109#u8, 111#u8, 100#u8, 101#u8, 61#u8 ]
+
+/-- [gripsack_kernel::block::OPEN_END]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 70:0-70:26 -/
+@[global_simps, irreducible] def block.OPEN_END : Std.U8 := 62#u8
+
+/-- [gripsack_kernel::block::CLOSE_END]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 71:0-71:27 -/
+@[global_simps, irreducible] def block.CLOSE_END : Std.U8 := 60#u8
+
+/-- [gripsack_kernel::block::HTML_END]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 72:0-72:34 -/
+@[global_simps, irreducible]
+def block.HTML_END : Array Std.U8 3#usize :=
+  Array.make 3#usize [ 45#u8, 45#u8, 62#u8 ]
+
+/-- [gripsack_kernel::block::MARK_DIGITS]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 74:0-74:34
+    Visibility: public -/
+@[global_simps, irreducible] def block.MARK_DIGITS : Std.Usize := 16#usize
+
+/-- [gripsack_kernel::block::MODE_MAX]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 76:0-76:31
+    Visibility: public -/
+@[global_simps, irreducible] def block.MODE_MAX : Std.U32 := 4095#u32
+
+/-- [gripsack_kernel::block::whitespace_at]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 83:0-112:1 -/
+def block.whitespace_at
+  (text : Slice Std.U8) (i : Std.Usize) («to» : Std.Usize) :
+  Result Std.Usize
+  := do
+  let lead ← Slice.index_usize text i
+  if lead = 32#u8
+  then ok 1#usize
+  else
+    if lead >= 9#u8
+    then
+      if lead <= 13#u8
+      then ok 1#usize
+      else
+        if lead = 194#u8
+        then
+          let i1 ← i + 1#usize
+          if i1 < «to»
+          then
+            let next ← Slice.index_usize text i1
+            if next = 133#u8
+            then ok 2#usize
+            else if next = 160#u8
+                 then ok 2#usize
+                 else ok 0#usize
+          else
+            if lead = 225#u8
+            then
+              let i2 ← i + 2#usize
+              if i2 < «to»
+              then
+                let second ← Slice.index_usize text i1
+                let third ← Slice.index_usize text i2
+                let wide ←
+                  if lead = 225#u8
+                  then
+                    if second = 154#u8
+                    then ok (third = 128#u8)
+                    else ok false
+                  else
+                    if lead = 227#u8
+                    then
+                      if second = 128#u8
+                      then ok (third = 128#u8)
+                      else ok false
+                    else
+                      if second = 128#u8
+                      then
+                        if third >= 128#u8
+                        then
+                          if third <= 138#u8
+                          then ok true
+                          else
+                            if third = 168#u8
+                            then ok true
+                            else
+                              if third = 169#u8
+                              then ok true
+                              else ok (third = 175#u8)
+                        else
+                          if third = 168#u8
+                          then ok true
+                          else
+                            if third = 169#u8
+                            then ok true
+                            else ok (third = 175#u8)
+                      else
+                        if second = 129#u8
+                        then ok (third = 159#u8)
+                        else ok false
+                if wide
+                then ok 3#usize
+                else ok 0#usize
+              else ok 0#usize
+            else
+              if lead = 226#u8
+              then
+                let i2 ← i + 2#usize
+                if i2 < «to»
+                then
+                  let second ← Slice.index_usize text i1
+                  let third ← Slice.index_usize text i2
+                  let wide ←
+                    if lead = 225#u8
+                    then
+                      if second = 154#u8
+                      then ok (third = 128#u8)
+                      else ok false
+                    else
+                      if lead = 227#u8
+                      then
+                        if second = 128#u8
+                        then ok (third = 128#u8)
+                        else ok false
+                      else
+                        if second = 128#u8
+                        then
+                          if third >= 128#u8
+                          then
+                            if third <= 138#u8
+                            then ok true
+                            else
+                              if third = 168#u8
+                              then ok true
+                              else
+                                if third = 169#u8
+                                then ok true
+                                else ok (third = 175#u8)
+                          else
+                            if third = 168#u8
+                            then ok true
+                            else
+                              if third = 169#u8
+                              then ok true
+                              else ok (third = 175#u8)
+                        else
+                          if second = 129#u8
+                          then ok (third = 159#u8)
+                          else ok false
+                  if wide
+                  then ok 3#usize
+                  else ok 0#usize
+                else ok 0#usize
+              else
+                if lead = 227#u8
+                then
+                  let i2 ← i + 2#usize
+                  if i2 < «to»
+                  then
+                    let second ← Slice.index_usize text i1
+                    let third ← Slice.index_usize text i2
+                    let wide ←
+                      if lead = 225#u8
+                      then
+                        if second = 154#u8
+                        then ok (third = 128#u8)
+                        else ok false
+                      else
+                        if lead = 227#u8
+                        then
+                          if second = 128#u8
+                          then ok (third = 128#u8)
+                          else ok false
+                        else
+                          if second = 128#u8
+                          then
+                            if third >= 128#u8
+                            then
+                              if third <= 138#u8
+                              then ok true
+                              else
+                                if third = 168#u8
+                                then ok true
+                                else
+                                  if third = 169#u8
+                                  then ok true
+                                  else ok (third = 175#u8)
+                            else
+                              if third = 168#u8
+                              then ok true
+                              else
+                                if third = 169#u8
+                                then ok true
+                                else ok (third = 175#u8)
+                          else
+                            if second = 129#u8
+                            then ok (third = 159#u8)
+                            else ok false
+                    if wide
+                    then ok 3#usize
+                    else ok 0#usize
+                  else ok 0#usize
+                else ok 0#usize
+        else
+          if lead = 225#u8
+          then
+            let i1 ← i + 2#usize
+            if i1 < «to»
+            then
+              let i2 ← i + 1#usize
+              let second ← Slice.index_usize text i2
+              let third ← Slice.index_usize text i1
+              let wide ←
+                if lead = 225#u8
+                then if second = 154#u8
+                     then ok (third = 128#u8)
+                     else ok false
+                else
+                  if lead = 227#u8
+                  then
+                    if second = 128#u8
+                    then ok (third = 128#u8)
+                    else ok false
+                  else
+                    if second = 128#u8
+                    then
+                      if third >= 128#u8
+                      then
+                        if third <= 138#u8
+                        then ok true
+                        else
+                          if third = 168#u8
+                          then ok true
+                          else
+                            if third = 169#u8
+                            then ok true
+                            else ok (third = 175#u8)
+                      else
+                        if third = 168#u8
+                        then ok true
+                        else
+                          if third = 169#u8
+                          then ok true
+                          else ok (third = 175#u8)
+                    else
+                      if second = 129#u8
+                      then ok (third = 159#u8)
+                      else ok false
+              if wide
+              then ok 3#usize
+              else ok 0#usize
+            else ok 0#usize
+          else
+            if lead = 226#u8
+            then
+              let i1 ← i + 2#usize
+              if i1 < «to»
+              then
+                let i2 ← i + 1#usize
+                let second ← Slice.index_usize text i2
+                let third ← Slice.index_usize text i1
+                let wide ←
+                  if lead = 225#u8
+                  then
+                    if second = 154#u8
+                    then ok (third = 128#u8)
+                    else ok false
+                  else
+                    if lead = 227#u8
+                    then
+                      if second = 128#u8
+                      then ok (third = 128#u8)
+                      else ok false
+                    else
+                      if second = 128#u8
+                      then
+                        if third >= 128#u8
+                        then
+                          if third <= 138#u8
+                          then ok true
+                          else
+                            if third = 168#u8
+                            then ok true
+                            else
+                              if third = 169#u8
+                              then ok true
+                              else ok (third = 175#u8)
+                        else
+                          if third = 168#u8
+                          then ok true
+                          else
+                            if third = 169#u8
+                            then ok true
+                            else ok (third = 175#u8)
+                      else
+                        if second = 129#u8
+                        then ok (third = 159#u8)
+                        else ok false
+                if wide
+                then ok 3#usize
+                else ok 0#usize
+              else ok 0#usize
+            else
+              if lead = 227#u8
+              then
+                let i1 ← i + 2#usize
+                if i1 < «to»
+                then
+                  let i2 ← i + 1#usize
+                  let second ← Slice.index_usize text i2
+                  let third ← Slice.index_usize text i1
+                  let wide ←
+                    if lead = 225#u8
+                    then
+                      if second = 154#u8
+                      then ok (third = 128#u8)
+                      else ok false
+                    else
+                      if lead = 227#u8
+                      then
+                        if second = 128#u8
+                        then ok (third = 128#u8)
+                        else ok false
+                      else
+                        if second = 128#u8
+                        then
+                          if third >= 128#u8
+                          then
+                            if third <= 138#u8
+                            then ok true
+                            else
+                              if third = 168#u8
+                              then ok true
+                              else
+                                if third = 169#u8
+                                then ok true
+                                else ok (third = 175#u8)
+                          else
+                            if third = 168#u8
+                            then ok true
+                            else
+                              if third = 169#u8
+                              then ok true
+                              else ok (third = 175#u8)
+                        else
+                          if second = 129#u8
+                          then ok (third = 159#u8)
+                          else ok false
+                  if wide
+                  then ok 3#usize
+                  else ok 0#usize
+                else ok 0#usize
+              else ok 0#usize
+    else
+      if lead = 194#u8
+      then
+        let i1 ← i + 1#usize
+        if i1 < «to»
+        then
+          let next ← Slice.index_usize text i1
+          if next = 133#u8
+          then ok 2#usize
+          else if next = 160#u8
+               then ok 2#usize
+               else ok 0#usize
+        else
+          if lead = 225#u8
+          then
+            let i2 ← i + 2#usize
+            if i2 < «to»
+            then
+              let second ← Slice.index_usize text i1
+              let third ← Slice.index_usize text i2
+              let wide ←
+                if lead = 225#u8
+                then if second = 154#u8
+                     then ok (third = 128#u8)
+                     else ok false
+                else
+                  if lead = 227#u8
+                  then
+                    if second = 128#u8
+                    then ok (third = 128#u8)
+                    else ok false
+                  else
+                    if second = 128#u8
+                    then
+                      if third >= 128#u8
+                      then
+                        if third <= 138#u8
+                        then ok true
+                        else
+                          if third = 168#u8
+                          then ok true
+                          else
+                            if third = 169#u8
+                            then ok true
+                            else ok (third = 175#u8)
+                      else
+                        if third = 168#u8
+                        then ok true
+                        else
+                          if third = 169#u8
+                          then ok true
+                          else ok (third = 175#u8)
+                    else
+                      if second = 129#u8
+                      then ok (third = 159#u8)
+                      else ok false
+              if wide
+              then ok 3#usize
+              else ok 0#usize
+            else ok 0#usize
+          else
+            if lead = 226#u8
+            then
+              let i2 ← i + 2#usize
+              if i2 < «to»
+              then
+                let second ← Slice.index_usize text i1
+                let third ← Slice.index_usize text i2
+                let wide ←
+                  if lead = 225#u8
+                  then
+                    if second = 154#u8
+                    then ok (third = 128#u8)
+                    else ok false
+                  else
+                    if lead = 227#u8
+                    then
+                      if second = 128#u8
+                      then ok (third = 128#u8)
+                      else ok false
+                    else
+                      if second = 128#u8
+                      then
+                        if third >= 128#u8
+                        then
+                          if third <= 138#u8
+                          then ok true
+                          else
+                            if third = 168#u8
+                            then ok true
+                            else
+                              if third = 169#u8
+                              then ok true
+                              else ok (third = 175#u8)
+                        else
+                          if third = 168#u8
+                          then ok true
+                          else
+                            if third = 169#u8
+                            then ok true
+                            else ok (third = 175#u8)
+                      else
+                        if second = 129#u8
+                        then ok (third = 159#u8)
+                        else ok false
+                if wide
+                then ok 3#usize
+                else ok 0#usize
+              else ok 0#usize
+            else
+              if lead = 227#u8
+              then
+                let i2 ← i + 2#usize
+                if i2 < «to»
+                then
+                  let second ← Slice.index_usize text i1
+                  let third ← Slice.index_usize text i2
+                  let wide ←
+                    if lead = 225#u8
+                    then
+                      if second = 154#u8
+                      then ok (third = 128#u8)
+                      else ok false
+                    else
+                      if lead = 227#u8
+                      then
+                        if second = 128#u8
+                        then ok (third = 128#u8)
+                        else ok false
+                      else
+                        if second = 128#u8
+                        then
+                          if third >= 128#u8
+                          then
+                            if third <= 138#u8
+                            then ok true
+                            else
+                              if third = 168#u8
+                              then ok true
+                              else
+                                if third = 169#u8
+                                then ok true
+                                else ok (third = 175#u8)
+                          else
+                            if third = 168#u8
+                            then ok true
+                            else
+                              if third = 169#u8
+                              then ok true
+                              else ok (third = 175#u8)
+                        else
+                          if second = 129#u8
+                          then ok (third = 159#u8)
+                          else ok false
+                  if wide
+                  then ok 3#usize
+                  else ok 0#usize
+                else ok 0#usize
+              else ok 0#usize
+      else
+        if lead = 225#u8
+        then
+          let i1 ← i + 2#usize
+          if i1 < «to»
+          then
+            let i2 ← i + 1#usize
+            let second ← Slice.index_usize text i2
+            let third ← Slice.index_usize text i1
+            let wide ←
+              if lead = 225#u8
+              then if second = 154#u8
+                   then ok (third = 128#u8)
+                   else ok false
+              else
+                if lead = 227#u8
+                then if second = 128#u8
+                     then ok (third = 128#u8)
+                     else ok false
+                else
+                  if second = 128#u8
+                  then
+                    if third >= 128#u8
+                    then
+                      if third <= 138#u8
+                      then ok true
+                      else
+                        if third = 168#u8
+                        then ok true
+                        else
+                          if third = 169#u8
+                          then ok true
+                          else ok (third = 175#u8)
+                    else
+                      if third = 168#u8
+                      then ok true
+                      else
+                        if third = 169#u8
+                        then ok true
+                        else ok (third = 175#u8)
+                  else
+                    if second = 129#u8
+                    then ok (third = 159#u8)
+                    else ok false
+            if wide
+            then ok 3#usize
+            else ok 0#usize
+          else ok 0#usize
+        else
+          if lead = 226#u8
+          then
+            let i1 ← i + 2#usize
+            if i1 < «to»
+            then
+              let i2 ← i + 1#usize
+              let second ← Slice.index_usize text i2
+              let third ← Slice.index_usize text i1
+              let wide ←
+                if lead = 225#u8
+                then if second = 154#u8
+                     then ok (third = 128#u8)
+                     else ok false
+                else
+                  if lead = 227#u8
+                  then
+                    if second = 128#u8
+                    then ok (third = 128#u8)
+                    else ok false
+                  else
+                    if second = 128#u8
+                    then
+                      if third >= 128#u8
+                      then
+                        if third <= 138#u8
+                        then ok true
+                        else
+                          if third = 168#u8
+                          then ok true
+                          else
+                            if third = 169#u8
+                            then ok true
+                            else ok (third = 175#u8)
+                      else
+                        if third = 168#u8
+                        then ok true
+                        else
+                          if third = 169#u8
+                          then ok true
+                          else ok (third = 175#u8)
+                    else
+                      if second = 129#u8
+                      then ok (third = 159#u8)
+                      else ok false
+              if wide
+              then ok 3#usize
+              else ok 0#usize
+            else ok 0#usize
+          else
+            if lead = 227#u8
+            then
+              let i1 ← i + 2#usize
+              if i1 < «to»
+              then
+                let i2 ← i + 1#usize
+                let second ← Slice.index_usize text i2
+                let third ← Slice.index_usize text i1
+                let wide ←
+                  if lead = 225#u8
+                  then
+                    if second = 154#u8
+                    then ok (third = 128#u8)
+                    else ok false
+                  else
+                    if lead = 227#u8
+                    then
+                      if second = 128#u8
+                      then ok (third = 128#u8)
+                      else ok false
+                    else
+                      if second = 128#u8
+                      then
+                        if third >= 128#u8
+                        then
+                          if third <= 138#u8
+                          then ok true
+                          else
+                            if third = 168#u8
+                            then ok true
+                            else
+                              if third = 169#u8
+                              then ok true
+                              else ok (third = 175#u8)
+                        else
+                          if third = 168#u8
+                          then ok true
+                          else
+                            if third = 169#u8
+                            then ok true
+                            else ok (third = 175#u8)
+                      else
+                        if second = 129#u8
+                        then ok (third = 159#u8)
+                        else ok false
+                if wide
+                then ok 3#usize
+                else ok 0#usize
+              else ok 0#usize
+            else ok 0#usize
+
+/-- [gripsack_kernel::block::next_word]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 118:4-124:5 -/
+@[rust_loop_body]
+def block.next_word_loop0.body
+  (text : Slice Std.U8) («to» : Std.Usize) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Std.Usize)
+  := do
+  if i < «to»
+  then
+    let width ← block.whitespace_at text i «to»
+    if width = 0#usize
+    then ok (done i)
+    else let i1 ← i + width
+         ok (cont i1)
+  else ok (done i)
+
+/-- [gripsack_kernel::block::next_word]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 118:4-124:5 -/
+@[rust_loop]
+def block.next_word_loop0
+  (text : Slice Std.U8) («to» : Std.Usize) (i : Std.Usize) :
+  Result Std.Usize
+  := do
+  loop
+    (fun i1 => block.next_word_loop0.body text «to» i1)
+    i
+
+/-- [gripsack_kernel::block::next_word]: loop body 1:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 129:4-134:5 -/
+@[rust_loop_body]
+def block.next_word_loop1.body
+  (text : Slice Std.U8) («to» : Std.Usize) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Std.Usize)
+  := do
+  if i < «to»
+  then
+    let i1 ← block.whitespace_at text i «to»
+    if i1 != 0#usize
+    then ok (done i)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else ok (done i)
+
+/-- [gripsack_kernel::block::next_word]: loop 1:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 129:4-134:5 -/
+@[rust_loop]
+def block.next_word_loop1
+  (text : Slice Std.U8) («to» : Std.Usize) (i : Std.Usize) :
+  Result Std.Usize
+  := do
+  loop
+    (fun i1 => block.next_word_loop1.body text «to» i1)
+    i
+
+/-- [gripsack_kernel::block::next_word]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 116:0-136:1 -/
+def block.next_word
+  (text : Slice Std.U8) («from» : Std.Usize) («to» : Std.Usize) :
+  Result (Std.Usize × Std.Usize)
+  := do
+  let i ← block.next_word_loop0 text «to» «from»
+  if i >= «to»
+  then ok («to», «to»)
+  else let i1 ← block.next_word_loop1 text «to» i
+       ok (i, i1)
+
+/-- [gripsack_kernel::block::trimmed]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 144:4-156:5 -/
+@[rust_loop_body]
+def block.trimmed_loop.body
+  (text : Slice Std.U8) («to» : Std.Usize) (i : Std.Usize)
+  (start : Std.Usize) («end» : Std.Usize) (seen : Bool) :
+  Result (ControlFlow (Std.Usize × Std.Usize × Std.Usize × Bool) (Std.Usize
+    × Std.Usize))
+  := do
+  if i < «to»
+  then
+    let width ← block.whitespace_at text i «to»
+    if width != 0#usize
+    then let i1 ← i + width
+         ok (cont (i1, start, «end», seen))
+    else
+      let (start1, seen1) ← if seen
+                              then ok (start, seen)
+                              else ok (i, true)
+      let i1 ← i + 1#usize
+      ok (cont (i1, start1, i1, seen1))
+  else ok (done (start, «end»))
+
+/-- [gripsack_kernel::block::trimmed]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 144:4-156:5 -/
+@[rust_loop]
+def block.trimmed_loop
+  (text : Slice Std.U8) («to» : Std.Usize) (i : Std.Usize)
+  (start : Std.Usize) («end» : Std.Usize) (seen : Bool) :
+  Result (Std.Usize × Std.Usize)
+  := do
+  loop
+    (fun (i1, start1, end1, seen1) => block.trimmed_loop.body text «to» i1
+      start1 end1 seen1)
+    (i, start, «end», seen)
+
+/-- [gripsack_kernel::block::trimmed]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 139:0-158:1 -/
+@[reducible]
+def block.trimmed
+  (text : Slice Std.U8) («from» : Std.Usize) («to» : Std.Usize) :
+  Result (Std.Usize × Std.Usize)
+  := do
+  block.trimmed_loop text «to» «from» «to» «to» false
+
+/-- [gripsack_kernel::block::matches_at]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 163:4-170:1 -/
+@[rust_loop_body]
+def block.matches_at_loop.body
+  (text : Slice Std.U8) («at» : Std.Usize) (key : Slice Std.U8)
+  (j : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i := Slice.len key
+  if j < i
+  then
+    let i1 ← «at» + j
+    let i2 ← Slice.index_usize text i1
+    let i3 ← Slice.index_usize key j
+    if i2 != i3
+    then ok (done false)
+    else let j1 ← j + 1#usize
+         ok (cont j1)
+  else ok (done true)
+
+/-- [gripsack_kernel::block::matches_at]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 163:4-170:1 -/
+@[rust_loop]
+def block.matches_at_loop
+  (text : Slice Std.U8) («at» : Std.Usize) (key : Slice Std.U8)
+  (j : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun j1 => block.matches_at_loop.body text «at» key j1)
+    j
+
+/-- [gripsack_kernel::block::matches_at]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 161:0-170:1 -/
+@[reducible]
+def block.matches_at
+  (text : Slice Std.U8) («at» : Std.Usize) (key : Slice Std.U8) :
+  Result Bool
+  := do
+  block.matches_at_loop text «at» key 0#usize
+
+/-- [gripsack_kernel::block::find]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 179:4-186:1 -/
+@[rust_loop_body]
+def block.find_loop.body
+  (text : Slice Std.U8) (key : Slice Std.U8) (last : Std.Usize) (i : Std.Usize)
+  :
+  Result (ControlFlow Std.Usize (Option Std.Usize))
+  := do
+  if i <= last
+  then
+    let b ← block.matches_at text i key
+    if b
+    then ok (done (some i))
+    else let i1 ← i + 1#usize
+         ok (cont i1)
+  else ok (done none)
+
+/-- [gripsack_kernel::block::find]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 179:4-186:1 -/
+@[rust_loop]
+def block.find_loop
+  (text : Slice Std.U8) (key : Slice Std.U8) (last : Std.Usize) (i : Std.Usize)
+  :
+  Result (Option Std.Usize)
+  := do
+  loop
+    (fun i1 => block.find_loop.body text key last i1)
+    i
+
+/-- [gripsack_kernel::block::find]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 173:0-186:1 -/
+def block.find
+  (text : Slice Std.U8) («from» : Std.Usize) («to» : Std.Usize)
+  (key : Slice Std.U8) :
+  Result (Option Std.Usize)
+  := do
+  if «to» < «from»
+  then ok none
+  else
+    let i ← «to» - «from»
+    let i1 := Slice.len key
+    if i < i1
+    then ok none
+    else
+      let i2 := Slice.len key
+      let last ← «to» - i2
+      block.find_loop text key last «from»
+
+/-- [gripsack_kernel::block::is_triple]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 189:0-191:1 -/
+def block.is_triple
+  (text : Slice Std.U8) (start : Std.Usize) («end» : Std.Usize)
+  (byte : Std.U8) :
+  Result Bool
+  := do
+  let i ← «end» - start
+  if i = 3#usize
+  then
+    let i1 ← Slice.index_usize text start
+    if i1 = byte
+    then
+      let i2 ← start + 1#usize
+      let i3 ← Slice.index_usize text i2
+      if i3 = byte
+      then
+        let i4 ← start + 2#usize
+        let i5 ← Slice.index_usize text i4
+        ok (i5 = byte)
+      else ok false
+    else ok false
+  else ok false
+
+/-- [gripsack_kernel::block::push_triple]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 193:0-197:1 -/
+def block.push_triple
+  (out : alloc.vec.Vec Std.U8) (byte : Std.U8) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  let out1 ← alloc.vec.Vec.push out byte
+  let out2 ← alloc.vec.Vec.push out1 byte
+  alloc.vec.Vec.push out2 byte
+
+/-- [gripsack_kernel::block::is_word]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 200:0-202:1 -/
+def block.is_word
+  (text : Slice Std.U8) (start : Std.Usize) («end» : Std.Usize)
+  (word : Slice Std.U8) :
+  Result Bool
+  := do
+  let i ← «end» - start
+  let i1 := Slice.len word
+  if i = i1
+  then block.matches_at text start word
+  else ok false
+
+/-- [gripsack_kernel::block::same_range]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 210:4-217:1 -/
+@[rust_loop_body]
+def block.same_range_loop.body
+  (text : Slice Std.U8) (a : Std.Usize) (a_end : Std.Usize) (b : Std.Usize)
+  (j : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i ← a_end - a
+  if j < i
+  then
+    let i1 ← a + j
+    let i2 ← Slice.index_usize text i1
+    let i3 ← b + j
+    let i4 ← Slice.index_usize text i3
+    if i2 != i4
+    then ok (done false)
+    else let j1 ← j + 1#usize
+         ok (cont j1)
+  else ok (done true)
+
+/-- [gripsack_kernel::block::same_range]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 210:4-217:1 -/
+@[rust_loop]
+def block.same_range_loop
+  (text : Slice Std.U8) (a : Std.Usize) (a_end : Std.Usize) (b : Std.Usize)
+  (j : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun j1 => block.same_range_loop.body text a a_end b j1)
+    j
+
+/-- [gripsack_kernel::block::same_range]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 205:0-217:1 -/
+def block.same_range
+  (text : Slice Std.U8) (a : Std.Usize) (a_end : Std.Usize) (b : Std.Usize)
+  (b_end : Std.Usize) :
+  Result Bool
+  := do
+  let i ← a_end - a
+  let i1 ← b_end - b
+  if i != i1
+  then ok false
+  else block.same_range_loop text a a_end b 0#usize
+
+/-- [gripsack_kernel::block::at_most_one_word]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 220:0-224:1 -/
+def block.at_most_one_word
+  (text : Slice Std.U8) («from» : Std.Usize) («to» : Std.Usize) :
+  Result Bool
+  := do
+  let (_, «end») ← block.next_word text «from» «to»
+  let (start, _) ← block.next_word text «end» «to»
+  ok (start = «to»)
+
+/-- [gripsack_kernel::block::hex_digit]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 226:0-230:1 -/
+def block.hex_digit (byte : Std.U8) : Result Bool := do
+  if byte >= 48#u8
+  then
+    if byte <= 57#u8
+    then ok true
+    else
+      if byte >= 97#u8
+      then
+        if byte <= 102#u8
+        then ok true
+        else if byte >= 65#u8
+             then ok (byte <= 70#u8)
+             else ok false
+      else if byte >= 65#u8
+           then ok (byte <= 70#u8)
+           else ok false
+  else
+    if byte >= 97#u8
+    then
+      if byte <= 102#u8
+      then ok true
+      else if byte >= 65#u8
+           then ok (byte <= 70#u8)
+           else ok false
+    else if byte >= 65#u8
+         then ok (byte <= 70#u8)
+         else ok false
+
+/-- [gripsack_kernel::block::sha_word]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 238:4-245:1 -/
+@[rust_loop_body]
+def block.sha_word_loop.body
+  (text : Slice Std.U8) (start : Std.Usize) («end» : Std.Usize)
+  (i : Std.Usize) :
+  Result (ControlFlow Std.Usize (Option Std.Usize))
+  := do
+  if i < «end»
+  then
+    let i1 ← Slice.index_usize text i
+    let b ← block.hex_digit i1
+    if b
+    then let i2 ← i + 1#usize
+         ok (cont i2)
+    else ok (done none)
+  else
+    let s ← lift (Array.to_slice block.SHA_KEY)
+    let i1 := Slice.len s
+    let i2 ← start + i1
+    ok (done (some i2))
+
+/-- [gripsack_kernel::block::sha_word]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 238:4-245:1 -/
+@[rust_loop]
+def block.sha_word_loop
+  (text : Slice Std.U8) (start : Std.Usize) («end» : Std.Usize)
+  (i : Std.Usize) :
+  Result (Option Std.Usize)
+  := do
+  loop
+    (fun i1 => block.sha_word_loop.body text start «end» i1)
+    i
+
+/-- [gripsack_kernel::block::sha_word]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 233:0-245:1 -/
+def block.sha_word
+  (text : Slice Std.U8) (start : Std.Usize) («end» : Std.Usize) :
+  Result (Option Std.Usize)
+  := do
+  let i ← «end» - start
+  let s ← lift (Array.to_slice block.SHA_KEY)
+  let i1 := Slice.len s
+  let i2 ← i1 + block.MARK_DIGITS
+  if i != i2
+  then ok none
+  else
+    let s1 ← lift (Array.to_slice block.SHA_KEY)
+    let b ← block.matches_at text start s1
+    if b
+    then
+      let s2 ← lift (Array.to_slice block.SHA_KEY)
+      let i3 := Slice.len s2
+      let i4 ← start + i3
+      block.sha_word_loop text start «end» i4
+    else ok none
+
+/-- [gripsack_kernel::block::octal_mode]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 255:4-267:1 -/
+@[rust_loop_body]
+def block.octal_mode_loop.body
+  (text : Slice Std.U8) («end» : Std.Usize) (value : Std.U32) (i : Std.Usize)
+  :
+  Result (ControlFlow (Std.U32 × Std.Usize) (Option Std.U32))
+  := do
+  if i < «end»
+  then
+    let digit ← Slice.index_usize text i
+    if digit < 48#u8
+    then ok (done none)
+    else
+      if digit > 55#u8
+      then ok (done none)
+      else
+        let i1 ← value * 8#u32
+        let i2 ← digit - 48#u8
+        let i3 ← lift (UScalar.cast .U32 i2)
+        let value1 ← i1 + i3
+        if value1 > block.MODE_MAX
+        then ok (done none)
+        else let i4 ← i + 1#usize
+             ok (cont (value1, i4))
+  else ok (done (some value))
+
+/-- [gripsack_kernel::block::octal_mode]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 255:4-267:1 -/
+@[rust_loop]
+def block.octal_mode_loop
+  (text : Slice Std.U8) («end» : Std.Usize) (value : Std.U32) (i : Std.Usize)
+  :
+  Result (Option Std.U32)
+  := do
+  loop
+    (fun (value1, i1) => block.octal_mode_loop.body text «end» value1 i1)
+    (value, i)
+
+/-- [gripsack_kernel::block::octal_mode]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 249:0-267:1 -/
+def block.octal_mode
+  (text : Slice Std.U8) (start : Std.Usize) («end» : Std.Usize) :
+  Result (Option Std.U32)
+  := do
+  if start >= «end»
+  then ok none
+  else
+    let i ← Slice.index_usize text start
+    if i != 48#u8
+    then ok none
+    else block.octal_mode_loop text «end» 0#u32 start
+
+/-- [gripsack_kernel::block::valid_tail]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 270:0-280:1 -/
+def block.valid_tail
+  (text : Slice Std.U8) («from» : Std.Usize) («to» : Std.Usize) :
+  Result Bool
+  := do
+  let (start, «end») ← block.next_word text «from» «to»
+  if start = «to»
+  then ok true
+  else
+    let s ← lift (Array.to_slice block.HTML_END)
+    let b ← block.is_word text start «end» s
+    if b
+    then
+      let (rest, _) ← block.next_word text «end» «to»
+      ok (rest = «to»)
+    else ok false
+
+/-- [gripsack_kernel::block::LineKind]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 283:0-297:1
+    Visibility: public -/
+@[discriminant isize]
+inductive block.LineKind where
+| Content : block.LineKind
+| Open :
+  Std.Usize →
+  Std.Usize →
+  Std.Usize →
+  Option Std.U32 →
+  block.LineKind
+| Close : Std.Usize → Std.Usize → block.LineKind
+| Malformed : block.LineKind
+
+/-- [gripsack_kernel::block::classify]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 301:0-358:1
+    Visibility: public -/
+def block.classify
+  (text : Slice Std.U8) («from» : Std.Usize) («to» : Std.Usize) :
+  Result block.LineKind
+  := do
+  let (start, «end») ← block.trimmed text «from» «to»
+  let s ← lift (Array.to_slice block.OPEN_KEY)
+  let o ← block.find text start «end» s
+  match o with
+  | none =>
+    let s1 ← lift (Array.to_slice block.CLOSE_KEY)
+    let o1 ← block.find text start «end» s1
+    match o1 with
+    | none => ok block.LineKind.Content
+    | some «at» =>
+      let b ← block.at_most_one_word text start «at»
+      if b
+      then
+        let s2 ← lift (Array.to_slice block.OPEN_KEY)
+        let i := Slice.len s2
+        let i1 ← «at» + i
+        let (owner_start, owner_end) ← block.next_word text i1 «end»
+        if owner_start = «end»
+        then ok block.LineKind.Malformed
+        else
+          let (word, word_end) ← block.next_word text owner_end «end»
+          let b1 ← block.is_triple text word word_end block.CLOSE_END
+          if b1
+          then
+            let b2 ← block.valid_tail text word_end «end»
+            if b2
+            then ok (block.LineKind.Close owner_start owner_end)
+            else ok block.LineKind.Malformed
+          else ok block.LineKind.Malformed
+      else ok block.LineKind.Content
+  | some «at» =>
+    let b ← block.at_most_one_word text start «at»
+    if b
+    then
+      let s1 ← lift (Array.to_slice block.OPEN_KEY)
+      let i := Slice.len s1
+      let i1 ← «at» + i
+      let (owner_start, owner_end) ← block.next_word text i1 «end»
+      if owner_start = «end»
+      then ok block.LineKind.Malformed
+      else
+        let (hash, hash_end) ← block.next_word text owner_end «end»
+        let o1 ← block.sha_word text hash hash_end
+        match o1 with
+        | none => ok block.LineKind.Malformed
+        | some sha =>
+          let (word, word_end) ← block.next_word text hash_end «end»
+          if word = «end»
+          then ok block.LineKind.Malformed
+          else
+            let i2 ← word_end - word
+            let s2 ← lift (Array.to_slice block.MODE_KEY)
+            let i3 := Slice.len s2
+            if i2 >= i3
+            then
+              let s3 ← lift (Array.to_slice block.MODE_KEY)
+              let b1 ← block.matches_at text word s3
+              if b1
+              then
+                let s4 ← lift (Array.to_slice block.MODE_KEY)
+                let i4 := Slice.len s4
+                let i5 ← word + i4
+                let o2 ← block.octal_mode text i5 word_end
+                match o2 with
+                | none => ok block.LineKind.Malformed
+                | some _ =>
+                  let (next, next_end) ←
+                    block.next_word text word_end «end»
+                  if next = «end»
+                  then ok block.LineKind.Malformed
+                  else
+                    let b2 ←
+                      block.is_triple text next next_end block.OPEN_END
+                    if b2
+                    then
+                      let b3 ← block.valid_tail text next_end «end»
+                      if b3
+                      then
+                        ok (block.LineKind.Open owner_start owner_end sha o2)
+                      else ok block.LineKind.Malformed
+                    else ok block.LineKind.Malformed
+              else
+                let b2 ← block.is_triple text word word_end block.OPEN_END
+                if b2
+                then
+                  let b3 ← block.valid_tail text word_end «end»
+                  if b3
+                  then ok (block.LineKind.Open owner_start owner_end sha none)
+                  else ok block.LineKind.Malformed
+                else ok block.LineKind.Malformed
+            else
+              let b1 ← block.is_triple text word word_end block.OPEN_END
+              if b1
+              then
+                let b2 ← block.valid_tail text word_end «end»
+                if b2
+                then ok (block.LineKind.Open owner_start owner_end sha none)
+                else ok block.LineKind.Malformed
+              else ok block.LineKind.Malformed
+    else ok block.LineKind.Content
+
+/-- [gripsack_kernel::block::contains]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 361:0-366:1 -/
+def block.contains
+  (text : Slice Std.U8) («from» : Std.Usize) («to» : Std.Usize)
+  (key : Slice Std.U8) :
+  Result Bool
+  := do
+  let o ← block.find text «from» «to» key
+  match o with
+  | none => ok false
+  | some _ => ok true
+
+/-- [gripsack_kernel::block::line_end]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 374:4-381:1 -/
+@[rust_loop_body]
+def block.line_end_loop.body
+  (text : Slice Std.U8) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Std.Usize)
+  := do
+  let i1 := Slice.len text
+  if i < i1
+  then
+    let i2 ← Slice.index_usize text i
+    if i2 = 10#u8
+    then let i3 ← i + 1#usize
+         ok (done i3)
+    else let i3 ← i + 1#usize
+         ok (cont i3)
+  else let i2 := Slice.len text
+       ok (done i2)
+
+/-- [gripsack_kernel::block::line_end]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 374:4-381:1 -/
+@[rust_loop]
+def block.line_end_loop
+  (text : Slice Std.U8) (i : Std.Usize) : Result Std.Usize := do
+  loop
+    (fun i1 => block.line_end_loop.body text i1)
+    i
+
+/-- [gripsack_kernel::block::line_end]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 372:0-381:1 -/
+@[reducible]
+def block.line_end
+  (text : Slice Std.U8) (start : Std.Usize) : Result Std.Usize := do
+  block.line_end_loop text start
+
+/-- [gripsack_kernel::block::Block]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 388:0-395:1
+    Visibility: public -/
+structure block.Block where
+  start : Std.Usize
+  content_start : Std.Usize
+  content_end : Std.Usize
+  «end» : Std.Usize
+  sha : Std.Usize
+  mode : Option Std.U32
+
+/-- [gripsack_kernel::block::Malformation]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 399:0-410:1
+    Visibility: public -/
+@[discriminant isize]
+inductive block.Malformation where
+| Metadata : block.Malformation
+| Nested : block.Malformation
+| Orphan : block.Malformation
+| Interleaved : block.Malformation
+| Unclosed : block.Malformation
+
+/-- [gripsack_kernel::block::ScanFailure]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 413:0-416:1
+    Visibility: public -/
+structure block.ScanFailure where
+  line : Std.Usize
+  malformation : block.Malformation
+
+/-- [gripsack_kernel::block::Opening]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 419:0-429:1 -/
+structure block.Opening where
+  start : Std.Usize
+  content_start : Std.Usize
+  line : Std.Usize
+  owner_start : Std.Usize
+  owner_end : Std.Usize
+  sha : Std.Usize
+  mode : Option Std.U32
+  first : Bool
+
+/-- [gripsack_kernel::block::scan]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 438:4-537:1
+    Visibility: public -/
+@[rust_loop_body]
+def block.scan_loop.body
+  (text : Slice Std.U8) (owner : Slice Std.U8)
+  (blocks : alloc.vec.Vec block.Block) (opening : Option block.Opening)
+  (offset : Std.Usize) (number : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec block.Block) × (Option block.Opening) ×
+    Std.Usize × Std.Usize) (core.result.Result (alloc.vec.Vec block.Block)
+    block.ScanFailure))
+  := do
+  let i := Slice.len text
+  if offset < i
+  then
+    let «end» ← block.line_end text offset
+    let number1 ← number + 1#usize
+    let lk ← block.classify text offset «end»
+    match lk with
+    | block.LineKind.Content =>
+      match opening with
+      | none => ok (cont (blocks, none, «end», number1))
+      | some active =>
+        if active.first
+        then
+          let s ← lift (Array.to_slice block.HEADER)
+          let b ← block.contains text offset «end» s
+          if b
+          then
+            ok (cont (blocks, some
+              { active with content_start := «end», first := false },
+              «end», number1))
+          else
+            ok (cont (blocks, some { active with first := false }, «end»,
+              number1))
+        else ok (cont (blocks, opening, «end», number1))
+    | block.LineKind.Open owner_start owner_end sha mode =>
+      let b := core.option.Option.is_some opening
+      if b
+      then
+        ok (done (core.result.Result.Err
+          { line := number1, malformation := block.Malformation.Nested }))
+      else
+        ok (cont (blocks, some
+          {
+            start := offset,
+            content_start := «end»,
+            line := number1,
+            owner_start,
+            owner_end,
+            sha,
+            mode,
+            first := true
+          }, «end», number1))
+    | block.LineKind.Close owner_start owner_end =>
+      match opening with
+      | none =>
+        ok (done (core.result.Result.Err
+          { line := number1, malformation := block.Malformation.Orphan }))
+      | some active =>
+        let b ←
+          block.same_range text active.owner_start active.owner_end owner_start
+            owner_end
+        if b
+        then
+          let i1 ← owner_end - owner_start
+          let i2 := Slice.len owner
+          if i1 = i2
+          then
+            let b1 ← block.matches_at text owner_start owner
+            if b1
+            then
+              let blocks1 ←
+                alloc.vec.Vec.push blocks
+                  ({
+                     start := active.start,
+                     content_start := active.content_start,
+                     content_end := offset,
+                     «end»,
+                     sha := active.sha,
+                     mode := active.mode
+                   } : block.Block)
+              ok (cont (blocks1, none, «end», number1))
+            else ok (cont (blocks, none, «end», number1))
+          else ok (cont (blocks, none, «end», number1))
+        else
+          ok (done (core.result.Result.Err
+            { line := number1, malformation := block.Malformation.Interleaved }))
+    | block.LineKind.Malformed =>
+      ok (done (core.result.Result.Err
+        { line := number1, malformation := block.Malformation.Metadata }))
+  else
+    match opening with
+    | none => ok (done (core.result.Result.Ok blocks))
+    | some active =>
+      ok (done (core.result.Result.Err
+        { line := active.line, malformation := block.Malformation.Unclosed }))
+
+/-- [gripsack_kernel::block::scan]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 438:4-537:1
+    Visibility: public -/
+@[rust_loop]
+def block.scan_loop
+  (text : Slice Std.U8) (owner : Slice Std.U8)
+  (blocks : alloc.vec.Vec block.Block) (opening : Option block.Opening)
+  (offset : Std.Usize) (number : Std.Usize) :
+  Result (core.result.Result (alloc.vec.Vec block.Block) block.ScanFailure)
+  := do
+  loop
+    (fun (blocks1, opening1, offset1, number1) => block.scan_loop.body text
+      owner blocks1 opening1 offset1 number1)
+    (blocks, opening, offset, number)
+
+/-- [gripsack_kernel::block::scan]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 433:0-537:1
+    Visibility: public -/
+@[reducible]
+def block.scan
+  (text : Slice Std.U8) (owner : Slice Std.U8) :
+  Result (core.result.Result (alloc.vec.Vec block.Block) block.ScanFailure)
+  := do
+  block.scan_loop text owner (alloc.vec.Vec.new block.Block) none 0#usize
+    0#usize
+
+/-- [gripsack_kernel::block::normalize]: loop body 1:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 564:12-567:13
+    Visibility: public -/
+@[rust_loop_body]
+def block.normalize_loop0_loop0.body
+  (out : alloc.vec.Vec Std.U8) (returns : Std.I32) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.I32) ((alloc.vec.Vec
+    Std.U8) × Std.I32))
+  := do
+  if returns > 0#i32
+  then
+    let out1 ← alloc.vec.Vec.push out 13#u8
+    let returns1 ← returns - 1#i32
+    ok (cont (out1, returns1))
+  else ok (done (out, returns))
+
+/-- [gripsack_kernel::block::normalize]: loop 1:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 564:12-567:13
+    Visibility: public -/
+@[rust_loop]
+def block.normalize_loop0_loop0
+  (out : alloc.vec.Vec Std.U8) (returns : Std.I32) :
+  Result ((alloc.vec.Vec Std.U8) × Std.I32)
+  := do
+  loop
+    (fun (out1, returns1) => block.normalize_loop0_loop0.body out1 returns1)
+    (out, returns)
+
+/-- [gripsack_kernel::block::normalize]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 556:4-572:5
+    Visibility: public -/
+@[rust_loop_body]
+def block.normalize_loop0.body
+  (content : Slice Std.U8) (out : alloc.vec.Vec Std.U8) (returns : Std.I32)
+  (keep : Std.Usize) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.I32 × Std.Usize ×
+    Std.Usize) ((alloc.vec.Vec Std.U8) × Std.Usize))
+  := do
+  let i1 := Slice.len content
+  if i < i1
+  then
+    let byte ← Slice.index_usize content i
+    if byte = 13#u8
+    then
+      let returns1 ← returns + 1#i32
+      let i2 ← i + 1#usize
+      ok (cont (out, returns1, keep, i2))
+    else
+      if byte = 10#u8
+      then
+        let out1 ← alloc.vec.Vec.push out 10#u8
+        let i2 ← i + 1#usize
+        ok (cont (out1, 0#i32, keep, i2))
+      else
+        let (out1, returns1) ← block.normalize_loop0_loop0 out returns
+        let out2 ← alloc.vec.Vec.push out1 byte
+        let keep1 := alloc.vec.Vec.len out2
+        let i2 ← i + 1#usize
+        ok (cont (out2, returns1, keep1, i2))
+  else ok (done (out, keep))
+
+/-- [gripsack_kernel::block::normalize]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 556:4-572:5
+    Visibility: public -/
+@[rust_loop]
+def block.normalize_loop0
+  (content : Slice Std.U8) (out : alloc.vec.Vec Std.U8) (returns : Std.I32)
+  (keep : Std.Usize) (i : Std.Usize) :
+  Result ((alloc.vec.Vec Std.U8) × Std.Usize)
+  := do
+  loop
+    (fun (out1, returns1, keep1, i1) => block.normalize_loop0.body content out1
+      returns1 keep1 i1)
+    (out, returns, keep, i)
+
+/-- [gripsack_kernel::block::normalize]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 549:0-576:1
+    Visibility: public -/
+def block.normalize
+  (content : Slice Std.U8) : Result (alloc.vec.Vec Std.U8) := do
+  let (out, keep) ←
+    block.normalize_loop0 content (alloc.vec.Vec.new Std.U8) 0#i32 0#usize
+      0#usize
+  let s ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexRangeToUsizeSlice Std.U8)
+      out { «end» := keep }
+  alloc.vec.Vec.extend_from_slice core.clone.CloneU8 (alloc.vec.Vec.new Std.U8)
+    s
+
+/-- [gripsack_kernel::block::Newline]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 579:0-582:1
+    Visibility: public -/
+@[discriminant isize]
+inductive block.Newline where
+| Lf : block.Newline
+| CrLf : block.Newline
+
+/-- [gripsack_kernel::block::{gripsack_kernel::block::Newline}::same]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 585:4-592:5
+    Visibility: public -/
+def block.Newline.same
+  (self : block.Newline) (other : block.Newline) : Result Bool := do
+  match self with
+  | block.Newline.Lf =>
+    match other with
+    | block.Newline.Lf => ok true
+    | block.Newline.CrLf => ok false
+  | block.Newline.CrLf =>
+    match other with
+    | block.Newline.Lf => ok false
+    | block.Newline.CrLf => ok true
+
+/-- [gripsack_kernel::block::newline_of]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 598:4-605:1
+    Visibility: public -/
+@[rust_loop_body]
+def block.newline_of_loop.body
+  (text : Slice Std.U8) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize block.Newline)
+  := do
+  let i1 ← i + 1#usize
+  let i2 := Slice.len text
+  if i1 < i2
+  then
+    let i3 ← Slice.index_usize text i
+    if i3 = 13#u8
+    then
+      let i4 ← Slice.index_usize text i1
+      if i4 = 10#u8
+      then ok (done block.Newline.CrLf)
+      else ok (cont i1)
+    else ok (cont i1)
+  else ok (done block.Newline.Lf)
+
+/-- [gripsack_kernel::block::newline_of]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 598:4-605:1
+    Visibility: public -/
+@[rust_loop]
+def block.newline_of_loop
+  (text : Slice Std.U8) (i : Std.Usize) : Result block.Newline := do
+  loop
+    (fun i1 => block.newline_of_loop.body text i1)
+    i
+
+/-- [gripsack_kernel::block::newline_of]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 596:0-605:1
+    Visibility: public -/
+@[reducible]
+def block.newline_of (text : Slice Std.U8) : Result block.Newline := do
+  block.newline_of_loop text 0#usize
+
+/-- [gripsack_kernel::block::push_newline]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 607:0-613:1 -/
+def block.push_newline
+  (out : alloc.vec.Vec Std.U8) (newline : block.Newline) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  let out1 ←
+    match newline with
+    | block.Newline.Lf => ok out
+    | block.Newline.CrLf => alloc.vec.Vec.push out 13#u8
+  alloc.vec.Vec.push out1 10#u8
+
+/-- [gripsack_kernel::block::Style]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 617:0-620:1
+    Visibility: public -/
+structure block.Style where
+  «prefix» : alloc.vec.Vec Std.U8
+  html : Bool
+
+/-- [gripsack_kernel::block::push_style_end]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 622:0-628:1 -/
+def block.push_style_end
+  (out : alloc.vec.Vec Std.U8) (style : block.Style) (newline : block.Newline)
+  :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  let out1 ←
+    if style.html
+    then
+      do
+      let out2 ← alloc.vec.Vec.push out 32#u8
+      let s ← lift (Array.to_slice block.HTML_END)
+      alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out2 s
+    else ok out
+  block.push_newline out1 newline
+
+/-- [gripsack_kernel::ids::Digest]
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 48:0-50:1
+    Visibility: public -/
+structure ids.Digest where
+  bytes : Array Std.U8 32#usize
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::as_bytes]:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 57:4-59:5
+    Visibility: public -/
+def ids.Digest.as_bytes
+  (self : ids.Digest) : Result (Array Std.U8 32#usize) := do
+  ok self.bytes
+
+/-- [gripsack_kernel::block::hex_lower]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 643:0-649:1 -/
+def block.hex_lower (nibble : Std.U8) : Result Std.U8 := do
+  if nibble < 10#u8
+  then 48#u8 + nibble
+  else let i ← nibble - 10#u8
+       97#u8 + i
+
+/-- [gripsack_kernel::block::mark]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 635:4-639:5
+    Visibility: public -/
+@[rust_loop_body]
+def block.mark_loop.body
+  (bytes : Array Std.U8 32#usize) (digits : Array Std.U8 16#usize)
+  (i : Std.Usize) :
+  Result (ControlFlow ((Array Std.U8 16#usize) × Std.Usize) (Array Std.U8
+    16#usize))
+  := do
+  let i1 ← block.MARK_DIGITS / 2#usize
+  if i < i1
+  then
+    let i2 ← Array.index_usize bytes i
+    let i3 ← i2 / 16#u8
+    let i4 ← block.hex_lower i3
+    let i5 ← 2#usize * i
+    let digits1 ← Array.update digits i5 i4
+    let i6 ← i2 % 16#u8
+    let i7 ← block.hex_lower i6
+    let i8 ← i5 + 1#usize
+    let a ← Array.update digits1 i8 i7
+    let i9 ← i + 1#usize
+    ok (cont (a, i9))
+  else ok (done digits)
+
+/-- [gripsack_kernel::block::mark]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 635:4-639:5
+    Visibility: public -/
+@[rust_loop]
+def block.mark_loop
+  (bytes : Array Std.U8 32#usize) (digits : Array Std.U8 16#usize)
+  (i : Std.Usize) :
+  Result (Array Std.U8 16#usize)
+  := do
+  loop
+    (fun (digits1, i1) => block.mark_loop.body bytes digits1 i1)
+    (digits, i)
+
+/-- [gripsack_kernel::block::mark]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 631:0-641:1
+    Visibility: public -/
+def block.mark (digest : ids.Digest) : Result (Array Std.U8 16#usize) := do
+  let bytes ← ids.Digest.as_bytes digest
+  let digits := Array.repeat 16#usize 0#u8
+  block.mark_loop bytes digits 0#usize
+
+/-- [gripsack_kernel::block::lower]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 651:0-657:1 -/
+def block.lower (byte : Std.U8) : Result Std.U8 := do
+  if byte >= 65#u8
+  then if byte <= 90#u8
+       then byte + 32#u8
+       else ok byte
+  else ok byte
+
+/-- [gripsack_kernel::block::marks]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 664:4-671:1
+    Visibility: public -/
+@[rust_loop_body]
+def block.marks_loop.body
+  (sha : Array Std.U8 16#usize) (expected : Array Std.U8 16#usize)
+  (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  if i < block.MARK_DIGITS
+  then
+    let i1 ← Array.index_usize sha i
+    let i2 ← block.lower i1
+    let i3 ← Array.index_usize expected i
+    if i2 != i3
+    then ok (done false)
+    else let i4 ← i + 1#usize
+         ok (cont i4)
+  else ok (done true)
+
+/-- [gripsack_kernel::block::marks]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 664:4-671:1
+    Visibility: public -/
+@[rust_loop]
+def block.marks_loop
+  (sha : Array Std.U8 16#usize) (expected : Array Std.U8 16#usize)
+  (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => block.marks_loop.body sha expected i1)
+    i
+
+/-- [gripsack_kernel::block::marks]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 661:0-671:1
+    Visibility: public -/
+def block.marks
+  (sha : Array Std.U8 16#usize) (digest : ids.Digest) : Result Bool := do
+  let expected ← block.mark digest
+  block.marks_loop sha expected 0#usize
+
+/-- [gripsack_kernel::block::push_octal]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 678:4-681:5 -/
+@[rust_loop_body]
+def block.push_octal_loop0.body
+  (digits : alloc.vec.Vec Std.U8) (rest : Std.U32) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.U32) (alloc.vec.Vec
+    Std.U8))
+  := do
+  if rest > 0#u32
+  then
+    let i ← rest % 8#u32
+    let i1 ← lift (UScalar.cast .U8 i)
+    let i2 ← 48#u8 + i1
+    let digits1 ← alloc.vec.Vec.push digits i2
+    let rest1 ← rest / 8#u32
+    ok (cont (digits1, rest1))
+  else ok (done digits)
+
+/-- [gripsack_kernel::block::push_octal]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 678:4-681:5 -/
+@[rust_loop]
+def block.push_octal_loop0
+  (digits : alloc.vec.Vec Std.U8) (rest : Std.U32) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (digits1, rest1) => block.push_octal_loop0.body digits1 rest1)
+    (digits, rest)
+
+/-- [gripsack_kernel::block::push_octal]: loop body 1:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 683:4-686:5 -/
+@[rust_loop_body]
+def block.push_octal_loop1.body
+  (digits : alloc.vec.Vec Std.U8) (out : alloc.vec.Vec Std.U8) (i : Std.Usize)
+  :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize) (alloc.vec.Vec
+    Std.U8))
+  := do
+  if i > 0#usize
+  then
+    let i1 ← i - 1#usize
+    let i2 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U8) digits
+        i1
+    let out1 ← alloc.vec.Vec.push out i2
+    ok (cont (out1, i1))
+  else ok (done out)
+
+/-- [gripsack_kernel::block::push_octal]: loop 1:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 683:4-686:5 -/
+@[rust_loop]
+def block.push_octal_loop1
+  (out : alloc.vec.Vec Std.U8) (digits : alloc.vec.Vec Std.U8) (i : Std.Usize)
+  :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (out1, i1) => block.push_octal_loop1.body digits out1 i1)
+    (out, i)
+
+/-- [gripsack_kernel::block::push_octal]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 673:0-687:1 -/
+def block.push_octal
+  (out : alloc.vec.Vec Std.U8) (mode : Std.U32) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  let i ← mode % 8#u32
+  let i1 ← lift (UScalar.cast .U8 i)
+  let i2 ← 48#u8 + i1
+  let digits ← alloc.vec.Vec.push (alloc.vec.Vec.new Std.U8) i2
+  let rest ← mode / 8#u32
+  let digits1 ← block.push_octal_loop0 digits rest
+  let i3 := alloc.vec.Vec.len digits1
+  block.push_octal_loop1 out digits1 i3
+
+/-- [gripsack_kernel::block::render]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 721:4-728:5
+    Visibility: public -/
+@[rust_loop_body]
+def block.render_loop.body
+  (newline : block.Newline) (normalized : Slice Std.U8)
+  (out : alloc.vec.Vec Std.U8) (start : Std.Usize) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize × Std.Usize)
+    ((alloc.vec.Vec Std.U8) × Std.Usize))
+  := do
+  let i1 := Slice.len normalized
+  if i < i1
+  then
+    let i2 ← Slice.index_usize normalized i
+    let (out1, start1) ←
+      if i2 = 10#u8
+      then
+        do
+        let s ←
+          core.slice.index.Slice.index
+            (core.slice.index.SliceIndexRangeUsizeSlice Std.U8) normalized
+            { start, «end» := i }
+        let out2 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out s
+        let out3 ← block.push_newline out2 newline
+        let start2 ← i + 1#usize
+        ok (out3, start2)
+      else ok (out, start)
+    let i3 ← i + 1#usize
+    ok (cont (out1, start1, i3))
+  else ok (done (out, start))
+
+/-- [gripsack_kernel::block::render]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 721:4-728:5
+    Visibility: public -/
+@[rust_loop]
+def block.render_loop
+  (newline : block.Newline) (normalized : Slice Std.U8)
+  (out : alloc.vec.Vec Std.U8) (start : Std.Usize) (i : Std.Usize) :
+  Result ((alloc.vec.Vec Std.U8) × Std.Usize)
+  := do
+  loop
+    (fun (out1, start1, i1) => block.render_loop.body newline normalized out1
+      start1 i1)
+    (out, start, i)
+
+/-- [gripsack_kernel::block::render]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 692:0-741:1
+    Visibility: public -/
+def block.render
+  (style : block.Style) (owner : Slice Std.U8) (sha : Array Std.U8 16#usize)
+  (mode : Std.U32) (newline : block.Newline) (normalized : Slice Std.U8) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  let s := alloc.vec.Vec.deref style.prefix
+  let out ←
+    alloc.vec.Vec.extend_from_slice core.clone.CloneU8 (alloc.vec.Vec.new
+      Std.U8) s
+  let out1 ← alloc.vec.Vec.push out 32#u8
+  let s1 ← lift (Array.to_slice block.OPEN_KEY)
+  let out2 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out1 s1
+  let out3 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out2 owner
+  let out4 ← alloc.vec.Vec.push out3 32#u8
+  let s2 ← lift (Array.to_slice block.SHA_KEY)
+  let out5 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out4 s2
+  let s3 ← lift (Array.to_slice sha)
+  let out6 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out5 s3
+  let out7 ← alloc.vec.Vec.push out6 32#u8
+  let s4 ← lift (Array.to_slice block.MODE_KEY)
+  let out8 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out7 s4
+  let out9 ← alloc.vec.Vec.push out8 48#u8
+  let out10 ← block.push_octal out9 mode
+  let out11 ← alloc.vec.Vec.push out10 32#u8
+  let out12 ← block.push_triple out11 block.OPEN_END
+  let out13 ← block.push_style_end out12 style newline
+  let s5 := alloc.vec.Vec.deref style.prefix
+  let out14 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out13 s5
+  let out15 ← alloc.vec.Vec.push out14 32#u8
+  let s6 ← lift (Array.to_slice block.HEADER)
+  let out16 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out15 s6
+  let out17 ← block.push_style_end out16 style newline
+  let (out18, start) ←
+    block.render_loop newline normalized out17 0#usize 0#usize
+  let i := Slice.len normalized
+  let out19 ←
+    if start < i
+    then
+      do
+      let s7 ←
+        core.slice.index.Slice.index
+          (core.slice.index.SliceIndexRangeFromUsizeSlice Std.U8) normalized
+          { start }
+      let out20 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out18 s7
+      block.push_newline out20 newline
+    else ok out18
+  let s7 := alloc.vec.Vec.deref style.prefix
+  let out20 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out19 s7
+  let out21 ← alloc.vec.Vec.push out20 32#u8
+  let s8 ← lift (Array.to_slice block.CLOSE_KEY)
+  let out22 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out21 s8
+  let out23 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out22 owner
+  let out24 ← alloc.vec.Vec.push out23 32#u8
+  let out25 ← block.push_triple out24 block.CLOSE_END
+  block.push_style_end out25 style newline
+
+/-- [gripsack_kernel::block::ordered]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 750:4-759:1
+    Visibility: public -/
+@[rust_loop_body]
+def block.ordered_loop.body
+  (blocks : Slice block.Block) (len : Std.Usize) (cursor : Std.Usize)
+  (i : Std.Usize) :
+  Result (ControlFlow (Std.Usize × Std.Usize) Bool)
+  := do
+  let i1 := Slice.len blocks
+  if i < i1
+  then
+    let span ← Slice.index_usize blocks i
+    if span.start < cursor
+    then ok (done false)
+    else
+      if span.end <= span.start
+      then ok (done false)
+      else
+        if span.end > len
+        then ok (done false)
+        else let i2 ← i + 1#usize
+             ok (cont (span.end, i2))
+  else ok (done true)
+
+/-- [gripsack_kernel::block::ordered]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 750:4-759:1
+    Visibility: public -/
+@[rust_loop]
+def block.ordered_loop
+  (blocks : Slice block.Block) (len : Std.Usize) (cursor : Std.Usize)
+  (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun (cursor1, i1) => block.ordered_loop.body blocks len cursor1 i1)
+    (cursor, i)
+
+/-- [gripsack_kernel::block::ordered]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 747:0-759:1
+    Visibility: public -/
+@[reducible]
+def block.ordered
+  (blocks : Slice block.Block) (len : Std.Usize) : Result Bool := do
+  block.ordered_loop blocks len 0#usize 0#usize
+
+/-- [gripsack_kernel::block::splice]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 768:4-775:5
+    Visibility: public -/
+@[rust_loop_body]
+def block.splice_loop.body
+  (text : Slice Std.U8) (blocks : Slice block.Block)
+  (replacement : Slice Std.U8) (out : alloc.vec.Vec Std.U8)
+  (cursor : Std.Usize) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize × Std.Usize)
+    ((alloc.vec.Vec Std.U8) × Std.Usize))
+  := do
+  let i1 := Slice.len blocks
+  if i < i1
+  then
+    let b ← Slice.index_usize blocks i
+    let s ←
+      core.slice.index.Slice.index (core.slice.index.SliceIndexRangeUsizeSlice
+        Std.U8) text { start := cursor, «end» := b.start }
+    let out1 ← alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out s
+    let out2 ←
+      if i = 0#usize
+      then alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out1 replacement
+      else ok out1
+    let i2 ← i + 1#usize
+    ok (cont (out2, b.end, i2))
+  else ok (done (out, cursor))
+
+/-- [gripsack_kernel::block::splice]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 768:4-775:5
+    Visibility: public -/
+@[rust_loop]
+def block.splice_loop
+  (text : Slice Std.U8) (blocks : Slice block.Block)
+  (replacement : Slice Std.U8) (out : alloc.vec.Vec Std.U8)
+  (cursor : Std.Usize) (i : Std.Usize) :
+  Result ((alloc.vec.Vec Std.U8) × Std.Usize)
+  := do
+  loop
+    (fun (out1, cursor1, i1) => block.splice_loop.body text blocks replacement
+      out1 cursor1 i1)
+    (out, cursor, i)
+
+/-- [gripsack_kernel::block::splice]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 764:0-778:1
+    Visibility: public -/
+def block.splice
+  (text : Slice Std.U8) (blocks : Slice block.Block)
+  (replacement : Slice Std.U8) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  let (out, cursor) ←
+    block.splice_loop text blocks replacement (alloc.vec.Vec.new Std.U8)
+      0#usize 0#usize
+  let s ←
+    core.slice.index.Slice.index
+      (core.slice.index.SliceIndexRangeFromUsizeSlice Std.U8) text
+      { start := cursor }
+  alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out s
+
+/-- [gripsack_kernel::block::append]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 782:0-790:1
+    Visibility: public -/
+def block.append
+  (text : Slice Std.U8) (newline : block.Newline) (rendered : Slice Std.U8) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  let out ←
+    alloc.vec.Vec.extend_from_slice core.clone.CloneU8 (alloc.vec.Vec.new
+      Std.U8) text
+  let i := Slice.len text
+  let out1 ←
+    if i > 0#usize
+    then
+      do
+      let i1 := Slice.len text
+      let i2 ← i1 - 1#usize
+      let i3 ← Slice.index_usize text i2
+      if i3 != 10#u8
+      then block.push_newline out newline
+      else ok out
+    else ok out
+  alloc.vec.Vec.extend_from_slice core.clone.CloneU8 out1 rendered
+
+/-- [gripsack_kernel::block::SpliceRefusal]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 793:0-802:1
+    Visibility: public -/
+@[discriminant isize]
+inductive block.SpliceRefusal where
+| Malformed : block.ScanFailure → block.SpliceRefusal
+| Unordered : block.SpliceRefusal
+| Unrecognized : block.SpliceRefusal
+
+/-- [gripsack_kernel::block::holds]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 805:0-810:1 -/
+def block.holds
+  (text : Slice Std.U8) (start : Std.Usize) («end» : Std.Usize)
+  (bytes : Slice Std.U8) :
+  Result Bool
+  := do
+  let i := Slice.len text
+  if «end» <= i
+  then
+    if start <= «end»
+    then
+      let i1 ← «end» - start
+      let i2 := Slice.len bytes
+      if i1 = i2
+      then block.matches_at text start bytes
+      else ok false
+    else ok false
+  else ok false
+
+/-- [gripsack_kernel::block::same_mode]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 996:0-1001:1 -/
+def block.same_mode (a : Option Std.U32) (mode : Std.U32) : Result Bool := do
+  match a with
+  | none => ok false
+  | some a1 => ok (a1 = mode)
+
+/-- [gripsack_kernel::block::settled]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 817:0-845:1 -/
+def block.settled
+  (out : Slice Std.U8) (owner : Slice Std.U8) (rendered : Slice Std.U8)
+  (normalized : Slice Std.U8) (newline : block.Newline)
+  (sha : Array Std.U8 16#usize) (mode : Std.U32) :
+  Result Bool
+  := do
+  let r ← block.scan out owner
+  match r with
+  | core.result.Result.Ok blocks =>
+    let i := alloc.vec.Vec.len blocks
+    if i != 1#usize
+    then ok false
+    else
+      let s := alloc.vec.Vec.deref blocks
+      let i1 := Slice.len out
+      let b ← block.ordered s i1
+      if b
+      then
+        let found ←
+          alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
+            block.Block) blocks 0#usize
+        let b1 ← block.holds out found.start found.end rendered
+        if b1
+        then
+          let n ← block.newline_of out
+          let b2 ← block.Newline.same n newline
+          if b2
+          then
+            let i2 ← found.sha + block.MARK_DIGITS
+            let s1 ← lift (Array.to_slice sha)
+            let b3 ← block.holds out found.sha i2 s1
+            if b3
+            then
+              let b4 ← block.same_mode found.mode mode
+              if b4
+              then
+                if found.content_start > found.content_end
+                then ok false
+                else
+                  let i3 := Slice.len out
+                  if found.content_end > i3
+                  then ok false
+                  else
+                    let s2 ←
+                      core.slice.index.Slice.index
+                        (core.slice.index.SliceIndexRangeUsizeSlice Std.U8) out
+                        {
+                          start := found.content_start,
+                          «end» := found.content_end
+                        }
+                    let content ← block.normalize s2
+                    let i4 := alloc.vec.Vec.len content
+                    let i5 := Slice.len normalized
+                    if i4 = i5
+                    then
+                      let s3 := alloc.vec.Vec.deref content
+                      block.matches_at s3 0#usize normalized
+                    else ok false
+              else ok false
+            else ok false
+          else ok false
+        else ok false
+      else ok false
+  | core.result.Result.Err _ => ok false
+
+/-- [gripsack_kernel::block::upsert]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 852:0-881:1
+    Visibility: public -/
+def block.upsert
+  (text : Slice Std.U8) (owner : Slice Std.U8) (style : block.Style)
+  (digest : ids.Digest) (mode : Std.U32) (payload : Slice Std.U8) :
+  Result (core.result.Result (alloc.vec.Vec Std.U8) block.SpliceRefusal)
+  := do
+  let r ← block.scan text owner
+  match r with
+  | core.result.Result.Ok blocks =>
+    let s := alloc.vec.Vec.deref blocks
+    let i := Slice.len text
+    let b ← block.ordered s i
+    if b
+    then
+      let newline ← block.newline_of text
+      let normalized ← block.normalize payload
+      let sha ← block.mark digest
+      let s1 := alloc.vec.Vec.deref normalized
+      let rendered ← block.render style owner sha mode newline s1
+      let i1 := alloc.vec.Vec.len blocks
+      let out ←
+        if i1 = 0#usize
+        then
+          let s2 := alloc.vec.Vec.deref rendered
+          block.append text newline s2
+        else
+          let s2 := alloc.vec.Vec.deref blocks
+          let s3 := alloc.vec.Vec.deref rendered
+          block.splice text s2 s3
+      let s2 := alloc.vec.Vec.deref out
+      let s3 := alloc.vec.Vec.deref rendered
+      let s4 := alloc.vec.Vec.deref normalized
+      let b1 ← block.settled s2 owner s3 s4 newline sha mode
+      if b1
+      then ok (core.result.Result.Ok out)
+      else ok (core.result.Result.Err block.SpliceRefusal.Unrecognized)
+    else ok (core.result.Result.Err block.SpliceRefusal.Unordered)
+  | core.result.Result.Err failure =>
+    ok (core.result.Result.Err (block.SpliceRefusal.Malformed failure))
+
+/-- [gripsack_kernel::block::remove]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 885:0-897:1
+    Visibility: public -/
+def block.remove
+  (text : Slice Std.U8) (owner : Slice Std.U8) :
+  Result (core.result.Result (Option (alloc.vec.Vec Std.U8))
+    block.SpliceRefusal)
+  := do
+  let r ← block.scan text owner
+  match r with
+  | core.result.Result.Ok blocks =>
+    let s := alloc.vec.Vec.deref blocks
+    let i := Slice.len text
+    let b ← block.ordered s i
+    if b
+    then
+      let i1 := alloc.vec.Vec.len blocks
+      if i1 = 0#usize
+      then ok (core.result.Result.Ok none)
+      else
+        let s1 := alloc.vec.Vec.deref blocks
+        let s2 ← lift (Array.to_slice (Std.Array.empty Std.U8))
+        let v ← block.splice text s1 s2
+        ok (core.result.Result.Ok (some v))
+    else ok (core.result.Result.Err block.SpliceRefusal.Unordered)
+  | core.result.Result.Err failure =>
+    ok (core.result.Result.Err (block.SpliceRefusal.Malformed failure))
+
+/-- [gripsack_kernel::block::Host]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 902:0-910:1
+    Visibility: public -/
+@[discriminant isize]
+inductive block.Host where
+| Absent : block.Host
+| File : Std.U32 → block.Host
+| Foreign : block.Host
+
+/-- [gripsack_kernel::block::Seen]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 913:0-921:1
+    Visibility: public -/
+structure block.Seen where
+  content : ids.Digest
+  marked : Bool
+  mode : Option Std.U32
+
+/-- [gripsack_kernel::block::BlockRecord]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 924:0-931:1
+    Visibility: public -/
+structure block.BlockRecord where
+  hash : Option ids.Digest
+  mode : Option Std.U32
+  preserved : Bool
+
+/-- [gripsack_kernel::block::BlockIntent]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 934:0-947:1
+    Visibility: public -/
+@[discriminant isize]
+inductive block.BlockIntent where
+| Deploy : ids.Digest → Std.U32 → block.BlockIntent
+| Restore : ids.Digest → Option ids.Digest → Std.U32 → block.BlockIntent
+| Remove : block.BlockIntent
+
+/-- [gripsack_kernel::block::BlockRefusal]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 950:0-955:1
+    Visibility: public -/
+@[discriminant isize]
+inductive block.BlockRefusal where
+| Foreign : block.BlockRefusal
+| Unrestorable : block.BlockRefusal
+
+/-- [gripsack_kernel::block::BlockDecision]
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 958:0-972:1
+    Visibility: public -/
+@[discriminant isize]
+inductive block.BlockDecision where
+| Write : block.BlockDecision
+| Satisfied : block.BlockDecision
+| Preserve : block.BlockDecision
+| Remove : block.BlockDecision
+| Keep : block.BlockDecision
+| Absent : block.BlockDecision
+| Refuse : block.BlockRefusal → block.BlockDecision
+
+/-- [gripsack_kernel::block::{gripsack_kernel::block::BlockDecision}::writes]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 976:4-986:5
+    Visibility: public -/
+def block.BlockDecision.writes (self : block.BlockDecision) : Result Bool := do
+  match self with
+  | block.BlockDecision.Write => ok true
+  | block.BlockDecision.Satisfied => ok false
+  | block.BlockDecision.Preserve => ok false
+  | block.BlockDecision.Remove => ok true
+  | block.BlockDecision.Keep => ok false
+  | block.BlockDecision.Absent => ok false
+  | block.BlockDecision.Refuse _ => ok false
+
+/-- [gripsack_kernel::ids::DIGEST_BYTES]
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 44:0-44:35
+    Visibility: public -/
+@[global_simps, irreducible] def ids.DIGEST_BYTES : Std.Usize := 32#usize
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
+    Visibility: public -/
+@[rust_loop_body]
+def ids.Digest.same_loop.body
+  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  if i < ids.DIGEST_BYTES
+  then
+    let i1 ← Array.index_usize self.bytes i
+    let i2 ← Array.index_usize other.bytes i
+    if i1 != i2
+    then ok (done false)
+    else let i3 ← i + 1#usize
+         ok (cont i3)
+  else ok (done true)
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop 0:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
+    Visibility: public -/
+@[rust_loop]
+def ids.Digest.same_loop
+  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) : Result Bool := do
+  loop
+    (fun i1 => ids.Digest.same_loop.body self other i1)
+    i
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 62:4-71:5
+    Visibility: public -/
+@[reducible]
+def ids.Digest.same
+  (self : ids.Digest) (other : ids.Digest) : Result Bool := do
+  ids.Digest.same_loop self other 0#usize
+
+/-- [gripsack_kernel::block::same_digest]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 989:0-994:1 -/
+def block.same_digest
+  (a : Option ids.Digest) (b : ids.Digest) : Result Bool := do
+  match a with
+  | none => ok false
+  | some a1 => ids.Digest.same a1 b
+
+/-- [gripsack_kernel::block::other_mode]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 1004:0-1009:1 -/
+def block.other_mode
+  (mode : Option Std.U32) (live : Std.U32) : Result Bool := do
+  match mode with
+  | none => ok false
+  | some mode1 => ok (mode1 != live)
+
+/-- [gripsack_kernel::block::mode_conflict]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 1014:4-1033:1 -/
+@[rust_loop_body]
+def block.mode_conflict_loop.body
+  (record : Option block.BlockRecord) (blocks : Slice block.Seen)
+  (live : Std.U32) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len blocks
+  if i < i1
+  then
+    let s ← Slice.index_usize blocks i
+    let b ← block.other_mode s.mode live
+    if b
+    then ok (done true)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else
+    match record with
+    | none => ok (done false)
+    | some record1 =>
+      if record1.preserved
+      then ok (done false)
+      else
+        match record1.mode with
+        | none => ok (done false)
+        | some mode => ok (done (mode != live))
+
+/-- [gripsack_kernel::block::mode_conflict]: loop 0:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 1014:4-1033:1 -/
+@[rust_loop]
+def block.mode_conflict_loop
+  (record : Option block.BlockRecord) (blocks : Slice block.Seen)
+  (live : Std.U32) (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => block.mode_conflict_loop.body record blocks live i1)
+    i
+
+/-- [gripsack_kernel::block::mode_conflict]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 1012:0-1033:1 -/
+@[reducible]
+def block.mode_conflict
+  (record : Option block.BlockRecord) (blocks : Slice block.Seen)
+  (live : Std.U32) :
+  Result Bool
+  := do
+  block.mode_conflict_loop record blocks live 0#usize
+
+/-- [gripsack_kernel::block::holds_intent]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 1036:0-1042:1 -/
+def block.holds_intent
+  (blocks : Slice block.Seen) (desired : ids.Digest) (mode : Std.U32) :
+  Result Bool
+  := do
+  let i := Slice.len blocks
+  if i != 1#usize
+  then ok false
+  else
+    let «only» ← Slice.index_usize blocks 0#usize
+    if «only».marked
+    then
+      let b ← ids.Digest.same «only».content desired
+      if b
+      then block.same_mode «only».mode mode
+      else ok false
+    else ok false
+
+/-- [gripsack_kernel::block::intact]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 1047:0-1064:1
+    Visibility: public -/
+def block.intact
+  (record : block.BlockRecord) (blocks : Slice block.Seen) (live : Std.U32) :
+  Result Bool
+  := do
+  if record.preserved
+  then ok false
+  else
+    let i := Slice.len blocks
+    if i != 1#usize
+    then ok false
+    else
+      let «only» ← Slice.index_usize blocks 0#usize
+      let (only1, recorded_mode) ←
+        match record.mode with
+        | none => ok («only», «only».mode)
+        | some _ => ok («only», record.mode)
+      let marker_agrees ←
+        match only1.mode with
+        | none => ok true
+        | some mode => ok (mode = live)
+      let b ← block.same_mode recorded_mode live
+      if b
+      then
+        if marker_agrees
+        then
+          let b1 ← block.same_digest record.hash only1.content
+          if b1
+          then ok only1.marked
+          else ok false
+        else ok false
+      else ok false
+
+/-- [gripsack_kernel::block::deploy]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 1068:0-1088:1 -/
+def block.deploy
+  (record : Option block.BlockRecord) (host : block.Host)
+  (blocks : Slice block.Seen) (desired : ids.Digest) (mode : Std.U32) :
+  Result block.BlockDecision
+  := do
+  match host with
+  | block.Host.Absent => ok block.BlockDecision.Write
+  | block.Host.File live =>
+    let i := Slice.len blocks
+    if i > 0#usize
+    then
+      let b ← block.mode_conflict record blocks live
+      if b
+      then ok block.BlockDecision.Preserve
+      else
+        if live = mode
+        then
+          let b1 ← block.holds_intent blocks desired mode
+          if b1
+          then ok block.BlockDecision.Satisfied
+          else ok block.BlockDecision.Write
+        else ok block.BlockDecision.Write
+    else
+      if live = mode
+      then
+        let b ← block.holds_intent blocks desired mode
+        if b
+        then ok block.BlockDecision.Satisfied
+        else ok block.BlockDecision.Write
+      else ok block.BlockDecision.Write
+  | block.Host.Foreign =>
+    ok (block.BlockDecision.Refuse block.BlockRefusal.Foreign)
+
+/-- [gripsack_kernel::block::decide_block]:
+    Source: 'crates/gripsack-kernel/src/block.rs', lines 1094:0-1143:1
+    Visibility: public -/
+def block.decide_block
+  (record : Option block.BlockRecord) (host : block.Host)
+  (blocks : Slice block.Seen) (intent : block.BlockIntent) :
+  Result block.BlockDecision
+  := do
+  match intent with
+  | block.BlockIntent.Deploy desired mode =>
+    block.deploy record host blocks desired mode
+  | block.BlockIntent.Restore retained recorded mode =>
+    let decision ← block.deploy record host blocks retained mode
+    let b ← block.same_digest recorded retained
+    if b
+    then ok decision
+    else
+      match decision with
+      | block.BlockDecision.Write =>
+        ok (block.BlockDecision.Refuse block.BlockRefusal.Unrestorable)
+      | block.BlockDecision.Satisfied =>
+        ok (block.BlockDecision.Refuse block.BlockRefusal.Unrestorable)
+      | block.BlockDecision.Preserve => ok block.BlockDecision.Preserve
+      | block.BlockDecision.Remove => ok block.BlockDecision.Remove
+      | block.BlockDecision.Keep => ok block.BlockDecision.Keep
+      | block.BlockDecision.Absent => ok block.BlockDecision.Absent
+      | block.BlockDecision.Refuse _ => ok decision
+  | block.BlockIntent.Remove =>
+    match host with
+    | block.Host.Absent => ok block.BlockDecision.Absent
+    | block.Host.File live =>
+      let i := Slice.len blocks
+      if i = 0#usize
+      then ok block.BlockDecision.Absent
+      else
+        match record with
+        | none => ok block.BlockDecision.Keep
+        | some record1 =>
+          let b ← block.intact record1 blocks live
+          if b
+          then ok block.BlockDecision.Remove
+          else ok block.BlockDecision.Keep
+    | block.Host.Foreign => ok block.BlockDecision.Keep
+
 /-- [gripsack_kernel::generation::GenerationId]
     Source: 'crates/gripsack-kernel/src/generation.rs', lines 10:0-12:1
     Visibility: public -/
@@ -171,53 +2761,6 @@ structure ids.DestId where
 def ids.DestId.same
   (self : ids.DestId) (other : ids.DestId) : Result Bool := do
   ok (self.index = other.index)
-
-/-- [gripsack_kernel::ids::DIGEST_BYTES]
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 44:0-44:35
-    Visibility: public -/
-@[global_simps, irreducible] def ids.DIGEST_BYTES : Std.Usize := 32#usize
-
-/-- [gripsack_kernel::ids::Digest]
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 48:0-50:1
-    Visibility: public -/
-structure ids.Digest where
-  bytes : Array Std.U8 32#usize
-
-/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
-    Visibility: public -/
-@[rust_loop_body]
-def ids.Digest.same_loop.body
-  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) :
-  Result (ControlFlow Std.Usize Bool)
-  := do
-  if i < ids.DIGEST_BYTES
-  then
-    let i1 ← Array.index_usize self.bytes i
-    let i2 ← Array.index_usize other.bytes i
-    if i1 != i2
-    then ok (done false)
-    else let i3 ← i + 1#usize
-         ok (cont i3)
-  else ok (done true)
-
-/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop 0:
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
-    Visibility: public -/
-@[rust_loop]
-def ids.Digest.same_loop
-  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) : Result Bool := do
-  loop
-    (fun i1 => ids.Digest.same_loop.body self other i1)
-    i
-
-/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]:
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 62:4-71:5
-    Visibility: public -/
-@[reducible]
-def ids.Digest.same
-  (self : ids.Digest) (other : ids.Digest) : Result Bool := do
-  ids.Digest.same_loop self other 0#usize
 
 /-- [gripsack_kernel::journal::RecordRole]
     Source: 'crates/gripsack-kernel/src/journal.rs', lines 12:0-15:1
