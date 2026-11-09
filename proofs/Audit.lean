@@ -16,7 +16,9 @@ open Lean Elab Command
 def allowedAxioms : List Name := [``propext, ``Classical.choice, ``Quot.sound]
 
 /-- The headline claims: K3 (CLASSIFY-001), K4 retention admission, the
-journal publication transition and mutation authority. -/
+journal publication transition and mutation authority, and the recover
+machine (F2 step 2): the restore guard, unrestorable refusal, cleanup order
+and classification before restore. -/
 def claims : List Name := [
   ``Gripsack.Kernel.classify_committed_iff,
   ``Gripsack.Kernel.classify_uncommitted_iff,
@@ -30,6 +32,13 @@ def claims : List Name := [
   ``Gripsack.Kernel.RecordPublication.acknowledge_spec,
   ``Gripsack.Kernel.RecordPublication.finish_spec,
   ``Gripsack.Kernel.admit_mutation_spec,
+  ``Gripsack.Kernel.decide_spec,
+  ``Gripsack.Kernel.step_spec,
+  ``Gripsack.Kernel.mutate_guard,
+  ``Gripsack.Kernel.unrestorable_refused,
+  ``Gripsack.Kernel.mutate_never_unsupported,
+  ``Gripsack.Kernel.marker_unlink_after_record_barrier,
+  ``Gripsack.Kernel.mutate_after_classification,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/

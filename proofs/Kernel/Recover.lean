@@ -456,4 +456,346 @@ theorem spec_eq_ok {α : Type} {x : Result α} {P : α → Prop} {a : α}
   rw [hx] at h
   exact (WP.spec_ok a).mp h
 
+/-! ## One step keeps the invariant -/
+
+/-- A command that is neither the marker unlink nor a mutation. -/
+def Quiet (c : recover.Command) : Prop :=
+  c ≠ .Unlink .Marker ∧ ∀ a b x y, c ≠ .Mutate a b x y
+
+/-- What one step guarantees, given the invariant before it: the invariant
+after it; a marker unlink only out of `SyncingRecords`; a mutation only out
+of the observation of the entry under decision, restorable, with `expect`
+the observed object. -/
+def StepPost (s : recover.RecoverState) (e : recover.Event) (cs : List recover.Command)
+    (p : recover.RecoverState × recover.Command) : Prop :=
+  Inv p.1 (cs ++ [p.2]) ∧
+  (p.2 = .Unlink .Marker → s.phase = .SyncingRecords) ∧
+  (∀ entry dest expect effect, p.2 = .Mutate entry dest expect effect →
+    s.phase = .Observing ∧ ∃ f, s.entry = some f ∧ e = .Observed dest expect ∧ f.dest = dest ∧
+      entry = s.index ∧ effect = .Restore f.prior ∧ Restorable f expect)
+
+theorem StepPost.of_quiet {s e cs p} (hi : Inv p.1 (cs ++ [p.2])) (hq : Quiet p.2) :
+    StepPost s e cs p :=
+  ⟨hi, fun h => absurd h hq.1, fun a b x y h => absurd h (hq.2 a b x y)⟩
+
+/-- A step that leaves journal, current pointer and verdict alone and moves
+to a phase with no bookkeeping of its own keeps the invariant. -/
+theorem Inv.quiet {s : recover.RecoverState} {cs : List recover.Command} (h : Inv s cs)
+    (s' : recover.RecoverState) (c : recover.Command)
+    (hj : s'.journal = s.journal) (hcur : s'.current = s.current) (hv : s'.verdict = s.verdict)
+    (h1 : s'.phase ≠ .UnlinkingRecord) (h2 : s'.phase ≠ .SyncingRecords)
+    (h3 : s'.phase ≠ .Start) (h4 : s'.phase ≠ .ReadingJournal) (h5 : s'.phase ≠ .ReadingCurrent)
+    (h6 : InLoop s'.phase → s.verdict = .Uncommitted) : Inv s' (cs ++ [c]) where
+  unlinking := fun h => absurd h h1
+  syncing := fun h => absurd h h2
+  pending := fun h => by rcases h with h | h | h <;> contradiction
+  asked := fun h => absurd h h5
+  loop := fun h => hv ▸ h6 h
+  classified := fun hu m hm => by
+    obtain ⟨a, b⟩ := h.classified (hv ▸ hu) m (hj ▸ hm)
+    exact ⟨List.mem_append_left _ a, hcur ▸ b⟩
+
+/-- Entering cleanup at `t.index` with every earlier record already
+unlinked keeps the invariant. -/
+theorem Inv.of_next_unlink {t : recover.RecoverState} {cs : List recover.Command}
+    {p : recover.RecoverState × recover.Command} (hn : NextUnlink t p)
+    (hprev : ∀ k : U32, k.val < t.index.val → recover.Command.Unlink (.Record k) ∈ cs)
+    (hcl : t.verdict = .Uncommitted → Classified t cs) : Inv p.1 (cs ++ [p.2]) := by
+  rcases hn with ⟨hlt, rfl⟩ | ⟨hle, rfl⟩
+  · refine ⟨fun _ => ⟨hlt, fun k hk => ?_⟩, by simp, by simp, by simp, by simp [InLoop],
+      fun hu => (hcl hu).mono _⟩
+    by_cases hk' : k.val < t.index.val
+    · exact List.mem_append_left _ (hprev k hk')
+    · have : k = t.index := UScalar.eq_of_val_eq (by simp only at hk; omega)
+      subst this
+      simp
+  · refine ⟨by simp, fun _ => ⟨cs, rfl, fun k hk => hprev k (by simp only at hk; omega)⟩, by simp, by simp,
+      by simp [InLoop], fun hu => (hcl hu).mono _⟩
+
+theorem NextUnlink.quiet {t p} (hn : NextUnlink t p) : Quiet p.2 := by
+  rcases hn with ⟨_, rfl⟩ | ⟨_, rfl⟩ <;> simp [Quiet]
+
+/-- `proceed` from an uncommitted, classified state keeps the invariant. -/
+theorem Inv.of_proceed {t : recover.RecoverState} {cs : List recover.Command}
+    {p : recover.RecoverState × recover.Command} (hp : Proceed t p)
+    (hv : t.verdict = .Uncommitted) (hcl : Classified t cs) :
+    Inv p.1 (cs ++ [p.2]) ∧ Quiet p.2 := by
+  have hq : ∀ (s' : recover.RecoverState) c, s'.journal = t.journal → s'.current = t.current →
+      s'.verdict = t.verdict → s'.phase ≠ .UnlinkingRecord → s'.phase ≠ .SyncingRecords →
+      s'.phase ≠ .Start → s'.phase ≠ .ReadingJournal → s'.phase ≠ .ReadingCurrent →
+      Inv s' (cs ++ [c]) := by
+    intro s' c hj hcur hvv h1 h2 h3 h4 h5
+    refine ⟨fun h => absurd h h1, fun h => absurd h h2,
+      fun h => by rcases h with h | h | h <;> contradiction, fun h => absurd h h5,
+      fun _ => hvv ▸ hv, fun _ m hm => ?_⟩
+    obtain ⟨a, b⟩ := hcl m (hj ▸ hm)
+    exact ⟨List.mem_append_left _ a, hcur ▸ b⟩
+  rcases hp with rfl | rfl | rfl | hn
+  · exact ⟨hq _ _ rfl rfl rfl (by simp) (by simp) (by simp) (by simp) (by simp), by simp [Quiet]⟩
+  · exact ⟨hq _ _ rfl rfl rfl (by simp) (by simp) (by simp) (by simp) (by simp), by simp [Quiet]⟩
+  · exact ⟨hq _ _ rfl rfl rfl (by simp) (by simp) (by simp) (by simp) (by simp), by simp [Quiet]⟩
+  · exact ⟨Inv.of_next_unlink hn (fun k hk => by simp at hk) (fun _ => hcl), hn.quiet⟩
+
+theorem Inv.of_advance {t : recover.RecoverState} {cs : List recover.Command}
+    {p : recover.RecoverState × recover.Command} (h : Inv t cs) (hp : Advance t p)
+    (hv : t.verdict = .Uncommitted) : Inv p.1 (cs ++ [p.2]) ∧ Quiet p.2 := by
+  rcases hp with rfl | ⟨i, -, hp⟩
+  · exact ⟨h.quiet _ _ rfl rfl rfl (by simp) (by simp) (by simp) (by simp) (by simp)
+      (by simp [InLoop]), by simp [Quiet]⟩
+  · exact Inv.of_proceed hp hv (h.classified hv)
+
+theorem post_abort {s : recover.RecoverState} {e cs} (h : Inv s cs) (r : recover.Refusal) :
+    StepPost s e cs ({ s with phase := .Aborted }, .Abort r) :=
+  StepPost.of_quiet (h.quiet _ _ rfl rfl rfl (by simp) (by simp) (by simp) (by simp) (by simp)
+    (by simp [InLoop])) (by simp [Quiet])
+
+theorem post_failed {s : recover.RecoverState} {e cs} (h : Inv s cs) (ev : recover.Event) :
+    recover.failed_or_protocol s ev ⦃ p => StepPost s e cs p ⦄ :=
+  WP.spec_mono (failed_or_protocol_spec s ev) (by rintro p ⟨r, rfl⟩; exact post_abort h r)
+
+theorem post_refuse {s : recover.RecoverState} {e cs} (h : Inv s cs) (r : recover.Refusal) :
+    recover.refuse s r ⦃ p => StepPost s e cs p ⦄ :=
+  WP.spec_mono (refuse_spec s r) (by rintro p rfl; exact post_abort h r)
+
+/-- A step into a phase with no bookkeeping that keeps journal, current and
+verdict. -/
+macro "quiet_post" h:ident : tactic => `(tactic|
+  exact StepPost.of_quiet
+    (Inv.quiet $h _ _ rfl rfl rfl (by simp) (by simp) (by simp) (by simp) (by simp)
+      (by simp [InLoop]))
+    (by simp [Quiet]))
+
+/-- The same, into a phase of the entry loop (from one). -/
+macro "loop_post" h:ident : tactic => `(tactic|
+  exact StepPost.of_quiet
+    (Inv.quiet $h _ _ rfl rfl rfl (by simp) (by simp) (by simp) (by simp) (by simp)
+      (fun _ => Inv.loop $h (by simp [InLoop])))
+    (by simp [Quiet]))
+
+theorem step_spec (s : recover.RecoverState) (e : recover.Event) (cs : List recover.Command)
+    (h : Inv s cs) : recover.recover_step s e ⦃ p => StepPost s e cs p ⦄ := by
+  rcases s with ⟨phase, journal, records, current, verdict, index, leaves, entry⟩
+  unfold recover.recover_step
+  cases phase <;> cases e
+  all_goals try first
+    | with_reducible exact post_failed h _
+    | with_reducible exact post_refuse h _
+  case Start.Start =>
+    simp only [WP.spec_ok]
+    refine StepPost.of_quiet ⟨by simp, by simp, fun _ => h.pending (by simp), by simp,
+      by simp [InLoop], fun hu => (h.classified hu).mono _⟩ (by simp [Quiet])
+  case ReadingJournal.NoJournal =>
+    simp only [WP.spec_ok]
+    quiet_post h
+  case ReadingJournal.JournalRead j =>
+    simp only
+    have hpend : verdict = .Pending := h.pending (by simp)
+    refine WP.spec_mono (on_journal_spec _ j) ?_
+    rintro p (rfl | ⟨records, hm, rfl⟩ | ⟨records, m, hm, rfl⟩ | ⟨records, hm, hp⟩)
+    · exact post_abort h _
+    · refine StepPost.of_quiet ⟨by simp, by simp, by simp, by simp, by simp [InLoop],
+        fun hu => by simp [hpend] at hu⟩ (by simp [Quiet])
+    · refine StepPost.of_quiet ⟨by simp, by simp, fun _ => by simpa using hpend, fun _ => by simp,
+        by simp [InLoop], fun hu => by simp [hpend] at hu⟩ (by simp [Quiet])
+    · have ⟨hi, hq⟩ := Inv.of_proceed (cs := cs) hp rfl (fun m hm' => by simp [hm] at hm')
+      exact StepPost.of_quiet hi hq
+  case ReadingCurrent.CurrentRead cur =>
+    simp only
+    have hpend : verdict = .Pending := h.pending (by simp)
+    have hasked : recover.Command.ReadCurrent ∈ cs := h.asked rfl
+    refine WP.spec_mono (on_current_spec _ cur) ?_
+    rintro p (⟨hm, rfl⟩ | ⟨m, hm, ⟨hc, rfl⟩ | ⟨hc, hp⟩ | rfl⟩)
+    · refine StepPost.of_quiet ⟨by simp, by simp, by simp, by simp, by simp [InLoop],
+        fun hu => by simp [hpend] at hu⟩ (by simp [Quiet])
+    · refine StepPost.of_quiet ⟨by simp, by simp, by simp, by simp, by simp [InLoop],
+        fun hu => by simp at hu⟩ (by simp [Quiet])
+    · have ⟨hi, hq⟩ := Inv.of_proceed (cs := cs) hp rfl (fun m' hm' => by
+        simp only at hm hm'
+        rw [hm] at hm'
+        cases hm'
+        exact ⟨hasked, hc⟩)
+      exact StepPost.of_quiet hi hq
+    · refine StepPost.of_quiet ⟨by simp, by simp, by simp, by simp, by simp [InLoop],
+        fun hu => by simp [hpend] at hu⟩ (by simp [Quiet])
+  case SealingSelection.Done =>
+    simp only
+    split
+    · simp only [WP.spec_ok]
+      quiet_post h
+    · refine WP.spec_mono (begin_cleanup_spec _) ?_
+      intro p hn
+      exact StepPost.of_quiet
+        (Inv.of_next_unlink hn (fun k hk => by simp at hk) (fun hu => h.classified hu)) hn.quiet
+  case SettlingDirectories.Done =>
+    refine WP.spec_mono (begin_cleanup_spec _) ?_
+    intro p hn
+    exact StepPost.of_quiet
+      (Inv.of_next_unlink hn (fun k hk => by simp at hk) (fun hu => h.classified hu)) hn.quiet
+  case ClosingLeaves.Done =>
+    refine WP.spec_mono (begin_cleanup_spec _) ?_
+    intro p hn
+    exact StepPost.of_quiet
+      (Inv.of_next_unlink hn (fun k hk => by simp at hk) (fun hu => h.classified hu)) hn.quiet
+  case OpeningLeaves.Done =>
+    refine WP.spec_mono (proceed_spec _) ?_
+    intro p hp
+    have hv : verdict = .Uncommitted := h.loop (by simp [InLoop])
+    have ⟨hi, hq⟩ := Inv.of_proceed hp hv (h.classified hv)
+    exact StepPost.of_quiet hi hq
+  case ReadingEntry.EntryRead f =>
+    have hv : verdict = .Uncommitted := h.loop (by simp [InLoop])
+    refine WP.spec_mono (on_entry_spec _ f) ?_
+    rintro p (⟨-, rfl⟩ | hp)
+    · loop_post h
+    · have ⟨hi, hq⟩ := Inv.of_advance h hp hv
+      exact StepPost.of_quiet hi hq
+  case Observing.Observed d live =>
+    refine WP.spec_mono (on_observed_spec _ d live) ?_
+    rintro p (⟨r, rfl, -⟩ | ⟨f, hf, hfd, -, ⟨hr, rfl⟩ | rfl | rfl⟩)
+    · exact post_abort h r
+    · refine ⟨h.quiet _ _ rfl rfl rfl (by simp) (by simp) (by simp) (by simp) (by simp)
+        (fun _ => h.loop (by simp [InLoop])), by simp, ?_⟩
+      intro a b x y hm
+      simp only [recover.Command.Mutate.injEq] at hm
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := hm
+      exact ⟨rfl, f, hf, rfl, hfd, rfl, rfl, hr⟩
+    · loop_post h
+    · loop_post h
+  case Restoring.Landed live =>
+    have hv : verdict = .Uncommitted := h.loop (by simp [InLoop])
+    refine WP.spec_mono (on_landed_spec _ live) ?_
+    rintro p (⟨r, rfl⟩ | hp)
+    · exact post_abort h r
+    · have ⟨hi, hq⟩ := Inv.of_advance h hp hv
+      exact StepPost.of_quiet hi hq
+  case Restoring.Failed failure =>
+    exact WP.spec_mono (on_restore_failed_spec _ failure) (by rintro p ⟨r, rfl⟩; exact post_abort h r)
+  case Sealing.Failed failure =>
+    exact WP.spec_mono (on_restore_failed_spec _ failure) (by rintro p ⟨r, rfl⟩; exact post_abort h r)
+  case Sealing.Done =>
+    have hv : verdict = .Uncommitted := h.loop (by simp [InLoop])
+    refine WP.spec_mono (advance_spec' _) ?_
+    intro p hp
+    have ⟨hi, hq⟩ := Inv.of_advance h hp hv
+    exact StepPost.of_quiet hi hq
+  case Preserving.Done =>
+    have hv : verdict = .Uncommitted := h.loop (by simp [InLoop])
+    refine WP.spec_mono (advance_spec' _) ?_
+    intro p hp
+    have ⟨hi, hq⟩ := Inv.of_advance h hp hv
+    exact StepPost.of_quiet hi hq
+  case UnlinkingRecord.Done =>
+    have hun := h.unlinking rfl
+    have hspec := U32.checked_add_bv_spec index 1#u32
+    cases ho : U32.checked_add index 1#u32 with
+    | none =>
+      simp only [lift, Std.bind_ok]
+      exact post_refuse h _
+    | some i =>
+      simp only [ho] at hspec
+      simp only [lift, Std.bind_ok]
+      refine WP.spec_mono (next_unlink_spec _) ?_
+      intro p hn
+      refine StepPost.of_quiet (Inv.of_next_unlink hn (fun k hk => ?_) (fun hu => h.classified hu))
+        hn.quiet
+      simp only at hk hun
+      exact hun.2 k (by simp at hspec; omega)
+  case SyncingRecords.Done =>
+    simp only [WP.spec_ok]
+    refine ⟨h.quiet _ _ rfl rfl rfl (by simp) (by simp) (by simp) (by simp) (by simp)
+      (by simp [InLoop]), fun _ => rfl, by simp⟩
+  case UnlinkingMarker.Done =>
+    simp only [WP.spec_ok]
+    quiet_post h
+  case SyncingMarker.Done =>
+    refine WP.spec_mono (finish_spec _) ?_
+    rintro p ⟨o, rfl⟩
+    quiet_post h
+
+/-! ## The theorems -/
+
+/-- Every execution keeps the invariant. -/
+theorem run_inv {s : recover.RecoverState} {cs : List recover.Command} (h : Run s cs) :
+    Inv s cs := by
+  induction h with
+  | start hs =>
+    simp only [recover.RecoverState.new, ok.injEq] at hs
+    subst hs
+    exact ⟨by simp, by simp, fun _ => rfl, by simp, by simp [InLoop], by simp⟩
+  | step _ hstep ih => exact (spec_eq_ok (step_spec _ _ _ ih) hstep).1
+
+/-- (a) The K1-style guard. In every execution, a restore is issued only in
+answer to the observation of the entry under decision, names that entry and
+its destination, carries the observed live object as `expect` (which the
+driver re-checks before acting), restores that entry's prior, and only when
+the live object is the run's own write (intended or immediate pre-state) or
+an absence where a prior existed. A foreign object is never mutated. -/
+theorem mutate_guard {s s' : recover.RecoverState} {cs : List recover.Command}
+    {e : recover.Event} {entry : U32} {dest : ids.DestId} {expect : recover.Live}
+    {effect : recover.Effect} (hrun : Run s cs)
+    (h : recover.recover_step s e = ok (s', .Mutate entry dest expect effect)) :
+    s.phase = .Observing ∧ ∃ f, s.entry = some f ∧ e = .Observed dest expect ∧
+      f.dest = dest ∧ entry = s.index ∧ effect = .Restore f.prior ∧ Restorable f expect :=
+  (spec_eq_ok (step_spec _ _ _ (run_inv hrun)) h).2.2 _ _ _ _ rfl
+
+/-- (c) An entry whose live object has no journal identity (a directory, a
+special file, a non-UTF-8 link) is refused by name: the observation answers
+with `Abort (Unrestorable entry dest)`, whatever state the run is in. -/
+theorem unrestorable_refused (s : recover.RecoverState) (f : recover.EntryFacts)
+    (d : ids.DestId) (hphase : s.phase = .Observing) (hentry : s.entry = some f)
+    (hdest : f.dest = d) :
+    recover.recover_step s (.Observed d .Unsupported) ⦃ p =>
+      p.2 = .Abort (.Unrestorable s.index d) ∧ p.1.phase = .Aborted ⦄ := by
+  rcases s with ⟨phase, journal, records, current, verdict, index, leaves, entry⟩
+  simp only at hphase hentry
+  subst hphase
+  unfold recover.recover_step
+  refine WP.spec_mono (on_observed_spec _ d .Unsupported) ?_
+  rintro p (⟨r, rfl, hr⟩ | ⟨f', -, -, hu, -⟩)
+  · exact ⟨by simp [hr f hentry hdest rfl], rfl⟩
+  · exact absurd rfl hu
+
+/-- (c) An object without a journal identity is never the target of a
+mutation, in any execution. -/
+theorem mutate_never_unsupported {s s' : recover.RecoverState} {cs : List recover.Command}
+    {e : recover.Event} {entry : U32} {dest : ids.DestId} {expect : recover.Live}
+    {effect : recover.Effect} (hrun : Run s cs)
+    (h : recover.recover_step s e = ok (s', .Mutate entry dest expect effect)) :
+    expect ≠ .Unsupported := by
+  obtain ⟨-, f, -, -, -, -, -, hr⟩ := mutate_guard hrun h
+  rintro rfl
+  rcases hr with ⟨i, hi, -⟩ | ⟨hi, -⟩ <;> cases hi
+
+/-- (b) Cleanup order. In every execution, the run-marker unlink is issued
+only immediately after a journal barrier, and every journal record (entries
+and directory records) was unlinked before that barrier. So a durable marker
+removal implies durable record removals (0026 §5; the 0.19.x resurrections
+are the violations). -/
+theorem marker_unlink_after_record_barrier {s s' : recover.RecoverState}
+    {cs : List recover.Command} {e : recover.Event} (hrun : Run s cs)
+    (h : recover.recover_step s e = ok (s', .Unlink .Marker)) :
+    ∃ pre, cs = pre ++ [.Barrier .Journal] ∧
+      ∀ k : U32, k.val < s.records.val → recover.Command.Unlink (.Record k) ∈ pre := by
+  have hi := run_inv hrun
+  exact hi.syncing ((spec_eq_ok (step_spec _ _ _ hi) h).2.1 rfl)
+
+/-- (d) Classification before restore. In every execution, a restore is
+issued only in a run whose verdict is uncommitted, and that verdict came
+from the commit classification: with a run marker, `ReadCurrent` was issued
+earlier and `classify` (K3, CLASSIFY-001) over the marker and the `current`
+read judged the run uncommitted. A committed or ambiguous run never
+restores. -/
+theorem mutate_after_classification {s s' : recover.RecoverState} {cs : List recover.Command}
+    {e : recover.Event} {entry : U32} {dest : ids.DestId} {expect : recover.Live}
+    {effect : recover.Effect} (hrun : Run s cs)
+    (h : recover.recover_step s e = ok (s', .Mutate entry dest expect effect)) :
+    s.verdict = .Uncommitted ∧
+    ∀ m, s.journal.marker = some m →
+      recover.Command.ReadCurrent ∈ cs ∧
+      selection.classify { previous := m.previous, target := m.target, current := s.current } =
+        ok .Uncommitted := by
+  have hi := run_inv hrun
+  have hv := hi.loop (by rw [(mutate_guard hrun h).1]; simp [InLoop])
+  exact ⟨hv, hi.classified hv⟩
+
 end Gripsack.Kernel
