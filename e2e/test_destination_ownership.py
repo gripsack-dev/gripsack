@@ -413,7 +413,7 @@ export default profile("a-conf", { files: [
     refresh_workspace(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, "the mode switch must refuse over preserved drift"
-    assert "not deployed by gripsack" in out.stderr, out.stderr
+    assert "changed since gripsack deployed it" in out.stderr, out.stderr
     assert dest.read_text() == "user edit\n", "the user's edit stands"
 
 

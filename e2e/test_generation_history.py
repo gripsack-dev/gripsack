@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from pathlib import Path
 import pytest
 from conftest import native_target, GRIP, grip, make_workspace_repo, make_tarball, refresh_workspace, remove_output, start_grip
 
@@ -288,10 +289,11 @@ profile("demo", {{ files: [
 
 
 def test_a_repaired_destination_cuts_a_generation(sandbox):
-    """Satisfied means nothing changed on disk. An owned link that
-    drifted (or a stale pre-store link replaced) is real filesystem
-    work — the run must cut a generation so rollback can undo it,
-    not summarize 'already satisfied' over a modified machine."""
+    """Satisfied means nothing changed on disk. An owned link the user
+    re-pointed is refused (plan/0056 FND-1); repairing it with
+    --take-over is real filesystem work — the run must cut a generation
+    so rollback can undo it, not summarize 'already satisfied' over a
+    modified machine."""
     payload = make_tarball(
         sandbox / "myenv" / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
     )
@@ -315,6 +317,10 @@ profile("m", {{ files: [
     dest.unlink()
     dest.symlink_to("/usr/bin/false")
     out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, out.stdout
+    assert "changed since gripsack deployed it" in out.stderr, out.stderr
+    assert dest.readlink() == Path("/usr/bin/false")
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert "generation 2" in out.stdout, out.stdout
     assert "store" in str(dest.resolve())

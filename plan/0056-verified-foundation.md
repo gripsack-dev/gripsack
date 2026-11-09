@@ -966,6 +966,12 @@ the recover vocabulary (`Ident = File(Digest)|Link(Digest)`,
   `test_user_link_into_the_store_is_not_ours`,
   `test_rollback_keeps_a_user_replacement_of_an_owned_link`. Before: all four
   failed — apply/rollback re-pointed the user's object.
+- Two existing e2e encoded the old behaviour and were updated:
+  `test_a_repaired_destination_cuts_a_generation` relied on FND-1 (a
+  user-re-pointed owned link silently repaired); it now refuses, and the
+  repair is `--take-over`, which still cuts a generation that rollback
+  undoes. `test_preserved_copy_blocks_a_mode_switch_to_owned` keeps its
+  behaviour (refuse, edit stands) and now sees the drift message.
 - `crates/gripsack-kernel/tests/ownership_lineage.rs` (from `lineage_model`):
   every sequence to depth 6 over copy and link modes with user files, user
   links and user links into the store, driving `decide_unit` for deploy and
