@@ -150,6 +150,54 @@ MUTANTS = (
            ("Gripsack.Kernel.decide_unit_k1", "Gripsack.Kernel.decide_unit_drift_never_written",
             "Gripsack.Kernel.decide_unit_owned_drift_refused", "Gripsack.Kernel.decide_unit_unrecorded_refused",
             "Gripsack.Kernel.decide_unit_takeover_acquires")),
+    # K2 / R1-R2: rollback installs bytes that do not reproduce the target's record
+    Mutant("rollback-unretained-installed", "rollback.rs",
+           "            Bytes::Missing => false,",
+           "            Bytes::Missing => true,",
+           ("Gripsack.Kernel.Rollback.decide_restore_spec",
+            "Gripsack.Kernel.Rollback.decide_restore_unrestorable_refused")),
+    # K2: a write installs something other than the target's recorded identity
+    Mutant("rollback-installs-not-target", "rollback.rs",
+           "                } else {\n                    Restore::Write(intended)\n                }",
+           "                } else {\n                    Restore::Write(Intended::Removed)\n                }",
+           ("Gripsack.Kernel.Rollback.decide_restore_spec",)),
+    # K1 through rollback: consent assumed, drift overwritten
+    Mutant("rollback-drift-overwritten", "rollback.rs",
+           "        take_over: TakeOver::Withheld,",
+           "        take_over: TakeOver::Granted,",
+           ("Gripsack.Kernel.Rollback.decide_restore_spec",
+            "Gripsack.Kernel.Rollback.decide_restore_drift_kept")),
+    # FND-2: a write lands inside a published generation's directory
+    Mutant("rollback-writes-generation", "rollback.rs",
+           "        Place::Generation => false,",
+           "        Place::Generation => true,",
+           ("Gripsack.Kernel.Rollback.decide_restore_spec",)),
+    # a unit is reported restored whatever landed
+    Mutant("rollback-restored-unchecked", "rollback.rs",
+           "            if lands(&install, &live) {",
+           "            if lands(&install, &live) || true {",
+           ("Gripsack.Kernel.Rollback.on_landed_spec",)),
+    # the flip skips a unit (the first is never settled)
+    Mutant("rollback-flip-skips-unit", "rollback.rs",
+           "            state.plan = plan;\n            state.index = 0;",
+           "            state.plan = plan;\n            state.index = 1;",
+           ("Gripsack.Kernel.Rollback.on_plan_spec",)),
+    # R3: an unrestorable delegated unit is reported settled and the flip follows
+    Mutant("rollback-unrestorable-settled", "rollback.rs",
+           "            Event::Refused => {\n                let unit = state.index;\n                refuse(\n                    state,\n                    Refusal::Unrestorable {\n                        unit,\n                        dest: facts.dest,\n                    },\n                )\n            }",
+           "            Event::Refused => report(state, facts.dest, Settled::Delegated),",
+           ("Gripsack.Kernel.Rollback.on_delegated_spec",
+            "Gripsack.Kernel.Rollback.rollback_delegated_refusal_aborts")),
+    # K6: the reselection reuses the transaction it replaces
+    Mutant("rollback-reused-transaction", "rollback.rs",
+           "            }) => !transaction.same(replaced),",
+           "            }) => true,",
+           ("Gripsack.Kernel.Rollback.fresh_spec",)),
+    # FND-2: a target without its own profile is admitted (the backfill's premise)
+    Mutant("rollback-profile-ignored", "rollback.rs",
+           "        Profile::Missing => Some(Refusal::ProfileMissing),",
+           "        Profile::Missing => None,",
+           ("Gripsack.Kernel.Rollback.admit_spec",)),
 )
 
 # lake reports `error: <path>.lean:<line>:<col>: <message>`
@@ -166,7 +214,8 @@ def declarations(path: Path) -> list[tuple[int, str]]:
         if match := NAMESPACE.match(line):
             namespace = match.group("name") + "."
             continue
-        if line.startswith("end "):
+        # `end <namespace>` closes it; `end <section>` (e.g. `end helpers`) does not
+        if line.startswith("end ") and line[4:].strip() + "." == namespace:
             namespace = ""
             continue
         if match := DECLARATION.match(line):

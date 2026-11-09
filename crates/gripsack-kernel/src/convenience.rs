@@ -91,6 +91,11 @@ use crate::{
         Route, Scope, Verdict,
     },
     retention::GcAdmission,
+    rollback::{
+        Bytes, Command as RollbackCommand, Event as RollbackEvent, Outcome as RollbackOutcome,
+        Phase as RollbackPhase, Place, PlanFacts, Profile, Refusal as RollbackRefusal, Restore,
+        RollbackState, Settled, Target, UnitFacts,
+    },
     selection::{RecoveryFacts, SelectionIdentity, TransactionId},
 };
 
@@ -142,6 +147,20 @@ copy_impls!(
     Consent,
     UnitRefusal,
     UnitDecision,
+    Place,
+    Bytes,
+    Target,
+    UnitFacts,
+    Profile,
+    PlanFacts,
+    Settled,
+    Restore,
+    RollbackOutcome,
+    RollbackRefusal,
+    RollbackCommand,
+    RollbackEvent,
+    RollbackPhase,
+    RollbackState,
 );
 
 macro_rules! same_eq {
@@ -218,6 +237,12 @@ impl fmt::Debug for UnitDecision {
             UnitDecision::TakeOver => f.write_str("TakeOver"),
             UnitDecision::Refuse(why) => f.debug_tuple("Refuse").field(why).finish(),
         }
+    }
+}
+
+impl Default for RollbackState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -386,7 +411,182 @@ unit_debug!(
         Finished,
         Aborted
     },
+    Place {
+        Outside,
+        Generation
+    },
+    Bytes { Retained, Missing },
+    Profile { Retained, Missing },
+    RollbackOutcome { RolledBack },
+    RollbackPhase {
+        Start,
+        ReadingPlan,
+        ReadingUnit,
+        Observing,
+        Writing,
+        Delegating,
+        Reporting,
+        Flipping,
+        Finished,
+        Aborted
+    },
 );
+
+impl fmt::Debug for Target {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Target::Absent => f.write_str("Absent"),
+            Target::Wrote { ident, bytes } => f
+                .debug_struct("Wrote")
+                .field("ident", ident)
+                .field("bytes", bytes)
+                .finish(),
+            Target::Preserved => f.write_str("Preserved"),
+        }
+    }
+}
+
+impl fmt::Debug for UnitFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UnitFacts")
+            .field("dest", &self.dest)
+            .field("place", &self.place)
+            .field("route", &self.route)
+            .field("current", &self.current)
+            .field("target", &self.target)
+            .finish()
+    }
+}
+
+impl fmt::Debug for PlanFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PlanFacts")
+            .field("units", &self.units)
+            .field("reselect", &self.reselect)
+            .field("previous", &self.previous)
+            .field("profile", &self.profile)
+            .finish()
+    }
+}
+
+impl fmt::Debug for Settled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Settled::Restored => f.write_str("Restored"),
+            Settled::Already => f.write_str("Already"),
+            Settled::Kept(why) => f.debug_tuple("Kept").field(why).finish(),
+            Settled::Untouched => f.write_str("Untouched"),
+            Settled::Delegated => f.write_str("Delegated"),
+        }
+    }
+}
+
+impl fmt::Debug for Restore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Restore::Write(install) => f.debug_tuple("Write").field(install).finish(),
+            Restore::Leave(settled) => f.debug_tuple("Leave").field(settled).finish(),
+            Restore::Refuse(why) => f.debug_tuple("Refuse").field(why).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for RollbackRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let unit = |f: &mut fmt::Formatter<'_>, name: &str, unit: &u32, dest: &DestId| {
+            f.debug_struct(name)
+                .field("unit", unit)
+                .field("dest", dest)
+                .finish()
+        };
+        match self {
+            RollbackRefusal::ProfileMissing => f.write_str("ProfileMissing"),
+            RollbackRefusal::Reused => f.write_str("Reused"),
+            RollbackRefusal::Unrestorable { unit: u, dest } => unit(f, "Unrestorable", u, dest),
+            RollbackRefusal::Protected { unit: u, dest } => unit(f, "Protected", u, dest),
+            RollbackRefusal::Drifted { unit: u, dest } => unit(f, "Drifted", u, dest),
+            RollbackRefusal::NotRestored { unit: u, dest } => unit(f, "NotRestored", u, dest),
+            RollbackRefusal::Malformed => f.write_str("Malformed"),
+            RollbackRefusal::Failed => f.write_str("Failed"),
+            RollbackRefusal::Protocol => f.write_str("Protocol"),
+        }
+    }
+}
+
+impl fmt::Debug for RollbackCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RollbackCommand::ReadPlan => f.write_str("ReadPlan"),
+            RollbackCommand::ReadUnit(unit) => f.debug_tuple("ReadUnit").field(unit).finish(),
+            RollbackCommand::Observe { unit, dest } => f
+                .debug_struct("Observe")
+                .field("unit", unit)
+                .field("dest", dest)
+                .finish(),
+            RollbackCommand::Mutate {
+                unit,
+                dest,
+                expect,
+                install,
+            } => f
+                .debug_struct("Mutate")
+                .field("unit", unit)
+                .field("dest", dest)
+                .field("expect", expect)
+                .field("install", install)
+                .finish(),
+            RollbackCommand::Delegate { unit, dest } => f
+                .debug_struct("Delegate")
+                .field("unit", unit)
+                .field("dest", dest)
+                .finish(),
+            RollbackCommand::Report {
+                unit,
+                dest,
+                settled,
+            } => f
+                .debug_struct("Report")
+                .field("unit", unit)
+                .field("dest", dest)
+                .field("settled", settled)
+                .finish(),
+            RollbackCommand::Flip(selection) => f.debug_tuple("Flip").field(selection).finish(),
+            RollbackCommand::Finish(outcome) => f.debug_tuple("Finish").field(outcome).finish(),
+            RollbackCommand::Abort(why) => f.debug_tuple("Abort").field(why).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for RollbackEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RollbackEvent::Start => f.write_str("Start"),
+            RollbackEvent::PlanRead(plan) => f.debug_tuple("PlanRead").field(plan).finish(),
+            RollbackEvent::UnitRead(unit) => f.debug_tuple("UnitRead").field(unit).finish(),
+            RollbackEvent::Observed { dest, live } => f
+                .debug_struct("Observed")
+                .field("dest", dest)
+                .field("live", live)
+                .finish(),
+            RollbackEvent::Landed { live } => f.debug_struct("Landed").field("live", live).finish(),
+            RollbackEvent::Done => f.write_str("Done"),
+            RollbackEvent::Refused => f.write_str("Refused"),
+            RollbackEvent::Failed(failure) => f.debug_tuple("Failed").field(failure).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for RollbackState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RollbackState")
+            .field("phase", &self.phase)
+            .field("plan", &self.plan)
+            .field("index", &self.index)
+            .field("unit", &self.unit)
+            .field("install", &self.install)
+            .finish()
+    }
+}
 
 impl fmt::Debug for Ident {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

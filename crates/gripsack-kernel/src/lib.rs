@@ -24,6 +24,7 @@ pub mod journal;
 pub mod ownership;
 pub mod recover;
 pub mod retention;
+pub mod rollback;
 pub mod selection;
 
 pub use generation::{GenerationId, GenerationList};

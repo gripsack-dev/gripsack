@@ -24,4 +24,5 @@ start_from = [
     "gripsack_kernel::journal",
     "gripsack_kernel::recover",
     "gripsack_kernel::ownership",
+    "gripsack_kernel::rollback",
 ]
