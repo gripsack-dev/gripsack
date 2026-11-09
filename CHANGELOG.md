@@ -6,6 +6,8 @@ User-visible changes per release. Design archaeology lives in
 
 ## [Unreleased]
 
+## [0.53.0] — Proved ownership and rollback
+
 ### Fixed
 
 - A managed block whose content has carriage returns right before a line
