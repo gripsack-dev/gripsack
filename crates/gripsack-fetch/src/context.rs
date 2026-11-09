@@ -117,6 +117,17 @@ impl FetchContext {
             .payload_hash(url, api_url, self.limits.download_bytes.get())
     }
 
+    /// The `Location` of an unfollowed redirect (e.g. GitHub's `/releases/latest`).
+    pub fn redirect_location(&self, url: &str) -> Result<String, FetchError> {
+        self.network.redirect_location(url)
+    }
+
+    /// Bounded download of a public release asset with its SHA-256 computed;
+    /// the caller decides what digest to require.
+    pub fn download_public(&self, url: &str) -> Result<crate::spool::Download, FetchError> {
+        self.download(url, crate::http::RequestKind::Artifact { api_url: None })
+    }
+
     pub fn resolve_latest(
         &self,
         repo: &str,

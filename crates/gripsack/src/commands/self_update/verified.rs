@@ -1,67 +1,115 @@
-//! Execute only verifier code compiled into this core, never a remote installer.
+//! Checksum-verified release acquisition: the same steps as `install.sh`.
+//! Resolve the version, download the tarball and its `.sha256` sidecar,
+//! compare digests, and extract `grip` into the staging directory.
 
-use gripsack_process::{Control, Limits, StopReason};
-use serde::Deserialize;
+use gripsack_fetch::FetchContext;
+use std::io::{Read, Write};
 use std::path::Path;
-use std::process::Command;
-use std::time::Duration;
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Release {
-    pub version: String,
-    pub manifest_sha256: String,
+const TARGET: &str = "x86_64-unknown-linux-musl";
+const MAX_BINARY_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Release downloads always come from GitHub; debug builds (used by tests)
+/// may redirect them with `GRIPSACK_RELEASE_BASE_URL`.
+fn base_url() -> String {
+    #[cfg(debug_assertions)]
+    if let Ok(base) = std::env::var("GRIPSACK_RELEASE_BASE_URL") {
+        return base.trim_end_matches('/').to_owned();
+    }
+    "https://github.com/gripsack-dev/gripsack".to_owned()
 }
 
-pub(super) fn admit(staging: &Path, version: Option<&str>, check: bool) -> Result<Release, String> {
-    let installer = staging.join("verified-installer.sh");
-    std::fs::write(&installer, include_bytes!("installer.sh"))
-        .map_err(|error| format!("cannot stage embedded verifier: {error}"))?;
-    let mut command = Command::new("sh");
-    command.arg(&installer);
-    if check {
-        command.arg("--check");
+fn ensure_supported_platform() -> Result<(), String> {
+    if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        Ok(())
     } else {
-        command.arg("--stage").arg(staging);
+        Err("release downloads are published for Linux x86_64 only".into())
     }
-    if let Some(version) = version {
-        command.arg("--version").arg(version);
+}
+
+/// The exact requested version, or the one GitHub's `releases/latest` redirects to.
+pub(super) fn resolve(fetch: &FetchContext, requested: Option<&str>) -> Result<String, String> {
+    if let Some(version) = requested {
+        return Ok(version.to_owned());
     }
-    let limits = Limits {
-        timeout: Duration::from_secs(3600),
-        operation_deadline: None,
-        input_bytes: gripsack_process::InputByteLimit::new(0),
-        line_bytes: gripsack_process::FrameByteLimit::new(8192),
-        stdout_bytes: gripsack_process::StdoutByteLimit::new(8192),
-        stderr_bytes: gripsack_process::StderrByteLimit::new(64 * 1024),
-        retained_stderr_bytes: gripsack_process::RetainedStderrLimit::new(8192),
+    let location = fetch
+        .redirect_location(&format!("{}/releases/latest", base_url()))
+        .map_err(|e| format!("cannot resolve the latest release: {e}"))?;
+    let version = location
+        .rsplit_once("/core-v")
+        .map(|(_, version)| version)
+        .filter(|version| super::parse_version(version).is_some())
+        .ok_or_else(|| format!("unexpected latest-release redirect: {location}"))?;
+    Ok(version.to_owned())
+}
+
+/// Download, verify and extract `grip` as `<staging>/grip`.
+pub(super) fn stage(fetch: &FetchContext, version: &str, staging: &Path) -> Result<(), String> {
+    ensure_supported_platform()?;
+    let name = format!("gripsack-{version}-{TARGET}.tar.gz");
+    let url = format!("{}/releases/download/core-v{version}/{name}", base_url());
+    let tarball = fetch
+        .download_public(&url)
+        .map_err(|e| format!("cannot download {name}: {e}"))?;
+    let sidecar = fetch
+        .download_public(&format!("{url}.sha256"))
+        .map_err(|e| format!("cannot download {name}.sha256: {e}"))?;
+    let sidecar = std::fs::read_to_string(sidecar.file.path()).map_err(|e| e.to_string())?;
+    let expected = expected_digest(&sidecar, &name)?;
+    if tarball.hash.as_str() != expected {
+        return Err(format!("checksum mismatch for {name}; nothing installed"));
+    }
+    extract_grip(tarball.file.path(), &staging.join("grip"))
+}
+
+/// `<hex>  <name>` as written by `sha256sum`.
+fn expected_digest(sidecar: &str, name: &str) -> Result<String, String> {
+    let mut words = sidecar.split_whitespace();
+    let (Some(digest), Some(listed), None) = (words.next(), words.next(), words.next()) else {
+        return Err("malformed checksum file".into());
     };
-    let mut output = Vec::new();
-    let outcome = gripsack_process::run(&mut command, &[], limits, |line| {
-        output.extend_from_slice(line);
-        output.push(b'\n');
-        Control::Continue
-    })
-    .map_err(|error| format!("cannot run embedded release verifier: {error}"))?;
-    if !matches!(outcome.reason, StopReason::Exited)
-        || !outcome.status.is_some_and(|status| status.success())
+    if listed.trim_start_matches('*') != name
+        || digest.len() != 64
+        || !digest.bytes().all(|b| b.is_ascii_hexdigit())
     {
-        return Err(format!(
-            "signed release admission failed ({:?}): {}",
-            outcome.reason,
-            String::from_utf8_lossy(&outcome.stderr)
-        ));
+        return Err(format!("checksum file does not describe {name}"));
     }
-    let release: Release = serde_json::from_slice(&output)
-        .map_err(|error| format!("invalid embedded verifier receipt: {error}"))?;
-    if super::parse_version(&release.version).is_none()
-        || release.manifest_sha256.len() != 64
-        || !release
-            .manifest_sha256
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err("invalid verified release identity".into());
+    Ok(digest.to_ascii_lowercase())
+}
+
+fn extract_grip(tarball: &Path, output: &Path) -> Result<(), String> {
+    let file = std::fs::File::open(tarball).map_err(|e| e.to_string())?;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
+    for entry in archive.entries().map_err(|e| e.to_string())? {
+        let mut entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path().map_err(|e| e.to_string())?.into_owned();
+        if entry.header().entry_type().is_file() && path.file_name().is_some_and(|n| n == "grip") {
+            let mut out = std::fs::File::create(output).map_err(|e| e.to_string())?;
+            let mut limited = (&mut entry).take(MAX_BINARY_BYTES + 1);
+            let copied = std::io::copy(&mut limited, &mut out).map_err(|e| e.to_string())?;
+            if copied > MAX_BINARY_BYTES {
+                return Err("grip binary in the release tarball is implausibly large".into());
+            }
+            out.flush().map_err(|e| e.to_string())?;
+            return Ok(());
+        }
     }
-    Ok(release)
+    Err("the release tarball contains no grip binary".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sidecar_must_name_the_tarball_with_a_full_digest() {
+        let digest = "a".repeat(64);
+        assert_eq!(
+            expected_digest(&format!("{digest}  x.tar.gz\n"), "x.tar.gz").unwrap(),
+            digest
+        );
+        assert!(expected_digest(&format!("{digest}  y.tar.gz\n"), "x.tar.gz").is_err());
+        assert!(expected_digest("abc  x.tar.gz\n", "x.tar.gz").is_err());
+        assert!(expected_digest(&digest, "x.tar.gz").is_err());
+    }
 }

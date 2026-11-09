@@ -1183,6 +1183,7 @@ version = "0.52.0"
 dependencies = [
  "clap",
  "dialoguer",
+ "flate2",
  "gripsack-config",
  "gripsack-exec",
  "gripsack-fetch",
@@ -1199,6 +1200,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "tar",
  "tempfile",
  "tracing",
 ]
