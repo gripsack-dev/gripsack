@@ -53,12 +53,45 @@ pub(crate) enum Recovery {
     Unchanged,
 }
 
+/// Which recovery engine runs (plan/0056 F2: old and new side by side for
+/// one release). Release builds always run the kernel machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Engine {
+    /// `gripsack_kernel::recover` driven by `gripsack_host::recover`.
+    Kernel,
+    /// The pre-F2 hand-written reconcile below.
+    Legacy,
+}
+
+/// `GRIPSACK_ENGINE=legacy|kernel`, honoured in debug builds only (the e2e
+/// binary), so the crash flows can run against both engines.
+fn engine() -> Engine {
+    #[cfg(debug_assertions)]
+    if std::env::var_os("GRIPSACK_ENGINE").is_some_and(|engine| engine == "legacy") {
+        return Engine::Legacy;
+    }
+    Engine::Kernel
+}
+
 /// Resolve uncommitted journal entries from an interrupted run:
 /// committed runs (the flip landed) are cleaned up, their content
 /// stands; uncommitted runs are restored to their priors. Returns one
 /// human line per decision for the apply report. Must run under the
 /// lifecycle lock.
+///
+/// The kernel's recover machine decides (`recover_kernel`); a destination
+/// whose identity cannot be established (a directory, a special file, a
+/// non-UTF-8 link) is refused by name and the journal retained.
 pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> {
+    match engine() {
+        Engine::Kernel => super::recover_kernel::reconcile(home, home_path),
+        Engine::Legacy => reconcile_legacy(home, home_path),
+    }
+}
+
+/// The pre-F2 reconcile, kept behind the debug-only `GRIPSACK_ENGINE`
+/// switch for one release (plan/0056 §9 F2), then deleted.
+fn reconcile_legacy(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> {
     let Some(journal) = Journal::open(home)? else {
         return Ok(Vec::new());
     };
@@ -316,8 +349,8 @@ fn describe_prior(prior: &PriorSerde) -> String {
     }
 }
 
-/// The recovery outcome as a pure decision (0045 F1) — the model
-/// checkers drive this, so it carries no rendered text.
+/// The recovery outcome as a pure decision (0045 F1), for the legacy
+/// engine; the kernel's `recover::decide` is the proved replacement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RecoveryDecision {
     /// Restore the prior state.
@@ -328,12 +361,10 @@ pub(crate) enum RecoveryDecision {
     Unchanged,
 }
 
-/// The recovery decision as a pure function of the three typed
-/// identities (0028, 0045 F1): the model checker drives THIS code
-/// with abstract states — the protocol's decision logic is what gets
-/// checked, not a parallel reimplementation. Typed equality makes the
-/// old wire-collision class (a link target spelling a file identity
-/// or the removal sentinel) unrepresentable.
+/// The legacy recovery decision as a pure function of the three typed
+/// identities (0028, 0045 F1). Typed equality makes the old wire-collision
+/// class (a link target spelling a file identity or the removal sentinel)
+/// unrepresentable. The kernel's `recover::decide` keeps this order.
 pub(crate) fn decide_from(
     live: Option<&ObjectIdentity>,
     intended: &Intended,

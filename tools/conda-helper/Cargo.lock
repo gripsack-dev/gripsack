@@ -1671,6 +1671,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gripsack-host"
+version = "0.52.0"
+dependencies = [
+ "gripsack-fs",
+ "gripsack-kernel",
+ "rustix 1.1.5",
+]
+
+[[package]]
 name = "gripsack-ir"
 version = "0.52.0"
 dependencies = [
@@ -1711,6 +1720,7 @@ version = "0.52.0"
 dependencies = [
  "getrandom 0.4.3",
  "gripsack-fs",
+ "gripsack-host",
  "gripsack-ir",
  "gripsack-kernel",
  "gripsack-policy",

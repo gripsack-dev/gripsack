@@ -202,7 +202,24 @@ pub fn observe<H: RecoverHost>(
     parent: &<H::Storage as Storage>::Dir,
     name: &Name,
 ) -> io::Result<(Live, Found)> {
-    let storage = host.storage();
+    observe_with(
+        host.storage(),
+        parent,
+        name,
+        |bytes, mode| host.file_ident(bytes, mode),
+        |target| host.link_ident(target),
+    )
+}
+
+/// [`observe`] without a host, for read-only inspection: one `lstat`, then
+/// the content of a file or a link, digested by the given identities.
+pub fn observe_with<S: Storage>(
+    storage: &S,
+    parent: &S::Dir,
+    name: &Name,
+    file_ident: impl FnOnce(&[u8], Permissions) -> Ident,
+    link_ident: impl FnOnce(&Path) -> Option<Ident>,
+) -> io::Result<(Live, Found)> {
     let metadata = match storage.metadata(parent, name) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -215,11 +232,11 @@ pub fn observe<H: RecoverHost>(
             let file = storage.open_file(parent, name)?;
             let bytes = storage.read_file(&file)?;
             (
-                Live::Obj(host.file_ident(&bytes, metadata.permissions)),
+                Live::Obj(file_ident(&bytes, metadata.permissions)),
                 Found::File,
             )
         }
-        ObjectKind::Symlink => match host.link_ident(&storage.read_link(parent, name)?) {
+        ObjectKind::Symlink => match link_ident(&storage.read_link(parent, name)?) {
             Some(ident) => (Live::Obj(ident), Found::Link),
             None => (Live::Unsupported, Found::UndecodableLink),
         },

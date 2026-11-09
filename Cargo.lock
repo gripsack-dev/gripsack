@@ -1390,6 +1390,7 @@ version = "0.52.0"
 dependencies = [
  "getrandom 0.4.3",
  "gripsack-fs",
+ "gripsack-host",
  "gripsack-ir",
  "gripsack-kernel",
  "gripsack-policy",

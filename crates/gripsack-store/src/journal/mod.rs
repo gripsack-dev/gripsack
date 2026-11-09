@@ -43,7 +43,14 @@ pub mod marker;
 mod marker_wire;
 mod mutation;
 pub use mutation::{CapturedPrior, MutationPermit, capture, record};
+mod inspect;
+/// The kernel's per-entry decision and what an observation found, as the
+/// doctor view reports them.
+pub use gripsack_host::recover::Found;
+pub use gripsack_kernel::recover::Decision;
+pub use inspect::{EntryOutlook, EntryView, JournalView, RunVerdict, inspect};
 pub(crate) mod recover;
+mod recover_kernel;
 mod storage;
 mod wire;
 pub use wire::{Entry, IntendedSerde, PriorSerde, WireRejection};
@@ -420,8 +427,3 @@ mod protocol_tests;
 
 #[cfg(test)]
 mod tests;
-
-/// The exhaustive state-machine model of this protocol
-/// (plan/0028) — see the module's own documentation.
-#[cfg(test)]
-mod model;
