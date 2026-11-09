@@ -76,7 +76,6 @@ MANIFEST_ACCEPT = ", ".join([
 
 WORKFLOW_FILES = [
     ".github/workflows/ci.yml",
-    ".github/workflows/release-core.yml",
 ]
 HOST_RS = "crates/gripsack-fetch/src/host.rs"
 

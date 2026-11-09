@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 import os
 from pathlib import Path
 import platform
@@ -212,11 +213,21 @@ class Consumer:
         package = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(package)
         manifest = json.loads((dist / f"{helper}.manifest.json").read_text())
-        for key, value in {"schema": 1, "version": version, "target": TARGET, "asset": helper,
-                           "sha256": sha(dist / helper), "bytes": (dist / helper).stat().st_size,
-                           "lock_sha256": sha(ROOT / "tools/conda-helper/Cargo.lock"),
-                           "source_sha256": package.source_digest(ROOT / "tools/conda-helper"),
-                           "build_image": package.LINUX_IMAGE}.items():
+        expected = {"schema": 1, "version": version, "target": TARGET, "asset": helper,
+                    "sha256": sha(dist / helper), "bytes": (dist / helper).stat().st_size,
+                    "build_image": package.LINUX_IMAGE}
+        pins = (ROOT / "crates/gripsack-fetch/src/conda_pins.rs").read_text()
+        pinned_bytes = re.search(r"LinuxX86_64Musl,\s*\"([0-9a-f]{64})\"", pins)
+        pinned_source = re.search(r"source-input SHA-256\s*(?://\s*)?([0-9a-f]{64})", pins)
+        published = (pinned_bytes and pinned_source and sha(dist / helper) == pinned_bytes.group(1)
+                     and manifest.get("source_sha256") == pinned_source.group(1))
+        if not published:
+            # Built from this tree (a release bump): it must describe this tree.
+            expected["lock_sha256"] = sha(ROOT / "tools/conda-helper/Cargo.lock")
+            expected["source_sha256"] = package.source_digest(ROOT / "tools/conda-helper")
+        # Otherwise it is the published, pinned helper reused between releases
+        # (plan/0057): its manifest describes the pinned build, not this tree.
+        for key, value in expected.items():
             require(manifest.get(key) == value, f"helper manifest {key} mismatch")
         rounds = manifest.get("reproducible_rounds")
         require(type(rounds) is int and rounds in (1, 2), "helper manifest build rounds mismatch")

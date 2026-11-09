@@ -8,6 +8,10 @@ User-visible changes per release. Design archaeology lives in
 
 ### Fixed
 
+- `install.sh` and `grip self-update` work again. They download the release
+  tarball and its published `.sha256`, verify it, and install atomically.
+  They no longer need the GitHub CLI, Python or a signed release manifest.
+
 - Crash recovery no longer wedges on a destination that became a directory
   (or a FIFO, socket, device, or a symlink with a non-UTF-8 target) after an
   interrupted `apply` or `rollback`. Recovery now refuses by name: the error
