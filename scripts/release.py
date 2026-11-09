@@ -282,7 +282,7 @@ def verify_assets(dist: Path, version: str, installer: bytes):
 
 
 def external_checkouts() -> dict[str, Path]:
-    """Fresh checkouts of the pinned website and example repositories."""
+    """Fresh checkout of the pinned website repository."""
     pins = json.loads((ROOT / ".ci/pilot.json").read_text())["external_inputs"]["repositories"]
     base = ROOT / "local-ci/external"
     checkouts = {}
@@ -311,7 +311,7 @@ def smoke(dist: Path):
             "-v", f"{dist.resolve()}:/app/dist:ro", "-v", f"{report}:/app/local-ci",
             *(arg for name, path in checkouts.items() for arg in ("-v", f"{path}:/app/{name}:ro")),
             "tools", "python3", "scripts/local_artifact_consumers.py", "--dist", "/app/dist",
-            "--site", "/app/site", "--example", "/app/example",
+            "--site", "/app/site",
             "--report", "/app/local-ci/consumers.json", profile="tools")
 
 

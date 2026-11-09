@@ -123,10 +123,6 @@
       "site": {
         "url": "https://github.com/gripsack-dev/gripsack-dev.github.io.git",
         "commit": "a13fdbd7fd323b936ecb9c81ae92ccd92e79e2e8"
-      },
-      "example": {
-        "url": "https://github.com/gripsack-dev/example-env-typescript.git",
-        "commit": "798945cd9c0fcf26f9379c36e2942d52113f15b2"
       }
     }
   }
