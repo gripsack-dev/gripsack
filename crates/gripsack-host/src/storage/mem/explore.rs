@@ -29,7 +29,8 @@ impl CrashKinds {
 }
 
 /// The most pending updates a power loss may choose among: the subsets are
-/// enumerated exhaustively, so the bound keeps a test's cost explicit.
+/// enumerated exhaustively, so the bound keeps a test's cost explicit
+/// (and is capped below 64).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PendingBound(pub usize);
 
@@ -199,7 +200,7 @@ pub fn explore(
         }
         if kinds.power_loss() {
             let pending = fs.pending_updates();
-            if pending > bound.0 {
+            if pending > bound.0 || pending >= u64::BITS as usize {
                 return Err(ExploreError::Unbounded { cut, pending });
             }
             for subset in 0u64..(1u64 << pending) {
