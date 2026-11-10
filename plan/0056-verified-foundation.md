@@ -1828,3 +1828,10 @@ exact commands (`cargo fmt --check`, `cargo clippy --locked --workspace
 fmt/clippy/test) passed from the same `builder` stage with a private, clean
 target directory. Not run: `verify` (whose floor this branch lowers), `model`,
 `tlaps`, `ts-test`, fuzz.
+
+After merging `main` (the GC machine, §18; `proofs/Extracted` regenerated):
+`proofs` passed in 1700 s (no drift, 324 theorems, 61 claims, standard axioms
+only, 58/58 mutants calibrated); `test` passed as a compose run (`gate
+passed: fmt + clippy -D warnings + cargo test`); `e2e` 688 passed in 13m59s.
+The `check_verus` floor is 368: main's 371, which step 4 left unchanged, less
+this step's three.
