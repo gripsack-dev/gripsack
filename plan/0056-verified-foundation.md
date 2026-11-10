@@ -2249,6 +2249,17 @@ outstanding, units read one at a time until the host answers `Exhausted`.
   consent), `ops::plan::write::tests::the_permission_policy`,
   `apply::dests::tests::spellings_are_one_destination_only_when_the_filesystem_says_so`.
 
+Gates (docker, `-p f2apply`, one at a time). `proofs` OK in 2458 s at
+`63e7b6d` (no translation drift, 474 theorems, 94 claims, standard axioms
+only, 87/87 mutants calibrated); the kernel and proofs are unchanged since.
+At `d715d04`: `test` passed (fmt, clippy `-D warnings`, cargo test); `e2e`
+690 passed in 13m01s. The first `e2e` run (at `63e7b6d`) failed three
+subset-apply tests (§21.7 item 3), fixed in `d715d04`. On the host, against
+the e2e image: `test_destination_ownership.py` 1 failed / 13 passed with the
+baseline binary, 14 passed after. Not run: `verify` (Verus; floor unchanged),
+`model` (TLC; `Ownership.tla` removed from its list), `tlaps`, `ts-test`,
+fuzz.
+
 ### 21.6 Deleted
 
 `gripsack-exec/src/ops/model.rs` (651 lines: the planner/executor explorer —
