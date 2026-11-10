@@ -70,18 +70,22 @@ COPY schema/ir/v10.json ./schema/ir/v10.json
 # original mtimes, so another branch's newer build of the same crate could
 # look fresh. Every cached cargo step first touches the local sources: our
 # crates always rebuild; only registry dependencies come from the cache.
+# The target mounts are `sharing=locked`: two gates (or two branches) building
+# at once used to write the same target directory concurrently, which produced
+# spurious failures and could let a gate run another build's binaries. Locked
+# mounts serialize the cargo steps instead (and cap peak memory at one cargo).
 FROM builder AS test
 COPY tools/conda-helper ./tools/conda-helper
 RUN apk add --no-cache python3 build-base cmake perl linux-headers xz-dev bzip2-dev zstd-dev
 RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=gripsack-target-dev,target=/app/target \
+    --mount=type=cache,id=gripsack-target-dev,target=/app/target,sharing=locked \
     find crates -type f -exec touch {} + \
     && cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
 # The optional installer has its own dependency lock, but not an optional gate.
 RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=gripsack-target-dev,target=/app/target \
+    --mount=type=cache,id=gripsack-target-dev,target=/app/target,sharing=locked \
     find crates tools/conda-helper -type f -exec touch {} + \
     && cargo fmt --manifest-path tools/conda-helper/Cargo.toml --all --check \
     && CARGO_TARGET_DIR=/app/target cargo clippy --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets -- -D warnings \
@@ -107,7 +111,7 @@ RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/regist
 # mount omits only debugger metadata.
 FROM builder AS bin
 RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=gripsack-target-dev,target=/app/target \
+    --mount=type=cache,id=gripsack-target-dev,target=/app/target,sharing=locked \
     find crates -type f -exec touch {} + \
     && cargo build --locked -p gripsack \
     && apk add --no-cache binutils \
@@ -286,7 +290,7 @@ FROM builder AS release
 # dependency tree is reused between releases, gripsack's crates are rebuilt,
 # and the binary is copied out of the mount so the image carries it.
 RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=gripsack-target-release,target=/app/target \
+    --mount=type=cache,id=gripsack-target-release,target=/app/target,sharing=locked \
     find crates -type f -exec touch {} + \
     && cargo auditable build --release --locked -p gripsack \
     && strip target/release/grip \
