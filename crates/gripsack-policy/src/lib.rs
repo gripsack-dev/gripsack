@@ -14,7 +14,6 @@
 //! Crate rules (handoff §6.1): no filesystem, network, subprocess,
 //! tracing, or async dependencies. Effects stay in the caller's crate;
 //! rendering stays out of the kernels.
-pub mod activation;
 pub mod conda_admission;
 pub mod graph;
 pub mod operation_budget;

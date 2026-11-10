@@ -166,6 +166,33 @@ def test_failed_hook_is_degraded_without_rollback_or_automatic_retry(sandbox):
     assert all(row["state"] == {"kind": "failed", "attempt": 1} for row in restored)
 
 
+def test_hook_launches_only_while_its_selection_is_current(sandbox):
+    """P4 (plan/0056 F2 step 5): each launch re-checks `current` against the
+    batch's selection. A hook that moves `current` (an external writer the
+    lifecycle lock cannot exclude) stops every later hook; the next run
+    supersedes them, so they never run."""
+    repo = sandbox / "hooks"
+    effect = sandbox / "effects"
+    declare(repo, [], content="one")
+    run(repo, "apply")
+    first = current(sandbox)
+    link = sandbox / ".local/share/gripsack/current"
+    repoint = ["/bin/sh", "-c", f"ln -sfn {shlex.quote(str(first))} {shlex.quote(str(link))}"]
+    declare(repo, [("repoint", "post_link", repoint),
+                   ("later", "post_link", append(effect, "later"))], content="two")
+    result = run(repo, "apply")
+    assert current(sandbox) == first
+    assert not effect.exists(), "a hook ran after its selection stopped being current"
+    assert "activation evidence retained" in result.stdout + result.stderr
+    repointed, later = outcomes(repo)  # ledger order
+    assert repointed["state"] == {"kind": "succeeded", "attempt": 1}
+    assert later["state"] == {"kind": "started", "attempt": 1}
+    declare(repo, [], content="three")
+    run(repo, "apply")
+    assert not effect.exists()
+    assert {"kind": "superseded", "last_attempt": 1} in [row["state"] for row in outcomes(repo)]
+
+
 @pytest.mark.parametrize("cut,before_count,attempt,after_count", [
     ("hook-after-start", 0, 2, 1),
     ("hook-after-effect", 1, 2, 2),

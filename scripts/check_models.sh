@@ -65,12 +65,12 @@ done
 check RepeatedRecovery.tla cfg/repeated-same-generation.cfg
 check RepeatedRecovery.tla cfg/repeated-empty-destinations.cfg
 check RepeatedRecovery.tla cfg/repeated-fresh-selection.cfg
+# The activation decisions (durable Started before launch, outcome after
+# return, terminal no-replay, exact selection, archive before clear) are Lean
+# theorems over the shipped machine with calibrating mutants (plan/0056 §20);
+# this model stays as the crash-layer bug-finder, calibrated by the intent
+# identity hashing the kernel does not decide.
 check Activation.tla cfg/activation.cfg
-check Activation.tla cfg/activation-unsealed-start.cfg PermitAfterDurableStart
-check Activation.tla cfg/activation-early-success.cfg OutcomeAfterReturn
-check Activation.tla cfg/activation-retry-failure.cfg TerminalNoReplay
-check Activation.tla cfg/activation-generation-commit.cfg EffectsBindFullSelection
-check Activation.tla cfg/activation-early-clear.cfg ArchiveBeforeClear
 check Activation.tla cfg/activation-generation-token.cfg DistinctIntentIdentity
 check RepeatedActivation.tla cfg/repeated-activation.cfg
 check RepeatedActivation.tla cfg/repeated-activation-repeated-generation.cfg

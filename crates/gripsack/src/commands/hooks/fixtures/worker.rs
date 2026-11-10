@@ -1,6 +1,6 @@
 use super::{FixtureCase, FixtureRoot, SimulationMode, invalid, store};
-use gripsack_policy::activation::IntentState;
 use gripsack_process::{ByteBinding, Enforcement, Sha256Digest};
+use gripsack_store::activation::IntentState;
 use serde::Serialize;
 use std::io;
 
@@ -129,8 +129,7 @@ pub(super) fn observe(root: &FixtureRoot, case: FixtureCase) -> io::Result<Obser
             activation: row
                 .activation
                 .ok_or_else(|| invalid("fixture activation has no identity"))?,
-            attempt: state
-                .attempt()
+            attempt: store::activation::last_attempt(&state)
                 .ok_or_else(|| invalid("fixture has no started attempt"))?
                 .value(),
             succeeded: matches!(state, IntentState::Succeeded { .. }),

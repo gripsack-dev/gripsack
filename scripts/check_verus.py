@@ -29,17 +29,15 @@ CRATE = ROOT / "crates/gripsack-policy"
 # step 3 moved the journal cleanup order (`journal_protocol::CleanupProgress`)
 # into the kernel's journal-run and recover machines (P1, P3, Lean); its three
 # obligations leave the floor (an estimate until the next green `verify` run).
-MIN_OBLIGATIONS = 368
+# plan/0056 F2 step 5 moved the hook-intent ledger transitions (`activation`)
+# into the kernel's activation machine (P4, Lean); its eight obligations leave
+# the floor.
+MIN_OBLIGATIONS = 360
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
     "task": tuple("task::" + name for name in (
         "prerequisite_succeeded", "admit_conflict", "admit_task_edge",
-    )),
-    "activation": tuple("activation::" + name for name in (
-        "AttemptNumber::admit", "AttemptNumber::first", "AttemptNumber::value",
-        "AttemptNumber::checked_next", "IntentState::attempt",
-        "next_attempt", "finish_attempt", "supersede",
     )),
     "graph": ("graph::build_closure", "graph::lemma_reachable_visited"),
     "graph-roles": ("graph::roles::project_graph_role", "graph::roles::GraphRole::is_dependency"),
@@ -182,13 +180,6 @@ MUTANTS = (
            "            if ed != ad {", "            if false {"),
     Mutant("conda-final-prefix", "conda_admission.rs", "conda_admission::admit_response",
            "            } else if ep != ap {", "            } else if false {"),
-    Mutant("activation-interrupted-attempt", "activation.rs", "activation::next_attempt",
-           "match attempt.checked_next() {", "match Some(*attempt) {"),
-    Mutant("activation-stale-outcome", "activation.rs", "activation::finish_attempt",
-           "if *active == attempt =>", "if *active != attempt =>"),
-    Mutant("activation-supersession", "activation.rs", "activation::supersede",
-           "IntentState::Started { attempt } => IntentState::Superseded { last_attempt: Some(*attempt) },",
-           "IntentState::Started { attempt } => IntentState::Started { attempt: *attempt },"),
     Mutant("graph-closure", "graph.rs", "graph::build_closure", "                    result.push(target);", ""),
     Mutant("graph-validation", "graph/roles.rs", "graph::roles::project_graph_role", "RoleDecision { build: false, required_validation: true },", "RoleDecision { build: false, required_validation: false },"),
     Mutant("graph-name-index", "graph/name_index.rs", "graph::name_index::bind_output_index", "    let same_name = names[position] == declared;", "    let same_name = true;"),

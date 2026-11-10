@@ -426,13 +426,38 @@ fn pre_flip(
     let migration_receipt = prev_manifest
         .as_ref()
         .and_then(|previous| previous.migration.clone());
-    if prev_manifest.as_ref().is_some_and(|previous| {
+    let unchanged = prev_manifest.as_ref().is_some_and(|previous| {
         previous.deployments == *deployments
             && previous.directory_transitions == directory_transitions
             && previous.migration == migration_receipt
-    }) && !touched_disk
-    {
-        return Ok(None);
+    });
+    // K6 (plan/0056 F2 step 5): the kernel decides whether this run cuts a
+    // generation at all, and admits the publication only for the allocated
+    // number, above the durable floor, not yet published, under a reserved
+    // selection with a fresh transaction.
+    let home_dir = ctx.home_dir()?;
+    let commit =
+        gripsack_kernel::publication::decide_commit(&gripsack_kernel::publication::CommitFacts {
+            previous: store::generations::current_selection_in(&ctx.home, home_dir)?,
+            reserved: *journal.identity(),
+            allocated: next,
+            floor: store::generations::high_water(home_dir)?,
+            unchanged,
+            touched: touched_disk,
+            exists: store::generations::published(home_dir, next)?,
+        });
+    match commit {
+        gripsack_kernel::publication::Commit::Vacuous => return Ok(None),
+        gripsack_kernel::publication::Commit::Publish => {}
+        gripsack_kernel::publication::Commit::Refuse(why) => {
+            return Err(ExecError::Step {
+                output: "*".into(),
+                step: "generation".into(),
+                detail: format!(
+                    "generation {next} cannot be published ({why:?}) — refusing to activate it"
+                ),
+            });
+        }
     }
     let generation = store::Generation {
         number: next,

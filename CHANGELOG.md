@@ -31,6 +31,14 @@ User-visible changes per release. Design archaeology lives in
   Docker examples need the network or an Engine, so the gate only
   evaluates, checks and plans those.
 
+- A post-activation hook no longer runs after the selected generation
+  changed under it. Before, `current` was checked once before the first
+  hook, so if a hook (or anything else) re-pointed `current`, the remaining
+  hooks still ran for a generation that was no longer selected. Now every
+  hook launch re-checks it: the remaining hooks stop, `apply` warns
+  "activation evidence retained", and the next run marks them superseded —
+  they never run.
+
 ### Changed
 
 - `grip apply` shows progress while it works instead of printing

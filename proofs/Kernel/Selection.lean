@@ -143,4 +143,32 @@ theorem classify_ambiguous_iff (facts : selection.RecoveryFacts) :
          ¬ (facts.previous.isSome ∧ facts.current = facts.previous)) ⦄ := by
   classify_cases facts
 
+/-- (K6) A flip binds a transaction that differs from the one it replaces
+(never a legacy pointer). Apply's publication and rollback's reselection both
+ask `selection::fresh`. -/
+def Fresh (sel : selection.SelectionIdentity) (prev : Option selection.SelectionIdentity) : Prop :=
+  ∃ g t, sel = .Transaction g t ∧ ∀ g' t', prev = some (.Transaction g' t') → t ≠ t'
+
+theorem fresh_spec (sel : selection.SelectionIdentity) (prev : Option selection.SelectionIdentity) :
+    selection.fresh sel prev ⦃ b => b = true → Fresh sel prev ⦄ := by
+  unfold selection.fresh
+  cases sel with
+  | Legacy g => simp
+  | Transaction g t =>
+    cases prev with
+    | none => simp [Fresh]
+    | some p =>
+      cases p with
+      | Legacy g' => simp [Fresh]
+      | Transaction g' t' =>
+        simp only
+        step with TransactionId.same_spec as ⟨ r, hr ⟩
+        intro h
+        refine ⟨g, t, rfl, fun g'' t'' he => ?_⟩
+        simp only [Option.some.injEq, selection.SelectionIdentity.Transaction.injEq] at he
+        obtain ⟨-, rfl⟩ := he
+        intro heq
+        simp_all
+
+
 end Gripsack.Kernel
