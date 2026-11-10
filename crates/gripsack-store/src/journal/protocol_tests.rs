@@ -1,9 +1,10 @@
 //! Consumer-visible authority and error boundaries through the real journal.
 use super::{
-    Intended, ObjectIdentity, RunOp, begin_run, capture, end_run, live_identity, pending_recovery,
-    reconcile, record,
+    Install, Intended, ObjectIdentity, RunOp, begin_run, end_run, live_identity, mutate,
+    pending_recovery, reconcile,
 };
 use gripsack_fs::Dir;
+use gripsack_host::storage::Permissions;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -43,7 +44,15 @@ fn changed_destination_cannot_gain_a_mutation_permit() {
     let name = PathBuf::from("destination");
     let expected = live_identity(&parent, &name).unwrap();
     gripsack_fs::atomic_write_with_mode(&parent, &name, b"foreign\n", 0o600).unwrap();
-    let result = capture(&run, parent, name, &destination, expected.as_ref());
+    let result = mutate(
+        &run,
+        parent,
+        name,
+        &destination,
+        expected.as_ref(),
+        &replacement(),
+        Install::Remove,
+    );
     assert!(
         result.is_err(),
         "changed_destination_gained_mutation_authority"
@@ -68,17 +77,23 @@ fn permitted_mutation_uses_the_captured_parent() {
     let parent = gripsack_fs::open(destination.parent().unwrap()).unwrap();
     let name = PathBuf::from("destination");
     let expected = live_identity(&parent, &name).unwrap();
-    let captured = capture(&run, parent, name, &destination, expected.as_ref()).unwrap();
     let retained = temporary.path().join("retained-parent");
-    std::fs::rename(destination.parent().unwrap(), &retained).unwrap();
-    std::fs::create_dir(destination.parent().unwrap()).unwrap();
-    std::fs::write(&destination, b"foreign\n").unwrap();
-    let intended = replacement();
-    let result = record(captured, &intended)
-        .unwrap()
-        .execute(|directory, name| {
-            gripsack_fs::atomic_write_with_mode(directory, name, b"deployed\n", 0o640)
-        });
+    // the parent's path is replaced while the mutation is under way
+    let swap = |_: &[u8], _: Option<Permissions>| {
+        std::fs::rename(destination.parent().unwrap(), &retained)?;
+        std::fs::create_dir(destination.parent().unwrap())?;
+        std::fs::write(&destination, b"foreign\n")?;
+        Ok(Some((b"deployed\n".to_vec(), Permissions::new(0o640))))
+    };
+    let result = mutate(
+        &run,
+        parent,
+        name,
+        &destination,
+        expected.as_ref(),
+        &replacement(),
+        Install::Splice(Box::new(swap)),
+    );
     assert!(
         result.is_ok(),
         "captured_parent_lost_mutation_authority: {result:?}"
@@ -105,17 +120,28 @@ fn mutation_error_retains_evidence_and_recovers_the_original() {
     let parent = gripsack_fs::open(destination.parent().unwrap()).unwrap();
     let name = PathBuf::from("destination");
     let expected = live_identity(&parent, &name).unwrap();
-    let captured = capture(&run, parent, name, &destination, expected.as_ref()).unwrap();
-    let intended = replacement();
-    let result = record(captured, &intended)
-        .unwrap()
-        .execute(|directory, name| {
-            gripsack_fs::atomic_write_with_mode(directory, name, b"deployed\n", 0o640)?;
-            Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "fixture effect error",
-            ))
-        });
+    let partial = |_: &[u8], _: Option<Permissions>| {
+        let parent = gripsack_fs::open(destination.parent().unwrap())?;
+        gripsack_fs::atomic_write_with_mode(
+            &parent,
+            Path::new("destination"),
+            b"deployed\n",
+            0o640,
+        )?;
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "fixture effect error",
+        ))
+    };
+    let result = mutate(
+        &run,
+        parent,
+        name,
+        &destination,
+        expected.as_ref(),
+        &replacement(),
+        Install::Splice(Box::new(partial)),
+    );
     assert!(
         matches!(result, Err(ref error) if error.kind() == io::ErrorKind::PermissionDenied),
         "mutation_error_was_lost: {result:?}"
@@ -144,16 +170,28 @@ fn unfinished_mutation_cannot_end_the_run() {
     let parent = gripsack_fs::open(destination.parent().unwrap()).unwrap();
     let name = PathBuf::from("destination");
     let expected = live_identity(&parent, &name).unwrap();
-    let captured = capture(&run, parent, name, &destination, expected.as_ref()).unwrap();
-    drop(record(captured, &replacement()).unwrap());
+    mutate(
+        &run,
+        parent,
+        name,
+        &destination,
+        expected.as_ref(),
+        &replacement(),
+        Install::File {
+            bytes: b"deployed\n".to_vec(),
+            mode: Permissions::new(0o640),
+        },
+    )
+    .unwrap();
     let marker = temporary.path().join("journal/run.json");
     let before = std::fs::read(&marker).unwrap();
+    let refused = end_run(run).unwrap_err();
     assert!(
-        end_run(run).is_err(),
-        "unfinished_mutation_lost_its_run_marker"
+        refused.to_string().contains("Unfinished"),
+        "unfinished_mutation_lost_its_run_marker: {refused}"
     );
     assert_eq!(std::fs::read(marker).unwrap(), before);
-    assert_eq!(std::fs::read(&destination).unwrap(), b"original\n");
+    assert_eq!(std::fs::read(&destination).unwrap(), b"deployed\n");
     assert_eq!(pending_recovery(&home).unwrap().unwrap().entries, 1);
     reconcile(&home, temporary.path()).unwrap();
     assert!(pending_recovery(&home).unwrap().is_none());

@@ -83,7 +83,7 @@ impl GenerationList {
 use crate::{
     Classification,
     ids::{CmdId, DestId, Digest},
-    journal::{DurableRecord, MutationAuthority, PublicationAction, RecordPublication, RecordRole},
+    journal::{DurableRecord, PublicationAction, RecordPublication, RecordRole},
     ownership::{Consent, Decision as UnitDecision, Recorded, Refusal as UnitRefusal, TakeOver},
     recover::{
         Command, Decision, Delegated, Effect, EntryFacts, Event, Failure, Ident, Intended,
@@ -323,14 +323,6 @@ impl fmt::Debug for DurableRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DurableRecord")
             .field("role", &self.role())
-            .finish()
-    }
-}
-
-impl fmt::Debug for MutationAuthority {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MutationAuthority")
-            .field("entry", self.entry())
             .finish()
     }
 }
@@ -904,6 +896,200 @@ impl fmt::Debug for Block {
             .field("content", &(self.content_start..self.content_end))
             .field("sha", &self.sha)
             .field("mode", &self.mode)
+            .finish()
+    }
+}
+
+// ---- the journal run (`journal_run.rs`) -------------------------------------
+
+use crate::journal_run::{
+    Command as RunCommand, Event as RunEvent, Outcome as RunOutcome, Phase as RunPhase,
+    Record as RunRecord, Refusal as RunRefusal, RunState, Settle as RunSettle,
+    UnitFacts as RunUnit,
+};
+
+copy_impls!(
+    RunUnit, RunRecord, RunSettle, RunOutcome, RunRefusal, RunCommand, RunEvent, RunPhase,
+    RunState,
+);
+
+same_eq!(
+    RunPhase => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    RunOutcome => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    RunRecord => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    RunRefusal => |a, b| match (a, b) {
+        (RunRefusal::Drifted { unit: a, dest: d }, RunRefusal::Drifted { unit: b, dest: e })
+        | (RunRefusal::Interleaved { unit: a, dest: d }, RunRefusal::Interleaved { unit: b, dest: e })
+        | (RunRefusal::Unsupported { unit: a, dest: d }, RunRefusal::Unsupported { unit: b, dest: e })
+        | (RunRefusal::NotLanded { unit: a, dest: d }, RunRefusal::NotLanded { unit: b, dest: e }) => {
+            a == b && d.same(*e)
+        }
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
+);
+
+impl Default for RunState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Debug for RunUnit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UnitFacts")
+            .field("dest", &self.dest)
+            .field("expect", &self.expect)
+            .field("intended", &self.intended)
+            .field("follows", &self.follows)
+            .finish()
+    }
+}
+
+impl fmt::Debug for RunRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            RunRecord::Marker => "Marker",
+            RunRecord::Entry => "Entry",
+        })
+    }
+}
+
+impl fmt::Debug for RunSettle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            RunSettle::Committed => "Committed",
+            RunSettle::Ended => "Ended",
+        })
+    }
+}
+
+impl fmt::Debug for RunOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            RunOutcome::Committed => "Committed",
+            RunOutcome::Ended => "Ended",
+        })
+    }
+}
+
+impl fmt::Debug for RunRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let unit = |f: &mut fmt::Formatter<'_>, what: &str, unit: &u32, dest: &DestId| {
+            f.debug_struct(what)
+                .field("unit", unit)
+                .field("dest", dest)
+                .finish()
+        };
+        match self {
+            RunRefusal::Drifted { unit: u, dest } => unit(f, "Drifted", u, dest),
+            RunRefusal::Interleaved { unit: u, dest } => unit(f, "Interleaved", u, dest),
+            RunRefusal::Unsupported { unit: u, dest } => unit(f, "Unsupported", u, dest),
+            RunRefusal::NotLanded { unit: u, dest } => unit(f, "NotLanded", u, dest),
+            RunRefusal::Unfinished => f.write_str("Unfinished"),
+            RunRefusal::Failed => f.write_str("Failed"),
+            RunRefusal::Protocol => f.write_str("Protocol"),
+            RunRefusal::Overflow => f.write_str("Overflow"),
+        }
+    }
+}
+
+impl fmt::Debug for RunCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RunCommand::Publish { record, action } => f
+                .debug_struct("Publish")
+                .field("record", record)
+                .field("action", action)
+                .finish(),
+            RunCommand::Ready => f.write_str("Ready"),
+            RunCommand::Observe { unit, dest } => f
+                .debug_struct("Observe")
+                .field("unit", unit)
+                .field("dest", dest)
+                .finish(),
+            RunCommand::CapturePrior { unit, dest, expect } => f
+                .debug_struct("CapturePrior")
+                .field("unit", unit)
+                .field("dest", dest)
+                .field("expect", expect)
+                .finish(),
+            RunCommand::Mutate {
+                unit,
+                dest,
+                expect,
+                intended,
+            } => f
+                .debug_struct("Mutate")
+                .field("unit", unit)
+                .field("dest", dest)
+                .field("expect", expect)
+                .field("intended", intended)
+                .finish(),
+            RunCommand::Flip => f.write_str("Flip"),
+            RunCommand::Settle(settle) => f.debug_tuple("Settle").field(settle).finish(),
+            RunCommand::Unlink(name) => f.debug_tuple("Unlink").field(name).finish(),
+            RunCommand::Barrier => f.write_str("Barrier"),
+            RunCommand::Finish(outcome) => f.debug_tuple("Finish").field(outcome).finish(),
+            RunCommand::Abort(refusal) => f.debug_tuple("Abort").field(refusal).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for RunEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RunEvent::Start => f.write_str("Start"),
+            RunEvent::Done => f.write_str("Done"),
+            RunEvent::Failed(failure) => f.debug_tuple("Failed").field(failure).finish(),
+            RunEvent::Unit(facts) => f.debug_tuple("Unit").field(facts).finish(),
+            RunEvent::Commit => f.write_str("Commit"),
+            RunEvent::End => f.write_str("End"),
+            RunEvent::Observed { dest, live } => f
+                .debug_struct("Observed")
+                .field("dest", dest)
+                .field("live", live)
+                .finish(),
+            RunEvent::Landed { live } => f.debug_struct("Landed").field("live", live).finish(),
+            RunEvent::Settled { records } => {
+                f.debug_struct("Settled").field("records", records).finish()
+            }
+        }
+    }
+}
+
+impl fmt::Debug for RunPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            RunPhase::Start => "Start",
+            RunPhase::PublishingMarker => "PublishingMarker",
+            RunPhase::Ready => "Ready",
+            RunPhase::Observing => "Observing",
+            RunPhase::Capturing => "Capturing",
+            RunPhase::PublishingEntry => "PublishingEntry",
+            RunPhase::Mutating => "Mutating",
+            RunPhase::Flipping => "Flipping",
+            RunPhase::Settling => "Settling",
+            RunPhase::UnlinkingRecord => "UnlinkingRecord",
+            RunPhase::SyncingRecords => "SyncingRecords",
+            RunPhase::UnlinkingMarker => "UnlinkingMarker",
+            RunPhase::SyncingMarker => "SyncingMarker",
+            RunPhase::Finished => "Finished",
+            RunPhase::Aborted => "Aborted",
+        })
+    }
+}
+
+impl fmt::Debug for RunState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RunState")
+            .field("phase", &self.phase)
+            .field("step", &self.step)
+            .field("committed", &self.committed)
+            .field("units", &self.units)
+            .field("unit", &self.unit)
+            .field("observed", &self.observed)
+            .field("records", &self.records)
+            .field("index", &self.index)
             .finish()
     }
 }

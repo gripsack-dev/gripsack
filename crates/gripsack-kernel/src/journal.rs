@@ -1,13 +1,13 @@
 //! Journal effect ordering: one durable record is published through an exact
-//! sequence of acknowledged effects, and a durable run marker plus a durable
-//! mutation entry together authorize one mutation. Concrete IO
-//! acknowledgements remain external facts the store reports.
+//! sequence of acknowledged effects. Concrete IO acknowledgements remain
+//! external facts the store reports. The journal-run machine
+//! (`journal_run.rs`) issues the marker's and every entry's publication in
+//! this order and decides what may follow (F2 step 3).
 //!
 //! Proved (proofs/Kernel/Journal.lean): `RecordPublication::acknowledge`
 //! accepts exactly the expected next action when it succeeded, advances to
 //! its successor, and refuses forever otherwise; `finish` yields a record iff
-//! the sequence completed; `admit_mutation` grants authority iff the roles
-//! are marker and entry.
+//! the sequence completed.
 
 pub enum RecordRole {
     RunMarker,
@@ -110,24 +110,5 @@ impl RecordPublication {
         } else {
             None
         }
-    }
-}
-
-/// The authority one durable marker and one consumed durable entry grant.
-pub struct MutationAuthority {
-    entry: DurableRecord,
-}
-
-impl MutationAuthority {
-    pub fn entry(&self) -> &DurableRecord {
-        &self.entry
-    }
-}
-
-pub fn admit_mutation(marker: &DurableRecord, entry: DurableRecord) -> Option<MutationAuthority> {
-    if marker.role.same(RecordRole::RunMarker) && entry.role.same(RecordRole::MutationEntry) {
-        Some(MutationAuthority { entry })
-    } else {
-        None
     }
 }

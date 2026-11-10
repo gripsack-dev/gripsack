@@ -9,7 +9,13 @@
 //! recover machine over any `Storage`, re-checking each act against the
 //! identity the kernel decided on. The product's journal recovery
 //! (`gripsack-store`) drives it over `RealFs`.
+//!
+//! The journal-run driver (F2 step 3): [`journal_run::RunDriver`] runs the
+//! kernel's journal-run machine — the marker, the leaf effect protocol per
+//! destination, the commit or end and the cleanup — over any `Storage`. The
+//! product's journal (`gripsack-store`) drives it over `RealFs`.
 #![forbid(unsafe_code)]
 
+pub mod journal_run;
 pub mod recover;
 pub mod storage;

@@ -22,6 +22,7 @@ pub mod convenience;
 pub mod generation;
 pub mod ids;
 pub mod journal;
+pub mod journal_run;
 pub mod ownership;
 pub mod recover;
 pub mod retention;

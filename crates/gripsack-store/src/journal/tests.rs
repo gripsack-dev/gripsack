@@ -22,21 +22,58 @@ fn file_intent(id: crate::hash::FileIdentity) -> Intended {
     Intended::Object(ObjectIdentity::File(id))
 }
 
-/// Capture through the destination's pinned parent capability,
-/// as deploy's journaled mutations do (plan/0021).
-fn capture_at<'a>(dest: &'a Path, run: &'a JournalRun<'a>) -> CapturedPrior<'a> {
+/// The destination as the plan observed it, through its pinned parent
+/// capability, as deploy's journaled mutations do (plan/0021).
+struct Captured<'a> {
+    dest: &'a Path,
+    run: &'a JournalRun<'a>,
+    expected: Option<ObjectIdentity>,
+}
+
+fn parent_of(dest: &Path) -> (Dir, PathBuf) {
     let directory = gripsack_fs::open_or_create(dest.parent().unwrap()).unwrap();
-    let name = PathBuf::from(dest.file_name().unwrap());
+    (directory, PathBuf::from(dest.file_name().unwrap()))
+}
+
+fn capture_at<'a>(dest: &'a Path, run: &'a JournalRun<'a>) -> Captured<'a> {
+    let (directory, name) = parent_of(dest);
     let expected = live_identity(&directory, &name).unwrap();
-    capture(run, directory, name, dest, expected.as_ref()).unwrap()
+    Captured {
+        dest,
+        run,
+        expected,
+    }
 }
 
 fn new_run<'a>(home: &'a Dir, path: &'a Path) -> JournalRun<'a> {
     begin_run(home, path, None, crate::GenerationId::new(1), RunOp::Apply).unwrap()
 }
 
-fn crash_record(prior: CapturedPrior<'_>, intended: &Intended) {
-    drop(record(prior, intended).unwrap());
+/// The run crashed after the entry was durable, before the mutation.
+fn crash_record(captured: Captured<'_>, intended: &Intended) {
+    let (directory, name) = parent_of(captured.dest);
+    mutation::crash_after_entry(
+        captured.run,
+        directory,
+        name,
+        captured.dest,
+        captured.expected.as_ref(),
+        intended,
+    );
+}
+
+/// The whole leaf protocol: the mutation lands.
+fn mutate_at(captured: Captured<'_>, intended: &Intended, install: Install<'_>) -> io::Result<()> {
+    let (directory, name) = parent_of(captured.dest);
+    mutate(
+        captured.run,
+        directory,
+        name,
+        captured.dest,
+        captured.expected.as_ref(),
+        intended,
+        install,
+    )
 }
 
 #[test]
@@ -49,12 +86,12 @@ fn repeated_destination_mutations_restore_the_run_original_at_both_crash_windows
         gripsack_fs::atomic_write_with_mode(&home, Path::new("shared-rc"), b"original\n", 0o600)
             .unwrap();
         let original = capture_at(&dest, &run);
-        crash_record(
+        mutate_at(
             original,
             &file_intent(crate::canonical_bytes_identity(b"first block\n", 0o600)),
-        );
-        gripsack_fs::atomic_write_with_mode(&home, Path::new("shared-rc"), b"first block\n", 0o600)
-            .unwrap();
+            mutation::file(b"first block\n", 0o600),
+        )
+        .unwrap();
         let intermediate = capture_at(&dest, &run);
         crash_record(
             intermediate,
@@ -84,14 +121,20 @@ fn an_intervening_foreign_edit_cannot_extend_a_journaled_chain() {
     gripsack_fs::atomic_write_with_mode(&home, Path::new("shared-rc"), b"original\n", 0o600)
         .unwrap();
     let prior = capture_at(&dest, &run);
-    crash_record(
+    mutate_at(
         prior,
         &file_intent(crate::canonical_bytes_identity(b"first\n", 0o600)),
-    );
+        mutation::file(b"first\n", 0o600),
+    )
+    .unwrap();
     gripsack_fs::atomic_write_with_mode(&home, Path::new("shared-rc"), b"foreign edit\n", 0o600)
         .unwrap();
     let changed = capture_at(&dest, &run);
-    assert!(record(changed, &Intended::Removed).is_err());
+    let error = mutate_at(changed, &Intended::Removed, Install::Remove).unwrap_err();
+    assert!(
+        error.to_string().contains("between journaled mutations"),
+        "{error}"
+    );
     reconcile(&home, temporary.path()).unwrap();
     assert_eq!(std::fs::read(&dest).unwrap(), b"foreign edit\n");
 }
@@ -152,19 +195,21 @@ fn crash_after_write_restores_prior_bytes() {
     std::fs::write(&dest, b"old\n").unwrap();
 
     let prior = capture_at(&dest, &run);
-    crash_record(
+    let mode = std::fs::metadata(&dest)
+        .map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            m.mode() & 0o7777
+        })
+        .unwrap_or(0o644);
+    mutate_at(
         prior,
         &file_intent(crate::hash::canonical_bytes_identity(
             b"deployed half-run content\n",
-            std::fs::metadata(&dest)
-                .map(|m| {
-                    use std::os::unix::fs::MetadataExt;
-                    m.mode() & 0o7777
-                })
-                .unwrap_or(0o644),
+            mode,
         )),
-    );
-    std::fs::write(&dest, b"deployed half-run content\n").unwrap();
+        mutation::file(b"deployed half-run content\n", mode),
+    )
+    .unwrap();
     // crash: no commit_run
 
     reconcile(&cap(&home), home.path()).unwrap();
@@ -180,19 +225,18 @@ fn user_edit_after_crash_wins() {
     std::fs::write(&dest, b"old\n").unwrap();
 
     let prior = capture_at(&dest, &run);
-    crash_record(
+    let mode = std::fs::metadata(&dest)
+        .map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            m.mode() & 0o7777
+        })
+        .unwrap_or(0o644);
+    mutate_at(
         prior,
-        &file_intent(crate::hash::canonical_bytes_identity(
-            b"deployed\n",
-            std::fs::metadata(&dest)
-                .map(|m| {
-                    use std::os::unix::fs::MetadataExt;
-                    m.mode() & 0o7777
-                })
-                .unwrap_or(0o644),
-        )),
-    );
-    std::fs::write(&dest, b"deployed\n").unwrap();
+        &file_intent(crate::hash::canonical_bytes_identity(b"deployed\n", mode)),
+        mutation::file(b"deployed\n", mode),
+    )
+    .unwrap();
     // the user edits the file AFTER the crash, before the next run
     std::fs::write(&dest, b"my own edit\n").unwrap();
 
@@ -209,20 +253,16 @@ fn absent_prior_and_symlink_prior_recover() {
     let link = home.path().join("link");
 
     let prior = capture_at(&fresh, &run);
-    assert_eq!(prior.prior(), &Prior::Absent);
-    crash_record(
+    assert_eq!(prior.expected, None);
+    mutate_at(
         prior,
         &file_intent(crate::hash::canonical_bytes_identity(
             b"crashed write\n",
-            std::fs::metadata(&fresh)
-                .map(|m| {
-                    use std::os::unix::fs::MetadataExt;
-                    m.mode() & 0o7777
-                })
-                .unwrap_or(0o644),
+            0o644,
         )),
-    );
-    std::fs::write(&fresh, b"crashed write\n").unwrap();
+        mutation::file(b"crashed write\n", 0o644),
+    )
+    .unwrap();
 
     std::os::unix::fs::symlink("/original/target", &link).unwrap();
     let link_prior = capture_at(&link, &run);
@@ -257,19 +297,18 @@ fn crash_after_flip_but_before_cleanup_reads_committed() {
     )
     .unwrap();
     let prior = capture_at(&dest, &run);
-    crash_record(
+    let mode = std::fs::metadata(&dest)
+        .map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            m.mode() & 0o7777
+        })
+        .unwrap_or(0o644);
+    mutate_at(
         prior,
-        &file_intent(crate::hash::canonical_bytes_identity(
-            b"deployed\n",
-            std::fs::metadata(&dest)
-                .map(|m| {
-                    use std::os::unix::fs::MetadataExt;
-                    m.mode() & 0o7777
-                })
-                .unwrap_or(0o644),
-        )),
-    );
-    std::fs::write(&dest, b"deployed\n").unwrap();
+        &file_intent(crate::hash::canonical_bytes_identity(b"deployed\n", mode)),
+        mutation::file(b"deployed\n", mode),
+    )
+    .unwrap();
     // the flip: generation 1 becomes current; commit_run never ran
     let manifest = crate::generations::Generation {
         number: crate::GenerationId::new(1),
@@ -303,19 +342,18 @@ fn crash_before_flip_restores() {
     )
     .unwrap();
     let prior = capture_at(&dest, &run);
-    crash_record(
+    let mode = std::fs::metadata(&dest)
+        .map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            m.mode() & 0o7777
+        })
+        .unwrap_or(0o644);
+    mutate_at(
         prior,
-        &file_intent(crate::hash::canonical_bytes_identity(
-            b"half\n",
-            std::fs::metadata(&dest)
-                .map(|m| {
-                    use std::os::unix::fs::MetadataExt;
-                    m.mode() & 0o7777
-                })
-                .unwrap_or(0o644),
-        )),
-    );
-    std::fs::write(&dest, b"half\n").unwrap();
+        &file_intent(crate::hash::canonical_bytes_identity(b"half\n", mode)),
+        mutation::file(b"half\n", mode),
+    )
+    .unwrap();
 
     reconcile(&cap(&home), home.path()).unwrap();
     assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
@@ -341,19 +379,18 @@ fn commit_run_clears_the_window() {
     let dest = home.path().join("config");
     std::fs::write(&dest, b"old\n").unwrap();
     let prior = capture_at(&dest, &run);
-    crash_record(
+    let mode = std::fs::metadata(&dest)
+        .map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            m.mode() & 0o7777
+        })
+        .unwrap_or(0o644);
+    mutate_at(
         prior,
-        &file_intent(crate::hash::canonical_bytes_identity(
-            b"new\n",
-            std::fs::metadata(&dest)
-                .map(|m| {
-                    use std::os::unix::fs::MetadataExt;
-                    m.mode() & 0o7777
-                })
-                .unwrap_or(0o644),
-        )),
-    );
-    std::fs::write(&dest, b"new\n").unwrap();
+        &file_intent(crate::hash::canonical_bytes_identity(b"new\n", mode)),
+        mutation::file(b"new\n", mode),
+    )
+    .unwrap();
 
     crate::generations::write_manifest(&capability, &manifest(1)).unwrap();
     let committed = crate::generations::flip(run).unwrap();
@@ -410,19 +447,18 @@ fn post_crash_edit_beats_the_landed_mutation() {
     std::fs::write(&dest, b"old\n").unwrap();
 
     let prior = capture_at(&dest, &run);
-    crash_record(
+    let mode = std::fs::metadata(&dest)
+        .map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            m.mode() & 0o7777
+        })
+        .unwrap_or(0o644);
+    mutate_at(
         prior,
-        &file_intent(crate::hash::canonical_bytes_identity(
-            b"deployed\n",
-            std::fs::metadata(&dest)
-                .map(|m| {
-                    use std::os::unix::fs::MetadataExt;
-                    m.mode() & 0o7777
-                })
-                .unwrap_or(0o644),
-        )),
-    );
-    std::fs::write(&dest, b"deployed\n").unwrap();
+        &file_intent(crate::hash::canonical_bytes_identity(b"deployed\n", mode)),
+        mutation::file(b"deployed\n", mode),
+    )
+    .unwrap();
     // crash; THEN the user edits
     std::fs::write(&dest, b"post-crash edit\n").unwrap();
 
@@ -454,19 +490,18 @@ fn crashed_rollback_restores_priors() {
     )
     .unwrap();
     let prior = capture_at(&dest, &run);
-    crash_record(
+    let mode = std::fs::metadata(&dest)
+        .map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            m.mode() & 0o7777
+        })
+        .unwrap_or(0o644);
+    mutate_at(
         prior,
-        &file_intent(crate::hash::canonical_bytes_identity(
-            b"old\n",
-            std::fs::metadata(&dest)
-                .map(|m| {
-                    use std::os::unix::fs::MetadataExt;
-                    m.mode() & 0o7777
-                })
-                .unwrap_or(0o644),
-        )),
-    );
-    std::fs::write(&dest, b"old\n").unwrap();
+        &file_intent(crate::hash::canonical_bytes_identity(b"old\n", mode)),
+        mutation::file(b"old\n", mode),
+    )
+    .unwrap();
     // crash: current is still 3, target was 2 — uncommitted
 
     let lines = reconcile(&cap(&home), home.path()).unwrap();
@@ -495,19 +530,18 @@ fn completed_rollback_reads_committed() {
     )
     .unwrap();
     let prior = capture_at(&dest, &run);
-    crash_record(
+    let mode = std::fs::metadata(&dest)
+        .map(|m| {
+            use std::os::unix::fs::MetadataExt;
+            m.mode() & 0o7777
+        })
+        .unwrap_or(0o644);
+    mutate_at(
         prior,
-        &file_intent(crate::hash::canonical_bytes_identity(
-            b"old\n",
-            std::fs::metadata(&dest)
-                .map(|m| {
-                    use std::os::unix::fs::MetadataExt;
-                    m.mode() & 0o7777
-                })
-                .unwrap_or(0o644),
-        )),
-    );
-    std::fs::write(&dest, b"old\n").unwrap();
+        &file_intent(crate::hash::canonical_bytes_identity(b"old\n", mode)),
+        mutation::file(b"old\n", mode),
+    )
+    .unwrap();
     crate::generations::flip(run).unwrap();
     // crash between the flip and commit_run
 
@@ -673,7 +707,18 @@ fn non_utf8_destinations_are_refused_before_capture() {
     let name = PathBuf::from(std::ffi::OsStr::from_bytes(b"non-\xff-utf8"));
     let dest = temporary.path().join(&name);
     let directory = gripsack_fs::open_or_create(temporary.path()).unwrap();
-    assert!(capture(&run, directory, name, &dest, None).is_err());
+    assert!(
+        mutate(
+            &run,
+            directory,
+            name,
+            &dest,
+            None,
+            &Intended::Removed,
+            Install::Remove
+        )
+        .is_err()
+    );
     assert!(!dest.exists());
     assert_eq!(pending_recovery(&capability).unwrap().unwrap().entries, 0);
 }
@@ -726,15 +771,7 @@ fn recovery_cleanup_keeps_the_pinned_journal_after_a_directory_replacement() {
     std::fs::create_dir(dir(temporary.path())).unwrap();
     let decoy = dir(temporary.path()).join("run.json");
     std::fs::write(&decoy, b"not this transaction").unwrap();
-    let mut progress = gripsack_policy::journal_protocol::CleanupProgress::new(
-        gripsack_policy::journal_protocol::CleanupScope::Uncommitted,
-        1,
-    );
-    assert!(progress.acknowledge(
-        gripsack_policy::journal_protocol::CleanupAction::ReconcileEntry { index: 0 },
-        true,
-    ));
-    cleanup(&journal.directory, [entry_name(&dest).as_path()], progress).unwrap();
+    cleanup_legacy(&journal.directory, [entry_name(&dest).as_path()]).unwrap();
     assert_eq!(std::fs::read(decoy).unwrap(), b"not this transaction");
     assert!(!retained.join("run.json").exists());
     assert!(!retained.join(entry_name(&dest)).exists());

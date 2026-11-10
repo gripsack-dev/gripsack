@@ -1,7 +1,7 @@
 //! One pinned directory owns journal IO, including quarantine and cleanup.
 use crate::private_state;
 use gripsack_fs::Dir;
-use gripsack_kernel::journal::{DurableRecord, PublicationAction, RecordPublication, RecordRole};
+use gripsack_kernel::journal::{PublicationAction, RecordPublication, RecordRole};
 use std::{
     io::{self, Read},
     path::{Path, PathBuf},
@@ -42,12 +42,7 @@ impl Journal {
         Ok(bytes)
     }
 
-    pub(super) fn write(
-        &self,
-        name: &Path,
-        bytes: &[u8],
-        role: RecordRole,
-    ) -> io::Result<DurableRecord> {
+    pub(super) fn write(&self, name: &Path, bytes: &[u8], role: RecordRole) -> io::Result<()> {
         let mut publication = RecordPublication::new(role);
         let staged = publication_step(&mut publication, PublicationAction::Stage, || {
             gripsack_fs::StagedFileWrite::with_mode(&self.directory, name, bytes, 0o600)
@@ -62,7 +57,10 @@ impl Journal {
             publication_step(&mut publication, PublicationAction::SyncNamespace, || {
                 visible.sync_parent()
             })?;
-        publication.finish().ok_or_else(publication_order_error)
+        publication
+            .finish()
+            .map(drop)
+            .ok_or_else(publication_order_error)
     }
 
     pub(super) fn quarantine_directory(&self) -> io::Result<Option<Dir>> {

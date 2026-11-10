@@ -5,6 +5,8 @@
 use super::*;
 use crate::ctx::ExecError;
 use crate::report::ReportKind;
+use gripsack_host::storage::Permissions;
+use store::journal::Install;
 
 /// The destination-capability pair an op pins (0027 §5, 0030 §P0-1).
 fn dest_capability(
@@ -80,10 +82,17 @@ pub(crate) fn execute_op(
             } else {
                 None
             };
-            let captured =
-                store::journal::capture(run, dest_dir, dest_name, op.dest(), op.observed())?;
-            store::journal::record(captured, op.intended())?
-                .execute(|directory, name| gripsack_fs::symlink_replace(directory, name, target))?;
+            store::journal::mutate(
+                run,
+                dest_dir,
+                dest_name,
+                op.dest(),
+                op.observed(),
+                op.intended(),
+                Install::Link {
+                    target: target.clone(),
+                },
+            )?;
             Ok((
                 OpReport {
                     summary: format!("linked {} → {}", op.output(), op.declared_to()),
@@ -111,11 +120,18 @@ pub(crate) fn execute_op(
             } else {
                 None
             };
-            let captured =
-                store::journal::capture(run, dest_dir, dest_name, op.dest(), op.observed())?;
-            store::journal::record(captured, op.intended())?.execute(|directory, name| {
-                gripsack_fs::atomic_write_with_mode(directory, name, bytes, *mode)
-            })?;
+            store::journal::mutate(
+                run,
+                dest_dir,
+                dest_name,
+                op.dest(),
+                op.observed(),
+                op.intended(),
+                Install::File {
+                    bytes: bytes.to_vec(),
+                    mode: Permissions::new(*mode),
+                },
+            )?;
             let verb = match op.authority() {
                 Some(Authority::Update) => "updated",
                 Some(Authority::TakeOver) => "took over",
@@ -140,18 +156,13 @@ pub(crate) fn execute_op(
                 .map_or(op.output(), store::ManagedBlockId::as_str);
             let (dest_dir, dest_name) = dest_capability(run, op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
-            let captured =
-                store::journal::capture(run, dest_dir, dest_name, op.dest(), op.observed())?;
-            store::journal::record(captured, op.intended())?.execute(|dest_dir, dest_name| {
-                // re-derive from the LATEST foreign content (0029
-                // §3): an outside-block write lands in the output
-                // or the precondition aborts — never silently lost
-                let latest = match dest_dir.read_to_string(dest_name) {
-                    Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-                    Err(e) => return Err(e),
-                };
-                let blocks = crate::managed_blocks::ManagedBlockSet::parse(&latest, owner)
+            // re-derive from the LATEST bytes, which the leaf protocol's
+            // re-check pins to the plan's observation (0029 §3): an
+            // outside-block write aborts the run — never silently lost
+            let splice = |latest: &[u8], _: Option<Permissions>| {
+                let latest = std::str::from_utf8(latest)
+                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+                let blocks = crate::managed_blocks::ManagedBlockSet::parse(latest, owner)
                     .map_err(std::io::Error::other)?;
                 let new = blocks
                     .upsert(
@@ -162,8 +173,17 @@ pub(crate) fn execute_op(
                         *mode,
                     )
                     .map_err(std::io::Error::other)?;
-                gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, new.as_bytes(), *mode)
-            })?;
+                Ok(Some((new.into_bytes(), Permissions::new(*mode))))
+            };
+            store::journal::mutate(
+                run,
+                dest_dir,
+                dest_name,
+                op.dest(),
+                op.observed(),
+                op.intended(),
+                Install::Splice(Box::new(splice)),
+            )?;
             // the report names what the plan saw (0.21.1 review):
             // regenerated hand-edits, stripped duplicates
             let note = op.note.as_deref().unwrap_or("");
@@ -180,19 +200,15 @@ pub(crate) fn execute_op(
             // expect, no invalid state
             let (dest_dir, dest_name) = dest_capability(run, op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
-            let captured =
-                store::journal::capture(run, dest_dir, dest_name, op.dest(), op.observed())?;
-            store::journal::record(captured, op.intended())?.execute(|dest_dir, dest_name| {
-                crate::deploy::remove_or_restore_prior(
-                    dest_dir,
-                    dest_name,
-                    &target.entry,
-                    op.output(),
-                    home_dir,
-                    &target.store_path,
-                )
-                .map(|_| ())
-            })?;
+            store::journal::mutate(
+                run,
+                dest_dir,
+                dest_name,
+                op.dest(),
+                op.observed(),
+                op.intended(),
+                crate::deploy::removal(&target.entry, op.output(), home_dir)?,
+            )?;
             Ok((
                 OpReport {
                     summary: format!("removed {}", op.declared_to()),

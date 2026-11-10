@@ -101,11 +101,46 @@ MUTANTS = (
            "        if self.next.same(PublicationAction::Complete) {",
            "        if self.next.same(PublicationAction::PublishName) {",
            ("Gripsack.Kernel.RecordPublication.finish_spec",)),
-    # journal: marker OR entry is not marker AND entry
-    Mutant("journal-mutation-role-confusion", "journal.rs",
-           "    if marker.role.same(RecordRole::RunMarker) && entry.role.same(RecordRole::MutationEntry) {",
-           "    if marker.role.same(RecordRole::RunMarker) || entry.role.same(RecordRole::MutationEntry) {",
-           ("Gripsack.Kernel.admit_mutation_spec",)),
+    # journal run (P1): the mutation follows the entry's namespace barrier, not its rename
+    Mutant("run-mutates-before-entry-barrier", "journal_run.rs",
+           "    let next = state.step.successor();\n    match next {\n        PublicationAction::Complete => {\n            let unit",
+           "    let next = state.step.successor();\n    match next.successor() {\n        PublicationAction::Complete => {\n            let unit",
+           ("Gripsack.Kernel.JournalRun.step_spec",)),
+    # journal run (P1): the marker's namespace barrier precedes any unit
+    Mutant("run-ready-before-marker-barrier", "journal_run.rs",
+           "        PublicationAction::Complete => {\n            state.phase = Phase::Ready;",
+           "        PublicationAction::SyncNamespace => {\n            state.phase = Phase::Ready;",
+           ("Gripsack.Kernel.JournalRun.step_spec",)),
+    # journal run (P1): no entry before the prior is captured
+    Mutant("run-skips-prior-capture", "journal_run.rs",
+           "                state.observed = live;\n                state.phase = Phase::Capturing;",
+           "                state.observed = live;\n                return on_captured(state);\n                state.phase = Phase::Capturing;",
+           ("Gripsack.Kernel.JournalRun.on_observed_spec",)),
+    # journal run (P1): the act re-checks the plan's observation, not whatever is there
+    Mutant("run-ignores-plan-drift", "journal_run.rs",
+           "            if !live.same(&facts.expect) {",
+           "            if !live.same(&live) {",
+           ("Gripsack.Kernel.JournalRun.on_observed_spec",)),
+    # journal run: a unit is accepted only when its intended object landed
+    Mutant("run-landed-unchecked", "journal_run.rs",
+           "    if !lands(&facts.intended, &live) {",
+           "    if !lands(&facts.intended, &live) && unit == 0 {",
+           ("Gripsack.Kernel.JournalRun.on_landed_spec",)),
+    # journal run (P3): records are removed only after the flip is acknowledged
+    Mutant("run-cleans-before-flip", "journal_run.rs",
+           "            Event::Commit => {\n                let mut next = state;\n                next.phase = Phase::Flipping;\n                (next, Command::Flip)",
+           "            Event::Commit => {\n                let mut next = state;\n                next.committed = true;\n                next.phase = Phase::Settling;\n                (next, Command::Settle(Settle::Committed))",
+           ("Gripsack.Kernel.JournalRun.step_spec",)),
+    # journal run (P3): a run that journaled a destination never ends without a flip
+    Mutant("run-ends-after-mutation", "journal_run.rs",
+           "    if state.units != 0 {",
+           "    if state.units == u32::MAX {",
+           ("Gripsack.Kernel.JournalRun.on_end_spec",)),
+    # journal run (P3): the 0.19.2 order — the marker unlink without the record barrier
+    Mutant("run-cleanup-barrier-swapped", "journal_run.rs",
+           "        state.phase = Phase::SyncingRecords;\n        (state, Command::Barrier)",
+           "        state.phase = Phase::UnlinkingMarker;\n        (state, Command::Unlink(JournalName::Marker))",
+           ("Gripsack.Kernel.JournalRun.next_unlink_spec",)),
     # recover (a): a foreign object that replaced the run's write is never restored over
     Mutant("recover-guard-restores-foreign", "recover.rs",
            "            } else {\n                Decision::Preserve\n            }",

@@ -6,6 +6,17 @@ User-visible changes per release. Design archaeology lives in
 
 ## [Unreleased]
 
+### Changed
+
+- `apply` and `rollback` check each destination again immediately before
+  writing it, not only when they first journal it. A file another program
+  changes while gripsack is recording it is now left alone and the run stops
+  ("changed between the drift decision and the mutation — aborting; re-run
+  to retry"); before, a change landing while the journal entry was being
+  written could be overwritten.
+- A destination that has become a directory or a special file is refused by
+  name with "gripsack cannot journal it; move it aside to continue".
+
 ## [0.53.0] — Proved ownership and rollback
 
 ### Fixed
