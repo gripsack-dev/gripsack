@@ -787,7 +787,7 @@ def activation.activation_step
     activation.refuse state activation.Refusal.Protocol
 
 /-- [gripsack_kernel::apply::Slot]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 70:0-73:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 81:0-84:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Slot where
@@ -801,7 +801,7 @@ structure ids.DestId where
   index : Std.U32
 
 /-- [gripsack_kernel::apply::Claim]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 76:0-79:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 87:0-90:1
     Visibility: public -/
 structure apply.Claim where
   dest : ids.DestId
@@ -830,15 +830,16 @@ inductive recover.Intended where
 | Obj : recover.Ident → recover.Intended
 
 /-- [gripsack_kernel::apply::Want]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 82:0-91:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 93:0-107:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Want where
 | Deploy : recover.Ident → recover.Ident → apply.Want
 | Release : recover.Intended → apply.Want
+| Clear : recover.Intended → apply.Want
 
 /-- [gripsack_kernel::apply::OnDrift]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 94:0-100:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 110:0-116:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.OnDrift where
@@ -877,7 +878,7 @@ inductive ownership.Recorded where
 | Wrote : recover.Ident → ownership.Recorded
 
 /-- [gripsack_kernel::apply::UnitFacts]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 103:0-112:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 119:0-128:1
     Visibility: public -/
 structure apply.UnitFacts where
   dest : ids.DestId
@@ -889,7 +890,7 @@ structure apply.UnitFacts where
   drift : apply.OnDrift
 
 /-- [gripsack_kernel::apply::Write]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 115:0-122:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 131:0-138:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Write where
@@ -907,7 +908,7 @@ inductive ownership.Refusal where
 | Unsupported : ownership.Refusal
 
 /-- [gripsack_kernel::apply::Settled]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 125:0-136:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 141:0-157:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Settled where
@@ -916,6 +917,8 @@ inductive apply.Settled where
 | Kept : ownership.Refusal → apply.Settled
 | Declared : apply.Settled
 | Delegated : Bool → apply.Settled
+| Held : apply.Settled
+| Directory : Bool → apply.Settled
 
 /-- [gripsack_kernel::publication::CommitRefusal]
     Source: 'crates/gripsack-kernel/src/publication.rs', lines 119:0-128:1
@@ -928,7 +931,7 @@ inductive publication.CommitRefusal where
 | Exists : publication.CommitRefusal
 
 /-- [gripsack_kernel::apply::Refusal]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 174:0-197:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 195:0-227:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Refusal where
@@ -937,13 +940,16 @@ inductive apply.Refusal where
 | NotApplied : Std.U32 → ids.DestId → apply.Refusal
 | Delegated : Std.U32 → ids.DestId → apply.Refusal
 | Order : Std.U32 → apply.Refusal
+| Overlap : Std.U32 → ids.DestId → apply.Refusal
+| Blocked : Std.U32 → ids.DestId → apply.Refusal
+| Directory : Std.U32 → ids.DestId → apply.Refusal
 | Unpublishable : publication.CommitRefusal → apply.Refusal
 | Malformed : apply.Refusal
 | Failed : apply.Refusal
 | Protocol : apply.Refusal
 
 /-- [gripsack_kernel::apply::Step]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 139:0-146:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 160:0-167:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Step where
@@ -952,7 +958,7 @@ inductive apply.Step where
 | Refuse : apply.Refusal → apply.Step
 
 /-- [gripsack_kernel::apply::CommitInputs]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 150:0-163:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 171:0-184:1
     Visibility: public -/
 structure apply.CommitInputs where
   previous : Option selection.SelectionIdentity
@@ -963,7 +969,7 @@ structure apply.CommitInputs where
   «exists» : Bool
 
 /-- [gripsack_kernel::apply::Outcome]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 165:0-170:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 186:0-191:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Outcome where
@@ -979,8 +985,24 @@ inductive recover.Live where
 | Obj : recover.Ident → recover.Live
 | Unsupported : recover.Live
 
+/-- [gripsack_kernel::directory::Action]
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 82:0-108:1
+    Visibility: public -/
+@[discriminant isize]
+inductive directory.Action where
+| Bind : directory.Action
+| Birth : directory.Action
+| Plan : directory.Action
+| Evolve : directory.Action
+| Shape : directory.Action
+| Exchange : directory.Action
+| Reactivate : directory.Action
+| Hold : directory.Action
+| Finish : directory.Action
+| Retire : directory.Action
+
 /-- [gripsack_kernel::apply::Command]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 199:0-244:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 229:0-278:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Command where
@@ -995,7 +1017,7 @@ inductive apply.Command where
   apply.Command
 | Delegate : Std.U32 → ids.DestId → apply.Command
 | Report : Std.U32 → ids.DestId → apply.Settled → apply.Command
-| DirectoryStep : apply.Command
+| Directory : Std.U32 → ids.DestId → directory.Action → apply.Command
 | ReadCommit : apply.Command
 | Publish : generation.GenerationId → apply.Command
 | Flip : selection.SelectionIdentity → apply.Command
@@ -1003,24 +1025,33 @@ inductive apply.Command where
 | Finish : apply.Outcome → apply.Command
 | Abort : apply.Refusal → apply.Command
 
+/-- [gripsack_kernel::directory::DirectoryFacts]
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 111:0-115:1
+    Visibility: public -/
+structure directory.DirectoryFacts where
+  dest : ids.DestId
+  action : directory.Action
+
 /-- [gripsack_kernel::apply::Event]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 246:0-267:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 280:0-307:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Event where
 | Start : apply.Event
 | UnitRead : apply.UnitFacts → apply.Event
+| DirectoryRead : directory.DirectoryFacts → apply.Event
 | Exhausted : apply.Event
 | Observed : ids.DestId → recover.Live → apply.Event
 | Landed : recover.Live → apply.Event
 | Delegated : Bool → apply.Event
+| Directed : Bool → apply.Event
 | Refused : apply.Event
 | Done : apply.Event
 | CommitRead : apply.CommitInputs → apply.Event
 | Failed : recover.Failure → apply.Event
 
 /-- [gripsack_kernel::apply::Phase]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 269:0-283:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 309:0-323:1
     Visibility: public -/
 @[discriminant isize]
 inductive apply.Phase where
@@ -1030,7 +1061,7 @@ inductive apply.Phase where
 | Writing : apply.Phase
 | Delegating : apply.Phase
 | Reporting : apply.Phase
-| Directories : apply.Phase
+| Directing : apply.Phase
 | ReadingCommit : apply.Phase
 | Publishing : apply.Phase
 | Flipping : apply.Phase
@@ -1050,8 +1081,21 @@ structure publication.CommitFacts where
   touched : Bool
   «exists» : Bool
 
+/-- [gripsack_kernel::directory::Stage]
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 45:0-61:1
+    Visibility: public -/
+@[discriminant isize]
+inductive directory.Stage where
+| Opening : directory.Stage
+| Clearing : directory.Stage
+| Shaping : directory.Stage
+| Holding : directory.Stage
+| Units : directory.Stage
+| Releases : directory.Stage
+| Closing : directory.Stage
+
 /-- [gripsack_kernel::apply::ApplyState]
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 285:0-300:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 325:0-346:1
     Visibility: public -/
 structure apply.ApplyState where
   phase : apply.Phase
@@ -1059,12 +1103,14 @@ structure apply.ApplyState where
   unit : Option apply.UnitFacts
   install : Option recover.Intended
   declared : alloc.vec.Vec apply.Claim
-  releasing : Bool
+  stage : directory.Stage
+  holds : alloc.vec.Vec ids.DestId
+  step : Option directory.DirectoryFacts
   mutated : Bool
   commit : Option publication.CommitFacts
 
 /-- [gripsack_kernel::apply::{gripsack_kernel::apply::ApplyState}::new]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 303:4-314:5
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 349:4-362:5
     Visibility: public -/
 def apply.ApplyState.new : Result apply.ApplyState := do
   ok
@@ -1074,7 +1120,9 @@ def apply.ApplyState.new : Result apply.ApplyState := do
       unit := none,
       install := none,
       declared := (alloc.vec.Vec.new apply.Claim),
-      releasing := false,
+      stage := directory.Stage.Opening,
+      holds := (alloc.vec.Vec.new ids.DestId),
+      step := none,
       mutated := false,
       commit := none
     }
@@ -1087,7 +1135,7 @@ def ids.DestId.same
   ok (self.index = other.index)
 
 /-- [gripsack_kernel::apply::covers]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 320:0-331:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 368:0-379:1
     Visibility: public -/
 def apply.covers
   (claim : apply.Claim) (dest : ids.DestId) (slot : apply.Slot) :
@@ -1105,7 +1153,7 @@ def apply.covers
   else ok false
 
 /-- [gripsack_kernel::apply::covered]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 336:4-343:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 384:4-391:1
     Visibility: public -/
 @[rust_loop_body]
 def apply.covered_loop.body
@@ -1125,7 +1173,7 @@ def apply.covered_loop.body
   else ok (done false)
 
 /-- [gripsack_kernel::apply::covered]: loop 0:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 336:4-343:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 384:4-391:1
     Visibility: public -/
 @[rust_loop]
 def apply.covered_loop
@@ -1138,7 +1186,7 @@ def apply.covered_loop
     i
 
 /-- [gripsack_kernel::apply::covered]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 334:0-343:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 382:0-391:1
     Visibility: public -/
 @[reducible]
 def apply.covered
@@ -1147,16 +1195,65 @@ def apply.covered
   := do
   apply.covered_loop declared dest slot 0#usize
 
+/-- [gripsack_kernel::apply::claimed]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 396:4-403:1
+    Visibility: public -/
+@[rust_loop_body]
+def apply.claimed_loop.body
+  (declared : Slice apply.Claim) (dest : ids.DestId) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len declared
+  if i < i1
+  then
+    let c ← Slice.index_usize declared i
+    let b ← ids.DestId.same c.dest dest
+    if b
+    then ok (done true)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else ok (done false)
+
+/-- [gripsack_kernel::apply::claimed]: loop 0:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 396:4-403:1
+    Visibility: public -/
+@[rust_loop]
+def apply.claimed_loop
+  (declared : Slice apply.Claim) (dest : ids.DestId) (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => apply.claimed_loop.body declared dest i1)
+    i
+
+/-- [gripsack_kernel::apply::claimed]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 394:0-403:1
+    Visibility: public -/
+@[reducible]
+def apply.claimed
+  (declared : Slice apply.Claim) (dest : ids.DestId) : Result Bool := do
+  apply.claimed_loop declared dest 0#usize
+
+/-- [gripsack_kernel::apply::unit_stage]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 406:0-412:1
+    Visibility: public -/
+def apply.unit_stage (want : apply.Want) : Result directory.Stage := do
+  match want with
+  | apply.Want.Deploy _ _ => ok directory.Stage.Units
+  | apply.Want.Release _ => ok directory.Stage.Releases
+  | apply.Want.Clear _ => ok directory.Stage.Clearing
+
 /-- [gripsack_kernel::apply::asked]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 347:0-352:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 416:0-422:1
     Visibility: public -/
 def apply.asked (want : apply.Want) : Result recover.Intended := do
   match want with
   | apply.Want.Deploy ident _ => ok (recover.Intended.Obj ident)
   | apply.Want.Release _ => ok recover.Intended.Removed
+  | apply.Want.Clear _ => ok recover.Intended.Removed
 
 /-- [gripsack_kernel::apply::install]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 355:0-368:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 425:0-446:1
     Visibility: public -/
 def apply.install
   (want : apply.Want) (write : apply.Write) :
@@ -1173,25 +1270,40 @@ def apply.install
     | apply.Write.Create => ok none
     | apply.Write.Replace => ok (some origin)
     | apply.Write.TakeOver => ok none
+  | apply.Want.Clear origin =>
+    match write with
+    | apply.Write.Create => ok none
+    | apply.Write.Replace =>
+      match origin with
+      | recover.Intended.Removed => ok (some recover.Intended.Removed)
+      | recover.Intended.Obj _ => ok none
+    | apply.Write.TakeOver => ok none
 
 /-- [gripsack_kernel::apply::written]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 370:0-379:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 448:0-467:1 -/
 def apply.written
-  (want : apply.Want) (write : apply.Write) : Result apply.Step := do
-  let o ← apply.install want write
+  (index : Std.U32) (unit : apply.UnitFacts) (write : apply.Write) :
+  Result apply.Step
+  := do
+  let o ← apply.install unit.want write
   match o with
-  | none => ok (apply.Step.Refuse apply.Refusal.Malformed)
+  | none =>
+    match unit.want with
+    | apply.Want.Deploy _ _ => ok (apply.Step.Refuse apply.Refusal.Malformed)
+    | apply.Want.Release _ => ok (apply.Step.Refuse apply.Refusal.Malformed)
+    | apply.Want.Clear _ =>
+      ok (apply.Step.Refuse (apply.Refusal.Blocked index unit.dest))
   | some intended => ok (apply.Step.Write intended write)
 
 /-- [gripsack_kernel::apply::stops]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 381:0-386:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 469:0-474:1 -/
 def apply.stops (drift : apply.OnDrift) : Result Bool := do
   match drift with
   | apply.OnDrift.Keep => ok false
   | apply.OnDrift.Stop => ok true
 
 /-- [gripsack_kernel::apply::refusal_stops]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 391:0-400:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 480:0-490:1 -/
 def apply.refusal_stops
   (unit : apply.UnitFacts) (why : ownership.Refusal) : Result Bool := do
   match unit.want with
@@ -1201,6 +1313,7 @@ def apply.refusal_stops
     | ownership.Refusal.Unowned => apply.stops unit.drift
     | ownership.Refusal.Unsupported => ok true
   | apply.Want.Release _ => ok false
+  | apply.Want.Clear _ => ok true
 
 /-- [gripsack_kernel::ids::DIGEST_BYTES]
     Source: 'crates/gripsack-kernel/src/ids.rs', lines 44:0-44:35
@@ -1351,7 +1464,7 @@ def ownership.decide_unit
     ok (ownership.Decision.Refuse ownership.Refusal.Unsupported)
 
 /-- [gripsack_kernel::apply::decide_apply]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 405:0-423:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 495:0-513:1
     Visibility: public -/
 def apply.decide_apply
   (index : Std.U32) (unit : apply.UnitFacts) (live : recover.Live) :
@@ -1360,11 +1473,12 @@ def apply.decide_apply
   let i ← apply.asked unit.want
   let d ← ownership.decide_unit unit.recorded live i unit.consent
   match d with
-  | ownership.Decision.Create => apply.written unit.want apply.Write.Create
+  | ownership.Decision.Create => apply.written index unit apply.Write.Create
   | ownership.Decision.Satisfied => ok (apply.Step.Leave apply.Settled.Already)
   | ownership.Decision.ReplaceOwn =>
-    apply.written unit.want apply.Write.Replace
-  | ownership.Decision.TakeOver => apply.written unit.want apply.Write.TakeOver
+    apply.written index unit apply.Write.Replace
+  | ownership.Decision.TakeOver =>
+    apply.written index unit apply.Write.TakeOver
   | ownership.Decision.Refuse why =>
     let b ← apply.refusal_stops unit why
     if b
@@ -1372,7 +1486,7 @@ def apply.decide_apply
     else ok (apply.Step.Leave (apply.Settled.Kept why))
 
 /-- [gripsack_kernel::apply::refuse]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 425:0-428:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 515:0-518:1 -/
 def apply.refuse
   (state : apply.ApplyState) (refusal : apply.Refusal) :
   Result (apply.ApplyState × apply.Command)
@@ -1380,7 +1494,7 @@ def apply.refuse
   ok ({ state with phase := apply.Phase.Aborted }, apply.Command.Abort refusal)
 
 /-- [gripsack_kernel::apply::failed_or_protocol]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 430:0-435:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 520:0-525:1 -/
 def apply.failed_or_protocol
   (state : apply.ApplyState) (event : apply.Event) :
   Result (apply.ApplyState × apply.Command)
@@ -1388,36 +1502,39 @@ def apply.failed_or_protocol
   match event with
   | apply.Event.Start => apply.refuse state apply.Refusal.Protocol
   | apply.Event.UnitRead _ => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.DirectoryRead _ => apply.refuse state apply.Refusal.Protocol
   | apply.Event.Exhausted => apply.refuse state apply.Refusal.Protocol
   | apply.Event.Observed _ _ => apply.refuse state apply.Refusal.Protocol
   | apply.Event.Landed _ => apply.refuse state apply.Refusal.Protocol
   | apply.Event.Delegated _ => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.Directed _ => apply.refuse state apply.Refusal.Protocol
   | apply.Event.Refused => apply.refuse state apply.Refusal.Protocol
   | apply.Event.Done => apply.refuse state apply.Refusal.Protocol
   | apply.Event.CommitRead _ => apply.refuse state apply.Refusal.Protocol
   | apply.Event.Failed _ => apply.refuse state apply.Refusal.Failed
 
 /-- [gripsack_kernel::apply::read_unit]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 437:0-441:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 527:0-531:1 -/
 def apply.read_unit
   (state : apply.ApplyState) : Result (apply.ApplyState × apply.Command) := do
   ok ({ state with phase := apply.Phase.ReadingUnit }, apply.Command.ReadUnit
     state.index)
 
 /-- [gripsack_kernel::apply::advance]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 444:0-454:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 534:0-545:1 -/
 def apply.advance
   (state : apply.ApplyState) : Result (apply.ApplyState × apply.Command) := do
   let o ← lift (U32.checked_add state.index 1#u32)
   match o with
   | none =>
-    apply.refuse { state with unit := none, install := none }
+    apply.refuse { state with unit := none, install := none, step := none }
       apply.Refusal.Malformed
   | some next =>
-    apply.read_unit { state with index := next, unit := none, install := none }
+    apply.read_unit
+      { state with index := next, unit := none, install := none, step := none }
 
 /-- [gripsack_kernel::apply::report]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 456:0-467:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 547:0-558:1 -/
 def apply.report
   (state : apply.ApplyState) (dest : ids.DestId) (settled : apply.Settled) :
   Result (apply.ApplyState × apply.Command)
@@ -1426,7 +1543,7 @@ def apply.report
     state.index dest settled)
 
 /-- [gripsack_kernel::apply::examine]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 470:0-485:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 561:0-576:1 -/
 def apply.examine
   (state : apply.ApplyState) (facts : apply.UnitFacts) :
   Result (apply.ApplyState × apply.Command)
@@ -1439,36 +1556,224 @@ def apply.examine
     ok ({ state with phase := apply.Phase.Delegating, unit := (some facts) },
       apply.Command.Delegate state.index facts.dest)
 
+/-- [gripsack_kernel::directory::names]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 153:4-160:1
+    Visibility: public -/
+@[rust_loop_body]
+def directory.names_loop.body
+  (dests : Slice ids.DestId) (dest : ids.DestId) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len dests
+  if i < i1
+  then
+    let di ← Slice.index_usize dests i
+    let b ← ids.DestId.same di dest
+    if b
+    then ok (done true)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else ok (done false)
+
+/-- [gripsack_kernel::directory::names]: loop 0:
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 153:4-160:1
+    Visibility: public -/
+@[rust_loop]
+def directory.names_loop
+  (dests : Slice ids.DestId) (dest : ids.DestId) (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => directory.names_loop.body dests dest i1)
+    i
+
+/-- [gripsack_kernel::directory::names]:
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 151:0-160:1
+    Visibility: public -/
+@[reducible]
+def directory.names
+  (dests : Slice ids.DestId) (dest : ids.DestId) : Result Bool := do
+  directory.names_loop dests dest 0#usize
+
+/-- [gripsack_kernel::directory::rank]:
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 64:0-74:1
+    Visibility: public -/
+def directory.rank (stage : directory.Stage) : Result Std.U8 := do
+  match stage with
+  | directory.Stage.Opening => ok 0#u8
+  | directory.Stage.Clearing => ok 1#u8
+  | directory.Stage.Shaping => ok 2#u8
+  | directory.Stage.Holding => ok 3#u8
+  | directory.Stage.Units => ok 4#u8
+  | directory.Stage.Releases => ok 5#u8
+  | directory.Stage.Closing => ok 6#u8
+
+/-- [gripsack_kernel::directory::ordered]:
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 77:0-79:1
+    Visibility: public -/
+def directory.ordered
+  (current : directory.Stage) (next : directory.Stage) : Result Bool := do
+  let i ← directory.rank current
+  let i1 ← directory.rank next
+  ok (i <= i1)
+
 /-- [gripsack_kernel::apply::on_unit]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 487:0-514:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 578:0-620:1 -/
 def apply.on_unit
   (state : apply.ApplyState) (facts : apply.UnitFacts) :
   Result (apply.ApplyState × apply.Command)
   := do
-  match facts.want with
-  | apply.Want.Deploy _ _ =>
-    if state.releasing
-    then apply.refuse state (apply.Refusal.Order state.index)
-    else
-      let i := alloc.vec.Vec.len state.declared
-      if i = core.num.Usize.MAX
-      then apply.refuse state apply.Refusal.Malformed
+  let next ← apply.unit_stage facts.want
+  let b ← directory.ordered state.stage next
+  if b
+  then
+    match facts.want with
+    | apply.Want.Deploy _ _ =>
+      let s := alloc.vec.Vec.deref state.holds
+      let b1 ← directory.names s facts.dest
+      if b1
+      then
+        apply.refuse { state with stage := next } (apply.Refusal.Overlap
+          state.index facts.dest)
       else
-        let v ←
-          alloc.vec.Vec.push state.declared
-            ({ dest := facts.dest, slot := facts.slot } : apply.Claim)
-        apply.examine { state with declared := v } facts
-  | apply.Want.Release _ =>
+        let i := alloc.vec.Vec.len state.declared
+        if i = core.num.Usize.MAX
+        then apply.refuse { state with stage := next } apply.Refusal.Malformed
+        else
+          let v ←
+            alloc.vec.Vec.push state.declared
+              ({ dest := facts.dest, slot := facts.slot } : apply.Claim)
+          apply.examine { state with declared := v, stage := next } facts
+    | apply.Want.Release _ =>
+      let s := alloc.vec.Vec.deref state.declared
+      let b1 ← apply.covered s facts.dest facts.slot
+      if b1
+      then
+        apply.report { state with unit := (some facts), stage := next }
+          facts.dest apply.Settled.Declared
+      else
+        let s1 := alloc.vec.Vec.deref state.holds
+        let b2 ← directory.names s1 facts.dest
+        if b2
+        then
+          apply.report { state with unit := (some facts), stage := next }
+            facts.dest apply.Settled.Held
+        else apply.examine { state with stage := next } facts
+    | apply.Want.Clear _ =>
+      let s := alloc.vec.Vec.deref state.holds
+      let b1 ← directory.names s facts.dest
+      if b1
+      then
+        apply.refuse { state with stage := next } (apply.Refusal.Overlap
+          state.index facts.dest)
+      else apply.examine { state with stage := next } facts
+  else apply.refuse state (apply.Refusal.Order state.index)
+
+/-- [gripsack_kernel::directory::commands]:
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 134:0-147:1
+    Visibility: public -/
+def directory.commands (action : directory.Action) : Result Bool := do
+  match action with
+  | directory.Action.Bind => ok true
+  | directory.Action.Birth => ok true
+  | directory.Action.Plan => ok true
+  | directory.Action.Evolve => ok true
+  | directory.Action.Shape => ok true
+  | directory.Action.Exchange => ok true
+  | directory.Action.Reactivate => ok true
+  | directory.Action.Hold => ok false
+  | directory.Action.Finish => ok true
+  | directory.Action.Retire => ok true
+
+/-- [gripsack_kernel::directory::stage]:
+    Source: 'crates/gripsack-kernel/src/directory.rs', lines 118:0-131:1
+    Visibility: public -/
+def directory.stage (action : directory.Action) : Result directory.Stage := do
+  match action with
+  | directory.Action.Bind => ok directory.Stage.Opening
+  | directory.Action.Birth => ok directory.Stage.Opening
+  | directory.Action.Plan => ok directory.Stage.Opening
+  | directory.Action.Evolve => ok directory.Stage.Shaping
+  | directory.Action.Shape => ok directory.Stage.Shaping
+  | directory.Action.Exchange => ok directory.Stage.Shaping
+  | directory.Action.Reactivate => ok directory.Stage.Shaping
+  | directory.Action.Hold => ok directory.Stage.Holding
+  | directory.Action.Finish => ok directory.Stage.Closing
+  | directory.Action.Retire => ok directory.Stage.Closing
+
+/-- [gripsack_kernel::apply::on_directory]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 624:0-647:1 -/
+def apply.on_directory
+  (state : apply.ApplyState) (facts : directory.DirectoryFacts) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  let next ← directory.stage facts.action
+  let b ← directory.ordered state.stage next
+  if b
+  then
     let s := alloc.vec.Vec.deref state.declared
-    let b ← apply.covered s facts.dest facts.slot
-    if b
+    let b1 ← apply.claimed s facts.dest
+    if b1
     then
-      apply.report { state with unit := (some facts), releasing := true }
-        facts.dest apply.Settled.Declared
-    else apply.examine { state with releasing := true } facts
+      apply.refuse { state with stage := next } (apply.Refusal.Overlap
+        state.index facts.dest)
+    else
+      let b2 ← directory.commands facts.action
+      if b2
+      then
+        ok
+          ({
+             state
+               with
+               phase := apply.Phase.Directing,
+               stage := next,
+               step := (some facts)
+           }, apply.Command.Directory state.index facts.dest facts.action)
+      else
+        let i := alloc.vec.Vec.len state.holds
+        if i = core.num.Usize.MAX
+        then
+          apply.refuse { state with stage := next, step := (some facts) }
+            apply.Refusal.Malformed
+        else
+          let v ← alloc.vec.Vec.push state.holds facts.dest
+          apply.report
+            { state with stage := next, holds := v, step := (some facts) }
+            facts.dest apply.Settled.Held
+  else apply.refuse state (apply.Refusal.Order state.index)
+
+/-- [gripsack_kernel::apply::on_directed]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 649:0-672:1 -/
+def apply.on_directed
+  (state : apply.ApplyState) (event : apply.Event) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match state.step with
+  | none => apply.refuse state apply.Refusal.Protocol
+  | some facts =>
+    match event with
+    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.DirectoryRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Directed mutated =>
+      let b ← if mutated
+                then ok true
+                else ok state.mutated
+      apply.report { state with mutated := b } facts.dest
+        (apply.Settled.Directory mutated)
+    | apply.Event.Refused =>
+      apply.refuse state (apply.Refusal.Directory state.index facts.dest)
+    | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
+    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
 
 /-- [gripsack_kernel::apply::on_observed]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 516:0-543:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 674:0-701:1 -/
 def apply.on_observed
   (state : apply.ApplyState) (dest : ids.DestId) (live : recover.Live) :
   Result (apply.ApplyState × apply.Command)
@@ -1490,7 +1795,7 @@ def apply.on_observed
     else apply.refuse state apply.Refusal.Protocol
 
 /-- [gripsack_kernel::rollback::lands]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 345:0-351:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 448:0-454:1
     Visibility: public -/
 def rollback.lands
   (install : recover.Intended) (live : recover.Live) : Result Bool := do
@@ -1507,7 +1812,7 @@ def rollback.lands
     | recover.Live.Unsupported => ok false
 
 /-- [gripsack_kernel::apply::on_landed]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 545:0-564:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 703:0-722:1 -/
 def apply.on_landed
   (state : apply.ApplyState) (live : recover.Live) :
   Result (apply.ApplyState × apply.Command)
@@ -1526,7 +1831,7 @@ def apply.on_landed
       else apply.refuse state (apply.Refusal.NotApplied state.index facts.dest)
 
 /-- [gripsack_kernel::apply::on_write_failed]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 566:0-583:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 724:0-741:1 -/
 def apply.on_write_failed
   (state : apply.ApplyState) (failure : recover.Failure) :
   Result (apply.ApplyState × apply.Command)
@@ -1540,7 +1845,7 @@ def apply.on_write_failed
   | recover.Failure.Io _ => apply.refuse state apply.Refusal.Failed
 
 /-- [gripsack_kernel::apply::on_delegated]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 585:0-608:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 743:0-766:1 -/
 def apply.on_delegated
   (state : apply.ApplyState) (event : apply.Event) :
   Result (apply.ApplyState × apply.Command)
@@ -1551,6 +1856,7 @@ def apply.on_delegated
     match event with
     | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
     | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.DirectoryRead _ => apply.failed_or_protocol state event
     | apply.Event.Exhausted =>
       apply.failed_or_protocol state apply.Event.Exhausted
     | apply.Event.Observed _ _ => apply.failed_or_protocol state event
@@ -1561,6 +1867,7 @@ def apply.on_delegated
                 else ok state.mutated
       apply.report { state with mutated := b } facts.dest
         (apply.Settled.Delegated mutated)
+    | apply.Event.Directed _ => apply.failed_or_protocol state event
     | apply.Event.Refused =>
       apply.refuse state (apply.Refusal.Delegated state.index facts.dest)
     | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
@@ -1568,7 +1875,7 @@ def apply.on_delegated
     | apply.Event.Failed _ => apply.failed_or_protocol state event
 
 /-- [gripsack_kernel::apply::on_reading]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 610:0-619:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 768:0-778:1 -/
 def apply.on_reading
   (state : apply.ApplyState) (event : apply.Event) :
   Result (apply.ApplyState × apply.Command)
@@ -1576,19 +1883,21 @@ def apply.on_reading
   match event with
   | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
   | apply.Event.UnitRead facts => apply.on_unit state facts
+  | apply.Event.DirectoryRead facts => apply.on_directory state facts
   | apply.Event.Exhausted =>
-    ok ({ state with phase := apply.Phase.Directories },
-      apply.Command.DirectoryStep)
+    ok ({ state with phase := apply.Phase.ReadingCommit },
+      apply.Command.ReadCommit)
   | apply.Event.Observed _ _ => apply.failed_or_protocol state event
   | apply.Event.Landed _ => apply.failed_or_protocol state event
   | apply.Event.Delegated _ => apply.failed_or_protocol state event
+  | apply.Event.Directed _ => apply.failed_or_protocol state event
   | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
   | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
   | apply.Event.CommitRead _ => apply.failed_or_protocol state event
   | apply.Event.Failed _ => apply.failed_or_protocol state event
 
 /-- [gripsack_kernel::apply::commit_facts]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 623:0-633:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 783:0-793:1
     Visibility: public -/
 def apply.commit_facts
   (inputs : apply.CommitInputs) (mutated : Bool) :
@@ -1707,7 +2016,7 @@ def publication.decide_commit
   else publication.admit_publication facts
 
 /-- [gripsack_kernel::apply::on_commit]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 635:0-649:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 795:0-809:1 -/
 def apply.on_commit
   (state : apply.ApplyState) (inputs : apply.CommitInputs) :
   Result (apply.ApplyState × apply.Command)
@@ -1725,7 +2034,7 @@ def apply.on_commit
     apply.refuse state (apply.Refusal.Unpublishable why)
 
 /-- [gripsack_kernel::apply::on_published]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 651:0-659:1 -/
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 811:0-819:1 -/
 def apply.on_published
   (state : apply.ApplyState) : Result (apply.ApplyState × apply.Command) := do
   match state.commit with
@@ -1735,7 +2044,7 @@ def apply.on_published
       facts.reserved)
 
 /-- [gripsack_kernel::apply::apply_step]:
-    Source: 'crates/gripsack-kernel/src/apply.rs', lines 665:0-720:1
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 825:0-873:1
     Visibility: public -/
 def apply.apply_step
   (state : apply.ApplyState) (event : apply.Event) :
@@ -1746,11 +2055,13 @@ def apply.apply_step
     match event with
     | apply.Event.Start => apply.read_unit state
     | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.DirectoryRead _ => apply.failed_or_protocol state event
     | apply.Event.Exhausted =>
       apply.failed_or_protocol state apply.Event.Exhausted
     | apply.Event.Observed _ _ => apply.failed_or_protocol state event
     | apply.Event.Landed _ => apply.failed_or_protocol state event
     | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Directed _ => apply.failed_or_protocol state event
     | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
     | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
     | apply.Event.CommitRead _ => apply.failed_or_protocol state event
@@ -1760,11 +2071,13 @@ def apply.apply_step
     match event with
     | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
     | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.DirectoryRead _ => apply.failed_or_protocol state event
     | apply.Event.Exhausted =>
       apply.failed_or_protocol state apply.Event.Exhausted
     | apply.Event.Observed dest live => apply.on_observed state dest live
     | apply.Event.Landed _ => apply.failed_or_protocol state event
     | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Directed _ => apply.failed_or_protocol state event
     | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
     | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
     | apply.Event.CommitRead _ => apply.failed_or_protocol state event
@@ -1773,10 +2086,12 @@ def apply.apply_step
     match event with
     | apply.Event.Start => apply.refuse state apply.Refusal.Protocol
     | apply.Event.UnitRead _ => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.DirectoryRead _ => apply.refuse state apply.Refusal.Protocol
     | apply.Event.Exhausted => apply.refuse state apply.Refusal.Protocol
     | apply.Event.Observed _ _ => apply.refuse state apply.Refusal.Protocol
     | apply.Event.Landed live => apply.on_landed state live
     | apply.Event.Delegated _ => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.Directed _ => apply.refuse state apply.Refusal.Protocol
     | apply.Event.Refused => apply.refuse state apply.Refusal.Protocol
     | apply.Event.Done => apply.refuse state apply.Refusal.Protocol
     | apply.Event.CommitRead _ => apply.refuse state apply.Refusal.Protocol
@@ -1786,39 +2101,29 @@ def apply.apply_step
     match event with
     | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
     | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.DirectoryRead _ => apply.failed_or_protocol state event
     | apply.Event.Exhausted =>
       apply.failed_or_protocol state apply.Event.Exhausted
     | apply.Event.Observed _ _ => apply.failed_or_protocol state event
     | apply.Event.Landed _ => apply.failed_or_protocol state event
     | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Directed _ => apply.failed_or_protocol state event
     | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
     | apply.Event.Done => apply.advance state
     | apply.Event.CommitRead _ => apply.failed_or_protocol state event
     | apply.Event.Failed _ => apply.failed_or_protocol state event
-  | apply.Phase.Directories =>
-    match event with
-    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
-    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
-    | apply.Event.Exhausted =>
-      apply.failed_or_protocol state apply.Event.Exhausted
-    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
-    | apply.Event.Landed _ => apply.failed_or_protocol state event
-    | apply.Event.Delegated _ => apply.failed_or_protocol state event
-    | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
-    | apply.Event.Done =>
-      ok ({ state with phase := apply.Phase.ReadingCommit },
-        apply.Command.ReadCommit)
-    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
-    | apply.Event.Failed _ => apply.failed_or_protocol state event
+  | apply.Phase.Directing => apply.on_directed state event
   | apply.Phase.ReadingCommit =>
     match event with
     | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
     | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.DirectoryRead _ => apply.failed_or_protocol state event
     | apply.Event.Exhausted =>
       apply.failed_or_protocol state apply.Event.Exhausted
     | apply.Event.Observed _ _ => apply.failed_or_protocol state event
     | apply.Event.Landed _ => apply.failed_or_protocol state event
     | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Directed _ => apply.failed_or_protocol state event
     | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
     | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
     | apply.Event.CommitRead inputs => apply.on_commit state inputs
@@ -1827,11 +2132,13 @@ def apply.apply_step
     match event with
     | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
     | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.DirectoryRead _ => apply.failed_or_protocol state event
     | apply.Event.Exhausted =>
       apply.failed_or_protocol state apply.Event.Exhausted
     | apply.Event.Observed _ _ => apply.failed_or_protocol state event
     | apply.Event.Landed _ => apply.failed_or_protocol state event
     | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Directed _ => apply.failed_or_protocol state event
     | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
     | apply.Event.Done => apply.on_published state
     | apply.Event.CommitRead _ => apply.failed_or_protocol state event
@@ -1840,11 +2147,13 @@ def apply.apply_step
     match event with
     | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
     | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.DirectoryRead _ => apply.failed_or_protocol state event
     | apply.Event.Exhausted =>
       apply.failed_or_protocol state apply.Event.Exhausted
     | apply.Event.Observed _ _ => apply.failed_or_protocol state event
     | apply.Event.Landed _ => apply.failed_or_protocol state event
     | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Directed _ => apply.failed_or_protocol state event
     | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
     | apply.Event.Done =>
       ok ({ state with phase := apply.Phase.Activating },
@@ -1855,11 +2164,13 @@ def apply.apply_step
     match event with
     | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
     | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.DirectoryRead _ => apply.failed_or_protocol state event
     | apply.Event.Exhausted =>
       apply.failed_or_protocol state apply.Event.Exhausted
     | apply.Event.Observed _ _ => apply.failed_or_protocol state event
     | apply.Event.Landed _ => apply.failed_or_protocol state event
     | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Directed _ => apply.failed_or_protocol state event
     | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
     | apply.Event.Done =>
       ok ({ state with phase := apply.Phase.Finished }, apply.Command.Finish
@@ -7317,7 +7628,7 @@ def recover.recover_step
   | recover.Phase.Aborted => recover.refuse state recover.Refusal.Protocol
 
 /-- [gripsack_kernel::rollback::Place]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 52:0-58:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 64:0-70:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Place where
@@ -7325,7 +7636,7 @@ inductive rollback.Place where
 | Generation : rollback.Place
 
 /-- [gripsack_kernel::rollback::Bytes]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 63:0-66:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 75:0-78:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Bytes where
@@ -7333,16 +7644,25 @@ inductive rollback.Bytes where
 | Missing : rollback.Bytes
 
 /-- [gripsack_kernel::rollback::Target]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 69:0-80:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 81:0-98:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Target where
 | Released : recover.Intended → rollback.Target
 | Wrote : recover.Ident → rollback.Bytes → rollback.Target
 | Preserved : rollback.Target
+| Cleared : recover.Intended → rollback.Target
+
+/-- [gripsack_kernel::rollback::When]
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 101:0-108:1
+    Visibility: public -/
+@[discriminant isize]
+inductive rollback.When where
+| BeforeShape : rollback.When
+| AfterShape : rollback.When
 
 /-- [gripsack_kernel::rollback::UnitFacts]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 83:0-90:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 111:0-119:1
     Visibility: public -/
 structure rollback.UnitFacts where
   dest : ids.DestId
@@ -7350,9 +7670,10 @@ structure rollback.UnitFacts where
   route : recover.Route
   current : ownership.Recorded
   target : rollback.Target
+  when : rollback.When
 
 /-- [gripsack_kernel::rollback::Profile]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 94:0-97:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 123:0-126:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Profile where
@@ -7360,7 +7681,7 @@ inductive rollback.Profile where
 | Missing : rollback.Profile
 
 /-- [gripsack_kernel::rollback::PlanFacts]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 100:0-107:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 129:0-136:1
     Visibility: public -/
 structure rollback.PlanFacts where
   units : Std.U32
@@ -7369,7 +7690,7 @@ structure rollback.PlanFacts where
   profile : rollback.Profile
 
 /-- [gripsack_kernel::rollback::Settled]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 110:0-123:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 139:0-157:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Settled where
@@ -7378,9 +7699,11 @@ inductive rollback.Settled where
 | Kept : ownership.Refusal → rollback.Settled
 | Untouched : rollback.Settled
 | Delegated : rollback.Settled
+| Held : rollback.Settled
+| Directory : rollback.Settled
 
 /-- [gripsack_kernel::rollback::Refusal]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 142:0-163:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 176:0-208:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Refusal where
@@ -7390,12 +7713,16 @@ inductive rollback.Refusal where
 | Protected : Std.U32 → ids.DestId → rollback.Refusal
 | Drifted : Std.U32 → ids.DestId → rollback.Refusal
 | NotRestored : Std.U32 → ids.DestId → rollback.Refusal
+| Order : Std.U32 → rollback.Refusal
+| Overlap : Std.U32 → ids.DestId → rollback.Refusal
+| Blocked : Std.U32 → ids.DestId → rollback.Refusal
+| Directory : Std.U32 → ids.DestId → rollback.Refusal
 | Malformed : rollback.Refusal
 | Failed : rollback.Refusal
 | Protocol : rollback.Refusal
 
 /-- [gripsack_kernel::rollback::Restore]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 126:0-133:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 160:0-167:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Restore where
@@ -7404,14 +7731,14 @@ inductive rollback.Restore where
 | Refuse : rollback.Refusal → rollback.Restore
 
 /-- [gripsack_kernel::rollback::Outcome]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 135:0-138:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 169:0-172:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Outcome where
 | RolledBack : rollback.Outcome
 
 /-- [gripsack_kernel::rollback::Command]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 165:0-197:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 210:0-249:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Command where
@@ -7425,19 +7752,21 @@ inductive rollback.Command where
   recover.Intended →
   rollback.Command
 | Delegate : Std.U32 → ids.DestId → rollback.Command
+| Directory : Std.U32 → ids.DestId → directory.Action → rollback.Command
 | Report : Std.U32 → ids.DestId → rollback.Settled → rollback.Command
 | Flip : selection.SelectionIdentity → rollback.Command
 | Finish : rollback.Outcome → rollback.Command
 | Abort : rollback.Refusal → rollback.Command
 
 /-- [gripsack_kernel::rollback::Event]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 199:0-214:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 251:0-269:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Event where
 | Start : rollback.Event
 | PlanRead : rollback.PlanFacts → rollback.Event
 | UnitRead : rollback.UnitFacts → rollback.Event
+| DirectoryRead : directory.DirectoryFacts → rollback.Event
 | Observed : ids.DestId → recover.Live → rollback.Event
 | Landed : recover.Live → rollback.Event
 | Done : rollback.Event
@@ -7445,7 +7774,7 @@ inductive rollback.Event where
 | Failed : recover.Failure → rollback.Event
 
 /-- [gripsack_kernel::rollback::Phase]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 216:0-227:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 271:0-283:1
     Visibility: public -/
 @[discriminant isize]
 inductive rollback.Phase where
@@ -7455,13 +7784,14 @@ inductive rollback.Phase where
 | Observing : rollback.Phase
 | Writing : rollback.Phase
 | Delegating : rollback.Phase
+| Directing : rollback.Phase
 | Reporting : rollback.Phase
 | Flipping : rollback.Phase
 | Finished : rollback.Phase
 | Aborted : rollback.Phase
 
 /-- [gripsack_kernel::rollback::RollbackState]
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 229:0-237:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 285:0-301:1
     Visibility: public -/
 structure rollback.RollbackState where
   phase : rollback.Phase
@@ -7469,9 +7799,13 @@ structure rollback.RollbackState where
   index : Std.U32
   unit : Option rollback.UnitFacts
   install : Option recover.Intended
+  stage : directory.Stage
+  holds : alloc.vec.Vec ids.DestId
+  claimed : alloc.vec.Vec ids.DestId
+  step : Option directory.DirectoryFacts
 
 /-- [gripsack_kernel::rollback::{gripsack_kernel::rollback::RollbackState}::new]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 240:4-255:5
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 304:4-323:5
     Visibility: public -/
 def rollback.RollbackState.new : Result rollback.RollbackState := do
   let gi ← generation.GenerationId.new 0#u64
@@ -7487,25 +7821,30 @@ def rollback.RollbackState.new : Result rollback.RollbackState := do
         },
       index := 0#u32,
       unit := none,
-      install := none
+      install := none,
+      stage := directory.Stage.Opening,
+      holds := (alloc.vec.Vec.new ids.DestId),
+      claimed := (alloc.vec.Vec.new ids.DestId),
+      step := none
     }
 
 /-- [gripsack_kernel::rollback::withheld]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 259:0-263:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 327:0-331:1 -/
 def rollback.withheld : Result ownership.Consent := do
   ok { take_over := ownership.TakeOver.Withheld }
 
 /-- [gripsack_kernel::rollback::authority]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 268:0-274:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 336:0-343:1 -/
 def rollback.authority
   (target : rollback.Target) : Result (Option recover.Intended) := do
   match target with
   | rollback.Target.Released _ => ok (some recover.Intended.Removed)
   | rollback.Target.Wrote ident _ => ok (some (recover.Intended.Obj ident))
   | rollback.Target.Preserved => ok none
+  | rollback.Target.Cleared _ => ok (some recover.Intended.Removed)
 
 /-- [gripsack_kernel::rollback::install]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 277:0-283:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 346:0-356:1
     Visibility: public -/
 def rollback.install
   (target : rollback.Target) : Result (Option recover.Intended) := do
@@ -7513,9 +7852,13 @@ def rollback.install
   | rollback.Target.Released origin => ok (some origin)
   | rollback.Target.Wrote ident _ => ok (some (recover.Intended.Obj ident))
   | rollback.Target.Preserved => ok none
+  | rollback.Target.Cleared origin =>
+    match origin with
+    | recover.Intended.Removed => ok (some recover.Intended.Removed)
+    | recover.Intended.Obj _ => ok none
 
 /-- [gripsack_kernel::rollback::retained]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 286:0-295:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 359:0-369:1 -/
 def rollback.retained (target : rollback.Target) : Result Bool := do
   match target with
   | rollback.Target.Released _ => ok true
@@ -7524,21 +7867,41 @@ def rollback.retained (target : rollback.Target) : Result Bool := do
     | rollback.Bytes.Retained => ok true
     | rollback.Bytes.Missing => ok false
   | rollback.Target.Preserved => ok false
+  | rollback.Target.Cleared _ => ok true
+
+/-- [gripsack_kernel::rollback::clears]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 372:0-379:1 -/
+def rollback.clears (target : rollback.Target) : Result Bool := do
+  match target with
+  | rollback.Target.Released _ => ok false
+  | rollback.Target.Wrote _ _ => ok false
+  | rollback.Target.Preserved => ok false
+  | rollback.Target.Cleared _ => ok true
+
+/-- [gripsack_kernel::rollback::blocked]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 381:0-386:1 -/
+def rollback.blocked
+  (index : Std.U32) (unit : rollback.UnitFacts) : Result rollback.Restore := do
+  ok (rollback.Restore.Refuse (rollback.Refusal.Blocked index unit.dest))
 
 /-- [gripsack_kernel::rollback::writable]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 297:0-302:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 388:0-393:1 -/
 def rollback.writable (place : rollback.Place) : Result Bool := do
   match place with
   | rollback.Place.Outside => ok true
   | rollback.Place.Generation => ok false
 
 /-- [gripsack_kernel::rollback::writing]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 323:0-342:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 420:0-445:1 -/
 def rollback.writing
   (index : Std.U32) (unit : rollback.UnitFacts) : Result rollback.Restore := do
   let o ← rollback.install unit.target
   match o with
-  | none => ok (rollback.Restore.Leave rollback.Settled.Untouched)
+  | none =>
+    let b ← rollback.clears unit.target
+    if b
+    then rollback.blocked index unit
+    else ok (rollback.Restore.Leave rollback.Settled.Untouched)
   | some intended =>
     let b ← rollback.retained unit.target
     if b
@@ -7554,7 +7917,7 @@ def rollback.writing
         unit.dest))
 
 /-- [gripsack_kernel::rollback::decide_restore]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 308:0-319:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 399:0-416:1
     Visibility: public -/
 def rollback.decide_restore
   (index : Std.U32) (unit : rollback.UnitFacts) (live : recover.Live) :
@@ -7573,10 +7936,13 @@ def rollback.decide_restore
     | ownership.Decision.ReplaceOwn => rollback.writing index unit
     | ownership.Decision.TakeOver => rollback.writing index unit
     | ownership.Decision.Refuse why =>
-      ok (rollback.Restore.Leave (rollback.Settled.Kept why))
+      let b ← rollback.clears unit.target
+      if b
+      then rollback.blocked index unit
+      else ok (rollback.Restore.Leave (rollback.Settled.Kept why))
 
 /-- [gripsack_kernel::rollback::admit]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 355:0-366:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 458:0-469:1
     Visibility: public -/
 def rollback.admit
   (plan : rollback.PlanFacts) : Result (Option rollback.Refusal) := do
@@ -7589,7 +7955,7 @@ def rollback.admit
   | rollback.Profile.Missing => ok (some rollback.Refusal.ProfileMissing)
 
 /-- [gripsack_kernel::rollback::refuse]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 368:0-371:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 471:0-474:1 -/
 def rollback.refuse
   (state : rollback.RollbackState) (refusal : rollback.Refusal) :
   Result (rollback.RollbackState × rollback.Command)
@@ -7598,7 +7964,7 @@ def rollback.refuse
     refusal)
 
 /-- [gripsack_kernel::rollback::failed_or_protocol]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 373:0-378:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 476:0-481:1 -/
 def rollback.failed_or_protocol
   (state : rollback.RollbackState) (event : rollback.Event) :
   Result (rollback.RollbackState × rollback.Command)
@@ -7609,6 +7975,8 @@ def rollback.failed_or_protocol
     rollback.refuse state rollback.Refusal.Protocol
   | rollback.Event.UnitRead _ =>
     rollback.refuse state rollback.Refusal.Protocol
+  | rollback.Event.DirectoryRead _ =>
+    rollback.refuse state rollback.Refusal.Protocol
   | rollback.Event.Observed _ _ =>
     rollback.refuse state rollback.Refusal.Protocol
   | rollback.Event.Landed _ => rollback.refuse state rollback.Refusal.Protocol
@@ -7617,7 +7985,7 @@ def rollback.failed_or_protocol
   | rollback.Event.Failed _ => rollback.refuse state rollback.Refusal.Failed
 
 /-- [gripsack_kernel::rollback::proceed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 381:0-391:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 484:0-494:1 -/
 def rollback.proceed
   (state : rollback.RollbackState) :
   Result (rollback.RollbackState × rollback.Command)
@@ -7631,7 +7999,7 @@ def rollback.proceed
       state.plan.reselect)
 
 /-- [gripsack_kernel::rollback::advance]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 394:0-404:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 497:0-508:1 -/
 def rollback.advance
   (state : rollback.RollbackState) :
   Result (rollback.RollbackState × rollback.Command)
@@ -7639,14 +8007,14 @@ def rollback.advance
   let o ← lift (U32.checked_add state.index 1#u32)
   match o with
   | none =>
-    rollback.refuse { state with unit := none, install := none }
+    rollback.refuse { state with unit := none, install := none, step := none }
       rollback.Refusal.Malformed
   | some next =>
     rollback.proceed
-      { state with index := next, unit := none, install := none }
+      { state with index := next, unit := none, install := none, step := none }
 
 /-- [gripsack_kernel::rollback::report]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 406:0-417:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 510:0-521:1 -/
 def rollback.report
   (state : rollback.RollbackState) (dest : ids.DestId)
   (settled : rollback.Settled) :
@@ -7656,7 +8024,7 @@ def rollback.report
     state.index dest settled)
 
 /-- [gripsack_kernel::rollback::on_plan]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 419:0-428:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 523:0-532:1 -/
 def rollback.on_plan
   (state : rollback.RollbackState) (plan : rollback.PlanFacts) :
   Result (rollback.RollbackState × rollback.Command)
@@ -7666,23 +8034,181 @@ def rollback.on_plan
   | none => rollback.proceed { state with plan, index := 0#u32 }
   | some refusal => rollback.refuse state refusal
 
+/-- [gripsack_kernel::rollback::unit_stage]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 536:0-545:1
+    Visibility: public -/
+def rollback.unit_stage
+  (target : rollback.Target) (when : rollback.When) :
+  Result directory.Stage
+  := do
+  let b ← rollback.clears target
+  if b
+  then ok directory.Stage.Clearing
+  else
+    match when with
+    | rollback.When.BeforeShape => ok directory.Stage.Clearing
+    | rollback.When.AfterShape => ok directory.Stage.Units
+
+/-- [gripsack_kernel::rollback::records_write]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 549:0-556:1 -/
+def rollback.records_write (target : rollback.Target) : Result Bool := do
+  match target with
+  | rollback.Target.Released _ => ok false
+  | rollback.Target.Wrote _ _ => ok true
+  | rollback.Target.Preserved => ok false
+  | rollback.Target.Cleared _ => ok false
+
+/-- [gripsack_kernel::rollback::writes_target]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 560:0-567:1 -/
+def rollback.writes_target (target : rollback.Target) : Result Bool := do
+  match target with
+  | rollback.Target.Released _ => ok false
+  | rollback.Target.Wrote _ _ => ok true
+  | rollback.Target.Preserved => ok false
+  | rollback.Target.Cleared _ => ok true
+
 /-- [gripsack_kernel::rollback::on_unit]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 430:0-445:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 569:0-602:1 -/
 def rollback.on_unit
   (state : rollback.RollbackState) (facts : rollback.UnitFacts) :
   Result (rollback.RollbackState × rollback.Command)
   := do
-  match facts.route with
-  | recover.Route.Leaf =>
-    ok ({ state with phase := rollback.Phase.Observing, unit := (some facts) },
-      rollback.Command.Observe state.index facts.dest)
-  | recover.Route.Delegated =>
-    ok
-      ({ state with phase := rollback.Phase.Delegating, unit := (some facts) },
-      rollback.Command.Delegate state.index facts.dest)
+  let next ← rollback.unit_stage facts.target facts.when
+  let b ← directory.ordered state.stage next
+  if b
+  then
+    let s := alloc.vec.Vec.deref state.holds
+    let b1 ← directory.names s facts.dest
+    if b1
+    then
+      let b2 ← rollback.writes_target facts.target
+      if b2
+      then
+        rollback.refuse { state with stage := next } (rollback.Refusal.Overlap
+          state.index facts.dest)
+      else
+        rollback.report { state with unit := (some facts), stage := next }
+          facts.dest rollback.Settled.Held
+    else
+      let b2 ← rollback.records_write facts.target
+      if b2
+      then
+        let i := alloc.vec.Vec.len state.claimed
+        if i = core.num.Usize.MAX
+        then
+          rollback.refuse { state with stage := next }
+            rollback.Refusal.Malformed
+        else
+          let v ← alloc.vec.Vec.push state.claimed facts.dest
+          match facts.route with
+          | recover.Route.Leaf =>
+            ok
+              ({
+                 state
+                   with
+                   phase := rollback.Phase.Observing,
+                   unit := (some facts),
+                   stage := next,
+                   claimed := v
+               }, rollback.Command.Observe state.index facts.dest)
+          | recover.Route.Delegated =>
+            ok
+              ({
+                 state
+                   with
+                   phase := rollback.Phase.Delegating,
+                   unit := (some facts),
+                   stage := next,
+                   claimed := v
+               }, rollback.Command.Delegate state.index facts.dest)
+      else
+        match facts.route with
+        | recover.Route.Leaf =>
+          ok
+            ({
+               state
+                 with
+                 phase := rollback.Phase.Observing,
+                 unit := (some facts),
+                 stage := next
+             }, rollback.Command.Observe state.index facts.dest)
+        | recover.Route.Delegated =>
+          ok
+            ({
+               state
+                 with
+                 phase := rollback.Phase.Delegating,
+                 unit := (some facts),
+                 stage := next
+             }, rollback.Command.Delegate state.index facts.dest)
+  else rollback.refuse state (rollback.Refusal.Order state.index)
+
+/-- [gripsack_kernel::rollback::on_directory]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 606:0-629:1 -/
+def rollback.on_directory
+  (state : rollback.RollbackState) (facts : directory.DirectoryFacts) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  let next ← directory.stage facts.action
+  let b ← directory.ordered state.stage next
+  if b
+  then
+    let s := alloc.vec.Vec.deref state.claimed
+    let b1 ← directory.names s facts.dest
+    if b1
+    then
+      rollback.refuse { state with stage := next } (rollback.Refusal.Overlap
+        state.index facts.dest)
+    else
+      let b2 ← directory.commands facts.action
+      if b2
+      then
+        ok
+          ({
+             state
+               with
+               phase := rollback.Phase.Directing,
+               stage := next,
+               step := (some facts)
+           }, rollback.Command.Directory state.index facts.dest facts.action)
+      else
+        let i := alloc.vec.Vec.len state.holds
+        if i = core.num.Usize.MAX
+        then
+          rollback.refuse { state with stage := next, step := (some facts) }
+            rollback.Refusal.Malformed
+        else
+          let v ← alloc.vec.Vec.push state.holds facts.dest
+          rollback.report
+            { state with stage := next, holds := v, step := (some facts) }
+            facts.dest rollback.Settled.Held
+  else rollback.refuse state (rollback.Refusal.Order state.index)
+
+/-- [gripsack_kernel::rollback::on_directed]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 631:0-649:1 -/
+def rollback.on_directed
+  (state : rollback.RollbackState) (event : rollback.Event) :
+  Result (rollback.RollbackState × rollback.Command)
+  := do
+  match state.step with
+  | none => rollback.refuse state rollback.Refusal.Protocol
+  | some facts =>
+    match event with
+    | rollback.Event.Start =>
+      rollback.failed_or_protocol state rollback.Event.Start
+    | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.DirectoryRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
+    | rollback.Event.Landed _ => rollback.failed_or_protocol state event
+    | rollback.Event.Done =>
+      rollback.report state facts.dest rollback.Settled.Directory
+    | rollback.Event.Refused =>
+      rollback.refuse state (rollback.Refusal.Directory state.index facts.dest)
+    | rollback.Event.Failed _ => rollback.failed_or_protocol state event
 
 /-- [gripsack_kernel::rollback::on_observed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 447:0-473:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 651:0-677:1 -/
 def rollback.on_observed
   (state : rollback.RollbackState) (dest : ids.DestId) (live : recover.Live) :
   Result (rollback.RollbackState × rollback.Command)
@@ -7707,7 +8233,7 @@ def rollback.on_observed
     else rollback.refuse state rollback.Refusal.Protocol
 
 /-- [gripsack_kernel::rollback::on_landed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 475:0-493:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 679:0-697:1 -/
 def rollback.on_landed
   (state : rollback.RollbackState) (live : recover.Live) :
   Result (rollback.RollbackState × rollback.Command)
@@ -7726,7 +8252,7 @@ def rollback.on_landed
           facts.dest)
 
 /-- [gripsack_kernel::rollback::on_write_failed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 495:0-512:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 699:0-716:1 -/
 def rollback.on_write_failed
   (state : rollback.RollbackState) (failure : recover.Failure) :
   Result (rollback.RollbackState × rollback.Command)
@@ -7740,7 +8266,7 @@ def rollback.on_write_failed
   | recover.Failure.Io _ => rollback.refuse state rollback.Refusal.Failed
 
 /-- [gripsack_kernel::rollback::on_delegated]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 514:0-532:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 718:0-736:1 -/
 def rollback.on_delegated
   (state : rollback.RollbackState) (event : rollback.Event) :
   Result (rollback.RollbackState × rollback.Command)
@@ -7753,6 +8279,7 @@ def rollback.on_delegated
       rollback.failed_or_protocol state rollback.Event.Start
     | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
     | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.DirectoryRead _ => rollback.failed_or_protocol state event
     | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
     | rollback.Event.Landed _ => rollback.failed_or_protocol state event
     | rollback.Event.Done =>
@@ -7763,7 +8290,7 @@ def rollback.on_delegated
     | rollback.Event.Failed _ => rollback.failed_or_protocol state event
 
 /-- [gripsack_kernel::rollback::rollback_step]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 538:0-580:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 742:0-786:1
     Visibility: public -/
 def rollback.rollback_step
   (state : rollback.RollbackState) (event : rollback.Event) :
@@ -7777,6 +8304,7 @@ def rollback.rollback_step
         rollback.Command.ReadPlan)
     | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
     | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.DirectoryRead _ => rollback.failed_or_protocol state event
     | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
     | rollback.Event.Landed _ => rollback.failed_or_protocol state event
     | rollback.Event.Done =>
@@ -7790,6 +8318,7 @@ def rollback.rollback_step
       rollback.failed_or_protocol state rollback.Event.Start
     | rollback.Event.PlanRead plan => rollback.on_plan state plan
     | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.DirectoryRead _ => rollback.failed_or_protocol state event
     | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
     | rollback.Event.Landed _ => rollback.failed_or_protocol state event
     | rollback.Event.Done =>
@@ -7803,6 +8332,7 @@ def rollback.rollback_step
       rollback.failed_or_protocol state rollback.Event.Start
     | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
     | rollback.Event.UnitRead facts => rollback.on_unit state facts
+    | rollback.Event.DirectoryRead facts => rollback.on_directory state facts
     | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
     | rollback.Event.Landed _ => rollback.failed_or_protocol state event
     | rollback.Event.Done =>
@@ -7816,6 +8346,7 @@ def rollback.rollback_step
       rollback.failed_or_protocol state rollback.Event.Start
     | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
     | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.DirectoryRead _ => rollback.failed_or_protocol state event
     | rollback.Event.Observed dest live => rollback.on_observed state dest live
     | rollback.Event.Landed _ => rollback.failed_or_protocol state event
     | rollback.Event.Done =>
@@ -7830,6 +8361,8 @@ def rollback.rollback_step
       rollback.refuse state rollback.Refusal.Protocol
     | rollback.Event.UnitRead _ =>
       rollback.refuse state rollback.Refusal.Protocol
+    | rollback.Event.DirectoryRead _ =>
+      rollback.refuse state rollback.Refusal.Protocol
     | rollback.Event.Observed _ _ =>
       rollback.refuse state rollback.Refusal.Protocol
     | rollback.Event.Landed live => rollback.on_landed state live
@@ -7837,12 +8370,14 @@ def rollback.rollback_step
     | rollback.Event.Refused => rollback.refuse state rollback.Refusal.Protocol
     | rollback.Event.Failed failure => rollback.on_write_failed state failure
   | rollback.Phase.Delegating => rollback.on_delegated state event
+  | rollback.Phase.Directing => rollback.on_directed state event
   | rollback.Phase.Reporting =>
     match event with
     | rollback.Event.Start =>
       rollback.failed_or_protocol state rollback.Event.Start
     | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
     | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.DirectoryRead _ => rollback.failed_or_protocol state event
     | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
     | rollback.Event.Landed _ => rollback.failed_or_protocol state event
     | rollback.Event.Done => rollback.advance state
@@ -7855,6 +8390,7 @@ def rollback.rollback_step
       rollback.failed_or_protocol state rollback.Event.Start
     | rollback.Event.PlanRead _ => rollback.failed_or_protocol state event
     | rollback.Event.UnitRead _ => rollback.failed_or_protocol state event
+    | rollback.Event.DirectoryRead _ => rollback.failed_or_protocol state event
     | rollback.Event.Observed _ _ => rollback.failed_or_protocol state event
     | rollback.Event.Landed _ => rollback.failed_or_protocol state event
     | rollback.Event.Done =>

@@ -100,7 +100,7 @@ use crate::{
     rollback::{
         Bytes, Command as RollbackCommand, Event as RollbackEvent, Outcome as RollbackOutcome,
         Phase as RollbackPhase, Place, PlanFacts, Profile, Refusal as RollbackRefusal, Restore,
-        RollbackState, Settled, Target, UnitFacts,
+        RollbackState, Settled, Target, UnitFacts, When,
     },
     selection::{RecoveryFacts, SelectionIdentity, TransactionId},
 };
@@ -156,6 +156,7 @@ copy_impls!(
     Place,
     Bytes,
     Target,
+    When,
     UnitFacts,
     Profile,
     PlanFacts,
@@ -166,7 +167,6 @@ copy_impls!(
     RollbackCommand,
     RollbackEvent,
     RollbackPhase,
-    RollbackState,
 );
 
 macro_rules! same_eq {
@@ -419,6 +419,10 @@ unit_debug!(
         Generation
     },
     Bytes { Retained, Missing },
+    When {
+        BeforeShape,
+        AfterShape
+    },
     Profile { Retained, Missing },
     RollbackOutcome { RolledBack },
     RollbackPhase {
@@ -428,6 +432,7 @@ unit_debug!(
         Observing,
         Writing,
         Delegating,
+        Directing,
         Reporting,
         Flipping,
         Finished,
@@ -445,6 +450,7 @@ impl fmt::Debug for Target {
                 .field("bytes", bytes)
                 .finish(),
             Target::Preserved => f.write_str("Preserved"),
+            Target::Cleared(origin) => f.debug_tuple("Cleared").field(origin).finish(),
         }
     }
 }
@@ -457,6 +463,7 @@ impl fmt::Debug for UnitFacts {
             .field("route", &self.route)
             .field("current", &self.current)
             .field("target", &self.target)
+            .field("when", &self.when)
             .finish()
     }
 }
@@ -480,6 +487,8 @@ impl fmt::Debug for Settled {
             Settled::Kept(why) => f.debug_tuple("Kept").field(why).finish(),
             Settled::Untouched => f.write_str("Untouched"),
             Settled::Delegated => f.write_str("Delegated"),
+            Settled::Held => f.write_str("Held"),
+            Settled::Directory => f.write_str("Directory"),
         }
     }
 }
@@ -509,6 +518,10 @@ impl fmt::Debug for RollbackRefusal {
             RollbackRefusal::Protected { unit: u, dest } => unit(f, "Protected", u, dest),
             RollbackRefusal::Drifted { unit: u, dest } => unit(f, "Drifted", u, dest),
             RollbackRefusal::NotRestored { unit: u, dest } => unit(f, "NotRestored", u, dest),
+            RollbackRefusal::Order { unit } => f.debug_struct("Order").field("unit", unit).finish(),
+            RollbackRefusal::Overlap { unit: u, dest } => unit(f, "Overlap", u, dest),
+            RollbackRefusal::Blocked { unit: u, dest } => unit(f, "Blocked", u, dest),
+            RollbackRefusal::Directory { unit: u, dest } => unit(f, "Directory", u, dest),
             RollbackRefusal::Malformed => f.write_str("Malformed"),
             RollbackRefusal::Failed => f.write_str("Failed"),
             RollbackRefusal::Protocol => f.write_str("Protocol"),
@@ -543,6 +556,12 @@ impl fmt::Debug for RollbackCommand {
                 .field("unit", unit)
                 .field("dest", dest)
                 .finish(),
+            RollbackCommand::Directory { unit, dest, action } => f
+                .debug_struct("Directory")
+                .field("unit", unit)
+                .field("dest", dest)
+                .field("action", action)
+                .finish(),
             RollbackCommand::Report {
                 unit,
                 dest,
@@ -566,6 +585,9 @@ impl fmt::Debug for RollbackEvent {
             RollbackEvent::Start => f.write_str("Start"),
             RollbackEvent::PlanRead(plan) => f.debug_tuple("PlanRead").field(plan).finish(),
             RollbackEvent::UnitRead(unit) => f.debug_tuple("UnitRead").field(unit).finish(),
+            RollbackEvent::DirectoryRead(item) => {
+                f.debug_tuple("DirectoryRead").field(item).finish()
+            }
             RollbackEvent::Observed { dest, live } => f
                 .debug_struct("Observed")
                 .field("dest", dest)
@@ -587,6 +609,10 @@ impl fmt::Debug for RollbackState {
             .field("index", &self.index)
             .field("unit", &self.unit)
             .field("install", &self.install)
+            .field("stage", &self.stage)
+            .field("holds", &self.holds)
+            .field("claimed", &self.claimed)
+            .field("step", &self.step)
             .finish()
     }
 }
@@ -1619,6 +1645,7 @@ same_eq!(
     ApplySettled => |a, b| match (a, b) {
         (ApplySettled::Kept(a), ApplySettled::Kept(b)) => a == b,
         (ApplySettled::Delegated { mutated: a }, ApplySettled::Delegated { mutated: b }) => a == b,
+        (ApplySettled::Directory { mutated: a }, ApplySettled::Directory { mutated: b }) => a == b,
         _ => core::mem::discriminant(a) == core::mem::discriminant(b),
     },
 );
@@ -1638,7 +1665,7 @@ unit_debug!(
         Writing,
         Delegating,
         Reporting,
-        Directories,
+        Directing,
         ReadingCommit,
         Publishing,
         Flipping,
@@ -1681,6 +1708,7 @@ impl fmt::Debug for Want {
                 .field("adopted", adopted)
                 .finish(),
             Want::Release(origin) => f.debug_tuple("Release").field(origin).finish(),
+            Want::Clear(origin) => f.debug_tuple("Clear").field(origin).finish(),
         }
     }
 }
@@ -1708,6 +1736,11 @@ impl fmt::Debug for ApplySettled {
             ApplySettled::Declared => f.write_str("Declared"),
             ApplySettled::Delegated { mutated } => f
                 .debug_struct("Delegated")
+                .field("mutated", mutated)
+                .finish(),
+            ApplySettled::Held => f.write_str("Held"),
+            ApplySettled::Directory { mutated } => f
+                .debug_struct("Directory")
                 .field("mutated", mutated)
                 .finish(),
         }
@@ -1760,6 +1793,9 @@ impl fmt::Debug for ApplyRefusal {
             ApplyRefusal::NotApplied { unit: u, dest } => unit(f, "NotApplied", u, dest),
             ApplyRefusal::Delegated { unit: u, dest } => unit(f, "Delegated", u, dest),
             ApplyRefusal::Order { unit } => f.debug_struct("Order").field("unit", unit).finish(),
+            ApplyRefusal::Overlap { unit: u, dest } => unit(f, "Overlap", u, dest),
+            ApplyRefusal::Blocked { unit: u, dest } => unit(f, "Blocked", u, dest),
+            ApplyRefusal::Directory { unit: u, dest } => unit(f, "Directory", u, dest),
             ApplyRefusal::Unpublishable(why) => f.debug_tuple("Unpublishable").field(why).finish(),
             ApplyRefusal::Malformed => f.write_str("Malformed"),
             ApplyRefusal::Failed => f.write_str("Failed"),
@@ -1806,7 +1842,12 @@ impl fmt::Debug for ApplyCommand {
                 .field("dest", dest)
                 .field("settled", settled)
                 .finish(),
-            ApplyCommand::DirectoryStep => f.write_str("DirectoryStep"),
+            ApplyCommand::Directory { unit, dest, action } => f
+                .debug_struct("Directory")
+                .field("unit", unit)
+                .field("dest", dest)
+                .field("action", action)
+                .finish(),
             ApplyCommand::ReadCommit => f.write_str("ReadCommit"),
             ApplyCommand::Publish(generation) => {
                 f.debug_tuple("Publish").field(generation).finish()
@@ -1824,6 +1865,11 @@ impl fmt::Debug for ApplyEvent {
         match self {
             ApplyEvent::Start => f.write_str("Start"),
             ApplyEvent::UnitRead(unit) => f.debug_tuple("UnitRead").field(unit).finish(),
+            ApplyEvent::DirectoryRead(item) => f.debug_tuple("DirectoryRead").field(item).finish(),
+            ApplyEvent::Directed { mutated } => f
+                .debug_struct("Directed")
+                .field("mutated", mutated)
+                .finish(),
             ApplyEvent::Exhausted => f.write_str("Exhausted"),
             ApplyEvent::Observed { dest, live } => f
                 .debug_struct("Observed")
@@ -1851,8 +1897,54 @@ impl fmt::Debug for ApplyState {
             .field("unit", &self.unit)
             .field("install", &self.install)
             .field("declared", &self.declared)
-            .field("releasing", &self.releasing)
+            .field("stage", &self.stage)
+            .field("holds", &self.holds)
+            .field("step", &self.step)
             .field("mutated", &self.mutated)
+            .finish()
+    }
+}
+
+// ---- the directory sub-protocol (F2 step 9) -------------------------------
+
+use crate::directory::{Action as DirectoryAction, DirectoryFacts, Stage};
+
+copy_impls!(Stage, DirectoryAction, DirectoryFacts);
+
+same_eq!(
+    Stage => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    DirectoryAction => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+);
+
+unit_debug!(
+    Stage {
+        Opening,
+        Clearing,
+        Shaping,
+        Holding,
+        Units,
+        Releases,
+        Closing
+    },
+    DirectoryAction {
+        Bind,
+        Birth,
+        Plan,
+        Evolve,
+        Shape,
+        Exchange,
+        Reactivate,
+        Hold,
+        Finish,
+        Retire
+    },
+);
+
+impl fmt::Debug for DirectoryFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DirectoryFacts")
+            .field("dest", &self.dest)
+            .field("action", &self.action)
             .finish()
     }
 }

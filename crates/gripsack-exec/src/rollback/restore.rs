@@ -6,23 +6,28 @@
 //! the shared planner and journal. Whole-object units (copies, templates,
 //! owned links) are decided by the kernel: install the target's recorded
 //! identity from retained bytes that reproduce it, release gripsack's own
-//! write, leave drift, or refuse. Managed blocks (K5) and the destinations a
-//! directory transition owns are delegated to the existing domain code, which
-//! reports them settled or unrestorable.
-use super::{DestMap, by_destination, directory_transitions, preflight};
+//! write, leave drift, or refuse. Managed blocks (K5) are delegated to the
+//! existing domain code, which reports them settled or unrestorable. The
+//! directory domain is a sub-protocol (step 9, [`directory_transitions`]):
+//! every directory step is an item of the plan the machine commands, the
+//! files a shape change needs gone are units it decides, and the nodes of
+//! the target's receipts are held — no unit writes one.
+use super::directory_transitions::{self, Step};
+use super::{DestMap, by_destination, preflight};
+use crate::apply::Dests;
 use crate::ctx::ExecError;
 use crate::deploy::Observation;
-use gripsack_kernel::DestId;
+use gripsack_kernel::directory::{Action, DirectoryFacts};
 use gripsack_kernel::ownership::{Recorded, Refusal as UnitRefusal};
 use gripsack_kernel::recover::{Failure, Ident, Intended, Live, Route};
 use gripsack_kernel::rollback::{
     Bytes, Command, Event, Place, PlanFacts, Profile, Refusal, RollbackState, Settled, Target,
-    UnitFacts, rollback_step,
+    UnitFacts, When, rollback_step,
 };
 use gripsack_kernel::selection::SelectionIdentity;
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use store::hash::kernel;
 use store::journal::{NoteSeverity, RecoveryNote};
 
@@ -32,6 +37,26 @@ struct Unit<'m> {
     current: Option<Side<'m>>,
     target: Option<Side<'m>>,
     route: Route,
+    role: Role,
+    when: When,
+}
+
+/// What a unit does.
+#[derive(Clone, Copy, PartialEq)]
+enum Role {
+    /// Restore the target's record (or release the current write).
+    Restore,
+    /// Remove the current write a directory shape change needs gone.
+    Clear,
+}
+
+/// One item of the rollback plan, in the machine's stage order.
+enum Item<'m> {
+    Unit(Unit<'m>),
+    /// A directory step the machine commands.
+    Directory(Step<'m>),
+    /// A node of a target receipt the directory domain holds.
+    Hold(PathBuf),
 }
 
 /// One generation's record of a unit: its output, entry and store root.
@@ -97,18 +122,14 @@ pub(super) fn until_flip(
         current_by_dest.insert(entry.ownership_key(name), (name, entry, &state.store_path));
     }
     let target_by_dest = by_destination(target);
-    let mut exchanged =
-        directory_transitions::prepare(journal, &current_by_dest, current_directories, target)?;
-    notes.append(&mut exchanged.notes);
-    let units = plan_units(
+    let items = plan_items(
         &current_by_dest,
         &target_by_dest,
         current_directories,
         target,
-        &exchanged.released,
     );
     let plan = PlanFacts {
-        units: u32::try_from(units.len())
+        units: u32::try_from(items.len())
             .map_err(|_| std::io::Error::other("too many rollback units"))?,
         reselect: *journal.identity(),
         previous: store::generations::current_selection_in(home_path, home)?,
@@ -121,21 +142,33 @@ pub(super) fn until_flip(
 
     let mut state = RollbackState::new();
     let mut event = Event::Start;
+    let mut dests = Dests::default();
     // the unit under decision's one observation, read with its facts
     let mut observed: Option<Option<Observation>> = None;
     // why the host's domain could not restore a delegated unit
     let mut unrestorable: Option<String> = None;
+    // why a directory step failed
+    let mut directory_failure: Option<ExecError> = None;
     loop {
         let (next, command) = rollback_step(state, event);
         state = next;
         event = match command {
             Command::ReadPlan => Event::PlanRead(plan),
-            Command::ReadUnit(index) => {
-                let unit = unit_at(&units, index)?;
-                let (facts, observation) = unit_facts(index, unit, home, home_path)?;
-                observed = observation;
-                Event::UnitRead(facts)
-            }
+            Command::ReadUnit(index) => match item_at(&items, index)? {
+                Item::Unit(unit) => {
+                    let (facts, observation) = unit_facts(unit, &mut dests, home, home_path)?;
+                    observed = observation;
+                    Event::UnitRead(facts)
+                }
+                Item::Directory(step) => Event::DirectoryRead(DirectoryFacts {
+                    dest: dests.intern(step.root())?,
+                    action: step.action(),
+                }),
+                Item::Hold(node) => Event::DirectoryRead(DirectoryFacts {
+                    dest: dests.intern(node)?,
+                    action: Action::Hold,
+                }),
+            },
             Command::Observe { dest, .. } => Event::Observed {
                 dest,
                 live: match &observed {
@@ -143,12 +176,10 @@ pub(super) fn until_flip(
                     None => Live::Unsupported,
                 },
             },
-            Command::Mutate { unit, .. } => mutate(journal, unit_at(&units, unit)?, home_path)?,
+            Command::Mutate { unit, .. } => mutate(journal, unit_at(&items, unit)?, home_path)?,
             Command::Delegate { unit, .. } => {
-                let unit = unit_at(&units, unit)?;
-                let released = &exchanged.released;
-                match settle_delegated(journal, unit, current_directories, target, released, notes)?
-                {
+                let unit = unit_at(&items, unit)?;
+                match settle_delegated(journal, unit, target.number, notes)? {
                     Delegation::Settled => Event::Done,
                     Delegation::Unrestorable(why) => {
                         unrestorable = Some(why);
@@ -156,8 +187,40 @@ pub(super) fn until_flip(
                     }
                 }
             }
+            Command::Directory { unit, .. } => {
+                let Item::Directory(step) = item_at(&items, unit)? else {
+                    return Err(protocol(
+                        "the rollback machine commanded a unit as a directory step",
+                    ));
+                };
+                let settled = directory_transitions::execute(journal, &current_by_dest, step)
+                    .and_then(|()| match step {
+                        Step::Retire(receipt) => settle_retired_root(
+                            journal,
+                            receipt,
+                            &current_by_dest,
+                            &target_by_dest,
+                            target.number,
+                            notes,
+                        ),
+                        _ => Ok(Delegation::Settled),
+                    });
+                match settled {
+                    Ok(Delegation::Settled) => Event::Done,
+                    Ok(Delegation::Unrestorable(why)) => {
+                        unrestorable = Some(why);
+                        Event::Refused
+                    }
+                    Err(error) => {
+                        directory_failure = Some(error);
+                        Event::Refused
+                    }
+                }
+            }
             Command::Report { unit, settled, .. } => {
-                report(notes, unit_at(&units, unit)?, settled);
+                if let Item::Unit(unit) = item_at(&items, unit)? {
+                    report(notes, unit, settled);
+                }
                 Event::Done
             }
             Command::Flip(reselect) => return Ok((state, reselect)),
@@ -165,7 +228,12 @@ pub(super) fn until_flip(
                 return Err(protocol("the rollback machine finished before its flip"));
             }
             Command::Abort(refusal) => {
-                return Err(refused(refusal, &units, target, unrestorable.take()));
+                if let (Refusal::Directory { .. }, Some(error)) =
+                    (refusal, directory_failure.take())
+                {
+                    return Err(error);
+                }
+                return Err(refused(refusal, &items, target, unrestorable.take()));
             }
         };
     }
@@ -189,23 +257,121 @@ fn protocol(detail: &str) -> ExecError {
     }
 }
 
-fn unit_at<'u, 'm>(units: &'u [Unit<'m>], index: u32) -> Result<&'u Unit<'m>, ExecError> {
+fn item_at<'i, 'm>(items: &'i [Item<'m>], index: u32) -> Result<&'i Item<'m>, ExecError> {
     usize::try_from(index)
         .ok()
-        .and_then(|index| units.get(index))
+        .and_then(|index| items.get(index))
         .ok_or_else(|| protocol("the rollback machine named a unit outside its plan"))
 }
 
-/// Every destination either generation deploys, deepest first (children
-/// before the parents a directory transition exchanges), routed to the
-/// kernel or to the host's own domain.
-fn plan_units<'m>(
+fn unit_at<'i, 'm>(items: &'i [Item<'m>], index: u32) -> Result<&'i Unit<'m>, ExecError> {
+    match item_at(items, index)? {
+        Item::Unit(unit) => Ok(unit),
+        _ => Err(protocol(
+            "the rollback machine named a directory item as a unit",
+        )),
+    }
+}
+
+/// The rollback plan in the machine's stage order: the current receipts
+/// bound; the current files the target receipts' shape changes need gone
+/// cleared; each target receipt's shape restored, exchanged or reactivated;
+/// its nodes held; every unit either generation deploys (deepest first),
+/// except the root of a receipt the target does not keep; and that receipt
+/// retired.
+fn plan_items<'m>(
     current_by_dest: &DestMap<'m>,
     target_by_dest: &DestMap<'m>,
-    current_directories: &[store::journal::directory::DirectoryTransition],
-    target: &store::Generation,
-    released: &BTreeSet<store::OwnershipKey>,
-) -> Vec<Unit<'m>> {
+    current_directories: &'m [store::journal::directory::DirectoryTransition],
+    target: &'m store::Generation,
+) -> Vec<Item<'m>> {
+    let mut items: Vec<Item<'m>> = current_directories
+        .iter()
+        .map(|receipt| Item::Directory(Step::Bind(receipt)))
+        .collect();
+    let target_keys: BTreeSet<_> = target_by_dest.keys().cloned().collect();
+    let mut early = BTreeSet::new();
+    for receipt in &target.directory_transitions {
+        let clearing = directory_transitions::clearing(
+            current_by_dest,
+            &target_keys,
+            current_directories,
+            receipt,
+        );
+        let units = clearing
+            .clear
+            .into_iter()
+            .map(|key| (key, Role::Clear))
+            .chain(clearing.release.into_iter().map(|key| (key, Role::Restore)));
+        for (key, role) in units {
+            if !early.insert(key.clone()) {
+                continue;
+            }
+            let current = current_by_dest.get(&key).copied();
+            items.push(Item::Unit(Unit {
+                route: if is_merge(current) {
+                    Route::Delegated
+                } else {
+                    Route::Leaf
+                },
+                key,
+                current,
+                target: None,
+                role,
+                when: When::BeforeShape,
+            }));
+        }
+    }
+    // a released child already settled before the shape change is not a unit
+    // again; a cleared one the target deploys is restored after it
+    let released_early: BTreeSet<_> = early
+        .iter()
+        .filter(|key| !target_keys.contains(*key))
+        .cloned()
+        .collect();
+    for receipt in &target.directory_transitions {
+        items.push(Item::Directory(directory_transitions::shaping(
+            current_directories,
+            receipt,
+        )));
+    }
+    for receipt in &target.directory_transitions {
+        for relative in receipt.directories.keys() {
+            items.push(Item::Hold(receipt.destination.join(relative)));
+        }
+    }
+    let retired: Vec<_> = current_directories
+        .iter()
+        .filter(|receipt| {
+            directory_transitions::previous(&target.directory_transitions, receipt).is_none()
+        })
+        .collect();
+    items.extend(
+        plan_units(current_by_dest, target_by_dest)
+            .into_iter()
+            .filter(|unit| {
+                !released_early.contains(&unit.key)
+                    && !retired
+                        .iter()
+                        .any(|receipt| receipt.destination == unit.key.destination())
+            })
+            .map(Item::Unit),
+    );
+    items.extend(
+        retired
+            .into_iter()
+            .map(|receipt| Item::Directory(Step::Retire(receipt))),
+    );
+    items
+}
+
+fn is_merge(side: Option<Side<'_>>) -> bool {
+    side.is_some_and(|(_, entry, _)| entry.ownership.policy() == gripsack_store::Ownership::Merge)
+}
+
+/// Every destination either generation deploys, deepest first, routed to
+/// the kernel or (a managed block) to the host's own domain.
+fn plan_units<'m>(current_by_dest: &DestMap<'m>, target_by_dest: &DestMap<'m>) -> Vec<Unit<'m>> {
     // A spelling only one generation records may name the same object as a
     // spelling only the other records (a case-only re-spelling on a
     // case-insensitive mount, plan/0056 FND-3): that is one unit, under the
@@ -246,30 +412,17 @@ fn plan_units<'m>(
                 .get(aliases.get(&key).unwrap_or(&key))
                 .copied();
             let target_side = target_by_dest.get(&key).copied();
-            let directory = |transitions: &[store::journal::directory::DirectoryTransition]| {
-                transitions
-                    .iter()
-                    .any(|transition| transition.destination == key.destination())
-            };
-            let merge = |side: Option<Side<'_>>| {
-                side.is_some_and(|(_, entry, _)| {
-                    entry.ownership.policy() == gripsack_store::Ownership::Merge
-                })
-            };
-            let delegated = directory(&target.directory_transitions)
-                || directory(current_directories)
-                || (target_side.is_none() && released.contains(&key))
-                || merge(current)
-                || merge(target_side);
             Unit {
                 key,
                 current,
                 target: target_side,
-                route: if delegated {
+                route: if is_merge(current) || is_merge(target_side) {
                     Route::Delegated
                 } else {
                     Route::Leaf
                 },
+                role: Role::Restore,
+                when: When::AfterShape,
             }
         })
         .collect()
@@ -292,8 +445,8 @@ fn observe(dest: &Path) -> Result<Option<Option<Observation>>, ExecError> {
 /// Decode one unit into the kernel's facts, with the observation they were
 /// decided from.
 fn unit_facts(
-    index: u32,
     unit: &Unit<'_>,
+    dests: &mut Dests,
     home: &gripsack_fs::Dir,
     home_path: &Path,
 ) -> Result<(UnitFacts, Option<Option<Observation>>), ExecError> {
@@ -309,12 +462,18 @@ fn unit_facts(
             crate::ops::PreviousRecord { entry, store_path }.recorded(seen)
         }
     };
-    let target = match (unit.route, unit.target) {
+    let target = match (unit.role, unit.route, unit.target) {
+        // a directory change needs it gone: gripsack's write goes, and
+        // nothing the ownership epoch recorded may come back in its place
+        (Role::Clear, Route::Leaf, _) => Target::Cleared(release(unit.current, home)?),
+        (Role::Clear, Route::Delegated, _) => Target::Cleared(Intended::Removed),
         // the host's domain settles it; the kernel never decides from this
-        (Route::Delegated, _) => Target::Preserved,
-        (Route::Leaf, None) => Target::Released(release(unit.current, home)?),
-        (Route::Leaf, Some((_, entry, _))) if entry.preserved_drift => Target::Preserved,
-        (Route::Leaf, Some((name, entry, store_path))) => {
+        (Role::Restore, Route::Delegated, _) => Target::Preserved,
+        (Role::Restore, Route::Leaf, None) => Target::Released(release(unit.current, home)?),
+        (Role::Restore, Route::Leaf, Some((_, entry, _))) if entry.preserved_drift => {
+            Target::Preserved
+        }
+        (Role::Restore, Route::Leaf, Some((name, entry, store_path))) => {
             match crate::ops::retained(name, entry, store_path)? {
                 crate::ops::Retained::File { content, mode } => Target::Wrote {
                     ident: kernel::file(&store::canonical_bytes_identity(&content, mode)),
@@ -336,7 +495,7 @@ fn unit_facts(
         || std::fs::canonicalize(&generations).is_ok_and(|real| dest.starts_with(real));
     Ok((
         UnitFacts {
-            dest: DestId::new(index),
+            dest: dests.intern(dest)?,
             place: if inside {
                 Place::Generation
             } else {
@@ -345,6 +504,7 @@ fn unit_facts(
             route: unit.route,
             current,
             target,
+            when: unit.when,
         },
         observation,
     ))
@@ -412,8 +572,16 @@ fn mutate(
     unit: &Unit<'_>,
     home_path: &Path,
 ) -> Result<Event, ExecError> {
-    let op = match unit.target {
-        Some((name, entry, store_path)) => crate::ops::plan_restore_op(
+    let op = match (unit.role, unit.target) {
+        (Role::Clear, _) => match unit.current {
+            Some((name, entry, store_path)) => {
+                crate::ops::plan_remove_op(name, entry, store_path, journal.home())?
+                    // a clear empties the destination; it never restores
+                    .filter(|op| matches!(op.intended(), store::journal::Intended::Removed))
+            }
+            None => None,
+        },
+        (Role::Restore, Some((name, entry, store_path))) => crate::ops::plan_restore_op(
             name,
             entry,
             store_path,
@@ -421,7 +589,7 @@ fn mutate(
                 .map(|(_, entry, store_path)| crate::ops::PreviousRecord { entry, store_path }),
             home_path,
         )?,
-        None => match unit.current {
+        (Role::Restore, None) => match unit.current {
             Some((name, entry, store_path)) => {
                 crate::ops::plan_remove_op(name, entry, store_path, journal.home())?
             }
@@ -456,7 +624,12 @@ fn report(notes: &mut Vec<RecoveryNote>, unit: &Unit<'_>, settled: Settled) {
             format!("kept {dest} — drifted since the current generation; your edit stands")
         }
         Settled::Kept(_) => format!("kept {dest} — foreign content stands there; your edit stands"),
-        Settled::Restored | Settled::Already | Settled::Untouched | Settled::Delegated => return,
+        Settled::Restored
+        | Settled::Already
+        | Settled::Untouched
+        | Settled::Delegated
+        | Settled::Held
+        | Settled::Directory => return,
     };
     notes.push(RecoveryNote {
         severity: NoteSeverity::Warn,
@@ -464,38 +637,78 @@ fn report(notes: &mut Vec<RecoveryNote>, unit: &Unit<'_>, settled: Settled) {
     });
 }
 
-/// A unit the host's own domain settles: a managed block (K5), or a
-/// destination a directory transition owns. Unrestorable is reported, never
-/// skipped: the machine refuses the rollback before it flips.
+/// A unit the host's own domain settles: a managed block (K5) — restored,
+/// released, or cleared for a directory shape change. Unrestorable is
+/// reported, never skipped: the machine refuses the rollback before it flips.
 fn settle_delegated(
     journal: &store::journal::JournalRun<'_>,
     unit: &Unit<'_>,
-    current_directories: &[store::journal::directory::DirectoryTransition],
-    target: &store::Generation,
-    released: &BTreeSet<store::OwnershipKey>,
+    generation: store::GenerationId,
+    notes: &mut Vec<RecoveryNote>,
+) -> Result<Delegation, ExecError> {
+    if unit.role == Role::Clear {
+        let Some((name, entry, store_path)) = unit.current else {
+            return Ok(Delegation::Settled);
+        };
+        return match crate::ops::plan_remove_op(name, entry, store_path, journal.home())? {
+            None => Ok(Delegation::Settled),
+            Some(op) if matches!(op.kind(), crate::ops::OpKind::Preserved) => {
+                Ok(Delegation::Unrestorable(format!(
+                    "{}: a changed managed block prevents the directory shape change",
+                    unit.key.destination().display()
+                )))
+            }
+            Some(op) => {
+                crate::ops::execute_op(journal, op.as_executable()?)?;
+                Ok(Delegation::Settled)
+            }
+        };
+    }
+    settle_sides(
+        journal,
+        &unit.key,
+        unit.current,
+        unit.target,
+        generation,
+        notes,
+    )
+}
+
+/// After a `Retire` step reversed a receipt the target does not keep, the
+/// predecessor link it restored is settled like any whole-object unit's
+/// record: released where the target deploys nothing there, and checked
+/// (or restored) where it deploys that link.
+fn settle_retired_root(
+    journal: &store::journal::JournalRun<'_>,
+    receipt: &store::journal::directory::DirectoryTransition,
+    current_by_dest: &DestMap<'_>,
+    target_by_dest: &DestMap<'_>,
+    generation: store::GenerationId,
+    notes: &mut Vec<RecoveryNote>,
+) -> Result<Delegation, ExecError> {
+    let key = store::OwnershipKey::new(receipt.destination.clone(), None);
+    settle_sides(
+        journal,
+        &key,
+        current_by_dest.get(&key).copied(),
+        target_by_dest.get(&key).copied(),
+        generation,
+        notes,
+    )
+}
+
+/// One destination settled by the host's planner from both generations'
+/// records (a managed block, or a retired receipt's predecessor link).
+fn settle_sides(
+    journal: &store::journal::JournalRun<'_>,
+    dest: &store::OwnershipKey,
+    current: Option<Side<'_>>,
+    target: Option<Side<'_>>,
+    generation: store::GenerationId,
     notes: &mut Vec<RecoveryNote>,
 ) -> Result<Delegation, ExecError> {
     let home = journal.home();
     let home_path = journal.home_path();
-    let dest = &unit.key;
-    if target
-        .directory_transitions
-        .iter()
-        .any(|transition| transition.destination == dest.destination())
-    {
-        // The directory domain, not a flat unlink, owns this old link.
-        return Ok(Delegation::Settled);
-    }
-    if let Some(transition) = current_directories
-        .iter()
-        .find(|transition| transition.destination == dest.destination())
-        && !target
-            .directory_transitions
-            .iter()
-            .any(|target| target.destination == transition.destination)
-    {
-        store::journal::reverse_directory(journal, transition)?;
-    }
     let unrestorable = |entry: &store::DeployedEntry| {
         Delegation::Unrestorable(match entry.ownership.policy() {
             gripsack_store::Ownership::Merge => format!(
@@ -506,17 +719,16 @@ fn settle_delegated(
             _ => format!(
                 "cannot restore {} exactly: no retained bytes reproduce generation {}'s record",
                 dest.destination().display(),
-                target.number
+                generation
             ),
         })
     };
-    match (unit.current, unit.target) {
+    match (current, target) {
         // only the current generation deploys it: the prune rule
         (Some((name, entry, store_path)), None) => {
             // preserved drift was never written by gripsack — rollback and
-            // prune never touch it (0029 §2); a released key belongs to the
-            // directory exchange
-            if entry.preserved_drift || released.contains(dest) {
+            // prune never touch it (0029 §2)
+            if entry.preserved_drift {
                 return Ok(Delegation::Settled);
             }
             match crate::ops::plan_remove_op(name, entry, store_path, home)? {
@@ -577,18 +789,15 @@ fn settle_delegated(
 /// caller compensates every write this run made from the journal.
 fn refused(
     refusal: Refusal,
-    units: &[Unit<'_>],
+    items: &[Item<'_>],
     target: &store::Generation,
     unrestorable: Option<String>,
 ) -> ExecError {
-    let at = |unit: u32| {
-        usize::try_from(unit)
-            .ok()
-            .and_then(|index| units.get(index))
-            .map_or_else(
-                || format!("unit {unit}"),
-                |unit| unit.key.destination().display().to_string(),
-            )
+    let at = |unit: u32| match item_at(items, unit) {
+        Ok(Item::Unit(unit)) => unit.key.destination().display().to_string(),
+        Ok(Item::Directory(step)) => step.root().display().to_string(),
+        Ok(Item::Hold(node)) => node.display().to_string(),
+        Err(_) => format!("unit {unit}"),
     };
     let generation = target.number;
     let detail = match refusal {
@@ -625,7 +834,26 @@ fn refused(
             "{} did not land generation {generation}'s recorded identity — refusing to roll back",
             at(unit)
         ),
-        Refusal::Malformed | Refusal::Failed | Refusal::Protocol => {
+        Refusal::Blocked { unit, .. } => format!(
+            "{} stands where generation {generation}'s directory must go and is not gripsack's \
+             own unchanged write — refusing to roll back; the current generation stays selected",
+            at(unit)
+        ),
+        Refusal::Overlap { unit, .. } => format!(
+            "{} is both a directory gripsack owns and a file generation {generation} records — \
+             refusing to roll back",
+            at(unit)
+        ),
+        Refusal::Directory { unit, .. } => match unrestorable {
+            Some(why) => {
+                format!("{why} — refusing to roll back; the current generation stays selected")
+            }
+            None => format!(
+                "the directory transition at {} failed — refusing to roll back",
+                at(unit)
+            ),
+        },
+        Refusal::Order { .. } | Refusal::Malformed | Refusal::Failed | Refusal::Protocol => {
             format!("the rollback machine stopped ({refusal:?})")
         }
     };

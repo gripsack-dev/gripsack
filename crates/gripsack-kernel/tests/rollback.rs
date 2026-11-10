@@ -10,10 +10,19 @@
 //! not gripsack's current write; a unit that needed a write the retained
 //! bytes cannot reproduce, or a write into a generation directory, never
 //! reaches the flip; and a host that lands the wrong object is caught.
+//!
+//! The directory sub-protocol (F2 step 9) gets its own walk: every sequence
+//! of up to three items over two destinations — clears of gripsack's write
+//! and of a user's object, restores, releases and directory steps (bind,
+//! shape, hold, retire) answered settled or refused — against an oracle that
+//! never lets a write land on a held destination, never commands a directory
+//! step where a unit restores the target's record, aborts an item out of
+//! stage order, and flips only after every directory step settled.
+use gripsack_kernel::directory::{Action, DirectoryFacts};
 use gripsack_kernel::recover::{Failure, Ident, Intended, Live, Route};
 use gripsack_kernel::rollback::{
-    Bytes, Command, Event, Place, PlanFacts, Profile, RollbackState, Target, UnitFacts,
-    rollback_step,
+    Bytes, Command, Event, Place, PlanFacts, Profile, Refusal, RollbackState, Target, UnitFacts,
+    When, rollback_step,
 };
 use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
 use gripsack_kernel::{DestId, Digest, GenerationId, ownership::Recorded};
@@ -149,6 +158,7 @@ fn run(units: &[Case], profile: Profile, previous: u8, host: Host) -> Outcome {
                     route: case.route,
                     current: case.current,
                     target: case.target,
+                    when: When::AfterShape,
                 })
             }
             Command::Observe { unit, dest } => {
@@ -184,6 +194,7 @@ fn run(units: &[Case], profile: Profile, previous: u8, host: Host) -> Outcome {
                     Event::Refused
                 }
             }
+            Command::Directory { .. } => panic!("no directory item was handed over"),
             Command::Report { .. } => Event::Done,
             Command::Flip(reselect) => {
                 assert!(reselect == selection(9));
@@ -218,6 +229,7 @@ fn installs(target: Target) -> Option<Live> {
         Target::Released(Intended::Obj(object)) => Some(Live::Obj(object)),
         Target::Wrote { ident, .. } => Some(Live::Obj(ident)),
         Target::Preserved => None,
+        Target::Cleared(_) => Some(Live::Absent),
     }
 }
 
@@ -357,4 +369,246 @@ fn calibration_a_host_that_lands_the_wrong_object_is_caught() {
     let outcome = run(&[case], Profile::Retained, 7, Host::LandsWrong);
     assert!(outcome.written[0]);
     assert!(!outcome.flipped, "a wrong landing reached the flip");
+}
+
+/// One item of a directory-protocol rollback.
+#[derive(Clone, Copy, Debug)]
+enum Item {
+    /// A unit at a destination over the live object there.
+    Unit {
+        dest: u32,
+        target: Target,
+        live: Live,
+    },
+    /// A directory item, and whether the host settles its step.
+    Dir(DirectoryFacts, bool),
+}
+
+fn rank(item: &Item) -> u8 {
+    match item {
+        Item::Unit { target, .. } => match target {
+            Target::Cleared(_) => 1,
+            _ => 4,
+        },
+        Item::Dir(facts, _) => match facts.action {
+            Action::Bind | Action::Birth | Action::Plan => 0,
+            Action::Evolve | Action::Shape | Action::Exchange | Action::Reactivate => 2,
+            Action::Hold => 3,
+            Action::Finish | Action::Retire => 6,
+        },
+    }
+}
+
+fn items() -> Vec<Item> {
+    let mut all = Vec::new();
+    for dest in [0, 1] {
+        for (target, live) in [
+            (
+                Target::Cleared(Intended::Removed),
+                Live::Obj(ident(CURRENT)),
+            ),
+            (Target::Cleared(Intended::Removed), Live::Obj(ident(USER))),
+            (
+                Target::Wrote {
+                    ident: ident(TARGET),
+                    bytes: Bytes::Retained,
+                },
+                Live::Absent,
+            ),
+            (
+                Target::Released(Intended::Removed),
+                Live::Obj(ident(CURRENT)),
+            ),
+        ] {
+            all.push(Item::Unit { dest, target, live });
+        }
+        for action in [Action::Bind, Action::Shape, Action::Retire] {
+            for settles in [true, false] {
+                all.push(Item::Dir(
+                    DirectoryFacts {
+                        dest: DestId::new(dest),
+                        action,
+                    },
+                    settles,
+                ));
+            }
+        }
+        all.push(Item::Dir(
+            DirectoryFacts {
+                dest: DestId::new(dest),
+                action: Action::Hold,
+            },
+            true,
+        ));
+    }
+    all
+}
+
+/// The first item that aborts the run and why, or `Ok` with the final disk.
+fn expect(items: &[Item]) -> Result<[Option<Live>; 2], &'static str> {
+    let mut disk: [Option<Live>; 2] = [None, None];
+    let mut held = Vec::new();
+    let mut claimed = Vec::new();
+    let mut last = 0;
+    for item in items {
+        if rank(item) < last {
+            return Err("order");
+        }
+        last = rank(item);
+        match *item {
+            Item::Unit { dest, target, live } => {
+                let live = *disk[dest as usize].get_or_insert(live);
+                if held.contains(&dest) {
+                    if matches!(target, Target::Released(_)) {
+                        continue;
+                    }
+                    return Err("overlap");
+                }
+                if matches!(target, Target::Wrote { .. }) {
+                    claimed.push(dest);
+                }
+                let ours = live == Live::Obj(ident(CURRENT));
+                disk[dest as usize] = Some(match (target, live) {
+                    (_, Live::Absent) => installs(target)
+                        .filter(|_| !matches!(target, Target::Released(_) | Target::Cleared(_)))
+                        .unwrap_or(Live::Absent),
+                    (Target::Cleared(_), _) if !ours => return Err("blocked"),
+                    (_, live) if ours => installs(target).unwrap_or(live),
+                    (_, live) => live,
+                });
+            }
+            Item::Dir(facts, settles) => {
+                let dest = facts.dest.value();
+                if claimed.contains(&dest) {
+                    return Err("overlap");
+                }
+                if facts.action == Action::Hold {
+                    held.push(dest);
+                } else if !settles {
+                    return Err("directory");
+                }
+            }
+        }
+    }
+    Ok(disk)
+}
+
+#[test]
+fn the_directory_sub_protocol_is_fenced() {
+    let alphabet = items();
+    let mut sequences: Vec<Vec<Item>> = alphabet.iter().map(|item| vec![*item]).collect();
+    for a in &alphabet {
+        for b in &alphabet {
+            sequences.push(vec![*a, *b]);
+            for c in &alphabet {
+                sequences.push(vec![*a, *b, *c]);
+            }
+        }
+    }
+    let mut flips = 0;
+    for sequence in &sequences {
+        let plan = PlanFacts {
+            units: sequence.len() as u32,
+            reselect: selection(9),
+            previous: Some(selection(7)),
+            profile: Profile::Retained,
+        };
+        let mut disk: [Option<Live>; 2] = [None, None];
+        let mut held: Vec<u32> = Vec::new();
+        let mut claimed: Vec<u32> = Vec::new();
+        let mut steps: Vec<bool> = Vec::new();
+        let mut flipped = false;
+        let mut aborted = None;
+        let mut state = RollbackState::new();
+        let mut event = Event::Start;
+        loop {
+            let (next, command) = rollback_step(state, event);
+            state = next;
+            event = match command {
+                Command::ReadPlan => Event::PlanRead(plan),
+                Command::ReadUnit(k) => match sequence[k as usize] {
+                    Item::Unit { dest, target, live } => {
+                        disk[dest as usize].get_or_insert(live);
+                        if matches!(target, Target::Wrote { .. }) {
+                            claimed.push(dest);
+                        }
+                        Event::UnitRead(UnitFacts {
+                            dest: DestId::new(dest),
+                            place: Place::Outside,
+                            route: Route::Leaf,
+                            current: Recorded::Wrote(ident(CURRENT)),
+                            target,
+                            when: When::AfterShape,
+                        })
+                    }
+                    Item::Dir(facts, _) => {
+                        if facts.action == Action::Hold {
+                            held.push(facts.dest.value());
+                        }
+                        Event::DirectoryRead(facts)
+                    }
+                },
+                Command::Observe { dest, .. } => Event::Observed {
+                    dest,
+                    live: disk[dest.value() as usize].unwrap(),
+                },
+                Command::Mutate { dest, install, .. } => {
+                    assert!(
+                        !held.contains(&dest.value()),
+                        "a write on a held destination"
+                    );
+                    let landed = match install {
+                        Intended::Removed => Live::Absent,
+                        Intended::Obj(o) => Live::Obj(o),
+                    };
+                    disk[dest.value() as usize] = Some(landed);
+                    Event::Landed { live: landed }
+                }
+                Command::Directory { unit, dest, action } => {
+                    let Item::Dir(facts, settles) = sequence[unit as usize] else {
+                        panic!("a directory step for a unit");
+                    };
+                    assert_eq!((facts.dest, facts.action), (dest, action));
+                    assert!(
+                        !claimed.contains(&dest.value()),
+                        "a step at a claimed destination"
+                    );
+                    steps.push(settles);
+                    if settles { Event::Done } else { Event::Refused }
+                }
+                Command::Delegate { .. } => panic!("no delegated unit"),
+                Command::Report { .. } => Event::Done,
+                Command::Flip(_) => {
+                    assert!(steps.iter().all(|settled| *settled));
+                    flipped = true;
+                    Event::Done
+                }
+                Command::Finish(_) => break,
+                Command::Abort(refusal) => {
+                    aborted = Some(refusal);
+                    break;
+                }
+            };
+        }
+        match expect(sequence) {
+            Err(why) => {
+                assert!(!flipped, "{sequence:?}");
+                let refusal = aborted.expect("an aborted run");
+                let matches = match why {
+                    "order" => matches!(refusal, Refusal::Order { .. }),
+                    "overlap" => matches!(refusal, Refusal::Overlap { .. }),
+                    "blocked" => matches!(refusal, Refusal::Blocked { .. }),
+                    _ => matches!(refusal, Refusal::Directory { .. }),
+                };
+                assert!(matches, "{sequence:?}: {why} vs {refusal:?}");
+            }
+            Ok(expected) => {
+                assert!(aborted.is_none() && flipped, "{sequence:?}: {aborted:?}");
+                assert_eq!(disk, expected, "{sequence:?}");
+                flips += 1;
+            }
+        }
+    }
+    assert!(sequences.len() > 10_000, "{} runs", sequences.len());
+    assert!(flips > 500, "{flips} flips");
 }

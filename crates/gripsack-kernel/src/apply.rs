@@ -26,17 +26,22 @@
 //! claims ([`covered`]), compared by the host's interned destination identity
 //! — so a re-spelled destination that the filesystem judges to be the same
 //! name is never pruned under the new spelling's feet (FND-3; plan/0056 §4
-//! S6). Releases come after every deploy: a deploy unit read after a release
-//! aborts the run.
+//! S6) — and that the directory domain does not hold.
 //!
 //! Units the host settles itself (managed blocks, K5) are delegated and
-//! report whether they changed the disk. The directory domain (step 9) runs
-//! as one opaque [`Command::DirectoryStep`] after the units.
+//! report whether they changed the disk. The directory domain is a typed
+//! sub-protocol (step 9, [`crate::directory`]): every directory step is an
+//! item of the run the machine commands (`Directory`) and the host answers
+//! settled (changing the disk or not) or refused; the leaf removals a
+//! directory change needs are `Clear` units decided here; the nodes the
+//! domain holds are declared (`Hold`). Items come in stage order — receipts
+//! opened, blockers cleared, shapes changed, nodes held, deploys, releases,
+//! receipts closed — and an item out of order aborts the run.
 //!
 //! Then the commit: whether the run cuts a generation at all is the proved
 //! [`decide_commit`] (K6), told that the run touched the disk exactly when a
-//! unit landed or a delegated unit reported a change (the machine's
-//! `mutated` flag, not a report's presentation). A publication is followed
+//! unit landed or a delegated unit or a directory step reported a change
+//! (the machine's `mutated` flag, not a report's presentation). A publication is followed
 //! by the flip to the reserved selection and the hand-off to activation.
 //!
 //! Proved (proofs/Kernel/Apply.lean): every write installs exactly the
@@ -46,15 +51,21 @@
 //! consent, for a deploy — anything (K1); a unit is reported applied only
 //! when the landed object is that identity; kept and satisfied units never
 //! claim it; a release never targets a destination a deploy unit of the run
-//! claims (FND-3); the flip comes only after every unit read was reported
-//! settled, after the publication, for the reserved selection under a fresh
-//! transaction bound to the allocated generation above the floor, and never
-//! for a vacuous run; a run that applied any unit never finishes vacuous.
+//! claims (FND-3); no whole-object write targets a destination the
+//! directory domain holds, and no directory step is commanded for a
+//! destination a deploy unit claims; a clear only removes gripsack's own
+//! write; the flip comes only after every unit and every directory step was
+//! reported settled, after the publication, for the reserved selection under
+//! a fresh transaction bound to the allocated generation above the floor,
+//! and never for a vacuous run; a run that applied a unit or changed the
+//! disk in a directory step never finishes vacuous. Relative to premise D of
+//! [`crate::directory`].
 //!
 //! Aeneas shape (lib.rs): no derives (impls in `convenience.rs`), equality as
 //! explicit `same` functions, owned `Copy` facts, no closures; counters
 //! advance with `checked_add`, so every step is total.
 use crate::GenerationId;
+use crate::directory::{Action, DirectoryFacts, Stage, commands, names, ordered, stage};
 use crate::ids::DestId;
 use crate::ownership::{
     Consent, Decision as UnitDecision, Recorded, Refusal as UnitRefusal, decide_unit,
@@ -88,6 +99,11 @@ pub enum Want {
     /// write goes, replaced by what the ownership epoch recorded before
     /// gripsack took the destination over (`Obj`), or by nothing (`Removed`).
     Release(Intended),
+    /// A directory change needs this destination empty: gripsack's own write
+    /// goes and nothing comes back. Anything else — the user's object, or an
+    /// ownership epoch that would restore an origin (`Obj`) — refuses the
+    /// run.
+    Clear(Intended),
 }
 
 /// What to do when the destination is the user's (drifted or unowned).
@@ -133,6 +149,11 @@ pub enum Settled {
     Declared,
     /// The host's own domain settled it, changing the disk or not.
     Delegated { mutated: bool },
+    /// The directory domain holds the destination: a release there is the
+    /// domain's, and a `Hold` item records the hold.
+    Held,
+    /// A directory step settled, changing the disk or not.
+    Directory { mutated: bool },
 }
 
 /// The per-unit decision.
@@ -184,8 +205,17 @@ pub enum Refusal {
     NotApplied { unit: u32, dest: DestId },
     /// The host's own domain could not settle a delegated unit.
     Delegated { unit: u32, dest: DestId },
-    /// A deploy unit after a release (releases come last).
+    /// An item out of stage order (a deploy after a release, a clear after a
+    /// shape change, a directory step after its stage).
     Order { unit: u32 },
+    /// A whole-object deploy or clear at a destination the directory domain
+    /// holds, or a directory step at a destination a deploy claims.
+    Overlap { unit: u32, dest: DestId },
+    /// A clear that may not empty its destination: its ownership epoch would
+    /// restore an origin there.
+    Blocked { unit: u32, dest: DestId },
+    /// The directory sub-protocol could not settle a step.
+    Directory { unit: u32, dest: DestId },
     /// The generation cannot be published (K6).
     Unpublishable(CommitRefusal),
     /// A counter or list overflowed.
@@ -226,9 +256,13 @@ pub enum Command {
         dest: DestId,
         settled: Settled,
     },
-    /// Run the directory domain's transitions (opaque until step 9); answer
-    /// `Done`.
-    DirectoryStep,
+    /// Run one step of the directory sub-protocol for the receipt at
+    /// `dest`; answer `Directed` when settled, `Refused` when it cannot be.
+    Directory {
+        unit: u32,
+        dest: DestId,
+        action: Action,
+    },
     /// Answer `CommitRead`.
     ReadCommit,
     /// Publish this generation (and land its pending activation record);
@@ -246,6 +280,8 @@ pub enum Command {
 pub enum Event {
     Start,
     UnitRead(UnitFacts),
+    /// The next item is a directory step (or hold).
+    DirectoryRead(DirectoryFacts),
     /// No unit is left.
     Exhausted,
     Observed {
@@ -259,7 +295,11 @@ pub enum Event {
     Delegated {
         mutated: bool,
     },
-    /// A delegated unit cannot be settled.
+    /// A directory step settled, changing the disk or not.
+    Directed {
+        mutated: bool,
+    },
+    /// A delegated unit or a directory step cannot be settled.
     Refused,
     Done,
     CommitRead(CommitInputs),
@@ -273,7 +313,7 @@ pub enum Phase {
     Writing,
     Delegating,
     Reporting,
-    Directories,
+    Directing,
     ReadingCommit,
     Publishing,
     Flipping,
@@ -291,9 +331,15 @@ pub struct ApplyState {
     pub install: Option<Intended>,
     /// Every destination a deploy unit of this run claimed.
     pub declared: Vec<Claim>,
-    /// A release was read: no deploy unit may follow.
-    pub releasing: bool,
-    /// A unit landed, or a delegated unit reported a change.
+    /// The stage of the last item read: no item of an earlier stage may
+    /// follow.
+    pub stage: Stage,
+    /// Every destination the directory domain holds.
+    pub holds: Vec<DestId>,
+    /// The directory item under execution.
+    pub step: Option<DirectoryFacts>,
+    /// A unit landed, or a delegated unit or a directory step reported a
+    /// change.
     pub mutated: bool,
     /// The commit facts a publication was admitted under.
     pub commit: Option<CommitFacts>,
@@ -307,7 +353,9 @@ impl ApplyState {
             unit: None,
             install: None,
             declared: Vec::new(),
-            releasing: false,
+            stage: Stage::Opening,
+            holds: Vec::new(),
+            step: None,
             mutated: false,
             commit: None,
         }
@@ -342,12 +390,34 @@ pub fn covered(declared: &[Claim], dest: DestId, slot: &Slot) -> bool {
     false
 }
 
+/// Whether any deploy of this run claims `dest` (whole object or block).
+pub fn claimed(declared: &[Claim], dest: DestId) -> bool {
+    let mut i = 0;
+    while i < declared.len() {
+        if declared[i].dest.same(dest) {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// The stage a unit belongs to.
+pub fn unit_stage(want: &Want) -> Stage {
+    match want {
+        Want::Clear(_) => Stage::Clearing,
+        Want::Deploy { .. } => Stage::Units,
+        Want::Release(_) => Stage::Releases,
+    }
+}
+
 /// What the ownership decision is asked to authorize: deploying the intent,
-/// or a removal (a release is a removal, whatever it brings back).
+/// or a removal (a release or a clear is a removal, whatever it brings back).
 pub fn asked(want: &Want) -> Intended {
     match want {
         Want::Deploy { ident, .. } => Intended::Obj(*ident),
         Want::Release(_) => Intended::Removed,
+        Want::Clear(_) => Intended::Removed,
     }
 }
 
@@ -364,17 +434,35 @@ pub fn install(want: &Want, write: &Write) -> Option<Intended> {
             Write::Create => None,
             Write::TakeOver => None,
         },
+        Want::Clear(origin) => match write {
+            Write::Replace => match origin {
+                Intended::Removed => Some(Intended::Removed),
+                Intended::Obj(_) => None,
+            },
+            Write::Create => None,
+            Write::TakeOver => None,
+        },
     }
 }
 
-fn written(want: &Want, write: Write) -> Step {
-    match install(want, &write) {
+fn written(index: u32, unit: &UnitFacts, write: Write) -> Step {
+    match install(&unit.want, &write) {
         Some(intended) => Step::Write {
             install: intended,
             write,
         },
-        // a release is authorized only as a removal of gripsack's own write
-        None => Step::Refuse(Refusal::Malformed),
+        None => match unit.want {
+            // a clear that would bring an origin back cannot empty its
+            // destination
+            Want::Clear(_) => Step::Refuse(Refusal::Blocked {
+                unit: index,
+                dest: unit.dest,
+            }),
+            // a release is authorized only as a removal of gripsack's own
+            // write
+            Want::Release(_) => Step::Refuse(Refusal::Malformed),
+            Want::Deploy { .. } => Step::Refuse(Refusal::Malformed),
+        },
     }
 }
 
@@ -387,10 +475,12 @@ fn stops(drift: &OnDrift) -> bool {
 
 /// Whether a refusal stops the run: a deploy cannot install over an object
 /// without identity, and stops on the user's object when the unit says so;
-/// a release always leaves the destination as it is.
+/// a release always leaves the destination as it is; a clear that cannot
+/// remove what is there always stops (the directory change cannot proceed).
 fn refusal_stops(unit: &UnitFacts, why: &UnitRefusal) -> bool {
     match unit.want {
         Want::Release(_) => false,
+        Want::Clear(_) => true,
         Want::Deploy { .. } => match why {
             UnitRefusal::Unsupported => true,
             UnitRefusal::Drifted => stops(&unit.drift),
@@ -405,9 +495,9 @@ fn refusal_stops(unit: &UnitFacts, why: &UnitRefusal) -> bool {
 pub fn decide_apply(index: u32, unit: &UnitFacts, live: &Live) -> Step {
     match decide_unit(&unit.recorded, live, &asked(&unit.want), &unit.consent) {
         UnitDecision::Satisfied => Step::Leave(Settled::Already),
-        UnitDecision::Create => written(&unit.want, Write::Create),
-        UnitDecision::ReplaceOwn => written(&unit.want, Write::Replace),
-        UnitDecision::TakeOver => written(&unit.want, Write::TakeOver),
+        UnitDecision::Create => written(index, unit, Write::Create),
+        UnitDecision::ReplaceOwn => written(index, unit, Write::Replace),
+        UnitDecision::TakeOver => written(index, unit, Write::TakeOver),
         UnitDecision::Refuse(why) => {
             if refusal_stops(unit, &why) {
                 Step::Refuse(Refusal::Refused {
@@ -444,6 +534,7 @@ fn read_unit(mut state: ApplyState) -> (ApplyState, Command) {
 fn advance(mut state: ApplyState) -> (ApplyState, Command) {
     state.unit = None;
     state.install = None;
+    state.step = None;
     match state.index.checked_add(1) {
         None => refuse(state, Refusal::Malformed),
         Some(next) => {
@@ -485,11 +576,17 @@ fn examine(mut state: ApplyState, facts: UnitFacts) -> (ApplyState, Command) {
 }
 
 fn on_unit(mut state: ApplyState, facts: UnitFacts) -> (ApplyState, Command) {
+    let unit = state.index;
+    let next = unit_stage(&facts.want);
+    if !ordered(&state.stage, &next) {
+        return refuse(state, Refusal::Order { unit });
+    }
+    state.stage = next;
     match facts.want {
         Want::Deploy { .. } => {
-            if state.releasing {
-                let unit = state.index;
-                return refuse(state, Refusal::Order { unit });
+            if names(&state.holds, facts.dest) {
+                let dest = facts.dest;
+                return refuse(state, Refusal::Overlap { unit, dest });
             }
             if state.declared.len() == usize::MAX {
                 return refuse(state, Refusal::Malformed);
@@ -501,15 +598,76 @@ fn on_unit(mut state: ApplyState, facts: UnitFacts) -> (ApplyState, Command) {
             examine(state, facts)
         }
         Want::Release(_) => {
-            state.releasing = true;
+            let dest = facts.dest;
             if covered(&state.declared, facts.dest, &facts.slot) {
-                let dest = facts.dest;
                 state.unit = Some(facts);
                 report(state, dest, Settled::Declared)
+            } else if names(&state.holds, facts.dest) {
+                state.unit = Some(facts);
+                report(state, dest, Settled::Held)
             } else {
                 examine(state, facts)
             }
         }
+        Want::Clear(_) => {
+            if names(&state.holds, facts.dest) {
+                let dest = facts.dest;
+                return refuse(state, Refusal::Overlap { unit, dest });
+            }
+            examine(state, facts)
+        }
+    }
+}
+
+/// A directory item: command its step (or record its hold), in stage order,
+/// never for a destination a deploy of this run claims.
+fn on_directory(mut state: ApplyState, facts: DirectoryFacts) -> (ApplyState, Command) {
+    let unit = state.index;
+    let dest = facts.dest;
+    let next = stage(&facts.action);
+    if !ordered(&state.stage, &next) {
+        return refuse(state, Refusal::Order { unit });
+    }
+    state.stage = next;
+    if claimed(&state.declared, dest) {
+        return refuse(state, Refusal::Overlap { unit, dest });
+    }
+    let action = facts.action;
+    state.step = Some(facts);
+    if commands(&action) {
+        state.phase = Phase::Directing;
+        (state, Command::Directory { unit, dest, action })
+    } else {
+        if state.holds.len() == usize::MAX {
+            return refuse(state, Refusal::Malformed);
+        }
+        state.holds.push(dest);
+        report(state, dest, Settled::Held)
+    }
+}
+
+fn on_directed(mut state: ApplyState, event: Event) -> (ApplyState, Command) {
+    match state.step {
+        None => refuse(state, Refusal::Protocol),
+        Some(facts) => match event {
+            Event::Directed { mutated } => {
+                if mutated {
+                    state.mutated = true;
+                }
+                report(state, facts.dest, Settled::Directory { mutated })
+            }
+            Event::Refused => {
+                let unit = state.index;
+                refuse(
+                    state,
+                    Refusal::Directory {
+                        unit,
+                        dest: facts.dest,
+                    },
+                )
+            }
+            _ => failed_or_protocol(state, event),
+        },
     }
 }
 
@@ -610,16 +768,18 @@ fn on_delegated(mut state: ApplyState, event: Event) -> (ApplyState, Command) {
 fn on_reading(mut state: ApplyState, event: Event) -> (ApplyState, Command) {
     match event {
         Event::UnitRead(facts) => on_unit(state, facts),
+        Event::DirectoryRead(facts) => on_directory(state, facts),
         Event::Exhausted => {
-            state.phase = Phase::Directories;
-            (state, Command::DirectoryStep)
+            state.phase = Phase::ReadingCommit;
+            (state, Command::ReadCommit)
         }
         _ => failed_or_protocol(state, event),
     }
 }
 
 /// The commit facts: the host's observation, and whether this run touched
-/// the disk — which the machine knows itself.
+/// the disk (a unit landed, a delegated unit or a directory step changed
+/// it) — which the machine knows itself.
 pub fn commit_facts(inputs: &CommitInputs, mutated: bool) -> CommitFacts {
     CommitFacts {
         previous: inputs.previous,
@@ -683,14 +843,7 @@ pub fn apply_step(state: ApplyState, event: Event) -> (ApplyState, Command) {
             Event::Done => advance(state),
             _ => failed_or_protocol(state, event),
         },
-        Phase::Directories => match event {
-            Event::Done => {
-                let mut next = state;
-                next.phase = Phase::ReadingCommit;
-                (next, Command::ReadCommit)
-            }
-            _ => failed_or_protocol(state, event),
-        },
+        Phase::Directing => on_directed(state, event),
         Phase::ReadingCommit => match event {
             Event::CommitRead(inputs) => on_commit(state, inputs),
             _ => failed_or_protocol(state, event),

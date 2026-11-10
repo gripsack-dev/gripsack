@@ -1,20 +1,20 @@
 //! Current declarations, not the first migration's leaf list, authorize leaf
-//! operations. Directory births and retirements have their own journal domain.
+//! operations. Directory births and retirements have their own journal domain,
+//! run as the apply machine's directory sub-protocol (`apply::directories`).
 use super::NativeProfiles;
-use crate::ctx::{Ctx, ExecError};
+use crate::ctx::ExecError;
 use gripsack_store as store;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::Path,
-};
+use std::{collections::BTreeMap, path::Path};
 
 impl NativeProfiles {
-    pub(crate) fn prepare_directory_changes(
+    /// Every leaf the run's directory receipts must hold: each destination
+    /// this run deploys and, for a subset apply, the leaves the unselected
+    /// profiles carry forward.
+    pub(crate) fn directory_destinations(
         &self,
-        _ctx: &Ctx,
         journal: &store::journal::JournalRun<'_>,
         previous: &BTreeMap<String, store::DeploymentState>,
-    ) -> Result<(), ExecError> {
+    ) -> Result<Vec<std::path::PathBuf>, ExecError> {
         let mut destinations = self
             .profiles
             .values()
@@ -28,68 +28,7 @@ impl NativeProfiles {
                 }
             }
         }
-        let plans = store::journal::directory::plans(journal, &destinations)?;
-        let entries: Vec<_> = previous
-            .iter()
-            .flat_map(|(owner, state)| {
-                state.entries.iter().map(move |entry| {
-                    (
-                        entry.ownership_key(owner),
-                        owner,
-                        entry,
-                        state.store_path.as_path(),
-                    )
-                })
-            })
-            .collect();
-        let mut released = BTreeSet::new();
-        let mut removals = Vec::new();
-        for plan in &plans {
-            for blocker in plan.blockers() {
-                let mut authorized = store::journal::directory::is_directory(journal, blocker)?;
-                for (key, owner, entry, source) in &entries {
-                    if key.destination() != blocker && !key.destination().starts_with(blocker) {
-                        continue;
-                    }
-                    authorized = true;
-                    if !released.insert(key.clone()) {
-                        continue;
-                    }
-                    if entry.preserved_drift {
-                        return Err(failure("preserved file blocks a new directory ancestor"));
-                    }
-                    if let Some(operation) =
-                        crate::ops::plan_remove_op(owner, entry, source, journal.home())?
-                    {
-                        if matches!(operation.kind(), crate::ops::OpKind::Preserved) {
-                            return Err(failure(
-                                "foreign file blocks a new directory ancestor; no directory takeover is granted",
-                            ));
-                        }
-                        if !matches!(operation.intended(), store::journal::Intended::Removed) {
-                            return Err(failure(
-                                "retained content prevents removal of a new directory ancestor",
-                            ));
-                        }
-                        removals.push(operation);
-                    }
-                }
-                if !authorized {
-                    return Err(failure("foreign object blocks a new directory ancestor"));
-                }
-            }
-        }
-        // Admit every blocker before changing any destination. Restoring a
-        // prior leaves its path occupied and cannot authorize a directory birth.
-        for operation in removals {
-            crate::ops::execute_op(journal, operation.as_executable()?)?;
-        }
-        for plan in plans {
-            crate::util::crash_hook("directory-evolve-before-publish");
-            plan.publish(journal)?;
-            crate::util::crash_hook("directory-evolve-after-publish");
-        }
-        Ok(())
+        Ok(destinations)
     }
 }
 

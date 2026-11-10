@@ -8,8 +8,11 @@
 //! machine returns — through the shared planner, whose op must install
 //! exactly the identity the machine commanded, and the journal's leaf
 //! protocol, which re-checks the observation before acting — and answers with
-//! what landed. Managed blocks (K5) and the directory domain (step 9) are
-//! settled by the host's own code when the machine delegates them.
+//! what landed. Managed blocks (K5) are settled by the host's own code when
+//! the machine delegates them. The directory domain is the host's
+//! sub-protocol (step 9): every directory step runs only when the machine
+//! commands it ([`Machine::directory_step`]), and every destination the
+//! domain holds is declared to it ([`Machine::hold`]).
 use super::dests::Dests;
 use crate::ctx::ExecError;
 use gripsack_kernel::GenerationId;
@@ -17,6 +20,7 @@ use gripsack_kernel::apply::{
     ApplyState, Command, CommitInputs, Event, Outcome, Refusal, Settled, UnitFacts, Write,
     apply_step,
 };
+use gripsack_kernel::directory::{Action, DirectoryFacts};
 use gripsack_kernel::ownership::Refusal as UnitRefusal;
 use gripsack_kernel::recover::{Failure, Intended, Live};
 use gripsack_kernel::selection::SelectionIdentity;
@@ -132,6 +136,12 @@ impl Machine {
         self.step(Event::Failed(failure));
     }
 
+    /// A delegated unit cannot be settled: the machine aborts (the caller
+    /// reports its own error).
+    pub(crate) fn refuse_delegated(&mut self) {
+        self.step(Event::Refused);
+    }
+
     /// A delegated unit settled, changing the disk or not.
     pub(crate) fn delegated(&mut self, mutated: bool) -> Result<(), Refusal> {
         if !matches!(self.pending, Command::Delegate { .. }) {
@@ -143,18 +153,65 @@ impl Machine {
         }
     }
 
-    /// Every unit was handed over: the machine asks for the directory step.
-    pub(crate) fn exhausted(&mut self) -> Result<(), Refusal> {
-        match self.step(Event::Exhausted) {
-            Command::DirectoryStep => Ok(()),
-            other => Err(unexpected(other)),
+    /// One step of the directory sub-protocol for the receipt rooted at
+    /// `root`: handed to the machine as an item, and run by `execute` (which
+    /// answers whether it changed the disk) only when the machine commands it
+    /// — in stage order, for a destination no deploy of this run claims. A
+    /// step that fails is answered refused, which aborts the machine.
+    pub(crate) fn directory_step(
+        &mut self,
+        root: &std::path::Path,
+        action: Action,
+        execute: impl FnOnce() -> Result<bool, ExecError>,
+    ) -> Result<(), ExecError> {
+        let refused = |refusal| refusal_error(refusal, "*", root.to_str());
+        let dest = self.dests.intern(root)?;
+        if !matches!(self.pending, Command::ReadUnit(_)) {
+            return Err(refused(Refusal::Protocol));
+        }
+        match self.step(Event::DirectoryRead(DirectoryFacts { dest, action })) {
+            Command::Directory { .. } => {}
+            other => return Err(refused(unexpected(other))),
+        }
+        let mutated = match execute() {
+            Ok(mutated) => mutated,
+            Err(error) => {
+                self.step(Event::Refused);
+                return Err(error);
+            }
+        };
+        match self.step(Event::Directed { mutated }) {
+            Command::Report { settled, .. } => self.reported(settled).map(drop).map_err(refused),
+            other => Err(refused(unexpected(other))),
         }
     }
 
-    /// The directory domain's transitions ran: the machine asks for the
-    /// commit facts.
-    pub(crate) fn directories_done(&mut self) -> Result<(), Refusal> {
-        match self.step(Event::Done) {
+    /// The directory domain holds `node` (an owned node of an active
+    /// receipt) for the rest of the run: no whole-object unit may write it,
+    /// and a release there is the domain's.
+    pub(crate) fn hold(&mut self, node: &std::path::Path) -> Result<(), ExecError> {
+        let refused = |refusal| refusal_error(refusal, "*", node.to_str());
+        let dest = self.dests.intern(node)?;
+        if !matches!(self.pending, Command::ReadUnit(_)) {
+            return Err(refused(Refusal::Protocol));
+        }
+        let facts = DirectoryFacts {
+            dest,
+            action: Action::Hold,
+        };
+        match self.step(Event::DirectoryRead(facts)) {
+            Command::Report {
+                settled: Settled::Held,
+                ..
+            } => self.reported(Settled::Held).map(drop).map_err(refused),
+            other => Err(refused(unexpected(other))),
+        }
+    }
+
+    /// Every unit and directory item was handed over: the machine asks for
+    /// the commit facts.
+    pub(crate) fn exhausted(&mut self) -> Result<(), Refusal> {
+        match self.step(Event::Exhausted) {
             Command::ReadCommit => Ok(()),
             other => Err(unexpected(other)),
         }
@@ -224,7 +281,16 @@ pub(crate) fn refusal_error(refusal: Refusal, output: &str, to: Option<&str>) ->
         ),
         Refusal::NotApplied { .. } => format!("{to} did not reach its intended state"),
         Refusal::Delegated { .. } => format!("{to} could not be settled"),
-        Refusal::Order { .. } => "a destination was deployed after the prune began".into(),
+        Refusal::Order { .. } => {
+            "a destination or directory step was handed over out of order (a gripsack bug)".into()
+        }
+        Refusal::Overlap { .. } => format!(
+            "{to} is both a directory gripsack owns and a file it deploys — declare one or the other"
+        ),
+        Refusal::Blocked { .. } => format!(
+            "{to} stands where gripsack must create a directory, and removing it would lose the file it replaced — move it away to continue"
+        ),
+        Refusal::Directory { .. } => format!("the directory transition at {to} failed"),
         Refusal::Unpublishable(why) => {
             format!("the new generation cannot be published ({why:?}) — refusing to activate it")
         }

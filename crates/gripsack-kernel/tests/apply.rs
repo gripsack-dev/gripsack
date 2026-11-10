@@ -11,10 +11,19 @@
 //! deploy after a release aborts; the run is vacuous exactly when nothing
 //! changed and nothing landed; and a host that lands the wrong object is
 //! caught before the flip.
+//!
+//! The directory sub-protocol (F2 step 9) is explored by a second walk: every
+//! sequence of up to three items over two destinations — clears, deploys,
+//! releases and directory steps (plan, evolve, hold, finish) answered
+//! settled, settled-with-a-change or refused — against an oracle that never
+//! lets a whole-object write land on a held destination, never commands a
+//! directory step for a claimed one, aborts an item out of stage order, and
+//! flips only after every directory step settled.
 use gripsack_kernel::apply::{
     ApplyState, Command, CommitInputs, Event, OnDrift, Outcome, Refusal, Settled, Slot, UnitFacts,
     Want, apply_step,
 };
+use gripsack_kernel::directory::{Action, DirectoryFacts};
 use gripsack_kernel::ownership::{Consent, Recorded, TakeOver};
 use gripsack_kernel::recover::{Ident, Intended, Live, Route};
 use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
@@ -88,18 +97,20 @@ fn units(dest: u32) -> Vec<Case> {
                 }
             }
             for origin in [Intended::Removed, Intended::Obj(ident(ORIGIN))] {
-                all.push(Case {
-                    facts: UnitFacts {
-                        dest: DestId::new(dest),
-                        slot: Slot::Whole,
-                        route: Route::Leaf,
-                        recorded,
-                        want: Want::Release(origin),
-                        consent: consent(false),
-                        drift: OnDrift::Keep,
-                    },
-                    live,
-                });
+                for want in [Want::Release(origin), Want::Clear(origin)] {
+                    all.push(Case {
+                        facts: UnitFacts {
+                            dest: DestId::new(dest),
+                            slot: Slot::Whole,
+                            route: Route::Leaf,
+                            recorded,
+                            want,
+                            consent: consent(false),
+                            drift: OnDrift::Keep,
+                        },
+                        live,
+                    });
+                }
             }
         }
     }
@@ -108,6 +119,19 @@ fn units(dest: u32) -> Vec<Case> {
 
 fn is_release(facts: &UnitFacts) -> bool {
     matches!(facts.want, Want::Release(_))
+}
+
+fn is_deploy(facts: &UnitFacts) -> bool {
+    matches!(facts.want, Want::Deploy { .. })
+}
+
+/// The stage rank the oracle expects (crate::directory::Stage, written out).
+fn unit_rank(facts: &UnitFacts) -> u8 {
+    match facts.want {
+        Want::Clear(_) => 1,
+        Want::Deploy { .. } => 4,
+        Want::Release(_) => 5,
+    }
 }
 
 /// The oracle's K1: may this unit write over `live`, and with what?
@@ -129,6 +153,14 @@ fn oracle(facts: &UnitFacts, live: Live) -> Result<Option<Intended>, ()> {
             },
         },
         Want::Release(origin) => Ok(ours.then_some(origin)),
+        // a clear empties gripsack's own write, and refuses anything else
+        Want::Clear(origin) => match live {
+            Live::Absent => Ok(None),
+            Live::Obj(_) if ours && matches!(origin, Intended::Removed) => {
+                Ok(Some(Intended::Removed))
+            }
+            _ => Err(()),
+        },
     }
 }
 
@@ -176,7 +208,7 @@ fn run(cases: &[Case], inputs: CommitInputs, host: Host) -> Run {
         event = match command {
             Command::ReadUnit(index) => match cases.get(index as usize) {
                 Some(case) => {
-                    if !is_release(&case.facts) {
+                    if is_deploy(&case.facts) {
                         declared.push(case.facts.dest.value());
                     }
                     Event::UnitRead(case.facts)
@@ -234,7 +266,7 @@ fn run(cases: &[Case], inputs: CommitInputs, host: Host) -> Run {
                 Event::Done
             }
             Command::Delegate { .. } => Event::Delegated { mutated: false },
-            Command::DirectoryStep => Event::Done,
+            Command::Directory { .. } => panic!("no directory item was handed over"),
             Command::ReadCommit => Event::CommitRead(inputs),
             Command::Publish(generation) => {
                 assert_eq!(generation, inputs.allocated);
@@ -305,25 +337,24 @@ fn every_run_writes_only_what_it_may_and_flips_only_when_settled() {
 }
 
 fn check(cases: &[Case], inputs: CommitInputs, outcome: &Run) {
-    let order = cases
-        .windows(2)
-        .any(|pair| is_release(&pair[0].facts) && !is_release(&pair[1].facts));
-    if order {
-        assert!(
-            matches!(outcome.aborted, Some(Refusal::Order { .. })),
-            "a deploy after a release aborts"
-        );
-        return;
-    }
     // a unit the oracle refuses stops the run before the flip
     let mut disk: BTreeMap<u32, Live> = BTreeMap::new();
     let mut refused = false;
+    let mut last = 0;
     for case in cases {
+        if unit_rank(&case.facts) < last {
+            assert!(
+                matches!(outcome.aborted, Some(Refusal::Order { .. })),
+                "a unit out of stage order (a deploy after a release) aborts"
+            );
+            return;
+        }
+        last = unit_rank(&case.facts);
         let live = *disk.entry(case.facts.dest.value()).or_insert(case.live);
         let claimed = is_release(&case.facts)
             && cases
                 .iter()
-                .any(|other| !is_release(&other.facts) && other.facts.dest == case.facts.dest);
+                .any(|other| is_deploy(&other.facts) && other.facts.dest == case.facts.dest);
         if claimed {
             continue;
         }
@@ -342,7 +373,10 @@ fn check(cases: &[Case], inputs: CommitInputs, outcome: &Run) {
         }
     }
     if refused {
-        assert!(matches!(outcome.aborted, Some(Refusal::Refused { .. })));
+        assert!(matches!(
+            outcome.aborted,
+            Some(Refusal::Refused { .. } | Refusal::Blocked { .. })
+        ));
         assert!(!outcome.flipped);
         return;
     }
@@ -403,4 +437,302 @@ fn an_unpublishable_commit_never_flips() {
         assert!(matches!(outcome.aborted, Some(Refusal::Unpublishable(_))));
         assert!(!outcome.flipped);
     }
+}
+
+/// One item of a directory-protocol run.
+#[derive(Clone, Copy, Debug)]
+enum Item {
+    Unit(UnitFacts),
+    /// A directory item and how the host answers its step.
+    Dir(DirectoryFacts, Answer),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Answer {
+    Settled { mutated: bool },
+    Refused,
+}
+
+fn rank(item: &Item) -> u8 {
+    match item {
+        Item::Unit(facts) => unit_rank(facts),
+        Item::Dir(facts, _) => match facts.action {
+            Action::Bind | Action::Birth | Action::Plan => 0,
+            Action::Evolve | Action::Shape | Action::Exchange | Action::Reactivate => 2,
+            Action::Hold => 3,
+            Action::Finish | Action::Retire => 6,
+        },
+    }
+}
+
+/// A small alphabet: gripsack's own write cleared, deployed over and
+/// released, a user's object cleared, and the directory steps of an apply.
+fn items() -> Vec<Item> {
+    let mut all = Vec::new();
+    for dest in [0, 1] {
+        let unit = |want: Want| UnitFacts {
+            dest: DestId::new(dest),
+            slot: Slot::Whole,
+            route: Route::Leaf,
+            recorded: Recorded::Wrote(ident(OWN)),
+            want,
+            consent: consent(false),
+            drift: OnDrift::Keep,
+        };
+        all.push(Item::Unit(unit(Want::Clear(Intended::Removed))));
+        all.push(Item::Unit(unit(Want::Deploy {
+            ident: ident(WANT),
+            adopted: ident(ADOPT),
+        })));
+        all.push(Item::Unit(unit(Want::Release(Intended::Removed))));
+        for action in [Action::Plan, Action::Evolve, Action::Finish] {
+            for answer in [
+                Answer::Settled { mutated: false },
+                Answer::Settled { mutated: true },
+                Answer::Refused,
+            ] {
+                all.push(Item::Dir(
+                    DirectoryFacts {
+                        dest: DestId::new(dest),
+                        action,
+                    },
+                    answer,
+                ));
+            }
+        }
+        all.push(Item::Dir(
+            DirectoryFacts {
+                dest: DestId::new(dest),
+                action: Action::Hold,
+            },
+            Answer::Settled { mutated: false },
+        ));
+    }
+    all
+}
+
+struct DirectoryRun {
+    outcome: Run,
+    /// Every directory step commanded, and whether its answer was settled.
+    steps: Vec<(u32, bool)>,
+}
+
+fn run_items(items: &[Item], inputs: CommitInputs) -> DirectoryRun {
+    // gripsack's own write stands on both destinations
+    let mut out = Run {
+        finished: None,
+        flipped: false,
+        aborted: None,
+        disk: BTreeMap::from([(0, Live::Obj(ident(OWN))), (1, Live::Obj(ident(OWN)))]),
+        landed: false,
+    };
+    let mut steps = Vec::new();
+    let mut held: Vec<u32> = Vec::new();
+    let mut claimed: Vec<u32> = Vec::new();
+    let mut state = ApplyState::new();
+    let mut event = Event::Start;
+    loop {
+        let (next, command) = apply_step(state, event);
+        state = next;
+        event = match command {
+            Command::ReadUnit(index) => match items.get(index as usize) {
+                Some(Item::Unit(facts)) => {
+                    if is_deploy(facts) {
+                        claimed.push(facts.dest.value());
+                    }
+                    Event::UnitRead(*facts)
+                }
+                Some(Item::Dir(facts, _)) => {
+                    if facts.action == Action::Hold {
+                        held.push(facts.dest.value());
+                    }
+                    Event::DirectoryRead(*facts)
+                }
+                None => Event::Exhausted,
+            },
+            Command::Observe { dest, .. } => Event::Observed {
+                dest,
+                live: out.disk[&dest.value()],
+            },
+            Command::Mutate { dest, install, .. } => {
+                assert!(
+                    !held.contains(&dest.value()),
+                    "a whole-object write on a held destination"
+                );
+                let landed = match install {
+                    Intended::Removed => Live::Absent,
+                    Intended::Obj(o) => Live::Obj(o),
+                };
+                out.disk.insert(dest.value(), landed);
+                out.landed = true;
+                Event::Landed { live: landed }
+            }
+            Command::Directory { unit, dest, action } => {
+                let Item::Dir(facts, answer) = items[unit as usize] else {
+                    panic!("a directory step for a unit");
+                };
+                assert_eq!((facts.dest, facts.action), (dest, action));
+                assert_ne!(action, Action::Hold, "a hold is never executed");
+                assert!(
+                    !claimed.contains(&dest.value()),
+                    "a directory step at a claimed destination"
+                );
+                steps.push((unit, false));
+                match answer {
+                    Answer::Settled { mutated } => {
+                        steps.last_mut().unwrap().1 = true;
+                        Event::Directed { mutated }
+                    }
+                    Answer::Refused => Event::Refused,
+                }
+            }
+            Command::Report { .. } => Event::Done,
+            Command::Delegate { .. } => panic!("no delegated unit"),
+            Command::ReadCommit => Event::CommitRead(inputs),
+            Command::Publish(_) => Event::Done,
+            Command::Flip(_) => {
+                assert!(
+                    steps.iter().all(|(_, settled)| *settled),
+                    "the flip follows every directory step's settlement"
+                );
+                out.flipped = true;
+                Event::Done
+            }
+            Command::Activate => Event::Done,
+            Command::Finish(outcome) => {
+                out.finished = Some(outcome);
+                return DirectoryRun {
+                    outcome: out,
+                    steps,
+                };
+            }
+            Command::Abort(refusal) => {
+                out.aborted = Some(refusal);
+                return DirectoryRun {
+                    outcome: out,
+                    steps,
+                };
+            }
+        };
+    }
+}
+
+/// What the oracle expects of an item sequence: the first item that aborts
+/// the run (and why), else whether anything changed the disk.
+fn expect(items: &[Item]) -> Result<bool, &'static str> {
+    let mut held: Vec<u32> = Vec::new();
+    let mut claimed: Vec<u32> = Vec::new();
+    let mut changed = false;
+    let mut disk = BTreeMap::from([(0u32, Live::Obj(ident(OWN))), (1, Live::Obj(ident(OWN)))]);
+    let mut last = 0;
+    for item in items {
+        if rank(item) < last {
+            return Err("order");
+        }
+        last = rank(item);
+        match item {
+            Item::Unit(facts) => {
+                let dest = facts.dest.value();
+                match facts.want {
+                    Want::Deploy { .. } | Want::Clear(_) if held.contains(&dest) => {
+                        return Err("overlap");
+                    }
+                    Want::Release(_) if claimed.contains(&dest) || held.contains(&dest) => {
+                        continue;
+                    }
+                    Want::Deploy { .. } => claimed.push(dest),
+                    _ => {}
+                }
+                match oracle(facts, disk[&dest]) {
+                    Err(()) => return Err("refused"),
+                    Ok(Some(Intended::Obj(o))) => {
+                        disk.insert(dest, Live::Obj(o));
+                        changed = true;
+                    }
+                    Ok(Some(Intended::Removed)) => {
+                        disk.insert(dest, Live::Absent);
+                        changed = true;
+                    }
+                    Ok(None) => {}
+                }
+            }
+            Item::Dir(facts, answer) => {
+                let dest = facts.dest.value();
+                if claimed.contains(&dest) {
+                    return Err("overlap");
+                }
+                if facts.action == Action::Hold {
+                    held.push(dest);
+                    continue;
+                }
+                match answer {
+                    Answer::Refused => return Err("directory"),
+                    Answer::Settled { mutated } => changed |= mutated,
+                }
+            }
+        }
+    }
+    Ok(changed)
+}
+
+#[test]
+fn the_directory_sub_protocol_is_fenced() {
+    let alphabet = items();
+    let inputs = CommitInputs {
+        previous: Some(selection(1, 1)),
+        reserved: selection(2, 2),
+        allocated: GenerationId::new(2),
+        floor: Some(GenerationId::new(1)),
+        unchanged: true,
+        exists: false,
+    };
+    let mut runs = 0usize;
+    let mut flips = 0usize;
+    let mut sequences: Vec<Vec<Item>> = alphabet.iter().map(|item| vec![*item]).collect();
+    for a in &alphabet {
+        for b in &alphabet {
+            sequences.push(vec![*a, *b]);
+            for c in &alphabet {
+                sequences.push(vec![*a, *b, *c]);
+            }
+        }
+    }
+    for sequence in &sequences {
+        let run = run_items(sequence, inputs);
+        runs += 1;
+        let outcome = &run.outcome;
+        match expect(sequence) {
+            Err(why) => {
+                assert!(!outcome.flipped, "{sequence:?}");
+                let refusal = outcome.aborted.expect("an aborted run");
+                let matches = match why {
+                    "order" => matches!(refusal, Refusal::Order { .. }),
+                    "overlap" => matches!(refusal, Refusal::Overlap { .. }),
+                    "refused" => matches!(refusal, Refusal::Refused { .. }),
+                    _ => matches!(refusal, Refusal::Directory { .. }),
+                };
+                assert!(matches, "{sequence:?}: {why} vs {refusal:?}");
+            }
+            Ok(changed) => {
+                assert!(
+                    outcome.aborted.is_none(),
+                    "{sequence:?}: {:?}",
+                    outcome.aborted
+                );
+                // unchanged manifests: vacuous exactly when nothing changed
+                if changed {
+                    assert!(outcome.flipped, "{sequence:?}");
+                } else {
+                    assert!(
+                        matches!(outcome.finished, Some(Outcome::Vacuous)),
+                        "{sequence:?}"
+                    );
+                }
+                flips += usize::from(outcome.flipped);
+                assert!(run.steps.iter().all(|(_, settled)| *settled));
+            }
+        }
+    }
+    assert!(runs > 15_000, "{runs} runs");
+    assert!(flips > 1_000, "{flips} flips");
 }

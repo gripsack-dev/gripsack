@@ -15,7 +15,6 @@ pub struct Migration {
     released: BTreeSet<PathBuf>,
     directories: BTreeMap<PathBuf, DirectoryMigration>,
     logical_roots: BTreeMap<PathBuf, PathBuf>,
-    receipts: Vec<store::journal::directory::DirectoryTransition>,
 }
 
 struct DirectoryMigration {
@@ -180,7 +179,6 @@ impl Migration {
             released,
             directories,
             logical_roots,
-            receipts: Vec::new(),
         })
     }
 
@@ -255,25 +253,26 @@ impl Migration {
         store::canonical_dest(destination)
     }
 
-    pub fn publish_directories(
-        &mut self,
+    /// The directory sub-protocol's `Birth` step (plan/0056 F2 step 9): turn
+    /// the migrated owned link at `destination` into the directory tree its
+    /// receipt prepares.
+    pub(crate) fn birth(
+        &self,
         run: &store::journal::JournalRun<'_>,
+        destination: &Path,
     ) -> Result<(), ExecError> {
-        for (destination, planned) in &self.directories {
-            let receipt = store::journal::directory::prepare(
-                destination.clone(),
-                planned.target.clone(),
-                planned.generation,
-                planned.leaves.clone(),
-            )?;
-            store::journal::directory::publish(run, &receipt)?;
-            self.receipts.push(receipt);
-        }
+        let planned = self
+            .directories
+            .get(destination)
+            .ok_or_else(|| failure("directory birth outside the migration"))?;
+        let receipt = store::journal::directory::prepare(
+            destination.to_path_buf(),
+            planned.target.clone(),
+            planned.generation,
+            planned.leaves.clone(),
+        )?;
+        store::journal::directory::publish(run, &receipt)?;
         Ok(())
-    }
-
-    pub fn receipts(&self) -> &[store::journal::directory::DirectoryTransition] {
-        &self.receipts
     }
 
     pub(crate) fn release_entries(

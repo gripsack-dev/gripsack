@@ -274,6 +274,43 @@ MUTANTS = (
            "            Event::Refused => report(state, facts.dest, Settled::Delegated),",
            ("Gripsack.Kernel.Rollback.on_delegated_spec",
             "Gripsack.Kernel.Rollback.rollback_delegated_refusal_aborts")),
+    # directory fence (step 9): a rollback write at a destination the domain holds
+    Mutant("rollback-write-held", "rollback.rs",
+           "    if names(&state.holds, dest) {",
+           "    if false && names(&state.holds, dest) {",
+           ("Gripsack.Kernel.Rollback.on_unit_spec",)),
+    # directory fence: a directory step where a unit restores the target's record
+    Mutant("rollback-directory-claimed", "rollback.rs",
+           "    if names(&state.claimed, dest) {",
+           "    if false && names(&state.claimed, dest) {",
+           ("Gripsack.Kernel.Rollback.on_directory_spec",)),
+    # directory fence: a restored destination is not claimed
+    Mutant("rollback-claim-forgotten", "rollback.rs",
+           "fn records_write(target: &Target) -> bool {\n    match target {\n        Target::Wrote { .. } => true,",
+           "fn records_write(target: &Target) -> bool {\n    match target {\n        Target::Wrote { .. } => false,",
+           ("Gripsack.Kernel.Rollback.on_unit_spec",)),
+    # a refused directory step is reported settled and the flip follows
+    Mutant("rollback-directory-refusal-settled", "rollback.rs",
+           "            Event::Done => report(state, facts.dest, Settled::Directory),\n            Event::Refused => {",
+           "            Event::Done => report(state, facts.dest, Settled::Directory),\n            Event::Refused => report(state, facts.dest, Settled::Directory),\n            Event::Start => {",
+           ("Gripsack.Kernel.Rollback.on_directed_spec",
+            "Gripsack.Kernel.Rollback.rollback_directory_refusal_aborts")),
+    # a clear keeps the user's object silently and the shape change goes ahead
+    Mutant("rollback-clear-kept", "rollback.rs",
+           "            UnitDecision::Refuse(why) => {\n                if clears(&unit.target) {",
+           "            UnitDecision::Refuse(why) => {\n                if false && clears(&unit.target) {",
+           ("Gripsack.Kernel.Rollback.decide_restore_clear_refused",)),
+    # a clear brings the epoch's origin back where a directory must go
+    Mutant("rollback-clear-restores-origin", "rollback.rs",
+           "        Target::Cleared(origin) => match origin {\n            Intended::Removed => Some(Intended::Removed),\n            Intended::Obj(_) => None,\n        },",
+           "        Target::Cleared(origin) => Some(*origin),",
+           ("Gripsack.Kernel.Rollback.decide_restore_spec",)),
+    # a unit out of stage order (a clear after a shape change) is accepted
+    Mutant("rollback-out-of-order", "rollback.rs",
+           "    let next = unit_stage(&facts.target);\n    if !ordered(&state.stage, &next) {",
+           "    let next = unit_stage(&facts.target);\n    if false && !ordered(&state.stage, &next) {",
+           ("Gripsack.Kernel.Rollback.on_unit_spec",
+            "Gripsack.Kernel.Rollback.rollback_unit_out_of_stage_aborts")),
     # K6: a flip (rollback's reselection, apply's publication) reuses the
     # transaction it replaces
     Mutant("rollback-reused-transaction", "selection.rs",
@@ -461,11 +498,13 @@ MUTANTS = (
            "        Slot::Whole => true,\n        Slot::Block(owner) => match claim.slot {",
            "        Slot::Whole => false,\n        Slot::Block(owner) => match claim.slot {",
            ("Gripsack.Kernel.Apply.covers_spec",)),
-    # a deploy accepted after releases began could claim a released destination
+    # a unit out of stage order (a deploy after releases began) is accepted:
+    # it could claim a released destination
     Mutant("apply-deploy-after-release", "apply.rs",
-           "            if state.releasing {\n                let unit = state.index;\n                return refuse(state, Refusal::Order { unit });\n            }",
-           "",
-           ("Gripsack.Kernel.Apply.on_unit_spec", "Gripsack.Kernel.Apply.apply_no_deploy_after_release")),
+           "    let next = unit_stage(&facts.want);\n    if !ordered(&state.stage, &next) {",
+           "    let next = unit_stage(&facts.want);\n    if false && !ordered(&state.stage, &next) {",
+           ("Gripsack.Kernel.Apply.on_unit_spec", "Gripsack.Kernel.Apply.apply_no_deploy_after_release",
+            "Gripsack.Kernel.Apply.apply_unit_out_of_stage_aborts")),
     # the flip skips a unit: the index advances by two
     Mutant("apply-flip-skips-unit", "apply.rs",
            "    match state.index.checked_add(1) {",
@@ -481,6 +520,63 @@ MUTANTS = (
            "            if lands(&install, &live) {\n                state.mutated = true;",
            "            if lands(&install, &live) {",
            ("Gripsack.Kernel.Apply.on_landed_spec",)),
+    # directory fence (step 9): a directory step out of stage order is commanded
+    Mutant("apply-directory-out-of-order", "apply.rs",
+           "    let next = stage(&facts.action);\n    if !ordered(&state.stage, &next) {",
+           "    let next = stage(&facts.action);\n    if false && !ordered(&state.stage, &next) {",
+           ("Gripsack.Kernel.Apply.on_directory_spec",
+            "Gripsack.Kernel.Apply.apply_directory_out_of_stage_aborts")),
+    # directory fence: a directory step at a destination a deploy claims
+    Mutant("apply-directory-claimed", "apply.rs",
+           "    if claimed(&state.declared, dest) {",
+           "    if false && claimed(&state.declared, dest) {",
+           ("Gripsack.Kernel.Apply.on_directory_spec",)),
+    # directory fence: a deploy written over a destination the domain holds
+    Mutant("apply-deploy-held", "apply.rs",
+           "        Want::Deploy { .. } => {\n            if names(&state.holds, facts.dest) {",
+           "        Want::Deploy { .. } => {\n            if false && names(&state.holds, facts.dest) {",
+           ("Gripsack.Kernel.Apply.on_unit_spec",)),
+    # directory fence: a release examined (and written) at a held destination
+    Mutant("apply-release-held-written", "apply.rs",
+           "            } else if names(&state.holds, facts.dest) {",
+           "            } else if false && names(&state.holds, facts.dest) {",
+           ("Gripsack.Kernel.Apply.on_unit_spec",)),
+    # directory fence: a clear written over a destination the domain holds
+    Mutant("apply-clear-held", "apply.rs",
+           "        Want::Clear(_) => {\n            if names(&state.holds, facts.dest) {",
+           "        Want::Clear(_) => {\n            if false && names(&state.holds, facts.dest) {",
+           ("Gripsack.Kernel.Apply.on_unit_spec",)),
+    # a hold is not recorded: later units are never checked against it
+    Mutant("apply-hold-forgotten", "apply.rs",
+           "        state.holds.push(dest);\n        report(state, dest, Settled::Held)",
+           "        report(state, dest, Settled::Held)",
+           ("Gripsack.Kernel.Apply.on_directory_spec",)),
+    # a clear brings the epoch's origin back where a directory must go
+    Mutant("apply-clear-restores-origin", "apply.rs",
+           "            Write::Replace => match origin {\n                Intended::Removed => Some(Intended::Removed),\n                Intended::Obj(_) => None,\n            },",
+           "            Write::Replace => Some(*origin),",
+           ("Gripsack.Kernel.Apply.decide_apply_spec",)),
+    # a clear keeps the user's object silently instead of refusing the run
+    Mutant("apply-clear-drift-kept", "apply.rs",
+           "        Want::Clear(_) => true,",
+           "        Want::Clear(_) => false,",
+           ("Gripsack.Kernel.Apply.decide_apply_clear_refused",)),
+    # a refused directory step is reported settled and the run goes on to the flip
+    Mutant("apply-directory-refusal-settled", "apply.rs",
+           "            Event::Refused => {\n                let unit = state.index;\n                refuse(\n                    state,\n                    Refusal::Directory {",
+           "            Event::Refused => {\n                let unit = state.index;\n                let _ = unit;\n                report(state, facts.dest, Settled::Directory { mutated: false })\n            }\n            Event::Start => {\n                let unit = state.index;\n                refuse(\n                    state,\n                    Refusal::Directory {",
+           ("Gripsack.Kernel.Apply.on_directed_spec",
+            "Gripsack.Kernel.Apply.apply_directory_refusal_aborts")),
+    # a directory step that changed the disk does not set the mutated flag
+    Mutant("apply-directory-mutation-ignored", "apply.rs",
+           "            Event::Directed { mutated } => {\n                if mutated {\n                    state.mutated = true;\n                }",
+           "            Event::Directed { mutated } => {",
+           ("Gripsack.Kernel.Apply.on_directed_spec",)),
+    # a hold is executed by the host as a directory step
+    Mutant("directory-hold-commanded", "directory.rs",
+           "        Action::Hold => false,",
+           "        Action::Hold => true,",
+           ("Gripsack.Kernel.Directory.commands_spec",)),
     # K6: an unpublishable commit is published and flipped anyway
     Mutant("apply-unpublishable-published", "apply.rs",
            "        Commit::Refuse(why) => refuse(state, Refusal::Unpublishable(why)),",

@@ -27,13 +27,15 @@ impl EvolutionPlan {
         &self.blockers
     }
 
-    pub fn publish(mut self, run: &JournalRun<'_>) -> io::Result<()> {
+    /// Publish the planned shape; whether it changed the receipt's namespace.
+    pub fn publish(mut self, run: &JournalRun<'_>) -> io::Result<bool> {
         if self.target == self.before.transition {
-            return Ok(());
+            return Ok(false);
         }
         persist_change(run, &self.before, &self.target)?;
         self.registered = true;
-        super::directory_shape::apply(&self.before.transition, &self.target)
+        super::directory_shape::apply(&self.before.transition, &self.target)?;
+        Ok(true)
     }
 }
 
@@ -63,17 +65,28 @@ impl Drop for EvolutionPlan {
     }
 }
 
-pub fn plans(run: &JournalRun<'_>, destinations: &[PathBuf]) -> io::Result<Vec<EvolutionPlan>> {
-    let records = run
+/// Plan the evolution of the receipt rooted at `root` for this run's leaf
+/// `destinations`, preparing the private staging names of its new nodes.
+/// `None` when no destination lies inside the receipt (it is finished or
+/// retired after the leaves instead).
+pub fn plan(
+    run: &JournalRun<'_>,
+    root: &Path,
+    destinations: &[PathBuf],
+) -> io::Result<Option<EvolutionPlan>> {
+    let Some(before) = run
         .directories
         .read()
         .map_err(|_| invalid("directory authority lock poisoned"))?
-        .clone();
-    let mut plans = Vec::new();
-    for before in records {
-        if before.direction == Direction::Reverse {
-            continue;
-        }
+        .iter()
+        .find(|record| {
+            record.direction != Direction::Reverse && record.transition.destination == root
+        })
+        .cloned()
+    else {
+        return Err(invalid("missing directory evolution authority"));
+    };
+    {
         let desired: BTreeSet<PathBuf> = destinations
             .iter()
             .filter_map(|destination| {
@@ -85,7 +98,7 @@ pub fn plans(run: &JournalRun<'_>, destinations: &[PathBuf]) -> io::Result<Vec<E
             })
             .collect();
         if desired.is_empty() {
-            continue;
+            return Ok(None);
         }
         let mut needed = BTreeSet::from([PathBuf::new()]);
         for leaf in &desired {
@@ -200,9 +213,8 @@ pub fn plans(run: &JournalRun<'_>, destinations: &[PathBuf]) -> io::Result<Vec<E
         plan.target.leaves.sort();
         plan.target.leaves.dedup();
         plan.target.validate()?;
-        plans.push(plan);
+        Ok(Some(plan))
     }
-    Ok(plans)
 }
 
 pub(super) fn persist_change(

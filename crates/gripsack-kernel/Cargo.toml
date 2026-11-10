@@ -31,4 +31,5 @@ start_from = [
     "gripsack_kernel::activation",
     "gripsack_kernel::publication",
     "gripsack_kernel::apply",
+    "gripsack_kernel::directory",
 ]

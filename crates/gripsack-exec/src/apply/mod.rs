@@ -4,11 +4,13 @@
 //! every unit, every release, whether the run cuts a generation and when it
 //! flips; this module is its host: it walks the workspace, executes what the
 //! machine commands, and runs the parts the machine delegates (managed
-//! blocks, the directory domain, activation).
+//! blocks, activation) or commands from the directory sub-protocol
+//! ([`directories`], step 9).
 
 mod dests;
+pub(crate) mod directories;
 mod machine;
-pub(crate) use dests::same_destination;
+pub(crate) use dests::{Dests, same_destination};
 pub(crate) use machine::{Commit, Machine, Verdict, agrees, refusal_error};
 
 use crate::ctx::Outcome;
@@ -16,9 +18,9 @@ use crate::ctx::{Ctx, ExecError};
 use crate::progress::Phase;
 use crate::report::{ApplyResult, StepReport};
 use gripsack_ir::Ir;
-use gripsack_kernel::apply::{CommitInputs, OnDrift, Slot, UnitFacts, Want};
+use gripsack_kernel::apply::{CommitInputs, OnDrift, Refusal, Slot, UnitFacts, Want};
 use gripsack_kernel::ownership::Recorded;
-use gripsack_kernel::recover::{Failure, Intended, Route};
+use gripsack_kernel::recover::{Failure, Intended, Live, Route};
 use gripsack_store as store;
 use std::collections::BTreeMap;
 use tracing::{info, info_span};
@@ -173,20 +175,18 @@ fn apply_prepared(
         store::journal::RunOp::Apply,
     )?;
     reporter.phase(Phase::Deploy);
-    let execution = (|| {
-        if let Some(previous) = &prev_manifest {
-            for receipt in &previous.directory_transitions {
-                store::journal::directory::bind_existing(&selection, receipt)?;
-            }
-        }
-        native.deploy(
-            ctx,
-            &selection,
-            &prev_deployments,
-            migration.as_mut(),
-            &mut machine,
-        )
-    })();
+    let previous_receipts = prev_manifest
+        .as_ref()
+        .map(|previous| previous.directory_transitions.as_slice())
+        .unwrap_or_default();
+    let execution = native.deploy(
+        ctx,
+        &selection,
+        &prev_deployments,
+        previous_receipts,
+        migration.as_mut(),
+        &mut machine,
+    );
     let outcome = match execution {
         Ok(outcome) => outcome,
         Err(error) => {
@@ -417,42 +417,17 @@ fn pre_flip(
     // manifest but gone now are removed — only if the file still matches
     // the recorded hash (user edits are never deleted). Every prune
     // mutation is journaled like a deploy (0025 §B).
-    let active_directories = store::journal::directory::receipts(journal)?;
     if let Some(prev) = prev_manifest {
-        prune_undeclared(prev, deployments, journal, &active_directories, machine)?;
+        prune_undeclared(prev, deployments, journal, machine)?;
     }
-    // every unit settled: the directory domain's transitions (opaque until
-    // plan/0056 step 9) run as the machine's one directory step
+    // every leaf settled: the directory sub-protocol closes each receipt
+    // (plan/0056 F2 step 9), one machine-commanded step each
+    let directory_transitions = directories::close(journal, deployments, machine)?;
     machine.exhausted().map_err(refused)?;
-    let mut directory_transitions = Vec::new();
-    for receipt in active_directories {
-        let leaves: Vec<_> = deployments
-            .values()
-            .flat_map(|state| &state.entries)
-            .filter_map(|entry| {
-                entry
-                    .key()
-                    .strip_prefix(&receipt.destination)
-                    .ok()
-                    .filter(|relative| !relative.as_os_str().is_empty())
-                    .map(std::path::Path::to_owned)
-            })
-            .collect();
-        if leaves.is_empty() {
-            crate::deploy::directory_retirement::retire(journal, &receipt)?;
-        } else {
-            directory_transitions.push(store::journal::directory::finish(
-                journal,
-                &receipt.destination,
-                leaves,
-            )?);
-        }
-    }
     native.run_pre_flip_checks(ctx, session)?;
     // test-only kill switch: the prune→flip crash window's e2e (0025)
     crate::util::crash_hook("after-prune");
 
-    machine.directories_done().map_err(refused)?;
     // Satisfied = the deployment states are identical (the generation
     // number is not part of the comparison — 0008 §3) AND nothing
     // touched the filesystem. Whether the run touched the disk is the
@@ -522,16 +497,15 @@ fn pre_flip(
 /// machine decides each release: whether a deploy of this run claims the
 /// destination (by the destination's identity, so a re-spelling the
 /// filesystem judges the same name is not pruned under the new spelling —
-/// plan/0056 FND-3), and whether the live object is gripsack's own write
-/// (K1). Every prune mutation is journaled like a deploy (0025 §B).
+/// plan/0056 FND-3), whether the directory domain holds it (step 9), and
+/// whether the live object is gripsack's own write (K1). Every prune
+/// mutation is journaled like a deploy (0025 §B).
 fn prune_undeclared(
     prev: &store::Generation,
     deployments: &BTreeMap<String, store::DeploymentState>,
     journal: &store::journal::JournalRun<'_>,
-    directory_transitions: &[store::journal::directory::DirectoryTransition],
     machine: &mut Machine,
 ) -> Result<(), ExecError> {
-    let home_dir = journal.home();
     // the candidates: entries the new manifest no longer records under their
     // own spelling (a subset apply carries the other profiles' entries
     // forward without deploying them). Whole-file destinations are unique
@@ -561,16 +535,6 @@ fn prune_undeclared(
             if still_recorded {
                 continue;
             }
-            // the directory domain's destinations are its own (step 9)
-            if directory_transitions
-                .iter()
-                .any(|receipt| receipt.destination == entry.key())
-            {
-                continue;
-            }
-            if store::journal::directory::is_directory(journal, &entry.key())? {
-                continue;
-            }
             // preserved drift was never written by gripsack — prune
             // never touches it (0029 §2; before this, the recorded
             // observed hash made the intact check pass and prune
@@ -578,30 +542,77 @@ fn prune_undeclared(
             if entry.preserved_drift {
                 continue;
             }
-            release(name, entry, &state.store_path, journal, home_dir, machine)?;
+            remove_unit(
+                name,
+                entry,
+                &state.store_path,
+                journal,
+                machine,
+                Purpose::Prune,
+            )?;
         }
     }
     Ok(())
 }
 
-/// One release unit through the machine.
-fn release(
+/// Why a previous generation's entry is removed.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Purpose {
+    /// The workspace no longer deploys it (prune-on-undeclare): the user's
+    /// change is kept, and the epoch's origin comes back.
+    Prune,
+    /// A directory change needs its destination empty (plan/0056 step 9):
+    /// anything but gripsack's own write refuses the run, and nothing comes
+    /// back.
+    Clear,
+}
+
+/// The error a clear's refusal reports: what stands where gripsack must
+/// create a directory.
+fn clear_error(refusal: Refusal, output: &str, to: &str) -> ExecError {
+    match refusal {
+        Refusal::Refused { .. } => ExecError::Step {
+            output: output.into(),
+            step: "directory".into(),
+            detail: format!(
+                "{to} stands where gripsack must create a directory and is not gripsack's own \
+                 unchanged write (a foreign, changed or preserved object) — it is left untouched; \
+                 move it away to continue"
+            ),
+        },
+        other => refusal_error(other, output, Some(to)),
+    }
+}
+
+/// One release or clear unit through the machine.
+pub(crate) fn remove_unit(
     name: &str,
     entry: &store::DeployedEntry,
     store_path: &std::path::Path,
     journal: &store::journal::JournalRun<'_>,
-    home_dir: &gripsack_fs::Dir,
     machine: &mut Machine,
+    purpose: Purpose,
 ) -> Result<(), ExecError> {
+    let home_dir = journal.home();
     let fail = |detail: String| ExecError::Step {
         output: name.to_string(),
-        step: "prune".into(),
+        step: match purpose {
+            Purpose::Prune => "prune".into(),
+            Purpose::Clear => "directory".into(),
+        },
         detail,
     };
-    let refused = |refusal| refusal_error(refusal, name, Some(&entry.to));
+    let refused = |refusal| match purpose {
+        Purpose::Prune => refusal_error(refusal, name, Some(&entry.to)),
+        Purpose::Clear => clear_error(refusal, name, &entry.to),
+    };
     let dest = entry.key();
     let unit_dest = machine.dests.intern(&dest)?;
     let withheld = crate::ops::take_over_consent(false);
+    let (want, drift): (fn(Intended) -> Want, OnDrift) = match purpose {
+        Purpose::Prune => (Want::Release, OnDrift::Keep),
+        Purpose::Clear => (Want::Clear, OnDrift::Stop),
+    };
     if entry.ownership.policy() == gripsack_store::Ownership::Merge {
         // a managed block (K5): only an intact block is removed, by the
         // host's block decision; the machine decides whether a deploy of
@@ -612,17 +623,35 @@ fn release(
             slot: Slot::Block(owner),
             route: Route::Delegated,
             recorded: Recorded::Observed,
-            want: Want::Release(Intended::Removed),
+            want: want(Intended::Removed),
             consent: withheld,
-            drift: OnDrift::Keep,
+            drift,
         };
         return match machine.unit(facts, None).map_err(refused)? {
             Verdict::Delegate => {
-                let mutated = match crate::ops::plan_remove_op(name, entry, store_path, home_dir)? {
+                let op = crate::ops::plan_remove_op(name, entry, store_path, home_dir)?;
+                let mutated = match op {
                     Some(op) if matches!(op.kind(), crate::ops::OpKind::Remove(_)) => {
+                        // a clear needs the whole file gone, not a block
+                        if purpose == Purpose::Clear
+                            && !matches!(op.intended(), store::journal::Intended::Removed)
+                        {
+                            machine.refuse_delegated();
+                            return Err(fail(format!(
+                                "{}: a managed block's file stands where gripsack must create a directory",
+                                entry.to
+                            )));
+                        }
                         crate::ops::execute_op(journal, op.as_executable()?)?;
-                        info!("pruned block {}", entry.to);
+                        info!("removed block {}", entry.to);
                         true
+                    }
+                    Some(_) if purpose == Purpose::Clear => {
+                        machine.refuse_delegated();
+                        return Err(fail(format!(
+                            "{}: a changed managed block stands where gripsack must create a directory",
+                            entry.to
+                        )));
                     }
                     _ => false,
                 };
@@ -632,8 +661,14 @@ fn release(
             Verdict::Write { .. } => Err(refused(gripsack_kernel::apply::Refusal::Protocol)),
         };
     }
-    let observation =
-        observe_existing(&dest).map_err(|e| fail(format!("cannot inspect {}: {e}", entry.to)))?;
+    // an object without identity (a directory, a special file) is the
+    // kernel's `Unsupported`: a destination the directory domain holds is
+    // settled without it, anything else cannot be inspected
+    let (observation, unsupported) = match observe_existing(&dest) {
+        Ok(observation) => (observation, None),
+        Err(error) if error.kind() == std::io::ErrorKind::InvalidInput => (None, Some(error)),
+        Err(error) => return Err(fail(format!("cannot inspect {}: {error}", entry.to))),
+    };
     let origin = store::journal::kernel_intended(
         &crate::deploy::restore::prune_intent(entry, home_dir).map_err(|e| fail(format!("{e}")))?,
     )?;
@@ -642,17 +677,25 @@ fn release(
         slot: Slot::Whole,
         route: Route::Leaf,
         recorded: crate::ops::PreviousRecord { entry, store_path }.recorded(observation.as_ref()),
-        want: Want::Release(origin),
+        want: want(origin),
         consent: withheld,
-        drift: OnDrift::Keep,
+        drift,
     };
-    let live = crate::ops::kernel_live(observation.as_ref());
+    let live = match unsupported {
+        Some(_) => Live::Unsupported,
+        None => crate::ops::kernel_live(observation.as_ref()),
+    };
     let verdict = machine.unit(facts, Some(live)).map_err(refused)?;
     if matches!(
         verdict,
-        Verdict::Settled(gripsack_kernel::apply::Settled::Declared)
+        Verdict::Settled(
+            gripsack_kernel::apply::Settled::Declared | gripsack_kernel::apply::Settled::Held
+        )
     ) {
         return Ok(());
+    }
+    if let Some(error) = unsupported {
+        return Err(fail(format!("cannot inspect {}: {error}", entry.to)));
     }
     // the ONE remove planner (0034) builds the op; it must be the one the
     // machine commanded (or none, or a kept destination, likewise)
@@ -686,6 +729,8 @@ fn release(
         "{} {}",
         if entry.prior.is_some() {
             "restored prior"
+        } else if purpose == Purpose::Clear {
+            "cleared"
         } else {
             "pruned"
         },
@@ -696,7 +741,9 @@ fn release(
 
 /// A destination's one observation for a release: absent when it or its
 /// parent is gone.
-fn observe_existing(dest: &std::path::Path) -> std::io::Result<Option<crate::deploy::Observation>> {
+fn observe_existing(
+    dest: &std::path::Path,
+) -> std::io::Result<Option<crate::deploy::Observation>> {
     let parent = dest.parent().unwrap_or(std::path::Path::new("."));
     let directory = match gripsack_fs::open(parent) {
         Ok(directory) => directory,

@@ -3,7 +3,7 @@
 pub use super::directory_binding::{bind_existing, destination_capability};
 pub(super) use super::directory_binding::{bound_parent, recovery_parent};
 pub use super::directory_evolution::{
-    EvolutionPlan, finish, is_directory, plans, receipts, restore_shape,
+    EvolutionPlan, finish, is_directory, plan, receipts, restore_shape,
 };
 pub use super::directory_prepare::{prepare, publish, reactivate};
 pub use super::directory_resolve::{

@@ -21,6 +21,7 @@ pub mod activation;
 pub mod apply;
 pub mod block;
 pub mod convenience;
+pub mod directory;
 pub mod gc;
 pub mod generation;
 pub mod ids;
