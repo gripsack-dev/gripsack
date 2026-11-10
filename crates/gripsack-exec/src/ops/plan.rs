@@ -211,6 +211,70 @@ pub enum BlockSource<'a> {
     },
 }
 
+/// What a whole-object unit wants, as the apply machine's kernel facts
+/// (plan/0056 F2 step 7): gripsack's record, the deploy's identity, and the
+/// identity a take-over installs (the same content at the live object's
+/// mode, 0033 R1). `None` for a managed block (K5: delegated). The planner
+/// computes the same identities when it builds the op; the driver refuses to
+/// execute an op whose intent is not the install the machine commanded.
+pub(crate) struct UnitWant {
+    pub recorded: Recorded,
+    pub ident: Ident,
+    pub adopted: Ident,
+}
+
+pub(crate) fn unit_want(view: &DestView, input: &ModeInput) -> Option<UnitWant> {
+    let recorded = || {
+        view.prev.map_or(Recorded::Unrecorded, |record| {
+            record.recorded(view.observed.as_ref())
+        })
+    };
+    match input {
+        ModeInput::Link { source, .. } => {
+            let ident = store::hash::kernel::link(source.as_os_str().as_encoded_bytes());
+            Some(UnitWant {
+                recorded: recorded(),
+                ident,
+                adopted: ident,
+            })
+        }
+        ModeInput::Write {
+            content,
+            permissions,
+        } => {
+            let mode = permissions.resolve(view);
+            let adopted_mode = match &view.observed {
+                Some(crate::deploy::Observation::File { mode, .. }) => *mode,
+                _ => mode,
+            };
+            Some(UnitWant {
+                recorded: recorded(),
+                ident: store::hash::kernel::file(&store::canonical_bytes_identity(content, mode)),
+                adopted: store::hash::kernel::file(&store::canonical_bytes_identity(
+                    content,
+                    adopted_mode,
+                )),
+            })
+        }
+        ModeInput::MigrationWrite {
+            authorization,
+            content,
+            permissions,
+        } => {
+            let ident = store::hash::kernel::file(&store::canonical_bytes_identity(
+                content,
+                permissions.resolve(view),
+            ));
+            Some(UnitWant {
+                recorded: authorization.recorded(),
+                ident,
+                adopted: ident,
+            })
+        }
+        ModeInput::Merge { .. } => None,
+    }
+}
+
 /// The per-destination decision (0034): one Op out, per the mode's
 /// rule — the kernel's `decide_unit` for copies, templates and owned
 /// links, the block hash for merge. THE function plan/apply/rollback share.

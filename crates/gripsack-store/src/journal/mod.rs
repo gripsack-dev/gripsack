@@ -43,7 +43,7 @@ pub mod marker;
 mod marker_wire;
 mod mutation;
 pub use gripsack_host::journal_run::Install;
-pub use mutation::mutate;
+pub use mutation::{kernel_intended, mutate};
 mod inspect;
 /// The kernel's per-entry decision and what an observation found, as the
 /// doctor view reports them.

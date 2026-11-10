@@ -9,16 +9,19 @@ pub use gripsack_policy::update_survey::{UpdateCheckOutcome, UpdateSummary};
 pub struct StepReport {
     pub output: String,
     pub summary: String,
-    pub kind: ReportKind,
+    pub tone: Tone,
 }
 
+/// How a report line reads. Presentation only: whether an apply changed the
+/// disk — and so cuts a generation — is the apply machine's own `mutated`
+/// flag (plan/0056 F2 step 7), never a report's tone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReportKind {
-    Fetched,
-    Installed,
-    Configured,
-    Verified,
-    Satisfied,
+pub enum Tone {
+    /// Something was done (fetched, deployed, configured, verified).
+    Done,
+    /// Already as wanted; nothing was done.
+    Unchanged,
+    /// Needs the user's attention.
     Warned,
 }
 

@@ -786,6 +786,1089 @@ def activation.activation_step
   | activation.Phase.Aborted =>
     activation.refuse state activation.Refusal.Protocol
 
+/-- [gripsack_kernel::apply::Slot]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 70:0-73:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Slot where
+| Whole : apply.Slot
+| Block : Std.U32 → apply.Slot
+
+/-- [gripsack_kernel::ids::DestId]
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 25:0-27:1
+    Visibility: public -/
+structure ids.DestId where
+  index : Std.U32
+
+/-- [gripsack_kernel::apply::Claim]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 76:0-79:1
+    Visibility: public -/
+structure apply.Claim where
+  dest : ids.DestId
+  slot : apply.Slot
+
+/-- [gripsack_kernel::ids::Digest]
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 48:0-50:1
+    Visibility: public -/
+structure ids.Digest where
+  bytes : Array Std.U8 32#usize
+
+/-- [gripsack_kernel::recover::Ident]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 50:0-53:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Ident where
+| File : ids.Digest → recover.Ident
+| Link : ids.Digest → recover.Ident
+
+/-- [gripsack_kernel::recover::Intended]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 104:0-107:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Intended where
+| Removed : recover.Intended
+| Obj : recover.Ident → recover.Intended
+
+/-- [gripsack_kernel::apply::Want]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 82:0-91:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Want where
+| Deploy : recover.Ident → recover.Ident → apply.Want
+| Release : recover.Intended → apply.Want
+
+/-- [gripsack_kernel::apply::OnDrift]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 94:0-100:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.OnDrift where
+| Keep : apply.OnDrift
+| Stop : apply.OnDrift
+
+/-- [gripsack_kernel::recover::Route]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 111:0-114:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Route where
+| Leaf : recover.Route
+| Delegated : recover.Route
+
+/-- [gripsack_kernel::ownership::TakeOver]
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 60:0-63:1
+    Visibility: public -/
+@[discriminant isize]
+inductive ownership.TakeOver where
+| Withheld : ownership.TakeOver
+| Granted : ownership.TakeOver
+
+/-- [gripsack_kernel::ownership::Consent]
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 68:0-70:1
+    Visibility: public -/
+structure ownership.Consent where
+  take_over : ownership.TakeOver
+
+/-- [gripsack_kernel::ownership::Recorded]
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 37:0-46:1
+    Visibility: public -/
+@[discriminant isize]
+inductive ownership.Recorded where
+| Unrecorded : ownership.Recorded
+| Observed : ownership.Recorded
+| Wrote : recover.Ident → ownership.Recorded
+
+/-- [gripsack_kernel::apply::UnitFacts]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 103:0-112:1
+    Visibility: public -/
+structure apply.UnitFacts where
+  dest : ids.DestId
+  slot : apply.Slot
+  route : recover.Route
+  recorded : ownership.Recorded
+  want : apply.Want
+  consent : ownership.Consent
+  drift : apply.OnDrift
+
+/-- [gripsack_kernel::apply::Write]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 115:0-122:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Write where
+| Create : apply.Write
+| Replace : apply.Write
+| TakeOver : apply.Write
+
+/-- [gripsack_kernel::ownership::Refusal]
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 82:0-91:1
+    Visibility: public -/
+@[discriminant isize]
+inductive ownership.Refusal where
+| Drifted : ownership.Refusal
+| Unowned : ownership.Refusal
+| Unsupported : ownership.Refusal
+
+/-- [gripsack_kernel::apply::Settled]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 125:0-136:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Settled where
+| Applied : apply.Settled
+| Already : apply.Settled
+| Kept : ownership.Refusal → apply.Settled
+| Declared : apply.Settled
+| Delegated : Bool → apply.Settled
+
+/-- [gripsack_kernel::publication::CommitRefusal]
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 119:0-128:1
+    Visibility: public -/
+@[discriminant isize]
+inductive publication.CommitRefusal where
+| Reused : publication.CommitRefusal
+| Misbound : publication.CommitRefusal
+| BelowFloor : publication.CommitRefusal
+| Exists : publication.CommitRefusal
+
+/-- [gripsack_kernel::apply::Refusal]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 174:0-197:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Refusal where
+| Refused : Std.U32 → ids.DestId → ownership.Refusal → apply.Refusal
+| Drifted : Std.U32 → ids.DestId → apply.Refusal
+| NotApplied : Std.U32 → ids.DestId → apply.Refusal
+| Delegated : Std.U32 → ids.DestId → apply.Refusal
+| Order : Std.U32 → apply.Refusal
+| Unpublishable : publication.CommitRefusal → apply.Refusal
+| Malformed : apply.Refusal
+| Failed : apply.Refusal
+| Protocol : apply.Refusal
+
+/-- [gripsack_kernel::apply::Step]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 139:0-146:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Step where
+| Write : recover.Intended → apply.Write → apply.Step
+| Leave : apply.Settled → apply.Step
+| Refuse : apply.Refusal → apply.Step
+
+/-- [gripsack_kernel::apply::CommitInputs]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 150:0-163:1
+    Visibility: public -/
+structure apply.CommitInputs where
+  previous : Option selection.SelectionIdentity
+  reserved : selection.SelectionIdentity
+  allocated : generation.GenerationId
+  floor : Option generation.GenerationId
+  unchanged : Bool
+  «exists» : Bool
+
+/-- [gripsack_kernel::apply::Outcome]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 165:0-170:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Outcome where
+| Vacuous : apply.Outcome
+| Applied : apply.Outcome
+
+/-- [gripsack_kernel::recover::Live]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 69:0-73:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Live where
+| Absent : recover.Live
+| Obj : recover.Ident → recover.Live
+| Unsupported : recover.Live
+
+/-- [gripsack_kernel::apply::Command]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 199:0-244:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Command where
+| ReadUnit : Std.U32 → apply.Command
+| Observe : Std.U32 → ids.DestId → apply.Command
+| Mutate :
+  Std.U32 →
+  ids.DestId →
+  recover.Live →
+  recover.Intended →
+  apply.Write →
+  apply.Command
+| Delegate : Std.U32 → ids.DestId → apply.Command
+| Report : Std.U32 → ids.DestId → apply.Settled → apply.Command
+| DirectoryStep : apply.Command
+| ReadCommit : apply.Command
+| Publish : generation.GenerationId → apply.Command
+| Flip : selection.SelectionIdentity → apply.Command
+| Activate : apply.Command
+| Finish : apply.Outcome → apply.Command
+| Abort : apply.Refusal → apply.Command
+
+/-- [gripsack_kernel::apply::Event]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 246:0-267:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Event where
+| Start : apply.Event
+| UnitRead : apply.UnitFacts → apply.Event
+| Exhausted : apply.Event
+| Observed : ids.DestId → recover.Live → apply.Event
+| Landed : recover.Live → apply.Event
+| Delegated : Bool → apply.Event
+| Refused : apply.Event
+| Done : apply.Event
+| CommitRead : apply.CommitInputs → apply.Event
+| Failed : recover.Failure → apply.Event
+
+/-- [gripsack_kernel::apply::Phase]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 269:0-283:1
+    Visibility: public -/
+@[discriminant isize]
+inductive apply.Phase where
+| Start : apply.Phase
+| ReadingUnit : apply.Phase
+| Observing : apply.Phase
+| Writing : apply.Phase
+| Delegating : apply.Phase
+| Reporting : apply.Phase
+| Directories : apply.Phase
+| ReadingCommit : apply.Phase
+| Publishing : apply.Phase
+| Flipping : apply.Phase
+| Activating : apply.Phase
+| Finished : apply.Phase
+| Aborted : apply.Phase
+
+/-- [gripsack_kernel::publication::CommitFacts]
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 102:0-117:1
+    Visibility: public -/
+structure publication.CommitFacts where
+  previous : Option selection.SelectionIdentity
+  reserved : selection.SelectionIdentity
+  allocated : generation.GenerationId
+  floor : Option generation.GenerationId
+  unchanged : Bool
+  touched : Bool
+  «exists» : Bool
+
+/-- [gripsack_kernel::apply::ApplyState]
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 285:0-300:1
+    Visibility: public -/
+structure apply.ApplyState where
+  phase : apply.Phase
+  index : Std.U32
+  unit : Option apply.UnitFacts
+  install : Option recover.Intended
+  declared : alloc.vec.Vec apply.Claim
+  releasing : Bool
+  mutated : Bool
+  commit : Option publication.CommitFacts
+
+/-- [gripsack_kernel::apply::{gripsack_kernel::apply::ApplyState}::new]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 303:4-314:5
+    Visibility: public -/
+def apply.ApplyState.new : Result apply.ApplyState := do
+  ok
+    {
+      phase := apply.Phase.Start,
+      index := 0#u32,
+      unit := none,
+      install := none,
+      declared := (alloc.vec.Vec.new apply.Claim),
+      releasing := false,
+      mutated := false,
+      commit := none
+    }
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::DestId}::same]:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 39:4-41:5
+    Visibility: public -/
+def ids.DestId.same
+  (self : ids.DestId) (other : ids.DestId) : Result Bool := do
+  ok (self.index = other.index)
+
+/-- [gripsack_kernel::apply::covers]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 320:0-331:1
+    Visibility: public -/
+def apply.covers
+  (claim : apply.Claim) (dest : ids.DestId) (slot : apply.Slot) :
+  Result Bool
+  := do
+  let b ← ids.DestId.same claim.dest dest
+  if b
+  then
+    match slot with
+    | apply.Slot.Whole => ok true
+    | apply.Slot.Block owner =>
+      match claim.slot with
+      | apply.Slot.Whole => ok false
+      | apply.Slot.Block other => ok (other = owner)
+  else ok false
+
+/-- [gripsack_kernel::apply::covered]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 336:4-343:1
+    Visibility: public -/
+@[rust_loop_body]
+def apply.covered_loop.body
+  (declared : Slice apply.Claim) (dest : ids.DestId) (slot : apply.Slot)
+  (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len declared
+  if i < i1
+  then
+    let c ← Slice.index_usize declared i
+    let b ← apply.covers c dest slot
+    if b
+    then ok (done true)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else ok (done false)
+
+/-- [gripsack_kernel::apply::covered]: loop 0:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 336:4-343:1
+    Visibility: public -/
+@[rust_loop]
+def apply.covered_loop
+  (declared : Slice apply.Claim) (dest : ids.DestId) (slot : apply.Slot)
+  (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => apply.covered_loop.body declared dest slot i1)
+    i
+
+/-- [gripsack_kernel::apply::covered]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 334:0-343:1
+    Visibility: public -/
+@[reducible]
+def apply.covered
+  (declared : Slice apply.Claim) (dest : ids.DestId) (slot : apply.Slot) :
+  Result Bool
+  := do
+  apply.covered_loop declared dest slot 0#usize
+
+/-- [gripsack_kernel::apply::asked]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 347:0-352:1
+    Visibility: public -/
+def apply.asked (want : apply.Want) : Result recover.Intended := do
+  match want with
+  | apply.Want.Deploy ident _ => ok (recover.Intended.Obj ident)
+  | apply.Want.Release _ => ok recover.Intended.Removed
+
+/-- [gripsack_kernel::apply::install]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 355:0-368:1
+    Visibility: public -/
+def apply.install
+  (want : apply.Want) (write : apply.Write) :
+  Result (Option recover.Intended)
+  := do
+  match want with
+  | apply.Want.Deploy ident adopted =>
+    match write with
+    | apply.Write.Create => ok (some (recover.Intended.Obj ident))
+    | apply.Write.Replace => ok (some (recover.Intended.Obj ident))
+    | apply.Write.TakeOver => ok (some (recover.Intended.Obj adopted))
+  | apply.Want.Release origin =>
+    match write with
+    | apply.Write.Create => ok none
+    | apply.Write.Replace => ok (some origin)
+    | apply.Write.TakeOver => ok none
+
+/-- [gripsack_kernel::apply::written]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 370:0-379:1 -/
+def apply.written
+  (want : apply.Want) (write : apply.Write) : Result apply.Step := do
+  let o ← apply.install want write
+  match o with
+  | none => ok (apply.Step.Refuse apply.Refusal.Malformed)
+  | some intended => ok (apply.Step.Write intended write)
+
+/-- [gripsack_kernel::apply::stops]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 381:0-386:1 -/
+def apply.stops (drift : apply.OnDrift) : Result Bool := do
+  match drift with
+  | apply.OnDrift.Keep => ok false
+  | apply.OnDrift.Stop => ok true
+
+/-- [gripsack_kernel::apply::refusal_stops]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 391:0-400:1 -/
+def apply.refusal_stops
+  (unit : apply.UnitFacts) (why : ownership.Refusal) : Result Bool := do
+  match unit.want with
+  | apply.Want.Deploy _ _ =>
+    match why with
+    | ownership.Refusal.Drifted => apply.stops unit.drift
+    | ownership.Refusal.Unowned => apply.stops unit.drift
+    | ownership.Refusal.Unsupported => ok true
+  | apply.Want.Release _ => ok false
+
+/-- [gripsack_kernel::ids::DIGEST_BYTES]
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 44:0-44:35
+    Visibility: public -/
+@[global_simps, irreducible] def ids.DIGEST_BYTES : Std.Usize := 32#usize
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
+    Visibility: public -/
+@[rust_loop_body]
+def ids.Digest.same_loop.body
+  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  if i < ids.DIGEST_BYTES
+  then
+    let i1 ← Array.index_usize self.bytes i
+    let i2 ← Array.index_usize other.bytes i
+    if i1 != i2
+    then ok (done false)
+    else let i3 ← i + 1#usize
+         ok (cont i3)
+  else ok (done true)
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop 0:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
+    Visibility: public -/
+@[rust_loop]
+def ids.Digest.same_loop
+  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) : Result Bool := do
+  loop
+    (fun i1 => ids.Digest.same_loop.body self other i1)
+    i
+
+/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]:
+    Source: 'crates/gripsack-kernel/src/ids.rs', lines 62:4-71:5
+    Visibility: public -/
+@[reducible]
+def ids.Digest.same
+  (self : ids.Digest) (other : ids.Digest) : Result Bool := do
+  ids.Digest.same_loop self other 0#usize
+
+/-- [gripsack_kernel::recover::{gripsack_kernel::recover::Ident}::same]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 56:4-62:5
+    Visibility: public -/
+def recover.Ident.same
+  (self : recover.Ident) (other : recover.Ident) : Result Bool := do
+  match self with
+  | recover.Ident.File a =>
+    match other with
+    | recover.Ident.File b => ids.Digest.same a b
+    | recover.Ident.Link _ => ok false
+  | recover.Ident.Link a =>
+    match other with
+    | recover.Ident.File _ => ok false
+    | recover.Ident.Link b => ids.Digest.same a b
+
+/-- [gripsack_kernel::recover::intends]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 183:0-188:1 -/
+def recover.intends
+  (intended : recover.Intended) (object : recover.Ident) : Result Bool := do
+  match intended with
+  | recover.Intended.Removed => ok false
+  | recover.Intended.Obj ident => recover.Ident.same ident object
+
+/-- [gripsack_kernel::ownership::refusal]:
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 166:0-172:1 -/
+def ownership.refusal
+  (recorded : ownership.Recorded) : Result ownership.Refusal := do
+  match recorded with
+  | ownership.Recorded.Unrecorded => ok ownership.Refusal.Unowned
+  | ownership.Recorded.Observed => ok ownership.Refusal.Drifted
+  | ownership.Recorded.Wrote _ => ok ownership.Refusal.Drifted
+
+/-- [gripsack_kernel::ownership::{gripsack_kernel::ownership::Consent}::grants_take_over]:
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 73:4-78:5
+    Visibility: public -/
+def ownership.Consent.grants_take_over
+  (self : ownership.Consent) : Result Bool := do
+  match self.take_over with
+  | ownership.TakeOver.Withheld => ok false
+  | ownership.TakeOver.Granted => ok true
+
+/-- [gripsack_kernel::ownership::acquires]:
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 159:0-164:1 -/
+def ownership.acquires
+  (consent : ownership.Consent) (intended : recover.Intended) :
+  Result Bool
+  := do
+  match intended with
+  | recover.Intended.Removed => ok false
+  | recover.Intended.Obj _ => ownership.Consent.grants_take_over consent
+
+/-- [gripsack_kernel::ownership::Decision]
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 94:0-107:1
+    Visibility: public -/
+@[discriminant isize]
+inductive ownership.Decision where
+| Create : ownership.Decision
+| Satisfied : ownership.Decision
+| ReplaceOwn : ownership.Decision
+| TakeOver : ownership.Decision
+| Refuse : ownership.Refusal → ownership.Decision
+
+/-- [gripsack_kernel::ownership::{gripsack_kernel::ownership::Recorded}::wrote]:
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 50:4-56:5
+    Visibility: public -/
+def ownership.Recorded.wrote
+  (self : ownership.Recorded) (object : recover.Ident) : Result Bool := do
+  match self with
+  | ownership.Recorded.Unrecorded => ok false
+  | ownership.Recorded.Observed => ok false
+  | ownership.Recorded.Wrote ident => recover.Ident.same ident object
+
+/-- [gripsack_kernel::ownership::decide_unit]:
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 128:0-156:1
+    Visibility: public -/
+def ownership.decide_unit
+  (recorded : ownership.Recorded) (live : recover.Live)
+  (intended : recover.Intended) (consent : ownership.Consent) :
+  Result ownership.Decision
+  := do
+  match live with
+  | recover.Live.Absent =>
+    match intended with
+    | recover.Intended.Removed => ok ownership.Decision.Satisfied
+    | recover.Intended.Obj _ => ok ownership.Decision.Create
+  | recover.Live.Obj object =>
+    let b ← ownership.Recorded.wrote recorded object
+    if b
+    then
+      let b1 ← recover.intends intended object
+      if b1
+      then ok ownership.Decision.Satisfied
+      else ok ownership.Decision.ReplaceOwn
+    else
+      let b1 ← ownership.acquires consent intended
+      if b1
+      then ok ownership.Decision.TakeOver
+      else
+        let b2 ← recover.intends intended object
+        if b2
+        then ok ownership.Decision.Satisfied
+        else
+          let r ← ownership.refusal recorded
+          ok (ownership.Decision.Refuse r)
+  | recover.Live.Unsupported =>
+    ok (ownership.Decision.Refuse ownership.Refusal.Unsupported)
+
+/-- [gripsack_kernel::apply::decide_apply]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 405:0-423:1
+    Visibility: public -/
+def apply.decide_apply
+  (index : Std.U32) (unit : apply.UnitFacts) (live : recover.Live) :
+  Result apply.Step
+  := do
+  let i ← apply.asked unit.want
+  let d ← ownership.decide_unit unit.recorded live i unit.consent
+  match d with
+  | ownership.Decision.Create => apply.written unit.want apply.Write.Create
+  | ownership.Decision.Satisfied => ok (apply.Step.Leave apply.Settled.Already)
+  | ownership.Decision.ReplaceOwn =>
+    apply.written unit.want apply.Write.Replace
+  | ownership.Decision.TakeOver => apply.written unit.want apply.Write.TakeOver
+  | ownership.Decision.Refuse why =>
+    let b ← apply.refusal_stops unit why
+    if b
+    then ok (apply.Step.Refuse (apply.Refusal.Refused index unit.dest why))
+    else ok (apply.Step.Leave (apply.Settled.Kept why))
+
+/-- [gripsack_kernel::apply::refuse]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 425:0-428:1 -/
+def apply.refuse
+  (state : apply.ApplyState) (refusal : apply.Refusal) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  ok ({ state with phase := apply.Phase.Aborted }, apply.Command.Abort refusal)
+
+/-- [gripsack_kernel::apply::failed_or_protocol]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 430:0-435:1 -/
+def apply.failed_or_protocol
+  (state : apply.ApplyState) (event : apply.Event) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match event with
+  | apply.Event.Start => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.UnitRead _ => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.Exhausted => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.Observed _ _ => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.Landed _ => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.Delegated _ => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.Refused => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.Done => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.CommitRead _ => apply.refuse state apply.Refusal.Protocol
+  | apply.Event.Failed _ => apply.refuse state apply.Refusal.Failed
+
+/-- [gripsack_kernel::apply::read_unit]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 437:0-441:1 -/
+def apply.read_unit
+  (state : apply.ApplyState) : Result (apply.ApplyState × apply.Command) := do
+  ok ({ state with phase := apply.Phase.ReadingUnit }, apply.Command.ReadUnit
+    state.index)
+
+/-- [gripsack_kernel::apply::advance]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 444:0-454:1 -/
+def apply.advance
+  (state : apply.ApplyState) : Result (apply.ApplyState × apply.Command) := do
+  let o ← lift (U32.checked_add state.index 1#u32)
+  match o with
+  | none =>
+    apply.refuse { state with unit := none, install := none }
+      apply.Refusal.Malformed
+  | some next =>
+    apply.read_unit { state with index := next, unit := none, install := none }
+
+/-- [gripsack_kernel::apply::report]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 456:0-467:1 -/
+def apply.report
+  (state : apply.ApplyState) (dest : ids.DestId) (settled : apply.Settled) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  ok ({ state with phase := apply.Phase.Reporting }, apply.Command.Report
+    state.index dest settled)
+
+/-- [gripsack_kernel::apply::examine]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 470:0-485:1 -/
+def apply.examine
+  (state : apply.ApplyState) (facts : apply.UnitFacts) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match facts.route with
+  | recover.Route.Leaf =>
+    ok ({ state with phase := apply.Phase.Observing, unit := (some facts) },
+      apply.Command.Observe state.index facts.dest)
+  | recover.Route.Delegated =>
+    ok ({ state with phase := apply.Phase.Delegating, unit := (some facts) },
+      apply.Command.Delegate state.index facts.dest)
+
+/-- [gripsack_kernel::apply::on_unit]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 487:0-514:1 -/
+def apply.on_unit
+  (state : apply.ApplyState) (facts : apply.UnitFacts) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match facts.want with
+  | apply.Want.Deploy _ _ =>
+    if state.releasing
+    then apply.refuse state (apply.Refusal.Order state.index)
+    else
+      let i := alloc.vec.Vec.len state.declared
+      if i = core.num.Usize.MAX
+      then apply.refuse state apply.Refusal.Malformed
+      else
+        let v ←
+          alloc.vec.Vec.push state.declared
+            ({ dest := facts.dest, slot := facts.slot } : apply.Claim)
+        apply.examine { state with declared := v } facts
+  | apply.Want.Release _ =>
+    let s := alloc.vec.Vec.deref state.declared
+    let b ← apply.covered s facts.dest facts.slot
+    if b
+    then
+      apply.report { state with unit := (some facts), releasing := true }
+        facts.dest apply.Settled.Declared
+    else apply.examine { state with releasing := true } facts
+
+/-- [gripsack_kernel::apply::on_observed]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 516:0-543:1 -/
+def apply.on_observed
+  (state : apply.ApplyState) (dest : ids.DestId) (live : recover.Live) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match state.unit with
+  | none => apply.refuse state apply.Refusal.Protocol
+  | some facts =>
+    let b ← ids.DestId.same facts.dest dest
+    if b
+    then
+      let s ← apply.decide_apply state.index facts live
+      match s with
+      | apply.Step.Write install write =>
+        ok
+          ({ state with phase := apply.Phase.Writing, install := (some install)
+           }, apply.Command.Mutate state.index dest live install write)
+      | apply.Step.Leave settled => apply.report state dest settled
+      | apply.Step.Refuse refusal => apply.refuse state refusal
+    else apply.refuse state apply.Refusal.Protocol
+
+/-- [gripsack_kernel::rollback::lands]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 345:0-351:1
+    Visibility: public -/
+def rollback.lands
+  (install : recover.Intended) (live : recover.Live) : Result Bool := do
+  match install with
+  | recover.Intended.Removed =>
+    match live with
+    | recover.Live.Absent => ok true
+    | recover.Live.Obj _ => ok false
+    | recover.Live.Unsupported => ok false
+  | recover.Intended.Obj ident =>
+    match live with
+    | recover.Live.Absent => ok false
+    | recover.Live.Obj object => recover.Ident.same ident object
+    | recover.Live.Unsupported => ok false
+
+/-- [gripsack_kernel::apply::on_landed]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 545:0-564:1 -/
+def apply.on_landed
+  (state : apply.ApplyState) (live : recover.Live) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match state.unit with
+  | none => apply.refuse state apply.Refusal.Protocol
+  | some facts =>
+    match state.install with
+    | none => apply.refuse state apply.Refusal.Protocol
+    | some install =>
+      let b ← rollback.lands install live
+      if b
+      then
+        apply.report { state with mutated := true } facts.dest
+          apply.Settled.Applied
+      else apply.refuse state (apply.Refusal.NotApplied state.index facts.dest)
+
+/-- [gripsack_kernel::apply::on_write_failed]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 566:0-583:1 -/
+def apply.on_write_failed
+  (state : apply.ApplyState) (failure : recover.Failure) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match failure with
+  | recover.Failure.Drift =>
+    match state.unit with
+    | none => apply.refuse state apply.Refusal.Protocol
+    | some facts =>
+      apply.refuse state (apply.Refusal.Drifted state.index facts.dest)
+  | recover.Failure.Io _ => apply.refuse state apply.Refusal.Failed
+
+/-- [gripsack_kernel::apply::on_delegated]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 585:0-608:1 -/
+def apply.on_delegated
+  (state : apply.ApplyState) (event : apply.Event) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match state.unit with
+  | none => apply.refuse state apply.Refusal.Protocol
+  | some facts =>
+    match event with
+    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated mutated =>
+      let b ← if mutated
+                then ok true
+                else ok state.mutated
+      apply.report { state with mutated := b } facts.dest
+        (apply.Settled.Delegated mutated)
+    | apply.Event.Refused =>
+      apply.refuse state (apply.Refusal.Delegated state.index facts.dest)
+    | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
+    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
+
+/-- [gripsack_kernel::apply::on_reading]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 610:0-619:1 -/
+def apply.on_reading
+  (state : apply.ApplyState) (event : apply.Event) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match event with
+  | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+  | apply.Event.UnitRead facts => apply.on_unit state facts
+  | apply.Event.Exhausted =>
+    ok ({ state with phase := apply.Phase.Directories },
+      apply.Command.DirectoryStep)
+  | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+  | apply.Event.Landed _ => apply.failed_or_protocol state event
+  | apply.Event.Delegated _ => apply.failed_or_protocol state event
+  | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
+  | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
+  | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+  | apply.Event.Failed _ => apply.failed_or_protocol state event
+
+/-- [gripsack_kernel::apply::commit_facts]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 623:0-633:1
+    Visibility: public -/
+def apply.commit_facts
+  (inputs : apply.CommitInputs) (mutated : Bool) :
+  Result publication.CommitFacts
+  := do
+  ok
+    {
+      previous := inputs.previous,
+      reserved := inputs.reserved,
+      allocated := inputs.allocated,
+      floor := inputs.floor,
+      unchanged := inputs.unchanged,
+      touched := mutated,
+      «exists» := inputs.exists
+    }
+
+/-- [gripsack_kernel::selection::fresh]:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 150:0-162:1
+    Visibility: public -/
+def selection.fresh
+  (reselect : selection.SelectionIdentity)
+  (previous : Option selection.SelectionIdentity) :
+  Result Bool
+  := do
+  match reselect with
+  | selection.SelectionIdentity.Legacy _ => ok false
+  | selection.SelectionIdentity.Transaction _ transaction =>
+    match previous with
+    | none => ok true
+    | some si =>
+      match si with
+      | selection.SelectionIdentity.Legacy _ => ok true
+      | selection.SelectionIdentity.Transaction _ replaced =>
+        let b ← selection.TransactionId.same transaction replaced
+        ok (¬ b)
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::generation]:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 78:4-83:5
+    Visibility: public -/
+def selection.SelectionIdentity.generation
+  (self : selection.SelectionIdentity) : Result generation.GenerationId := do
+  match self with
+  | selection.SelectionIdentity.Legacy generation => ok generation
+  | selection.SelectionIdentity.Transaction generation _ => ok generation
+
+/-- [gripsack_kernel::publication::Commit]
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 130:0-136:1
+    Visibility: public -/
+@[discriminant isize]
+inductive publication.Commit where
+| Vacuous : publication.Commit
+| Publish : publication.Commit
+| Refuse : publication.CommitRefusal → publication.Commit
+
+/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::value]:
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 21:4-23:5
+    Visibility: public -/
+def generation.GenerationId.value
+  (self : generation.GenerationId) : Result Std.U64 := do
+  ok self.number
+
+/-- [gripsack_kernel::publication::above]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 55:0-60:1
+    Visibility: public -/
+def publication.above
+  (number : generation.GenerationId) (floor : Option generation.GenerationId) :
+  Result Bool
+  := do
+  match floor with
+  | none => ok true
+  | some floor1 =>
+    let i ← generation.GenerationId.value floor1
+    let i1 ← generation.GenerationId.value number
+    ok (i < i1)
+
+/-- [gripsack_kernel::publication::admit_publication]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 158:0-170:1
+    Visibility: public -/
+def publication.admit_publication
+  (facts : publication.CommitFacts) : Result publication.Commit := do
+  let b ← selection.fresh facts.reserved facts.previous
+  if b
+  then
+    let gi ← selection.SelectionIdentity.generation facts.reserved
+    let b1 ← generation.GenerationId.same gi facts.allocated
+    if b1
+    then
+      let b2 ← publication.above facts.allocated facts.floor
+      if b2
+      then
+        if facts.exists
+        then ok (publication.Commit.Refuse publication.CommitRefusal.Exists)
+        else ok publication.Commit.Publish
+      else ok (publication.Commit.Refuse publication.CommitRefusal.BelowFloor)
+    else ok (publication.Commit.Refuse publication.CommitRefusal.Misbound)
+  else ok (publication.Commit.Refuse publication.CommitRefusal.Reused)
+
+/-- [gripsack_kernel::publication::vacuous]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 149:0-154:1
+    Visibility: public -/
+def publication.vacuous (facts : publication.CommitFacts) : Result Bool := do
+  match facts.previous with
+  | none => ok false
+  | some _ => if facts.unchanged
+              then ok (¬ facts.touched)
+              else ok false
+
+/-- [gripsack_kernel::publication::decide_commit]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 139:0-145:1
+    Visibility: public -/
+def publication.decide_commit
+  (facts : publication.CommitFacts) : Result publication.Commit := do
+  let b ← publication.vacuous facts
+  if b
+  then ok publication.Commit.Vacuous
+  else publication.admit_publication facts
+
+/-- [gripsack_kernel::apply::on_commit]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 635:0-649:1 -/
+def apply.on_commit
+  (state : apply.ApplyState) (inputs : apply.CommitInputs) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  let facts ← apply.commit_facts inputs state.mutated
+  let c ← publication.decide_commit facts
+  match c with
+  | publication.Commit.Vacuous =>
+    ok ({ state with phase := apply.Phase.Finished }, apply.Command.Finish
+      apply.Outcome.Vacuous)
+  | publication.Commit.Publish =>
+    ok ({ state with phase := apply.Phase.Publishing, commit := (some facts) },
+      apply.Command.Publish facts.allocated)
+  | publication.Commit.Refuse why =>
+    apply.refuse state (apply.Refusal.Unpublishable why)
+
+/-- [gripsack_kernel::apply::on_published]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 651:0-659:1 -/
+def apply.on_published
+  (state : apply.ApplyState) : Result (apply.ApplyState × apply.Command) := do
+  match state.commit with
+  | none => apply.refuse state apply.Refusal.Protocol
+  | some facts =>
+    ok ({ state with phase := apply.Phase.Flipping }, apply.Command.Flip
+      facts.reserved)
+
+/-- [gripsack_kernel::apply::apply_step]:
+    Source: 'crates/gripsack-kernel/src/apply.rs', lines 665:0-720:1
+    Visibility: public -/
+def apply.apply_step
+  (state : apply.ApplyState) (event : apply.Event) :
+  Result (apply.ApplyState × apply.Command)
+  := do
+  match state.phase with
+  | apply.Phase.Start =>
+    match event with
+    | apply.Event.Start => apply.read_unit state
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
+    | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
+    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
+  | apply.Phase.ReadingUnit => apply.on_reading state event
+  | apply.Phase.Observing =>
+    match event with
+    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed dest live => apply.on_observed state dest live
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
+    | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
+    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
+  | apply.Phase.Writing =>
+    match event with
+    | apply.Event.Start => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.UnitRead _ => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.Exhausted => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.Observed _ _ => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.Landed live => apply.on_landed state live
+    | apply.Event.Delegated _ => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.Refused => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.Done => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.CommitRead _ => apply.refuse state apply.Refusal.Protocol
+    | apply.Event.Failed failure => apply.on_write_failed state failure
+  | apply.Phase.Delegating => apply.on_delegated state event
+  | apply.Phase.Reporting =>
+    match event with
+    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
+    | apply.Event.Done => apply.advance state
+    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
+  | apply.Phase.Directories =>
+    match event with
+    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
+    | apply.Event.Done =>
+      ok ({ state with phase := apply.Phase.ReadingCommit },
+        apply.Command.ReadCommit)
+    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
+  | apply.Phase.ReadingCommit =>
+    match event with
+    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
+    | apply.Event.Done => apply.failed_or_protocol state apply.Event.Done
+    | apply.Event.CommitRead inputs => apply.on_commit state inputs
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
+  | apply.Phase.Publishing =>
+    match event with
+    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
+    | apply.Event.Done => apply.on_published state
+    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
+  | apply.Phase.Flipping =>
+    match event with
+    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
+    | apply.Event.Done =>
+      ok ({ state with phase := apply.Phase.Activating },
+        apply.Command.Activate)
+    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
+  | apply.Phase.Activating =>
+    match event with
+    | apply.Event.Start => apply.failed_or_protocol state apply.Event.Start
+    | apply.Event.UnitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Exhausted =>
+      apply.failed_or_protocol state apply.Event.Exhausted
+    | apply.Event.Observed _ _ => apply.failed_or_protocol state event
+    | apply.Event.Landed _ => apply.failed_or_protocol state event
+    | apply.Event.Delegated _ => apply.failed_or_protocol state event
+    | apply.Event.Refused => apply.failed_or_protocol state apply.Event.Refused
+    | apply.Event.Done =>
+      ok ({ state with phase := apply.Phase.Finished }, apply.Command.Finish
+        apply.Outcome.Applied)
+    | apply.Event.CommitRead _ => apply.failed_or_protocol state event
+    | apply.Event.Failed _ => apply.failed_or_protocol state event
+  | apply.Phase.Finished => apply.refuse state apply.Refusal.Protocol
+  | apply.Phase.Aborted => apply.refuse state apply.Refusal.Protocol
+
 /-- [gripsack_kernel::block::OPEN_KEY]
     Source: 'crates/gripsack-kernel/src/block.rs', lines 59:0-59:52 -/
 @[global_simps, irreducible]
@@ -2469,12 +3552,6 @@ def block.push_style_end
     else ok out
   block.push_newline out1 newline
 
-/-- [gripsack_kernel::ids::Digest]
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 48:0-50:1
-    Visibility: public -/
-structure ids.Digest where
-  bytes : Array Std.U8 32#usize
-
 /-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::as_bytes]:
     Source: 'crates/gripsack-kernel/src/ids.rs', lines 57:4-59:5
     Visibility: public -/
@@ -3135,47 +4212,6 @@ def block.BlockDecision.writes (self : block.BlockDecision) : Result Bool := do
   | block.BlockDecision.Keep => ok false
   | block.BlockDecision.Absent => ok false
   | block.BlockDecision.Refuse _ => ok false
-
-/-- [gripsack_kernel::ids::DIGEST_BYTES]
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 44:0-44:35
-    Visibility: public -/
-@[global_simps, irreducible] def ids.DIGEST_BYTES : Std.Usize := 32#usize
-
-/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
-    Visibility: public -/
-@[rust_loop_body]
-def ids.Digest.same_loop.body
-  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) :
-  Result (ControlFlow Std.Usize Bool)
-  := do
-  if i < ids.DIGEST_BYTES
-  then
-    let i1 ← Array.index_usize self.bytes i
-    let i2 ← Array.index_usize other.bytes i
-    if i1 != i2
-    then ok (done false)
-    else let i3 ← i + 1#usize
-         ok (cont i3)
-  else ok (done true)
-
-/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]: loop 0:
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 64:8-71:5
-    Visibility: public -/
-@[rust_loop]
-def ids.Digest.same_loop
-  (self : ids.Digest) (other : ids.Digest) (i : Std.Usize) : Result Bool := do
-  loop
-    (fun i1 => ids.Digest.same_loop.body self other i1)
-    i
-
-/-- [gripsack_kernel::ids::{gripsack_kernel::ids::Digest}::same]:
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 62:4-71:5
-    Visibility: public -/
-@[reducible]
-def ids.Digest.same
-  (self : ids.Digest) (other : ids.Digest) : Result Bool := do
-  ids.Digest.same_loop self other 0#usize
 
 /-- [gripsack_kernel::block::same_digest]:
     Source: 'crates/gripsack-kernel/src/block.rs', lines 989:0-994:1 -/
@@ -4444,13 +5480,6 @@ def gc.gc_step
   | gc.Phase.Finished => gc.refuse state gc.Refusal.Protocol
   | gc.Phase.Aborted => gc.refuse state gc.Refusal.Protocol
 
-/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::value]:
-    Source: 'crates/gripsack-kernel/src/generation.rs', lines 21:4-23:5
-    Visibility: public -/
-def generation.GenerationId.value
-  (self : generation.GenerationId) : Result Std.U64 := do
-  ok self.number
-
 /-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::checked_next]:
     Source: 'crates/gripsack-kernel/src/generation.rs', lines 30:4-38:5
     Visibility: public -/
@@ -4533,19 +5562,6 @@ def generation.GenerationList.into_vec
   Result (alloc.vec.Vec generation.GenerationId)
   := do
   ok self.ids
-
-/-- [gripsack_kernel::ids::DestId]
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 25:0-27:1
-    Visibility: public -/
-structure ids.DestId where
-  index : Std.U32
-
-/-- [gripsack_kernel::ids::{gripsack_kernel::ids::DestId}::same]:
-    Source: 'crates/gripsack-kernel/src/ids.rs', lines 39:4-41:5
-    Visibility: public -/
-def ids.DestId.same
-  (self : ids.DestId) (other : ids.DestId) : Result Bool := do
-  ok (self.index = other.index)
 
 /-- [gripsack_kernel::journal::RecordRole]
     Source: 'crates/gripsack-kernel/src/journal.rs', lines 12:0-15:1
@@ -4728,31 +5744,6 @@ def journal.RecordPublication.finish
   if b
   then ok (some { role := self.role })
   else ok none
-
-/-- [gripsack_kernel::recover::Ident]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 50:0-53:1
-    Visibility: public -/
-@[discriminant isize]
-inductive recover.Ident where
-| File : ids.Digest → recover.Ident
-| Link : ids.Digest → recover.Ident
-
-/-- [gripsack_kernel::recover::Intended]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 104:0-107:1
-    Visibility: public -/
-@[discriminant isize]
-inductive recover.Intended where
-| Removed : recover.Intended
-| Obj : recover.Ident → recover.Intended
-
-/-- [gripsack_kernel::recover::Live]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 69:0-73:1
-    Visibility: public -/
-@[discriminant isize]
-inductive recover.Live where
-| Absent : recover.Live
-| Obj : recover.Ident → recover.Live
-| Unsupported : recover.Live
 
 /-- [gripsack_kernel::journal_run::UnitFacts]
     Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 47:0-55:1
@@ -4984,38 +5975,6 @@ def journal_run.on_unit
          unit := (some facts),
          observed := recover.Live.Absent
      }, journal_run.Command.Observe state.units facts.dest)
-
-/-- [gripsack_kernel::recover::{gripsack_kernel::recover::Ident}::same]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 56:4-62:5
-    Visibility: public -/
-def recover.Ident.same
-  (self : recover.Ident) (other : recover.Ident) : Result Bool := do
-  match self with
-  | recover.Ident.File a =>
-    match other with
-    | recover.Ident.File b => ids.Digest.same a b
-    | recover.Ident.Link _ => ok false
-  | recover.Ident.Link a =>
-    match other with
-    | recover.Ident.File _ => ok false
-    | recover.Ident.Link b => ids.Digest.same a b
-
-/-- [gripsack_kernel::rollback::lands]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 345:0-351:1
-    Visibility: public -/
-def rollback.lands
-  (install : recover.Intended) (live : recover.Live) : Result Bool := do
-  match install with
-  | recover.Intended.Removed =>
-    match live with
-    | recover.Live.Absent => ok true
-    | recover.Live.Obj _ => ok false
-    | recover.Live.Unsupported => ok false
-  | recover.Intended.Obj ident =>
-    match live with
-    | recover.Live.Absent => ok false
-    | recover.Live.Obj object => recover.Ident.same ident object
-    | recover.Live.Unsupported => ok false
 
 /-- [gripsack_kernel::journal_run::follows]:
     Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 254:0-259:1 -/
@@ -5475,68 +6434,6 @@ def journal_run.run_step
   | journal_run.Phase.Aborted =>
     journal_run.refuse state journal_run.Refusal.Protocol
 
-/-- [gripsack_kernel::ownership::Recorded]
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 37:0-46:1
-    Visibility: public -/
-@[discriminant isize]
-inductive ownership.Recorded where
-| Unrecorded : ownership.Recorded
-| Observed : ownership.Recorded
-| Wrote : recover.Ident → ownership.Recorded
-
-/-- [gripsack_kernel::ownership::{gripsack_kernel::ownership::Recorded}::wrote]:
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 50:4-56:5
-    Visibility: public -/
-def ownership.Recorded.wrote
-  (self : ownership.Recorded) (object : recover.Ident) : Result Bool := do
-  match self with
-  | ownership.Recorded.Unrecorded => ok false
-  | ownership.Recorded.Observed => ok false
-  | ownership.Recorded.Wrote ident => recover.Ident.same ident object
-
-/-- [gripsack_kernel::ownership::TakeOver]
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 60:0-63:1
-    Visibility: public -/
-@[discriminant isize]
-inductive ownership.TakeOver where
-| Withheld : ownership.TakeOver
-| Granted : ownership.TakeOver
-
-/-- [gripsack_kernel::ownership::Consent]
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 68:0-70:1
-    Visibility: public -/
-structure ownership.Consent where
-  take_over : ownership.TakeOver
-
-/-- [gripsack_kernel::ownership::{gripsack_kernel::ownership::Consent}::grants_take_over]:
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 73:4-78:5
-    Visibility: public -/
-def ownership.Consent.grants_take_over
-  (self : ownership.Consent) : Result Bool := do
-  match self.take_over with
-  | ownership.TakeOver.Withheld => ok false
-  | ownership.TakeOver.Granted => ok true
-
-/-- [gripsack_kernel::ownership::Refusal]
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 82:0-91:1
-    Visibility: public -/
-@[discriminant isize]
-inductive ownership.Refusal where
-| Drifted : ownership.Refusal
-| Unowned : ownership.Refusal
-| Unsupported : ownership.Refusal
-
-/-- [gripsack_kernel::ownership::Decision]
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 94:0-107:1
-    Visibility: public -/
-@[discriminant isize]
-inductive ownership.Decision where
-| Create : ownership.Decision
-| Satisfied : ownership.Decision
-| ReplaceOwn : ownership.Decision
-| TakeOver : ownership.Decision
-| Refuse : ownership.Refusal → ownership.Decision
-
 /-- [gripsack_kernel::ownership::{gripsack_kernel::ownership::Decision}::writes]:
     Source: 'crates/gripsack-kernel/src/ownership.rs', lines 111:4-119:5
     Visibility: public -/
@@ -5547,68 +6444,6 @@ def ownership.Decision.writes (self : ownership.Decision) : Result Bool := do
   | ownership.Decision.ReplaceOwn => ok true
   | ownership.Decision.TakeOver => ok true
   | ownership.Decision.Refuse _ => ok false
-
-/-- [gripsack_kernel::recover::intends]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 183:0-188:1 -/
-def recover.intends
-  (intended : recover.Intended) (object : recover.Ident) : Result Bool := do
-  match intended with
-  | recover.Intended.Removed => ok false
-  | recover.Intended.Obj ident => recover.Ident.same ident object
-
-/-- [gripsack_kernel::ownership::refusal]:
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 166:0-172:1 -/
-def ownership.refusal
-  (recorded : ownership.Recorded) : Result ownership.Refusal := do
-  match recorded with
-  | ownership.Recorded.Unrecorded => ok ownership.Refusal.Unowned
-  | ownership.Recorded.Observed => ok ownership.Refusal.Drifted
-  | ownership.Recorded.Wrote _ => ok ownership.Refusal.Drifted
-
-/-- [gripsack_kernel::ownership::acquires]:
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 159:0-164:1 -/
-def ownership.acquires
-  (consent : ownership.Consent) (intended : recover.Intended) :
-  Result Bool
-  := do
-  match intended with
-  | recover.Intended.Removed => ok false
-  | recover.Intended.Obj _ => ownership.Consent.grants_take_over consent
-
-/-- [gripsack_kernel::ownership::decide_unit]:
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 128:0-156:1
-    Visibility: public -/
-def ownership.decide_unit
-  (recorded : ownership.Recorded) (live : recover.Live)
-  (intended : recover.Intended) (consent : ownership.Consent) :
-  Result ownership.Decision
-  := do
-  match live with
-  | recover.Live.Absent =>
-    match intended with
-    | recover.Intended.Removed => ok ownership.Decision.Satisfied
-    | recover.Intended.Obj _ => ok ownership.Decision.Create
-  | recover.Live.Obj object =>
-    let b ← ownership.Recorded.wrote recorded object
-    if b
-    then
-      let b1 ← recover.intends intended object
-      if b1
-      then ok ownership.Decision.Satisfied
-      else ok ownership.Decision.ReplaceOwn
-    else
-      let b1 ← ownership.acquires consent intended
-      if b1
-      then ok ownership.Decision.TakeOver
-      else
-        let b2 ← recover.intends intended object
-        if b2
-        then ok ownership.Decision.Satisfied
-        else
-          let r ← ownership.refusal recorded
-          ok (ownership.Decision.Refuse r)
-  | recover.Live.Unsupported =>
-    ok (ownership.Decision.Refuse ownership.Refusal.Unsupported)
 
 /-- [gripsack_kernel::publication::Allocation]
     Source: 'crates/gripsack-kernel/src/publication.rs', lines 27:0-34:1
@@ -5638,20 +6473,6 @@ def publication.later
       if i < i1
       then ok b
       else ok a
-
-/-- [gripsack_kernel::publication::above]:
-    Source: 'crates/gripsack-kernel/src/publication.rs', lines 55:0-60:1
-    Visibility: public -/
-def publication.above
-  (number : generation.GenerationId) (floor : Option generation.GenerationId) :
-  Result Bool
-  := do
-  match floor with
-  | none => ok true
-  | some floor1 =>
-    let i ← generation.GenerationId.value floor1
-    let i1 ← generation.GenerationId.value number
-    ok (i < i1)
 
 /-- [gripsack_kernel::publication::allocate]:
     Source: 'crates/gripsack-kernel/src/publication.rs', lines 64:0-69:1
@@ -5696,108 +6517,6 @@ def publication.floor_action
       then ok publication.FloorAction.Seal
       else ok (publication.FloorAction.Raise floor)
 
-/-- [gripsack_kernel::publication::CommitFacts]
-    Source: 'crates/gripsack-kernel/src/publication.rs', lines 102:0-117:1
-    Visibility: public -/
-structure publication.CommitFacts where
-  previous : Option selection.SelectionIdentity
-  reserved : selection.SelectionIdentity
-  allocated : generation.GenerationId
-  floor : Option generation.GenerationId
-  unchanged : Bool
-  touched : Bool
-  «exists» : Bool
-
-/-- [gripsack_kernel::publication::CommitRefusal]
-    Source: 'crates/gripsack-kernel/src/publication.rs', lines 119:0-128:1
-    Visibility: public -/
-@[discriminant isize]
-inductive publication.CommitRefusal where
-| Reused : publication.CommitRefusal
-| Misbound : publication.CommitRefusal
-| BelowFloor : publication.CommitRefusal
-| Exists : publication.CommitRefusal
-
-/-- [gripsack_kernel::publication::Commit]
-    Source: 'crates/gripsack-kernel/src/publication.rs', lines 130:0-136:1
-    Visibility: public -/
-@[discriminant isize]
-inductive publication.Commit where
-| Vacuous : publication.Commit
-| Publish : publication.Commit
-| Refuse : publication.CommitRefusal → publication.Commit
-
-/-- [gripsack_kernel::selection::fresh]:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 150:0-162:1
-    Visibility: public -/
-def selection.fresh
-  (reselect : selection.SelectionIdentity)
-  (previous : Option selection.SelectionIdentity) :
-  Result Bool
-  := do
-  match reselect with
-  | selection.SelectionIdentity.Legacy _ => ok false
-  | selection.SelectionIdentity.Transaction _ transaction =>
-    match previous with
-    | none => ok true
-    | some si =>
-      match si with
-      | selection.SelectionIdentity.Legacy _ => ok true
-      | selection.SelectionIdentity.Transaction _ replaced =>
-        let b ← selection.TransactionId.same transaction replaced
-        ok (¬ b)
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::generation]:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 78:4-83:5
-    Visibility: public -/
-def selection.SelectionIdentity.generation
-  (self : selection.SelectionIdentity) : Result generation.GenerationId := do
-  match self with
-  | selection.SelectionIdentity.Legacy generation => ok generation
-  | selection.SelectionIdentity.Transaction generation _ => ok generation
-
-/-- [gripsack_kernel::publication::admit_publication]:
-    Source: 'crates/gripsack-kernel/src/publication.rs', lines 158:0-170:1
-    Visibility: public -/
-def publication.admit_publication
-  (facts : publication.CommitFacts) : Result publication.Commit := do
-  let b ← selection.fresh facts.reserved facts.previous
-  if b
-  then
-    let gi ← selection.SelectionIdentity.generation facts.reserved
-    let b1 ← generation.GenerationId.same gi facts.allocated
-    if b1
-    then
-      let b2 ← publication.above facts.allocated facts.floor
-      if b2
-      then
-        if facts.exists
-        then ok (publication.Commit.Refuse publication.CommitRefusal.Exists)
-        else ok publication.Commit.Publish
-      else ok (publication.Commit.Refuse publication.CommitRefusal.BelowFloor)
-    else ok (publication.Commit.Refuse publication.CommitRefusal.Misbound)
-  else ok (publication.Commit.Refuse publication.CommitRefusal.Reused)
-
-/-- [gripsack_kernel::publication::vacuous]:
-    Source: 'crates/gripsack-kernel/src/publication.rs', lines 149:0-154:1
-    Visibility: public -/
-def publication.vacuous (facts : publication.CommitFacts) : Result Bool := do
-  match facts.previous with
-  | none => ok false
-  | some _ => if facts.unchanged
-              then ok (¬ facts.touched)
-              else ok false
-
-/-- [gripsack_kernel::publication::decide_commit]:
-    Source: 'crates/gripsack-kernel/src/publication.rs', lines 139:0-145:1
-    Visibility: public -/
-def publication.decide_commit
-  (facts : publication.CommitFacts) : Result publication.Commit := do
-  let b ← publication.vacuous facts
-  if b
-  then ok publication.Commit.Vacuous
-  else publication.admit_publication facts
-
 /-- [gripsack_kernel::recover::Prior]
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 87:0-90:1
     Visibility: public -/
@@ -5822,14 +6541,6 @@ def recover.Prior.matches
     | recover.Live.Absent => ok false
     | recover.Live.Obj b => recover.Ident.same a b
     | recover.Live.Unsupported => ok false
-
-/-- [gripsack_kernel::recover::Route]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 111:0-114:1
-    Visibility: public -/
-@[discriminant isize]
-inductive recover.Route where
-| Leaf : recover.Route
-| Delegated : recover.Route
 
 /-- [gripsack_kernel::recover::EntryFacts]
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 119:0-125:1

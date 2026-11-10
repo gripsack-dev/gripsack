@@ -206,8 +206,34 @@ fn plan_units<'m>(
     target: &store::Generation,
     released: &BTreeSet<store::OwnershipKey>,
 ) -> Vec<Unit<'m>> {
+    // A spelling only one generation records may name the same object as a
+    // spelling only the other records (a case-only re-spelling on a
+    // case-insensitive mount, plan/0056 FND-3): that is one unit, under the
+    // target's spelling — never a release of the object the target restores.
+    let mut aliases: BTreeMap<store::OwnershipKey, store::OwnershipKey> = BTreeMap::new();
+    for (key, (_, entry, _)) in target_by_dest {
+        if current_by_dest.contains_key(key) {
+            continue;
+        }
+        if let Some(alias) = current_by_dest
+            .iter()
+            .find_map(|(other, (name, current, _))| {
+                let block = (current.ownership.policy() == gripsack_store::Ownership::Merge)
+                    .then(|| current.merge_owner(name));
+                (!target_by_dest.contains_key(other)
+                    && entry.ownership.policy() == current.ownership.policy()
+                    && store::OwnershipKey::new(key.destination().to_path_buf(), block) == *key
+                    && crate::apply::same_destination(other.destination(), key.destination()))
+                .then(|| other.clone())
+            })
+        {
+            aliases.insert(key.clone(), alias);
+        }
+    }
+    let aliased: BTreeSet<&store::OwnershipKey> = aliases.values().collect();
     let mut keys: Vec<store::OwnershipKey> = current_by_dest
         .keys()
+        .filter(|key| !aliased.contains(key))
         .chain(target_by_dest.keys())
         .cloned()
         .collect::<BTreeSet<_>>()
@@ -216,7 +242,9 @@ fn plan_units<'m>(
     keys.sort_by_key(|key| std::cmp::Reverse(key.destination().components().count()));
     keys.into_iter()
         .map(|key| {
-            let current = current_by_dest.get(&key).copied();
+            let current = current_by_dest
+                .get(aliases.get(&key).unwrap_or(&key))
+                .copied();
             let target_side = target_by_dest.get(&key).copied();
             let directory = |transitions: &[store::journal::directory::DirectoryTransition]| {
                 transitions

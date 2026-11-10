@@ -56,7 +56,7 @@ pub fn rollback_generation(
         }
     })?;
     notes.extend(resumed.into_iter().map(|r| store::journal::RecoveryNote {
-        severity: if r.kind == crate::report::ReportKind::Warned {
+        severity: if r.tone == crate::report::Tone::Warned {
             store::journal::NoteSeverity::Warn
         } else {
             store::journal::NoteSeverity::Info
@@ -123,7 +123,7 @@ pub fn rollback_generation(
                     Ok(reports) => {
                         for report in reports {
                             notes.push(store::journal::RecoveryNote {
-                                severity: if report.kind == crate::report::ReportKind::Warned {
+                                severity: if report.tone == crate::report::Tone::Warned {
                                     store::journal::NoteSeverity::Warn
                                 } else {
                                     store::journal::NoteSeverity::Info

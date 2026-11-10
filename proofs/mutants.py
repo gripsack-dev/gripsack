@@ -420,6 +420,72 @@ MUTANTS = (
            "    if !fresh(&facts.reserved, &facts.previous) {",
            "    if false {",
            ("Gripsack.Kernel.Publication.admit_publication_spec",)),
+    # K2 for apply: a deploy installs something other than its intended identity
+    Mutant("apply-installs-not-intent", "apply.rs",
+           "            Write::Create => Some(Intended::Obj(*ident)),",
+           "            Write::Create => Some(Intended::Removed),",
+           ("Gripsack.Kernel.Apply.decide_apply_spec",)),
+    # K2 for apply: a take-over installs the declared mode, not the adoption
+    Mutant("apply-takeover-ignores-adoption", "apply.rs",
+           "            Write::TakeOver => Some(Intended::Obj(*adopted)),",
+           "            Write::TakeOver => Some(Intended::Obj(*ident)),",
+           ("Gripsack.Kernel.Apply.decide_apply_spec",)),
+    # K1 through apply: consent assumed, drift overwritten
+    Mutant("apply-consent-assumed", "apply.rs",
+           "    match decide_unit(&unit.recorded, live, &asked(&unit.want), &unit.consent) {",
+           "    match decide_unit(&unit.recorded, live, &asked(&unit.want), &Consent { take_over: crate::ownership::TakeOver::Granted }) {",
+           # (decide_apply_drift_never_written is a corollary of the spec)
+           ("Gripsack.Kernel.Apply.decide_apply_spec", "Gripsack.Kernel.Apply.decide_apply_refused")),
+    # a replaced owned link is kept silently instead of stopping the run
+    Mutant("apply-drift-stop-kept", "apply.rs",
+           "            UnitRefusal::Drifted => stops(&unit.drift),",
+           "            UnitRefusal::Drifted => false,",
+           ("Gripsack.Kernel.Apply.decide_apply_refused",)),
+    # a refused unit is reported settled and the run goes on to the flip
+    Mutant("apply-refused-settled", "apply.rs",
+           "        Step::Leave(settled) => report(state, dest, settled),\n        Step::Refuse(refusal) => refuse(state, refusal),",
+           "        Step::Leave(settled) => report(state, dest, settled),\n        Step::Refuse(_) => report(state, dest, Settled::Already),",
+           ("Gripsack.Kernel.Apply.on_observed_spec", "Gripsack.Kernel.Apply.apply_refused_aborts")),
+    # a unit is reported applied whatever landed
+    Mutant("apply-applied-unchecked", "apply.rs",
+           "            if lands(&install, &live) {",
+           "            if lands(&install, &live) || true {",
+           ("Gripsack.Kernel.Apply.on_landed_spec",)),
+    # FND-3: a release is examined although a deploy of this run claims it
+    Mutant("apply-release-ignores-claims", "apply.rs",
+           "            if covered(&state.declared, facts.dest, &facts.slot) {",
+           "            if false && covered(&state.declared, facts.dest, &facts.slot) {",
+           ("Gripsack.Kernel.Apply.on_unit_spec",)),
+    # FND-3: a whole-object release is not covered by a deploy at its destination
+    Mutant("apply-release-whole-uncovered", "apply.rs",
+           "        Slot::Whole => true,\n        Slot::Block(owner) => match claim.slot {",
+           "        Slot::Whole => false,\n        Slot::Block(owner) => match claim.slot {",
+           ("Gripsack.Kernel.Apply.covers_spec",)),
+    # a deploy accepted after releases began could claim a released destination
+    Mutant("apply-deploy-after-release", "apply.rs",
+           "            if state.releasing {\n                let unit = state.index;\n                return refuse(state, Refusal::Order { unit });\n            }",
+           "",
+           ("Gripsack.Kernel.Apply.on_unit_spec", "Gripsack.Kernel.Apply.apply_no_deploy_after_release")),
+    # the flip skips a unit: the index advances by two
+    Mutant("apply-flip-skips-unit", "apply.rs",
+           "    match state.index.checked_add(1) {",
+           "    match state.index.checked_add(2) {",
+           ("Gripsack.Kernel.Apply.advance_spec",)),
+    # the mutated flag: the commit is judged as if nothing touched the disk
+    Mutant("apply-touched-ignored", "apply.rs",
+           "        touched: mutated,",
+           "        touched: false,",
+           ("Gripsack.Kernel.Apply.commit_facts_ok",)),
+    # the mutated flag: a landed unit does not record that the disk changed
+    Mutant("apply-landed-not-mutated", "apply.rs",
+           "            if lands(&install, &live) {\n                state.mutated = true;",
+           "            if lands(&install, &live) {",
+           ("Gripsack.Kernel.Apply.on_landed_spec",)),
+    # K6: an unpublishable commit is published and flipped anyway
+    Mutant("apply-unpublishable-published", "apply.rs",
+           "        Commit::Refuse(why) => refuse(state, Refusal::Unpublishable(why)),",
+           "        Commit::Refuse(_) => {\n            state.phase = Phase::Publishing;\n            state.commit = Some(facts);\n            (state, Command::Publish(facts.allocated))\n        }",
+           ("Gripsack.Kernel.Apply.on_commit_spec",)),
 )
 
 # lake reports `error: <path>.lean:<line>:<col>: <message>`

@@ -43,7 +43,7 @@ pub(crate) mod update;
 
 use crate::ctx::{Ctx, ExecError};
 use crate::deploy::{DeploymentInput, deploy_entry};
-use crate::report::{ReportKind, StepReport};
+use crate::report::{StepReport, Tone};
 use gripsack_ir::{Diagnostic, Span, codes};
 use gripsack_store as store;
 use std::collections::BTreeMap;
@@ -236,6 +236,7 @@ impl NativeProfiles {
         journal: &store::journal::JournalRun<'_>,
         previous: &BTreeMap<String, store::DeploymentState>,
         mut migration: Option<&mut crate::deploy::Migration>,
+        machine: &mut crate::apply::Machine,
     ) -> Result<DeploymentOutcome, ExecError> {
         let mut reports = Vec::new();
         for (name, profile) in &self.profiles {
@@ -270,11 +271,7 @@ impl NativeProfiles {
                 } else {
                     "profile content published".into()
                 },
-                kind: if present {
-                    ReportKind::Satisfied
-                } else {
-                    ReportKind::Fetched
-                },
+                tone: if present { Tone::Unchanged } else { Tone::Done },
             };
             ctx.reporter().step(&report);
             reports.push((name.clone(), vec![report]));
@@ -293,7 +290,7 @@ impl NativeProfiles {
             let mut entries = Vec::with_capacity(profile.files.len());
             let mut file_reports = Vec::new();
             for file in &profile.files {
-                let (summary, kind) = deploy_entry(
+                let (summary, tone) = deploy_entry(
                     &mut entries,
                     ctx,
                     DeploymentInput {
@@ -304,6 +301,7 @@ impl NativeProfiles {
                         previous: &lineage,
                         block_id: file.block_id.as_ref(),
                         migration: migration.as_deref(),
+                        machine: &mut *machine,
                     },
                 )
                 .map_err(|error| {
@@ -312,7 +310,7 @@ impl NativeProfiles {
                 let report = StepReport {
                     output: name.clone(),
                     summary,
-                    kind,
+                    tone,
                 };
                 ctx.reporter().step(&report);
                 file_reports.push(report);

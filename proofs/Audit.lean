@@ -132,6 +132,19 @@ def claims : List Name := [
   ``Gripsack.Kernel.Publication.floor_never_lowers,
   ``Gripsack.Kernel.Publication.publish_admitted,
   ``Gripsack.Kernel.Publication.vacuous_iff,
+  ``Gripsack.Kernel.Apply.decide_apply_spec,
+  ``Gripsack.Kernel.Apply.decide_apply_drift_never_written,
+  ``Gripsack.Kernel.Apply.decide_apply_refused,
+  ``Gripsack.Kernel.Apply.apply_installs_intended,
+  ``Gripsack.Kernel.Apply.apply_write_k1,
+  ``Gripsack.Kernel.Apply.apply_applied_landed,
+  ``Gripsack.Kernel.Apply.apply_release_undeclared,
+  ``Gripsack.Kernel.Apply.apply_no_deploy_after_release,
+  ``Gripsack.Kernel.Apply.apply_flip_after_every_unit,
+  ``Gripsack.Kernel.Apply.apply_flip_admitted,
+  ``Gripsack.Kernel.Apply.apply_vacuous_untouched,
+  ``Gripsack.Kernel.Apply.apply_refused_aborts,
+  ``Gripsack.Kernel.Apply.apply_aborted_terminal,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/

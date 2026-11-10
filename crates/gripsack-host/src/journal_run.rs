@@ -252,6 +252,9 @@ pub struct RunDriver<S: Storage> {
     staged: Option<Staged<S::File>>,
     entry: Option<JournalRecord>,
     found: Option<Found>,
+    /// What the last mutation landed (the run machine accepted it as the
+    /// unit's intended object).
+    landed: Option<Live>,
 }
 
 impl<S: Storage> fmt::Debug for RunDriver<S> {
@@ -271,6 +274,7 @@ impl<S: Storage> RunDriver<S> {
             staged: None,
             entry: None,
             found: None,
+            landed: None,
         };
         match driver.drive(host, Event::Start, None)? {
             Stop::Ready => Ok(driver),
@@ -279,17 +283,22 @@ impl<S: Storage> RunDriver<S> {
     }
 
     /// Mutate one destination under the leaf protocol: observe, capture the
-    /// prior, publish the entry, then act under the re-check. Returns once
-    /// the intended object landed.
+    /// prior, publish the entry, then act under the re-check. Returns the
+    /// landed object once it is the intended one (callers that decide on it —
+    /// the apply machine — judge it again against their own intent).
     pub fn leaf<H: RunHost<Storage = S>>(
         &mut self,
         host: &mut H,
         leaf: Leaf<'_, S::Dir>,
-    ) -> Result<(), RunError> {
+    ) -> Result<Live, RunError> {
         self.found = None;
+        self.landed = None;
         let facts = leaf.facts;
         match self.drive(host, Event::Unit(facts), Some(leaf))? {
-            Stop::Ready => Ok(()),
+            Stop::Ready => self
+                .landed
+                .take()
+                .ok_or_else(|| RunError::Io(io::Error::other("the leaf finished without landing"))),
             other => Err(unexpected(other)),
         }
     }
@@ -391,7 +400,10 @@ impl<S: Storage> RunDriver<S> {
             Command::Mutate { expect, .. } => {
                 let leaf = leaf.take().ok_or_else(no_leaf)?;
                 Ok(match install(host, leaf, &expect)? {
-                    Some(live) => Event::Landed { live },
+                    Some(live) => {
+                        self.landed = Some(live);
+                        Event::Landed { live }
+                    }
                     None => Event::Failed(Failure::Drift),
                 })
             }

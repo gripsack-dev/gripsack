@@ -1580,3 +1580,279 @@ impl fmt::Debug for RunState {
             .finish()
     }
 }
+
+// ---- the apply machine (F2 step 7) ----------------------------------------
+
+use crate::apply::{
+    ApplyState, Claim, Command as ApplyCommand, CommitInputs, Event as ApplyEvent, OnDrift,
+    Outcome as ApplyOutcome, Phase as ApplyPhase, Refusal as ApplyRefusal, Settled as ApplySettled,
+    Slot, Step as ApplyStep, UnitFacts as ApplyUnitFacts, Want, Write,
+};
+
+copy_impls!(
+    Slot,
+    Claim,
+    Want,
+    OnDrift,
+    ApplyUnitFacts,
+    Write,
+    ApplySettled,
+    ApplyStep,
+    CommitInputs,
+    ApplyOutcome,
+    ApplyRefusal,
+    ApplyCommand,
+    ApplyEvent,
+    ApplyPhase,
+);
+
+same_eq!(
+    Slot => |a, b| match (a, b) {
+        (Slot::Whole, Slot::Whole) => true,
+        (Slot::Block(a), Slot::Block(b)) => a == b,
+        _ => false,
+    },
+    Write => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    OnDrift => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    ApplyOutcome => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    ApplyPhase => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    ApplySettled => |a, b| match (a, b) {
+        (ApplySettled::Kept(a), ApplySettled::Kept(b)) => a == b,
+        (ApplySettled::Delegated { mutated: a }, ApplySettled::Delegated { mutated: b }) => a == b,
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
+);
+
+unit_debug!(
+    OnDrift { Keep, Stop },
+    Write {
+        Create,
+        Replace,
+        TakeOver
+    },
+    ApplyOutcome { Vacuous, Applied },
+    ApplyPhase {
+        Start,
+        ReadingUnit,
+        Observing,
+        Writing,
+        Delegating,
+        Reporting,
+        Directories,
+        ReadingCommit,
+        Publishing,
+        Flipping,
+        Activating,
+        Finished,
+        Aborted
+    },
+);
+
+impl Default for ApplyState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Debug for Slot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Slot::Whole => f.write_str("Whole"),
+            Slot::Block(owner) => f.debug_tuple("Block").field(owner).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Claim {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Claim")
+            .field("dest", &self.dest)
+            .field("slot", &self.slot)
+            .finish()
+    }
+}
+
+impl fmt::Debug for Want {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Want::Deploy { ident, adopted } => f
+                .debug_struct("Deploy")
+                .field("ident", ident)
+                .field("adopted", adopted)
+                .finish(),
+            Want::Release(origin) => f.debug_tuple("Release").field(origin).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for ApplyUnitFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UnitFacts")
+            .field("dest", &self.dest)
+            .field("slot", &self.slot)
+            .field("route", &self.route)
+            .field("recorded", &self.recorded)
+            .field("want", &self.want)
+            .field("consent", &self.consent)
+            .field("drift", &self.drift)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ApplySettled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ApplySettled::Applied => f.write_str("Applied"),
+            ApplySettled::Already => f.write_str("Already"),
+            ApplySettled::Kept(why) => f.debug_tuple("Kept").field(why).finish(),
+            ApplySettled::Declared => f.write_str("Declared"),
+            ApplySettled::Delegated { mutated } => f
+                .debug_struct("Delegated")
+                .field("mutated", mutated)
+                .finish(),
+        }
+    }
+}
+
+impl fmt::Debug for ApplyStep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ApplyStep::Write { install, write } => f
+                .debug_struct("Write")
+                .field("install", install)
+                .field("write", write)
+                .finish(),
+            ApplyStep::Leave(settled) => f.debug_tuple("Leave").field(settled).finish(),
+            ApplyStep::Refuse(why) => f.debug_tuple("Refuse").field(why).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for CommitInputs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CommitInputs")
+            .field("previous", &self.previous)
+            .field("reserved", &self.reserved)
+            .field("allocated", &self.allocated)
+            .field("floor", &self.floor)
+            .field("unchanged", &self.unchanged)
+            .field("exists", &self.exists)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ApplyRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let unit = |f: &mut fmt::Formatter<'_>, name: &str, unit: &u32, dest: &DestId| {
+            f.debug_struct(name)
+                .field("unit", unit)
+                .field("dest", dest)
+                .finish()
+        };
+        match self {
+            ApplyRefusal::Refused { unit, dest, why } => f
+                .debug_struct("Refused")
+                .field("unit", unit)
+                .field("dest", dest)
+                .field("why", why)
+                .finish(),
+            ApplyRefusal::Drifted { unit: u, dest } => unit(f, "Drifted", u, dest),
+            ApplyRefusal::NotApplied { unit: u, dest } => unit(f, "NotApplied", u, dest),
+            ApplyRefusal::Delegated { unit: u, dest } => unit(f, "Delegated", u, dest),
+            ApplyRefusal::Order { unit } => f.debug_struct("Order").field("unit", unit).finish(),
+            ApplyRefusal::Unpublishable(why) => f.debug_tuple("Unpublishable").field(why).finish(),
+            ApplyRefusal::Malformed => f.write_str("Malformed"),
+            ApplyRefusal::Failed => f.write_str("Failed"),
+            ApplyRefusal::Protocol => f.write_str("Protocol"),
+        }
+    }
+}
+
+impl fmt::Debug for ApplyCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ApplyCommand::ReadUnit(unit) => f.debug_tuple("ReadUnit").field(unit).finish(),
+            ApplyCommand::Observe { unit, dest } => f
+                .debug_struct("Observe")
+                .field("unit", unit)
+                .field("dest", dest)
+                .finish(),
+            ApplyCommand::Mutate {
+                unit,
+                dest,
+                expect,
+                install,
+                write,
+            } => f
+                .debug_struct("Mutate")
+                .field("unit", unit)
+                .field("dest", dest)
+                .field("expect", expect)
+                .field("install", install)
+                .field("write", write)
+                .finish(),
+            ApplyCommand::Delegate { unit, dest } => f
+                .debug_struct("Delegate")
+                .field("unit", unit)
+                .field("dest", dest)
+                .finish(),
+            ApplyCommand::Report {
+                unit,
+                dest,
+                settled,
+            } => f
+                .debug_struct("Report")
+                .field("unit", unit)
+                .field("dest", dest)
+                .field("settled", settled)
+                .finish(),
+            ApplyCommand::DirectoryStep => f.write_str("DirectoryStep"),
+            ApplyCommand::ReadCommit => f.write_str("ReadCommit"),
+            ApplyCommand::Publish(generation) => {
+                f.debug_tuple("Publish").field(generation).finish()
+            }
+            ApplyCommand::Flip(selection) => f.debug_tuple("Flip").field(selection).finish(),
+            ApplyCommand::Activate => f.write_str("Activate"),
+            ApplyCommand::Finish(outcome) => f.debug_tuple("Finish").field(outcome).finish(),
+            ApplyCommand::Abort(why) => f.debug_tuple("Abort").field(why).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for ApplyEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ApplyEvent::Start => f.write_str("Start"),
+            ApplyEvent::UnitRead(unit) => f.debug_tuple("UnitRead").field(unit).finish(),
+            ApplyEvent::Exhausted => f.write_str("Exhausted"),
+            ApplyEvent::Observed { dest, live } => f
+                .debug_struct("Observed")
+                .field("dest", dest)
+                .field("live", live)
+                .finish(),
+            ApplyEvent::Landed { live } => f.debug_struct("Landed").field("live", live).finish(),
+            ApplyEvent::Delegated { mutated } => f
+                .debug_struct("Delegated")
+                .field("mutated", mutated)
+                .finish(),
+            ApplyEvent::Refused => f.write_str("Refused"),
+            ApplyEvent::Done => f.write_str("Done"),
+            ApplyEvent::CommitRead(inputs) => f.debug_tuple("CommitRead").field(inputs).finish(),
+            ApplyEvent::Failed(failure) => f.debug_tuple("Failed").field(failure).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for ApplyState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApplyState")
+            .field("phase", &self.phase)
+            .field("index", &self.index)
+            .field("unit", &self.unit)
+            .field("install", &self.install)
+            .field("declared", &self.declared)
+            .field("releasing", &self.releasing)
+            .field("mutated", &self.mutated)
+            .finish()
+    }
+}

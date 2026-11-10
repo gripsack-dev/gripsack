@@ -57,7 +57,9 @@ check() {
     echo "$config: $expected"
 }
 
-check Ownership.tla cfg/ownership.cfg
+# Ownership.tla (lineage: drift never promoted, the release restores the
+# origin) is retired: those are Lean theorems over the shipped apply machine
+# (plan/0056 §21); origin survival is the kernel lineage explorer's oracle.
 for mode in apply-deploy apply-prune rollback-deploy rollback-prune; do
     check Transaction.tla "cfg/$mode.cfg"
     check RepeatedRecovery.tla "cfg/repeated-$mode.cfg"

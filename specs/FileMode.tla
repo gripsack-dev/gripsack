@@ -1,10 +1,12 @@
 ------------------------------- MODULE FileMode -------------------------------
 (***************************************************************************
  Independent permission policy (0043), not a proof about arbitrary Rust.
- Ownership models opaque content identities; Transaction assumes an intended
+ K1 (proofs/Kernel) decides on opaque content identities; Transaction assumes an intended
  identity is already correct. Neither chooses a template's landing policy.
- The Rust explorer exercises plan_entry_op and execute_op; e2e additionally
- exercises source-policy selection in deploy and preview.
+ The permission table in gripsack-exec ops/plan/write.rs pins the shipped
+ policy; whether the chosen mode landed is the leaf protocol's and the apply
+ machine's identity check (plan/0056 §21); e2e exercises source-policy
+ selection in deploy and preview.
 
  Scope: one destination, fixed source, mode-only user edits, repeated apply,
  prune, and one rollback to an earlier managed generation. Content changes,
