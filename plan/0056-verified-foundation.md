@@ -2278,8 +2278,14 @@ ownership, merge, journal-protocol and activation families left in §15, §17,
    Directory work before the first unit (`prepare_directory_changes`
    removals, publication of directory records) is outside the machine.
 3. **Unit enumeration is host residue:** "every unit" means every unit the
-   host hands over. Previous entries the host skips by rule: preserved
-   drift (never gripsack's write) and directory-domain destinations.
+   host hands over. Release candidates are the previous entries the new
+   manifest no longer records under their own spelling (a subset apply,
+   `--only`, carries the other profiles' entries forward without deploying
+   them, so they are not deploy units and must not become releases — the
+   first e2e run of this branch failed three such tests before the rule was
+   restored host-side); among those, the kernel decides coverage by
+   identity. Skipped by rule as well: preserved drift (never gripsack's
+   write) and directory-domain destinations.
 4. **The apply driver is not generic over `Storage`.** As for rollback
    (§19.7 item 3), the crash exploration composes the kernel machine with
    the leaf protocol through a test host; the product driver's manifest

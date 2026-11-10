@@ -419,7 +419,7 @@ fn pre_flip(
     // mutation is journaled like a deploy (0025 §B).
     let active_directories = store::journal::directory::receipts(journal)?;
     if let Some(prev) = prev_manifest {
-        prune_undeclared(prev, journal, &active_directories, machine)?;
+        prune_undeclared(prev, deployments, journal, &active_directories, machine)?;
     }
     // every unit settled: the directory domain's transitions (opaque until
     // plan/0056 step 9) run as the machine's one directory step
@@ -526,13 +526,41 @@ fn pre_flip(
 /// (K1). Every prune mutation is journaled like a deploy (0025 §B).
 fn prune_undeclared(
     prev: &store::Generation,
+    deployments: &BTreeMap<String, store::DeploymentState>,
     journal: &store::journal::JournalRun<'_>,
     directory_transitions: &[store::journal::directory::DirectoryTransition],
     machine: &mut Machine,
 ) -> Result<(), ExecError> {
     let home_dir = journal.home();
+    // the candidates: entries the new manifest no longer records under their
+    // own spelling (a subset apply carries the other profiles' entries
+    // forward without deploying them). Whole-file destinations are unique
+    // (E111); merge blocks are owned per (deployment, destination), so a
+    // renamed deployment does not leave its block behind (0026 §2).
+    let recorded: std::collections::BTreeSet<std::path::PathBuf> = deployments
+        .values()
+        .flat_map(|state| state.entries.iter().map(|entry| entry.key()))
+        .collect();
+    let recorded_blocks: std::collections::BTreeSet<store::OwnershipKey> = deployments
+        .iter()
+        .flat_map(|(name, state)| {
+            state
+                .entries
+                .iter()
+                .filter(|entry| entry.ownership.policy() == gripsack_store::Ownership::Merge)
+                .map(move |entry| entry.ownership_key(name))
+        })
+        .collect();
     for (name, state) in &prev.deployments {
         for entry in &state.entries {
+            let still_recorded = if entry.ownership.policy() == gripsack_store::Ownership::Merge {
+                recorded_blocks.contains(&entry.ownership_key(name))
+            } else {
+                recorded.contains(&entry.key())
+            };
+            if still_recorded {
+                continue;
+            }
             // the directory domain's destinations are its own (step 9)
             if directory_transitions
                 .iter()
