@@ -9,7 +9,7 @@ use super::{
 };
 use crate::GenerationId;
 use gripsack_fs::Dir;
-use gripsack_policy::activation::IntentState;
+use gripsack_kernel::activation::IntentState;
 use gripsack_process::{ProcessReceipt, Sha256Digest};
 use serde::{Serialize, Serializer, ser::SerializeStruct};
 use std::{io, path::Path};
@@ -268,7 +268,7 @@ mod schedule_retention_tests {
             closure: closure.clone(),
             enabled: false,
         };
-        let attempt = gripsack_policy::activation::AttemptNumber::first();
+        let attempt = gripsack_kernel::activation::AttemptNumber::first();
         for state in [
             HookState::Current(IntentState::Failed { attempt }),
             HookState::Current(IntentState::Started { attempt }),

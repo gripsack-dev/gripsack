@@ -65,7 +65,7 @@ pub fn active_job(
                         registered = matches!(
                             inspection.state,
                             store::activation::HookState::Current(
-                                gripsack_policy::activation::IntentState::Succeeded { .. }
+                                store::activation::IntentState::Succeeded { .. }
                             )
                         );
                     }
@@ -618,7 +618,7 @@ pub fn inspect(home: &Path) -> Result<Vec<JobInspection>, ExecError> {
             if *digest != inspection.action_sha256 {
                 continue;
             }
-            use gripsack_policy::activation::IntentState;
+            use store::activation::IntentState;
             job.registration = match inspection.state {
                 store::activation::HookState::Current(IntentState::Pending) => {
                     RegistrationState::Pending

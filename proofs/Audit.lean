@@ -35,7 +35,16 @@ while recovery or activation is pending or in a preview; a retired generation
 is pruned, never current, and needed by no retained manifest; a removed
 candidate is pinned by no retained manifest and named by no external root; the
 retained generations are closed under predecessors; removal follows the
-durable retirement. -/
+durable retirement; the activation machine (F2 step 5, P4 at the kernel
+level): a hook runs only right after its durable `Started` record, while its
+batch's exact selection is current and authorized, at most once per run, with
+the attempt that replays its previous record under the same intent; terminal
+records are never rewritten and never run; a returned hook is recorded as
+what it returned and nothing is rolled back; a superseded batch runs nothing;
+the receipt follows every intent and precedes the pointer's removal; and
+generation numbering (K6): an allocated number exceeds the floor, the floor
+never lowers, a publication is the allocated number above the floor, not yet
+published, under a fresh transaction, and vacuous applies publish nothing. -/
 def claims : List Name := [
   ``Gripsack.Kernel.classify_committed_iff,
   ``Gripsack.Kernel.classify_uncommitted_iff,
@@ -94,6 +103,26 @@ def claims : List Name := [
   ``Gripsack.Kernel.Block.decide_block_foreign_untouched,
   ``Gripsack.Kernel.Block.decide_block_mode_evidence_preserves,
   ``Gripsack.Kernel.Block.decide_block_restore_exact,
+  ``Gripsack.Kernel.fresh_spec,
+  ``Gripsack.Kernel.Activation.next_attempt_spec,
+  ``Gripsack.Kernel.Activation.finish_attempt_spec,
+  ``Gripsack.Kernel.Activation.supersede_spec,
+  ``Gripsack.Kernel.Activation.hook_after_durable_start,
+  ``Gripsack.Kernel.Activation.hook_selection_current,
+  ``Gripsack.Kernel.Activation.hook_once_per_run,
+  ``Gripsack.Kernel.Activation.start_replays,
+  ``Gripsack.Kernel.Activation.settle_returned,
+  ``Gripsack.Kernel.Activation.terminal_never_rewritten,
+  ``Gripsack.Kernel.Activation.terminal_never_runs,
+  ``Gripsack.Kernel.Activation.superseded_runs_nothing,
+  ``Gripsack.Kernel.Activation.supersede_writes_superseded,
+  ``Gripsack.Kernel.Activation.leaves_terminal,
+  ``Gripsack.Kernel.Activation.archive_after_every_intent,
+  ``Gripsack.Kernel.Activation.clear_after_archive,
+  ``Gripsack.Kernel.Publication.allocate_exceeds_floor,
+  ``Gripsack.Kernel.Publication.floor_never_lowers,
+  ``Gripsack.Kernel.Publication.publish_admitted,
+  ``Gripsack.Kernel.Publication.vacuous_iff,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/

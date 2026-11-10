@@ -238,11 +238,12 @@ MUTANTS = (
            "            Event::Refused => report(state, facts.dest, Settled::Delegated),",
            ("Gripsack.Kernel.Rollback.on_delegated_spec",
             "Gripsack.Kernel.Rollback.rollback_delegated_refusal_aborts")),
-    # K6: the reselection reuses the transaction it replaces
-    Mutant("rollback-reused-transaction", "rollback.rs",
+    # K6: a flip (rollback's reselection, apply's publication) reuses the
+    # transaction it replaces
+    Mutant("rollback-reused-transaction", "selection.rs",
            "            }) => !transaction.same(replaced),",
            "            }) => true,",
-           ("Gripsack.Kernel.Rollback.fresh_spec",)),
+           ("Gripsack.Kernel.fresh_spec",)),
     # FND-2: a target without its own profile is admitted (the backfill's premise)
     Mutant("rollback-profile-ignored", "rollback.rs",
            "        Profile::Missing => Some(Refusal::ProfileMissing),",
@@ -300,6 +301,89 @@ MUTANTS = (
            "BlockDecision::Write => BlockDecision::Refuse(BlockRefusal::Unrestorable),",
            "BlockDecision::Write => BlockDecision::Write,",
            ("Gripsack.Kernel.Block.decide_block_restore_exact",)),
+    # P4: an interrupted Started attempt replays under the same attempt number
+    Mutant("activation-interrupted-attempt", "activation.rs",
+           "            Some(next) => StartDecision::Start(next),",
+           "            Some(_) => StartDecision::Start(*attempt),",
+           ("Gripsack.Kernel.Activation.next_attempt_spec",)),
+    # P4: a stale outcome settles an attempt that is not the one in flight
+    Mutant("activation-stale-outcome", "activation.rs",
+           "            if active.same(attempt) {",
+           "            if !active.same(attempt) {",
+           ("Gripsack.Kernel.Activation.finish_attempt_spec",)),
+    # P4: supersession leaves an interrupted attempt Started (replayable)
+    Mutant("activation-supersession", "activation.rs",
+           "        IntentState::Started { attempt } => IntentState::Superseded {\n            last_attempt: Some(*attempt),\n        },",
+           "        IntentState::Started { attempt } => IntentState::Started { attempt: *attempt },",
+           ("Gripsack.Kernel.Activation.supersede_spec",)),
+    # P4: the hook launches before its Started record is durable
+    Mutant("activation-launch-before-start", "activation.rs",
+           "            StartDecision::Start(attempt) => {\n                persist(state, Phase::Starting, IntentState::Started { attempt })\n            }",
+           "            StartDecision::Start(attempt) => {\n                state.phase = Phase::Running;\n                state.record = IntentState::Started { attempt };\n"
+           "                let intent = state.index;\n                let expect = state.batch.selection;\n"
+           "                (state, Command::RunHook { intent, attempt, expect })\n            }",
+           ("Gripsack.Kernel.Activation.on_intent_spec",)),
+    # P4: an outcome is recorded before the hook returned
+    Mutant("activation-early-success", "activation.rs",
+           "            (\n                state,\n                Command::RunHook {\n                    intent,\n                    attempt,\n                    expect,\n                },\n            )",
+           "            let _ = (intent, expect);\n            persist(state, Phase::Settling, IntentState::Succeeded { attempt })",
+           ("Gripsack.Kernel.Activation.on_started_spec",)),
+    # P4: the selection check compares generations only (a rollback's
+    # reselection of the same generation would authorize a stale batch)
+    Mutant("activation-generation-bound", "activation.rs",
+           "        Some(current) => current.same(batch),",
+           "        Some(current) => current.generation().same(batch.generation()),",
+           ("Gripsack.Kernel.Activation.bound_spec",)),
+    # P4: hooks run whatever `current` is (a superseded batch runs)
+    Mutant("activation-superseded-runs", "activation.rs",
+           "    if bound(&current, &state.batch.selection) {",
+           "    if true {",
+           ("Gripsack.Kernel.Activation.on_current_spec",)),
+    # P4, not at-least-once: a settled intent is read again instead of passed
+    Mutant("activation-settled-reread", "activation.rs",
+           "        Phase::Superseding | Phase::Settling => match event {\n            Event::Done => advance(state),",
+           "        Phase::Superseding | Phase::Settling => match event {\n            Event::Done => proceed(state),",
+           ("Gripsack.Kernel.Activation.step_spec",)),
+    # P4: supersession rewrites terminal records
+    Mutant("activation-terminal-rewritten", "activation.rs",
+           "            if terminal(&record) {\n                advance(state)",
+           "            if false {\n                advance(state)",
+           ("Gripsack.Kernel.Activation.on_intent_spec",)),
+    # the pending pointer is cleared without the receipt
+    Mutant("activation-clear-before-archive", "activation.rs",
+           "        state.phase = Phase::Archiving;\n        (state, Command::Archive)",
+           "        state.phase = Phase::Clearing;\n        (state, Command::Clear)",
+           ("Gripsack.Kernel.Activation.proceed_spec",)),
+    # K6: allocation ignores the durable high-water floor (gc retired the tip)
+    Mutant("publication-allocate-ignores-floor", "publication.rs",
+           "    match later(later(observed.current, observed.newest), observed.floor) {",
+           "    match later(observed.current, observed.newest) {",
+           ("Gripsack.Kernel.Publication.allocate_exceeds_floor",)),
+    # K6: the floor moves to the retained maximum even when that is lower
+    Mutant("publication-floor-lowered", "publication.rs",
+           "    match later(observed, retained) {",
+           "    match retained {",
+           ("Gripsack.Kernel.Publication.floor_never_lowers",)),
+    # K6: a run that repaired the disk is called vacuous (0.18.1)
+    Mutant("publication-vacuous-touched", "publication.rs",
+           "        Some(_) => facts.unchanged && !facts.touched,",
+           "        Some(_) => facts.unchanged,",
+           ("Gripsack.Kernel.Publication.vacuous_spec",)),
+    # K6: an existing generation is published over
+    Mutant("publication-overwrites-published", "publication.rs",
+           "    } else if facts.exists {",
+           "    } else if false {",
+           ("Gripsack.Kernel.Publication.admit_publication_spec",)),
+    # K6: a number at or below the floor is published
+    Mutant("publication-below-floor", "publication.rs",
+           "    } else if !above(facts.allocated, facts.floor) {",
+           "    } else if false {",
+           ("Gripsack.Kernel.Publication.admit_publication_spec",)),
+    # K6: apply flips under a transaction it did not check is fresh
+    Mutant("publication-unchecked-transaction", "publication.rs",
+           "    if !fresh(&facts.reserved, &facts.previous) {",
+           "    if false {",
+           ("Gripsack.Kernel.Publication.admit_publication_spec",)),
 )
 
 # lake reports `error: <path>.lean:<line>:<col>: <message>`

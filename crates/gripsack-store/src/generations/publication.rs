@@ -2,6 +2,7 @@
 use super::{Generation, admission::validate, current, list};
 use crate::GenerationId;
 use gripsack_fs::{Dir, cap_std, open_dir_nofollow, open_file_nofollow};
+use gripsack_kernel::publication;
 use std::{
     io::{self, Read},
     path::Path,
@@ -40,23 +41,39 @@ pub fn write_manifest(home: &gripsack_fs::Dir, generation: &Generation) -> io::R
 /// tip moves the on-disk maximum backward and IDs get reused — logs
 /// and journal remnants would then name two different states "2".
 pub fn allocate(home_path: &Path, home: &gripsack_fs::Dir) -> io::Result<GenerationId> {
-    let high_water = match open_dir_nofollow(home, Path::new(crate::GENERATIONS_DIR)) {
+    let floor = match open_dir_nofollow(home, Path::new(crate::GENERATIONS_DIR)) {
         Ok(directory) => observe_high_water(&directory)?.map(|observed| observed.number),
         Err(e) if e.kind() == io::ErrorKind::NotFound => None,
         Err(e) => return Err(e),
     };
-    let next = [
-        current(home_path)?,
-        list(home_path)?.into_iter().max(),
-        high_water,
-    ]
-    .into_iter()
-    .flatten()
-    .max()
-    .unwrap_or_else(|| GenerationId::new(0))
-    .checked_next()
-    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "generation identity exhausted"))?;
-    Ok(next)
+    // the kernel's K6 allocator: one above `current`, the newest
+    // generation on disk and the durable floor
+    publication::allocate(&publication::Allocation {
+        current: current(home_path)?,
+        newest: list(home_path)?.into_iter().max(),
+        floor,
+    })
+    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "generation identity exhausted"))
+}
+
+/// Generation `number` already has a directory: published history.
+pub fn published(home: &gripsack_fs::Dir, number: GenerationId) -> io::Result<bool> {
+    let name = Path::new(crate::paths::GENERATIONS_DIR).join(number.to_string());
+    match home.symlink_metadata(&name) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// The durable high-water floor as it reads now (the kernel's commit
+/// decision re-checks the allocated number against it).
+pub fn high_water(home: &gripsack_fs::Dir) -> io::Result<Option<GenerationId>> {
+    match open_dir_nofollow(home, Path::new(crate::GENERATIONS_DIR)) {
+        Ok(directory) => Ok(observe_high_water(&directory)?.map(|observed| observed.number)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 struct ObservedHighWater {
@@ -89,11 +106,17 @@ pub(super) fn preserve_allocation_floor(
     retained_maximum: Option<GenerationId>,
 ) -> io::Result<()> {
     let observed = observe_high_water(directory)?;
-    let Some(floor) = retained_maximum.max(observed.as_ref().map(|value| value.number)) else {
-        return Ok(());
-    };
-    match observed {
-        Some(observed) if observed.number == floor => {
+    match publication::floor_action(
+        observed.as_ref().map(|value| value.number),
+        retained_maximum,
+    ) {
+        publication::FloorAction::Nothing => Ok(()),
+        publication::FloorAction::Seal => {
+            let Some(observed) = observed else {
+                return Err(io::Error::other(
+                    "high-water seal without an observed floor",
+                ));
+            };
             gripsack_fs::fault::operation(
                 gripsack_fs::fault::Boundary::FileSync,
                 Path::new("high-water"),
@@ -101,7 +124,7 @@ pub(super) fn preserve_allocation_floor(
             )?;
             gripsack_fs::fsync_pinned_dir(directory, Path::new(crate::GENERATIONS_DIR))
         }
-        _ => gripsack_fs::atomic_write(
+        publication::FloorAction::Raise(floor) => gripsack_fs::atomic_write(
             directory,
             Path::new("high-water"),
             floor.to_string().as_bytes(),

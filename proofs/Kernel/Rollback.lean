@@ -116,38 +116,12 @@ theorem lands_spec (i : recover.Intended) (l : recover.Live) :
   step with Ident.same_spec as ⟨ r, hr ⟩
   simp_all [eq_comm]
 
-/-! ## Admission: a fresh transaction, a complete target -/
-
-/-- The reselection binds a transaction that differs from the one it
-replaces. -/
-def Fresh (sel : selection.SelectionIdentity) (prev : Option selection.SelectionIdentity) : Prop :=
-  ∃ g t, sel = .Transaction g t ∧ ∀ g' t', prev = some (.Transaction g' t') → t ≠ t'
+/-! ## Admission: a fresh transaction (`Fresh`, `fresh_spec` in Selection.lean), a complete target -/
 
 /-- The plan the machine executes: the target retains its own profile, and
 the selection is fresh. -/
 def Admitted (p : rollback.PlanFacts) : Prop :=
   p.profile = .Retained ∧ Fresh p.reselect p.previous
-
-theorem fresh_spec (sel : selection.SelectionIdentity) (prev : Option selection.SelectionIdentity) :
-    rollback.fresh sel prev ⦃ b => b = true → Fresh sel prev ⦄ := by
-  unfold rollback.fresh
-  cases sel with
-  | Legacy g => simp
-  | Transaction g t =>
-    cases prev with
-    | none => simp [Fresh]
-    | some p =>
-      cases p with
-      | Legacy g' => simp [Fresh]
-      | Transaction g' t' =>
-        simp only
-        step with TransactionId.same_spec as ⟨ r, hr ⟩
-        intro h
-        refine ⟨g, t, rfl, fun g'' t'' he => ?_⟩
-        simp only [Option.some.injEq, selection.SelectionIdentity.Transaction.injEq] at he
-        obtain ⟨-, rfl⟩ := he
-        intro heq
-        simp_all
 
 theorem admit_spec (p : rollback.PlanFacts) :
     rollback.admit p ⦃ o => o = none → Admitted p ⦄ := by

@@ -1,7 +1,7 @@
 //! Versioned per-intent records. A single transition rewrites one small record,
 //! not the immutable action plan or the other intents' outcomes.
 use super::model::{ActivationId, IntentId};
-use gripsack_policy::activation::{AttemptNumber, IntentState};
+use gripsack_kernel::activation::{AttemptNumber, IntentState};
 use gripsack_process::{ProcessDisposition, ProcessReceipt};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::io;

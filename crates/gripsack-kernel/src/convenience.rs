@@ -1137,3 +1137,260 @@ impl fmt::Debug for Block {
             .finish()
     }
 }
+
+// ---- the activation machine and publication (plan/0056 F2 step 5) ----------
+
+use crate::activation::{
+    ActivationState, AttemptNumber, BatchFacts, Command as ActivationCommand,
+    Event as ActivationEvent, HookResult, IntentState, Mode as ActivationMode,
+    Outcome as ActivationOutcome, Phase as ActivationPhase, Refusal as ActivationRefusal,
+    StartDecision,
+};
+use crate::publication::{Allocation, Commit, CommitFacts, CommitRefusal, FloorAction};
+
+copy_impls!(
+    AttemptNumber,
+    IntentState,
+    HookResult,
+    StartDecision,
+    BatchFacts,
+    ActivationMode,
+    ActivationOutcome,
+    ActivationRefusal,
+    ActivationCommand,
+    ActivationEvent,
+    ActivationPhase,
+    ActivationState,
+    Allocation,
+    FloorAction,
+    CommitFacts,
+    CommitRefusal,
+    Commit,
+);
+
+fn same_attempt(a: &Option<AttemptNumber>, b: &Option<AttemptNumber>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.same(*b),
+        _ => false,
+    }
+}
+
+same_eq!(
+    AttemptNumber => |a, b| a.same(*b),
+    IntentState => |a, b| match (a, b) {
+        (IntentState::Pending, IntentState::Pending) => true,
+        (IntentState::Started { attempt: a }, IntentState::Started { attempt: b })
+        | (IntentState::Succeeded { attempt: a }, IntentState::Succeeded { attempt: b })
+        | (IntentState::Failed { attempt: a }, IntentState::Failed { attempt: b }) => a.same(*b),
+        (
+            IntentState::Superseded { last_attempt: a },
+            IntentState::Superseded { last_attempt: b },
+        ) => same_attempt(a, b),
+        _ => false,
+    },
+    HookResult => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    StartDecision => |a, b| match (a, b) {
+        (StartDecision::Start(a), StartDecision::Start(b)) => a.same(*b),
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
+    ActivationMode => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    ActivationOutcome => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    ActivationPhase => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    ActivationRefusal => |a, b| match (a, b) {
+        (ActivationRefusal::Exhausted { intent: a }, ActivationRefusal::Exhausted { intent: b })
+        | (ActivationRefusal::Drifted { intent: a }, ActivationRefusal::Drifted { intent: b }) => {
+            a == b
+        }
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
+    ActivationCommand => |a, b| match (a, b) {
+        (ActivationCommand::Authorize(a), ActivationCommand::Authorize(b)) => a == b,
+        (ActivationCommand::ReadIntent(a), ActivationCommand::ReadIntent(b)) => a == b,
+        (
+            ActivationCommand::Persist { intent: a, state: x },
+            ActivationCommand::Persist { intent: b, state: y },
+        ) => a == b && x == y,
+        (
+            ActivationCommand::RunHook { intent: a, attempt: x, expect: s },
+            ActivationCommand::RunHook { intent: b, attempt: y, expect: t },
+        ) => a == b && x == y && s == t,
+        (ActivationCommand::Finish(a), ActivationCommand::Finish(b)) => a == b,
+        (ActivationCommand::Abort(a), ActivationCommand::Abort(b)) => a == b,
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
+    FloorAction => |a, b| match (a, b) {
+        (FloorAction::Raise(a), FloorAction::Raise(b)) => a == b,
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
+    CommitRefusal => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Commit => |a, b| match (a, b) {
+        (Commit::Refuse(a), Commit::Refuse(b)) => a == b,
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
+);
+
+impl fmt::Debug for AttemptNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.value().fmt(f)
+    }
+}
+
+impl fmt::Display for AttemptNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.value().fmt(f)
+    }
+}
+
+impl fmt::Debug for IntentState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IntentState::Pending => f.write_str("Pending"),
+            IntentState::Started { attempt } => write!(f, "Started({attempt:?})"),
+            IntentState::Succeeded { attempt } => write!(f, "Succeeded({attempt:?})"),
+            IntentState::Failed { attempt } => write!(f, "Failed({attempt:?})"),
+            IntentState::Superseded { last_attempt } => {
+                write!(f, "Superseded({last_attempt:?})")
+            }
+        }
+    }
+}
+
+impl fmt::Debug for StartDecision {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StartDecision::Start(attempt) => write!(f, "Start({attempt:?})"),
+            StartDecision::Terminal => f.write_str("Terminal"),
+            StartDecision::Exhausted => f.write_str("Exhausted"),
+        }
+    }
+}
+
+unit_debug!(
+    HookResult { Succeeded, Failed },
+    ActivationMode { Run, Supersede },
+    ActivationOutcome {
+        Nothing,
+        Activated,
+        Superseded
+    },
+    ActivationPhase {
+        Start,
+        ReadingBatch,
+        ReadingCurrent,
+        Authorizing,
+        ReadingIntent,
+        Superseding,
+        Starting,
+        Running,
+        Settling,
+        Archiving,
+        Clearing,
+        Finished,
+        Aborted
+    },
+    CommitRefusal {
+        Reused,
+        Misbound,
+        BelowFloor,
+        Exists
+    },
+);
+
+impl fmt::Debug for ActivationRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ActivationRefusal::Exhausted { intent } => write!(f, "Exhausted({intent})"),
+            ActivationRefusal::Drifted { intent } => write!(f, "Drifted({intent})"),
+            ActivationRefusal::Malformed => f.write_str("Malformed"),
+            ActivationRefusal::Failed => f.write_str("Failed"),
+            ActivationRefusal::Protocol => f.write_str("Protocol"),
+        }
+    }
+}
+
+impl fmt::Debug for BatchFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BatchFacts")
+            .field("selection", &self.selection)
+            .field("intents", &self.intents)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ActivationCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ActivationCommand::ReadBatch => f.write_str("ReadBatch"),
+            ActivationCommand::ReadCurrent => f.write_str("ReadCurrent"),
+            ActivationCommand::Authorize(selection) => write!(f, "Authorize({selection:?})"),
+            ActivationCommand::ReadIntent(intent) => write!(f, "ReadIntent({intent})"),
+            ActivationCommand::Persist { intent, state } => {
+                write!(f, "Persist({intent}, {state:?})")
+            }
+            ActivationCommand::RunHook {
+                intent,
+                attempt,
+                expect,
+            } => write!(f, "RunHook({intent}, {attempt:?}, {expect:?})"),
+            ActivationCommand::Archive => f.write_str("Archive"),
+            ActivationCommand::Clear => f.write_str("Clear"),
+            ActivationCommand::Finish(outcome) => write!(f, "Finish({outcome:?})"),
+            ActivationCommand::Abort(refusal) => write!(f, "Abort({refusal:?})"),
+        }
+    }
+}
+
+impl fmt::Debug for ActivationEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ActivationEvent::Start => f.write_str("Start"),
+            ActivationEvent::NoBatch => f.write_str("NoBatch"),
+            ActivationEvent::BatchRead(batch) => write!(f, "BatchRead({batch:?})"),
+            ActivationEvent::CurrentRead(current) => write!(f, "CurrentRead({current:?})"),
+            ActivationEvent::IntentRead(state) => write!(f, "IntentRead({state:?})"),
+            ActivationEvent::Done => f.write_str("Done"),
+            ActivationEvent::Returned(result) => write!(f, "Returned({result:?})"),
+            ActivationEvent::Failed(failure) => write!(f, "Failed({failure:?})"),
+        }
+    }
+}
+
+impl fmt::Debug for ActivationState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ActivationState")
+            .field("phase", &self.phase)
+            .field("mode", &self.mode)
+            .field("batch", &self.batch)
+            .field("current", &self.current)
+            .field("index", &self.index)
+            .field("record", &self.record)
+            .finish()
+    }
+}
+
+impl Default for ActivationState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Debug for FloorAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FloorAction::Nothing => f.write_str("Nothing"),
+            FloorAction::Seal => f.write_str("Seal"),
+            FloorAction::Raise(floor) => write!(f, "Raise({floor:?})"),
+        }
+    }
+}
+
+impl fmt::Debug for Commit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Commit::Vacuous => f.write_str("Vacuous"),
+            Commit::Publish => f.write_str("Publish"),
+            Commit::Refuse(why) => write!(f, "Refuse({why:?})"),
+        }
+    }
+}

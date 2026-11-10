@@ -1,16 +1,17 @@
-//! Persistent intent authority. Only a durably recorded Started transition
-//! yields a launch permit; only a matching returned permit can settle it.
+//! Persistent intent records, executed for the kernel's activation machine
+//! (`gripsack_kernel::activation`): each method is one command. Only a
+//! durably recorded Started transition yields a launch permit.
 use super::{
     PendingIntent,
-    model::{self, ActivationId, EffectiveIntent, IdentityOrigin, IntentId, IntentOrdinal, Plan},
+    model::{self, ActivationId, EffectiveIntent, IdentityOrigin, IntentId, Plan},
     outcome::{IntentFailure, StateRecord},
     pointer::{PendingPointer, PointerRecord},
     storage::{self, Access, RecordKind},
 };
 use crate::{journal::JournalRun, private_state};
 use gripsack_fs::Dir;
+use gripsack_kernel::activation::{AttemptNumber, BatchFacts, IntentState, terminal};
 use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
-use gripsack_policy::activation::{self, AttemptNumber, IntentState, Outcome, StartDecision};
 use gripsack_process::{ProcessReceipt, Sha256Digest};
 use serde::{Deserialize, Serialize};
 use std::{io, path::Path};
@@ -42,9 +43,7 @@ struct ReceiptReference<'a> {
 
 /// Opaque, non-cloneable authority for precisely one persisted attempt.
 pub struct LaunchPermit {
-    instance: ActivationId,
     intent: IntentId,
-    ordinal: IntentOrdinal,
     attempt: AttemptNumber,
 }
 impl LaunchPermit {
@@ -54,12 +53,6 @@ impl LaunchPermit {
     pub fn attempt(&self) -> AttemptNumber {
         self.attempt
     }
-}
-
-pub struct ReadyActivation {
-    batch: ActivationBatch,
-    cursor: usize,
-    active: Option<IntentOrdinal>,
 }
 
 pub fn has_pending(home: &Dir) -> io::Result<bool> {
@@ -243,7 +236,7 @@ impl ActivationBatch {
             }
             for (state, intent) in receipt.outcomes.iter().zip(&plan.intents) {
                 state.admit(plan.version, instance, intent)?;
-                if !terminal(state.state) {
+                if !terminal(&state.state) {
                     return Err(invalid("archived activation has an unsettled intent"));
                 }
             }
@@ -272,39 +265,52 @@ impl ActivationBatch {
         })
     }
 
-    /// The lifecycle lock is held by the caller. A mismatching selection is
-    /// explicit supersession, never authority to run a saved action.
-    pub fn authorize(
-        mut self,
-        home: &Dir,
-        home_path: &Path,
-    ) -> io::Result<Option<ReadyActivation>> {
-        let current = crate::generations::current_selection_in(home_path, home)?;
-        if current.as_ref() != Some(&self.plan.selection) {
-            for index in 0..self.states.len() {
-                let prior = &self.states[index];
-                let next = activation::supersede(&prior.state);
-                if next != prior.state {
-                    let state = StateRecord {
-                        state: next,
-                        ..StateRecord::pending(prior.version, prior.instance, prior.intent)
-                    };
-                    self.persist(index, state)?;
-                }
-            }
-            self.archive_and_clear(home)?;
-            return Ok(None);
+    /// The batch as the kernel's activation machine reads it.
+    pub fn facts(&self) -> BatchFacts {
+        BatchFacts {
+            selection: self.plan.selection,
+            // MAX_INTENTS bounds every admitted plan well below u32::MAX
+            intents: self.plan.intents.len() as u32,
         }
-        crate::generations::admit_manifest_at(home, home_path, self.plan.selection.generation())?;
-        gripsack_fs::fsync_dir(home, Path::new("."))?;
-        Ok(Some(ReadyActivation {
-            batch: self,
-            cursor: 0,
-            active: None,
-        }))
     }
 
-    fn persist(&mut self, index: usize, next: StateRecord) -> io::Result<()> {
+    /// Intent `index`'s durable record.
+    pub fn record(&self, index: u32) -> io::Result<IntentState> {
+        self.states
+            .get(index as usize)
+            .map(|record| record.state)
+            .ok_or_else(|| invalid("unknown activation intent ordinal"))
+    }
+
+    /// `Authorize`: admit the selected generation's manifest and seal the
+    /// home before any saved action runs. The caller holds the lifecycle
+    /// lock; the kernel issues this only when `current` is the batch's exact
+    /// selection.
+    pub fn authorize(&self, home: &Dir, home_path: &Path) -> io::Result<()> {
+        crate::generations::admit_manifest_at(home, home_path, self.plan.selection.generation())?;
+        gripsack_fs::fsync_dir(home, Path::new("."))
+    }
+
+    /// `Persist`: write intent `index`'s record durably (file and directory
+    /// barrier). A terminal outcome carries the attempt's process receipts.
+    pub fn persist(
+        &mut self,
+        index: u32,
+        state: IntentState,
+        processes: Vec<ProcessReceipt>,
+        failure: Option<IntentFailure>,
+    ) -> io::Result<()> {
+        let index = index as usize;
+        let prior = self
+            .states
+            .get(index)
+            .ok_or_else(|| invalid("unknown activation intent ordinal"))?;
+        let next = StateRecord {
+            state,
+            processes,
+            failure,
+            ..StateRecord::pending(prior.version, prior.instance, prior.intent)
+        };
         next.admit(
             self.plan.version,
             self.plan.instance,
@@ -320,23 +326,52 @@ impl ActivationBatch {
         Ok(())
     }
 
-    fn archive_and_clear(self, home: &Dir) -> io::Result<()> {
-        if self.states.iter().any(|record| !terminal(record.state)) {
+    /// `RunHook`: the launch authority for attempt `attempt` of intent
+    /// `index`, granted only while that intent's durable record is exactly
+    /// `Started { attempt }`.
+    pub fn launch(
+        &self,
+        index: u32,
+        attempt: AttemptNumber,
+    ) -> io::Result<(LaunchPermit, &EffectiveIntent)> {
+        if self.record(index)? != (IntentState::Started { attempt }) {
+            return Err(invalid("activation attempt is not durably started"));
+        }
+        let intent = &self.plan.intents[index as usize];
+        Ok((
+            LaunchPermit {
+                intent: intent.id,
+                attempt,
+            },
+            intent,
+        ))
+    }
+
+    /// `Archive`: write the receipt binding every terminal outcome to the
+    /// plan (an archived batch already has one).
+    pub fn archive(&self) -> io::Result<()> {
+        if self.states.iter().any(|record| !terminal(&record.state)) {
             return Err(invalid("activation still has unsettled intents"));
         }
-        if !self.archived {
-            storage::write(
-                &self.directory,
-                Path::new(storage::RECEIPT),
-                &ReceiptReference {
-                    version: self.plan.version,
-                    instance: self.plan.instance,
-                    plan_sha256: self.plan_digest,
-                    outcomes: &self.states,
-                },
-                RecordKind::Receipt,
-            )?;
+        if self.archived {
+            return Ok(());
         }
+        storage::write(
+            &self.directory,
+            Path::new(storage::RECEIPT),
+            &ReceiptReference {
+                version: self.plan.version,
+                instance: self.plan.instance,
+                plan_sha256: self.plan_digest,
+                outcomes: &self.states,
+            },
+            RecordKind::Receipt,
+        )
+    }
+
+    /// `Clear`: remove the pending pointer durably, only if it still names
+    /// this batch.
+    pub fn clear(&self, home: &Dir) -> io::Result<()> {
         let pointer: PendingPointer = storage::required(
             home,
             Path::new(storage::POINTER),
@@ -354,91 +389,6 @@ impl ActivationBatch {
     }
 }
 
-impl ReadyActivation {
-    pub fn next_attempt(&mut self) -> io::Result<Option<(LaunchPermit, &EffectiveIntent)>> {
-        if self.active.is_some() {
-            return Err(invalid("an activation attempt is still unsettled"));
-        }
-        while self.cursor < self.batch.plan.intents.len() {
-            let index = self.cursor;
-            self.cursor += 1;
-            let record = &self.batch.states[index];
-            let attempt = match activation::next_attempt(&record.state) {
-                StartDecision::Terminal => continue,
-                StartDecision::Exhausted => {
-                    return Err(invalid(
-                        "activation attempt counter exhausted; evidence retained",
-                    ));
-                }
-                StartDecision::Start(attempt) => attempt,
-            };
-            let next = StateRecord {
-                state: IntentState::Started { attempt },
-                ..StateRecord::pending(record.version, record.instance, record.intent)
-            };
-            self.batch.persist(index, next)?;
-            let intent = &self.batch.plan.intents[index];
-            self.active = Some(intent.ordinal);
-            return Ok(Some((
-                LaunchPermit {
-                    instance: self.batch.plan.instance,
-                    intent: intent.id,
-                    ordinal: intent.ordinal,
-                    attempt,
-                },
-                intent,
-            )));
-        }
-        Ok(None)
-    }
-
-    pub fn finish(
-        &mut self,
-        permit: LaunchPermit,
-        outcome: Outcome,
-        processes: Vec<ProcessReceipt>,
-        failure: Option<IntentFailure>,
-    ) -> io::Result<()> {
-        if self.active != Some(permit.ordinal) || self.batch.plan.instance != permit.instance {
-            return Err(invalid(
-                "activation result does not own the in-flight attempt",
-            ));
-        }
-        let index = permit.ordinal.index();
-        let current = self
-            .batch
-            .states
-            .get(index)
-            .ok_or_else(|| invalid("unknown activation intent ordinal"))?;
-        if current.intent != permit.intent {
-            return Err(invalid("activation result changed its intent identity"));
-        }
-        let state = activation::finish_attempt(&current.state, permit.attempt, outcome)
-            .ok_or_else(|| invalid("activation result is not for the current attempt"))?;
-        let next = StateRecord {
-            version: self.batch.plan.version,
-            instance: permit.instance,
-            intent: permit.intent,
-            state,
-            processes,
-            failure,
-        };
-        self.batch.persist(index, next)?;
-        self.active = None;
-        Ok(())
-    }
-
-    pub fn archive(self, home: &Dir) -> io::Result<()> {
-        if self.active.is_some() {
-            return Err(invalid("activation outcome is not durable"));
-        }
-        self.batch.archive_and_clear(home)
-    }
-}
-
-fn terminal(state: IntentState) -> bool {
-    matches!(activation::next_attempt(&state), StartDecision::Terminal)
-}
 fn state_name(intent: IntentId) -> String {
     format!("{intent}.json")
 }

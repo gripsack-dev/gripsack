@@ -20,6 +20,772 @@ set_option maxRecDepth 2048
 
 namespace gripsack_kernel
 
+/-- [gripsack_kernel::activation::AttemptNumber]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 44:0-46:1
+    Visibility: public -/
+structure activation.AttemptNumber where
+  number : Std.U64
+
+/-- [gripsack_kernel::activation::{gripsack_kernel::activation::AttemptNumber}::admit]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 50:4-56:5
+    Visibility: public -/
+def activation.AttemptNumber.admit
+  (number : Std.U64) : Result (Option activation.AttemptNumber) := do
+  if number = 0#u64
+  then ok none
+  else ok (some { number })
+
+/-- [gripsack_kernel::activation::{gripsack_kernel::activation::AttemptNumber}::first]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 58:4-60:5
+    Visibility: public -/
+def activation.AttemptNumber.first : Result activation.AttemptNumber := do
+  ok { number := 1#u64 }
+
+/-- [gripsack_kernel::activation::{gripsack_kernel::activation::AttemptNumber}::value]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 62:4-64:5
+    Visibility: public -/
+def activation.AttemptNumber.value
+  (self : activation.AttemptNumber) : Result Std.U64 := do
+  ok self.number
+
+/-- [gripsack_kernel::activation::{gripsack_kernel::activation::AttemptNumber}::same]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 66:4-68:5
+    Visibility: public -/
+def activation.AttemptNumber.same
+  (self : activation.AttemptNumber) (other : activation.AttemptNumber) :
+  Result Bool
+  := do
+  ok (self.number = other.number)
+
+/-- [gripsack_kernel::activation::{gripsack_kernel::activation::AttemptNumber}::checked_next]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 70:4-78:5
+    Visibility: public -/
+def activation.AttemptNumber.checked_next
+  (self : activation.AttemptNumber) :
+  Result (Option activation.AttemptNumber)
+  := do
+  if self.number = core.num.U64.MAX
+  then ok none
+  else let i ← self.number + 1#u64
+       ok (some { number := i })
+
+/-- [gripsack_kernel::activation::IntentState]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 82:0-100:1
+    Visibility: public -/
+@[discriminant isize]
+inductive activation.IntentState where
+| Pending : activation.IntentState
+| Started : activation.AttemptNumber → activation.IntentState
+| Succeeded : activation.AttemptNumber → activation.IntentState
+| Failed : activation.AttemptNumber → activation.IntentState
+| Superseded : Option activation.AttemptNumber → activation.IntentState
+
+/-- [gripsack_kernel::activation::HookResult]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 103:0-106:1
+    Visibility: public -/
+@[discriminant isize]
+inductive activation.HookResult where
+| Succeeded : activation.HookResult
+| Failed : activation.HookResult
+
+/-- [gripsack_kernel::activation::StartDecision]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 109:0-115:1
+    Visibility: public -/
+@[discriminant isize]
+inductive activation.StartDecision where
+| Start : activation.AttemptNumber → activation.StartDecision
+| Terminal : activation.StartDecision
+| Exhausted : activation.StartDecision
+
+/-- [gripsack_kernel::activation::terminal]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 118:0-125:1
+    Visibility: public -/
+def activation.terminal (state : activation.IntentState) : Result Bool := do
+  match state with
+  | activation.IntentState.Pending => ok false
+  | activation.IntentState.Started _ => ok false
+  | activation.IntentState.Succeeded _ => ok true
+  | activation.IntentState.Failed _ => ok true
+  | activation.IntentState.Superseded _ => ok true
+
+/-- [gripsack_kernel::activation::last_attempt]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 128:0-136:1
+    Visibility: public -/
+def activation.last_attempt
+  (state : activation.IntentState) :
+  Result (Option activation.AttemptNumber)
+  := do
+  match state with
+  | activation.IntentState.Pending => ok none
+  | activation.IntentState.Started attempt => ok (some attempt)
+  | activation.IntentState.Succeeded attempt => ok (some attempt)
+  | activation.IntentState.Failed attempt => ok (some attempt)
+  | activation.IntentState.Superseded last_attempt => ok last_attempt
+
+/-- [gripsack_kernel::activation::next_attempt]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 141:0-152:1
+    Visibility: public -/
+def activation.next_attempt
+  (state : activation.IntentState) : Result activation.StartDecision := do
+  match state with
+  | activation.IntentState.Pending =>
+    let an ← activation.AttemptNumber.first
+    ok (activation.StartDecision.Start an)
+  | activation.IntentState.Started attempt =>
+    let o ← activation.AttemptNumber.checked_next attempt
+    match o with
+    | none => ok activation.StartDecision.Exhausted
+    | some next => ok (activation.StartDecision.Start next)
+  | activation.IntentState.Succeeded _ => ok activation.StartDecision.Terminal
+  | activation.IntentState.Failed _ => ok activation.StartDecision.Terminal
+  | activation.IntentState.Superseded _ => ok activation.StartDecision.Terminal
+
+/-- [gripsack_kernel::activation::finish_attempt]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 157:0-175:1
+    Visibility: public -/
+def activation.finish_attempt
+  (state : activation.IntentState) (attempt : activation.AttemptNumber)
+  (result : activation.HookResult) :
+  Result (Option activation.IntentState)
+  := do
+  match state with
+  | activation.IntentState.Pending => ok none
+  | activation.IntentState.Started active =>
+    let b ← activation.AttemptNumber.same active attempt
+    if b
+    then
+      match result with
+      | activation.HookResult.Succeeded =>
+        ok (some (activation.IntentState.Succeeded attempt))
+      | activation.HookResult.Failed =>
+        ok (some (activation.IntentState.Failed attempt))
+    else ok none
+  | activation.IntentState.Succeeded _ => ok none
+  | activation.IntentState.Failed _ => ok none
+  | activation.IntentState.Superseded _ => ok none
+
+/-- [gripsack_kernel::activation::supersede]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 179:0-191:1
+    Visibility: public -/
+def activation.supersede
+  (state : activation.IntentState) : Result activation.IntentState := do
+  match state with
+  | activation.IntentState.Pending =>
+    ok (activation.IntentState.Superseded none)
+  | activation.IntentState.Started attempt =>
+    ok (activation.IntentState.Superseded (some attempt))
+  | activation.IntentState.Succeeded _ => ok state
+  | activation.IntentState.Failed _ => ok state
+  | activation.IntentState.Superseded _ => ok state
+
+/-- [gripsack_kernel::selection::TransactionId]
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 28:0-30:1
+    Visibility: public -/
+structure selection.TransactionId where
+  bytes : Array Std.U8 32#usize
+
+/-- [gripsack_kernel::generation::GenerationId]
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 10:0-12:1
+    Visibility: public -/
+structure generation.GenerationId where
+  number : Std.U64
+
+/-- [gripsack_kernel::selection::SelectionIdentity]
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 56:0-64:1
+    Visibility: public -/
+@[discriminant isize]
+inductive selection.SelectionIdentity where
+| Legacy : generation.GenerationId → selection.SelectionIdentity
+| Transaction :
+  generation.GenerationId →
+  selection.TransactionId →
+  selection.SelectionIdentity
+
+/-- [gripsack_kernel::activation::BatchFacts]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 194:0-199:1
+    Visibility: public -/
+structure activation.BatchFacts where
+  selection : selection.SelectionIdentity
+  intents : Std.U32
+
+/-- [gripsack_kernel::activation::Mode]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 202:0-205:1
+    Visibility: public -/
+@[discriminant isize]
+inductive activation.Mode where
+| Run : activation.Mode
+| Supersede : activation.Mode
+
+/-- [gripsack_kernel::activation::Outcome]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 207:0-214:1
+    Visibility: public -/
+@[discriminant isize]
+inductive activation.Outcome where
+| Nothing : activation.Outcome
+| Activated : activation.Outcome
+| Superseded : activation.Outcome
+
+/-- [gripsack_kernel::activation::Refusal]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 218:0-229:1
+    Visibility: public -/
+@[discriminant isize]
+inductive activation.Refusal where
+| Exhausted : Std.U32 → activation.Refusal
+| Drifted : Std.U32 → activation.Refusal
+| Malformed : activation.Refusal
+| Failed : activation.Refusal
+| Protocol : activation.Refusal
+
+/-- [gripsack_kernel::activation::Command]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 231:0-261:1
+    Visibility: public -/
+@[discriminant isize]
+inductive activation.Command where
+| ReadBatch : activation.Command
+| ReadCurrent : activation.Command
+| Authorize : selection.SelectionIdentity → activation.Command
+| ReadIntent : Std.U32 → activation.Command
+| Persist : Std.U32 → activation.IntentState → activation.Command
+| RunHook :
+  Std.U32 →
+  activation.AttemptNumber →
+  selection.SelectionIdentity →
+  activation.Command
+| Archive : activation.Command
+| Clear : activation.Command
+| Finish : activation.Outcome → activation.Command
+| Abort : activation.Refusal → activation.Command
+
+/-- [gripsack_kernel::recover::Failure]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 293:0-298:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Failure where
+| Drift : recover.Failure
+| Io : Std.I32 → recover.Failure
+
+/-- [gripsack_kernel::activation::Event]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 263:0-272:1
+    Visibility: public -/
+@[discriminant isize]
+inductive activation.Event where
+| Start : activation.Event
+| NoBatch : activation.Event
+| BatchRead : activation.BatchFacts → activation.Event
+| CurrentRead : Option selection.SelectionIdentity → activation.Event
+| IntentRead : activation.IntentState → activation.Event
+| Done : activation.Event
+| Returned : activation.HookResult → activation.Event
+| Failed : recover.Failure → activation.Event
+
+/-- [gripsack_kernel::activation::Phase]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 274:0-292:1
+    Visibility: public -/
+@[discriminant isize]
+inductive activation.Phase where
+| Start : activation.Phase
+| ReadingBatch : activation.Phase
+| ReadingCurrent : activation.Phase
+| Authorizing : activation.Phase
+| ReadingIntent : activation.Phase
+| Superseding : activation.Phase
+| Starting : activation.Phase
+| Running : activation.Phase
+| Settling : activation.Phase
+| Archiving : activation.Phase
+| Clearing : activation.Phase
+| Finished : activation.Phase
+| Aborted : activation.Phase
+
+/-- [gripsack_kernel::activation::ActivationState]
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 294:0-304:1
+    Visibility: public -/
+structure activation.ActivationState where
+  phase : activation.Phase
+  mode : activation.Mode
+  batch : activation.BatchFacts
+  current : Option selection.SelectionIdentity
+  index : Std.U32
+  record : activation.IntentState
+
+/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::new]:
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 16:4-18:5
+    Visibility: public -/
+def generation.GenerationId.new
+  (number : Std.U64) : Result generation.GenerationId := do
+  ok { number }
+
+/-- [gripsack_kernel::activation::{gripsack_kernel::activation::ActivationState}::new]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 307:4-321:5
+    Visibility: public -/
+def activation.ActivationState.new : Result activation.ActivationState := do
+  let gi ← generation.GenerationId.new 0#u64
+  ok
+    {
+      phase := activation.Phase.Start,
+      mode := activation.Mode.Supersede,
+      batch :=
+        {
+          selection := (selection.SelectionIdentity.Legacy gi),
+          intents := 0#u32
+        },
+      current := none,
+      index := 0#u32,
+      record := activation.IntentState.Pending
+    }
+
+/-- [gripsack_kernel::selection::TRANSACTION_ID_BYTES]
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 26:0-26:43
+    Visibility: public -/
+@[global_simps, irreducible]
+def selection.TRANSACTION_ID_BYTES : Std.Usize := 32#usize
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 44:8-51:5
+    Visibility: public -/
+@[rust_loop_body]
+def selection.TransactionId.same_loop.body
+  (self : selection.TransactionId) (other : selection.TransactionId)
+  (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  if i < selection.TRANSACTION_ID_BYTES
+  then
+    let i1 ← Array.index_usize self.bytes i
+    let i2 ← Array.index_usize other.bytes i
+    if i1 != i2
+    then ok (done false)
+    else let i3 ← i + 1#usize
+         ok (cont i3)
+  else ok (done true)
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]: loop 0:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 44:8-51:5
+    Visibility: public -/
+@[rust_loop]
+def selection.TransactionId.same_loop
+  (self : selection.TransactionId) (other : selection.TransactionId)
+  (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => selection.TransactionId.same_loop.body self other i1)
+    i
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 42:4-51:5
+    Visibility: public -/
+@[reducible]
+def selection.TransactionId.same
+  (self : selection.TransactionId) (other : selection.TransactionId) :
+  Result Bool
+  := do
+  selection.TransactionId.same_loop self other 0#usize
+
+/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::same]:
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 26:4-28:5
+    Visibility: public -/
+def generation.GenerationId.same
+  (self : generation.GenerationId) (other : generation.GenerationId) :
+  Result Bool
+  := do
+  ok (self.number = other.number)
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::same]:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 95:4-110:5
+    Visibility: public -/
+def selection.SelectionIdentity.same
+  (self : selection.SelectionIdentity) (other : selection.SelectionIdentity) :
+  Result Bool
+  := do
+  match self with
+  | selection.SelectionIdentity.Legacy a =>
+    match other with
+    | selection.SelectionIdentity.Legacy b => generation.GenerationId.same a b
+    | selection.SelectionIdentity.Transaction _ _ => ok false
+  | selection.SelectionIdentity.Transaction a ta =>
+    match other with
+    | selection.SelectionIdentity.Legacy _ => ok false
+    | selection.SelectionIdentity.Transaction b tb =>
+      let b1 ← generation.GenerationId.same a b
+      if b1
+      then selection.TransactionId.same ta tb
+      else ok false
+
+/-- [gripsack_kernel::activation::bound]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 326:0-331:1
+    Visibility: public -/
+def activation.bound
+  (current : Option selection.SelectionIdentity)
+  (batch : selection.SelectionIdentity) :
+  Result Bool
+  := do
+  match current with
+  | none => ok false
+  | some current1 => selection.SelectionIdentity.same current1 batch
+
+/-- [gripsack_kernel::activation::refuse]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 333:0-336:1 -/
+def activation.refuse
+  (state : activation.ActivationState) (refusal : activation.Refusal) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  ok ({ state with phase := activation.Phase.Aborted },
+    activation.Command.Abort refusal)
+
+/-- [gripsack_kernel::activation::failed_or_protocol]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 338:0-343:1 -/
+def activation.failed_or_protocol
+  (state : activation.ActivationState) (event : activation.Event) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  match event with
+  | activation.Event.Start =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.Event.NoBatch =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.Event.BatchRead _ =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.Event.CurrentRead _ =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.Event.IntentRead _ =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.Event.Done =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.Event.Returned _ =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.Event.Failed _ =>
+    activation.refuse state activation.Refusal.Failed
+
+/-- [gripsack_kernel::activation::proceed]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 346:0-355:1 -/
+def activation.proceed
+  (state : activation.ActivationState) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  if state.index < state.batch.intents
+  then
+    ok ({ state with phase := activation.Phase.ReadingIntent },
+      activation.Command.ReadIntent state.index)
+  else
+    ok ({ state with phase := activation.Phase.Archiving },
+      activation.Command.Archive)
+
+/-- [gripsack_kernel::activation::advance]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 358:0-366:1 -/
+def activation.advance
+  (state : activation.ActivationState) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  let o ← lift (U32.checked_add state.index 1#u32)
+  match o with
+  | none => activation.refuse state activation.Refusal.Malformed
+  | some next => activation.proceed { state with index := next }
+
+/-- [gripsack_kernel::activation::persist]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 368:0-383:1 -/
+def activation.persist
+  (state : activation.ActivationState) (phase : activation.Phase)
+  (record : activation.IntentState) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  ok ({ state with phase, record }, activation.Command.Persist state.index
+    record)
+
+/-- [gripsack_kernel::activation::on_current]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 385:0-400:1 -/
+def activation.on_current
+  (state : activation.ActivationState)
+  (current : Option selection.SelectionIdentity) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  let b ← activation.bound current state.batch.selection
+  if b
+  then
+    ok
+      ({
+         state
+           with
+           phase := activation.Phase.Authorizing,
+           mode := activation.Mode.Run,
+           current,
+           index := 0#u32
+       }, activation.Command.Authorize state.batch.selection)
+  else
+    activation.proceed
+      { state with mode := activation.Mode.Supersede, current, index := 0#u32 }
+
+/-- [gripsack_kernel::activation::on_intent]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 402:0-423:1 -/
+def activation.on_intent
+  (state : activation.ActivationState) (record : activation.IntentState) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  match state.mode with
+  | activation.Mode.Run =>
+    let sd ← activation.next_attempt record
+    match sd with
+    | activation.StartDecision.Start attempt =>
+      activation.persist { state with record } activation.Phase.Starting
+        (activation.IntentState.Started attempt)
+    | activation.StartDecision.Terminal =>
+      activation.advance { state with record }
+    | activation.StartDecision.Exhausted =>
+      activation.refuse { state with record } (activation.Refusal.Exhausted
+        state.index)
+  | activation.Mode.Supersede =>
+    let b ← activation.terminal record
+    if b
+    then activation.advance { state with record }
+    else
+      let is ← activation.supersede record
+      activation.persist { state with record } activation.Phase.Superseding is
+
+/-- [gripsack_kernel::activation::on_started]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 426:0-443:1 -/
+def activation.on_started
+  (state : activation.ActivationState) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  match state.record with
+  | activation.IntentState.Pending =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.IntentState.Started attempt =>
+    ok ({ state with phase := activation.Phase.Running },
+      activation.Command.RunHook state.index attempt state.batch.selection)
+  | activation.IntentState.Succeeded _ =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.IntentState.Failed _ =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.IntentState.Superseded _ =>
+    activation.refuse state activation.Refusal.Protocol
+
+/-- [gripsack_kernel::activation::on_returned]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 445:0-453:1 -/
+def activation.on_returned
+  (state : activation.ActivationState) (result : activation.HookResult) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  match state.record with
+  | activation.IntentState.Pending =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.IntentState.Started attempt =>
+    let o ← activation.finish_attempt state.record attempt result
+    match o with
+    | none => activation.refuse state activation.Refusal.Protocol
+    | some settled =>
+      activation.persist state activation.Phase.Settling settled
+  | activation.IntentState.Succeeded _ =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.IntentState.Failed _ =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.IntentState.Superseded _ =>
+    activation.refuse state activation.Refusal.Protocol
+
+/-- [gripsack_kernel::activation::on_launch_failed]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 455:0-463:1 -/
+def activation.on_launch_failed
+  (state : activation.ActivationState) (failure : recover.Failure) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  match failure with
+  | recover.Failure.Drift =>
+    activation.refuse state (activation.Refusal.Drifted state.index)
+  | recover.Failure.Io _ => activation.refuse state activation.Refusal.Failed
+
+/-- [gripsack_kernel::activation::finished]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 465:0-472:1 -/
+def activation.finished
+  (state : activation.ActivationState) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  match state.mode with
+  | activation.Mode.Run =>
+    ok ({ state with phase := activation.Phase.Finished },
+      activation.Command.Finish activation.Outcome.Activated)
+  | activation.Mode.Supersede =>
+    ok ({ state with phase := activation.Phase.Finished },
+      activation.Command.Finish activation.Outcome.Superseded)
+
+/-- [gripsack_kernel::activation::activation_step]:
+    Source: 'crates/gripsack-kernel/src/activation.rs', lines 478:0-541:1
+    Visibility: public -/
+def activation.activation_step
+  (state : activation.ActivationState) (event : activation.Event) :
+  Result (activation.ActivationState × activation.Command)
+  := do
+  match state.phase with
+  | activation.Phase.Start =>
+    match event with
+    | activation.Event.Start =>
+      ok ({ state with phase := activation.Phase.ReadingBatch },
+        activation.Command.ReadBatch)
+    | activation.Event.NoBatch =>
+      activation.failed_or_protocol state activation.Event.NoBatch
+    | activation.Event.BatchRead _ => activation.failed_or_protocol state event
+    | activation.Event.CurrentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.IntentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.Done =>
+      activation.failed_or_protocol state activation.Event.Done
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.ReadingBatch =>
+    match event with
+    | activation.Event.Start =>
+      activation.failed_or_protocol state activation.Event.Start
+    | activation.Event.NoBatch =>
+      ok ({ state with phase := activation.Phase.Finished },
+        activation.Command.Finish activation.Outcome.Nothing)
+    | activation.Event.BatchRead batch =>
+      ok ({ state with phase := activation.Phase.ReadingCurrent, batch },
+        activation.Command.ReadCurrent)
+    | activation.Event.CurrentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.IntentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.Done =>
+      activation.failed_or_protocol state activation.Event.Done
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.ReadingCurrent =>
+    match event with
+    | activation.Event.Start =>
+      activation.failed_or_protocol state activation.Event.Start
+    | activation.Event.NoBatch =>
+      activation.failed_or_protocol state activation.Event.NoBatch
+    | activation.Event.BatchRead _ => activation.failed_or_protocol state event
+    | activation.Event.CurrentRead current =>
+      activation.on_current state current
+    | activation.Event.IntentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.Done =>
+      activation.failed_or_protocol state activation.Event.Done
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.Authorizing =>
+    match event with
+    | activation.Event.Start =>
+      activation.failed_or_protocol state activation.Event.Start
+    | activation.Event.NoBatch =>
+      activation.failed_or_protocol state activation.Event.NoBatch
+    | activation.Event.BatchRead _ => activation.failed_or_protocol state event
+    | activation.Event.CurrentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.IntentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.Done => activation.proceed state
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.ReadingIntent =>
+    match event with
+    | activation.Event.Start =>
+      activation.failed_or_protocol state activation.Event.Start
+    | activation.Event.NoBatch =>
+      activation.failed_or_protocol state activation.Event.NoBatch
+    | activation.Event.BatchRead _ => activation.failed_or_protocol state event
+    | activation.Event.CurrentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.IntentRead record => activation.on_intent state record
+    | activation.Event.Done =>
+      activation.failed_or_protocol state activation.Event.Done
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.Superseding =>
+    match event with
+    | activation.Event.Start =>
+      activation.failed_or_protocol state activation.Event.Start
+    | activation.Event.NoBatch =>
+      activation.failed_or_protocol state activation.Event.NoBatch
+    | activation.Event.BatchRead _ => activation.failed_or_protocol state event
+    | activation.Event.CurrentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.IntentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.Done => activation.advance state
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.Starting =>
+    match event with
+    | activation.Event.Start =>
+      activation.failed_or_protocol state activation.Event.Start
+    | activation.Event.NoBatch =>
+      activation.failed_or_protocol state activation.Event.NoBatch
+    | activation.Event.BatchRead _ => activation.failed_or_protocol state event
+    | activation.Event.CurrentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.IntentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.Done => activation.on_started state
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.Running =>
+    match event with
+    | activation.Event.Start =>
+      activation.refuse state activation.Refusal.Protocol
+    | activation.Event.NoBatch =>
+      activation.refuse state activation.Refusal.Protocol
+    | activation.Event.BatchRead _ =>
+      activation.refuse state activation.Refusal.Protocol
+    | activation.Event.CurrentRead _ =>
+      activation.refuse state activation.Refusal.Protocol
+    | activation.Event.IntentRead _ =>
+      activation.refuse state activation.Refusal.Protocol
+    | activation.Event.Done =>
+      activation.refuse state activation.Refusal.Protocol
+    | activation.Event.Returned result => activation.on_returned state result
+    | activation.Event.Failed failure =>
+      activation.on_launch_failed state failure
+  | activation.Phase.Settling =>
+    match event with
+    | activation.Event.Start =>
+      activation.failed_or_protocol state activation.Event.Start
+    | activation.Event.NoBatch =>
+      activation.failed_or_protocol state activation.Event.NoBatch
+    | activation.Event.BatchRead _ => activation.failed_or_protocol state event
+    | activation.Event.CurrentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.IntentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.Done => activation.advance state
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.Archiving =>
+    match event with
+    | activation.Event.Start =>
+      activation.failed_or_protocol state activation.Event.Start
+    | activation.Event.NoBatch =>
+      activation.failed_or_protocol state activation.Event.NoBatch
+    | activation.Event.BatchRead _ => activation.failed_or_protocol state event
+    | activation.Event.CurrentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.IntentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.Done =>
+      ok ({ state with phase := activation.Phase.Clearing },
+        activation.Command.Clear)
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.Clearing =>
+    match event with
+    | activation.Event.Start =>
+      activation.failed_or_protocol state activation.Event.Start
+    | activation.Event.NoBatch =>
+      activation.failed_or_protocol state activation.Event.NoBatch
+    | activation.Event.BatchRead _ => activation.failed_or_protocol state event
+    | activation.Event.CurrentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.IntentRead _ =>
+      activation.failed_or_protocol state event
+    | activation.Event.Done => activation.finished state
+    | activation.Event.Returned _ => activation.failed_or_protocol state event
+    | activation.Event.Failed _ => activation.failed_or_protocol state event
+  | activation.Phase.Finished =>
+    activation.refuse state activation.Refusal.Protocol
+  | activation.Phase.Aborted =>
+    activation.refuse state activation.Refusal.Protocol
+
 /-- [gripsack_kernel::block::OPEN_KEY]
     Source: 'crates/gripsack-kernel/src/block.rs', lines 59:0-59:52 -/
 @[global_simps, irreducible]
@@ -2618,12 +3384,6 @@ inductive gc.Mode where
 | Preview : gc.Mode
 | Collect : gc.Mode
 
-/-- [gripsack_kernel::generation::GenerationId]
-    Source: 'crates/gripsack-kernel/src/generation.rs', lines 10:0-12:1
-    Visibility: public -/
-structure generation.GenerationId where
-  number : Std.U64
-
 /-- [gripsack_kernel::generation::GenerationList]
     Source: 'crates/gripsack-kernel/src/generation.rs', lines 82:0-84:1
     Visibility: public -/
@@ -2711,14 +3471,6 @@ structure retention.ManifestFacts where
   id : generation.GenerationId
   predecessors : alloc.vec.Vec generation.GenerationId
   roots : alloc.vec.Vec (alloc.vec.Vec Std.U8)
-
-/-- [gripsack_kernel::recover::Failure]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 293:0-298:1
-    Visibility: public -/
-@[discriminant isize]
-inductive recover.Failure where
-| Drift : recover.Failure
-| Io : Std.I32 → recover.Failure
 
 /-- [gripsack_kernel::gc::Event]
     Source: 'crates/gripsack-kernel/src/gc.rs', lines 131:0-139:1
@@ -2816,15 +3568,6 @@ def retention.Fate.retained (self : retention.Fate) : Result Bool := do
   match self with
   | retention.Fate.Retained => ok true
   | retention.Fate.Retired => ok false
-
-/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::same]:
-    Source: 'crates/gripsack-kernel/src/generation.rs', lines 26:4-28:5
-    Visibility: public -/
-def generation.GenerationId.same
-  (self : generation.GenerationId) (other : generation.GenerationId) :
-  Result Bool
-  := do
-  ok (self.number = other.number)
 
 /-- [gripsack_kernel::retention::contains_generation]: loop body 0:
     Source: 'crates/gripsack-kernel/src/retention.rs', lines 61:4-68:1
@@ -3701,13 +4444,6 @@ def gc.gc_step
   | gc.Phase.Finished => gc.refuse state gc.Refusal.Protocol
   | gc.Phase.Aborted => gc.refuse state gc.Refusal.Protocol
 
-/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::new]:
-    Source: 'crates/gripsack-kernel/src/generation.rs', lines 16:4-18:5
-    Visibility: public -/
-def generation.GenerationId.new
-  (number : Std.U64) : Result generation.GenerationId := do
-  ok { number }
-
 /-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::value]:
     Source: 'crates/gripsack-kernel/src/generation.rs', lines 21:4-23:5
     Visibility: public -/
@@ -4198,6 +4934,194 @@ def ownership.decide_unit
   | recover.Live.Unsupported =>
     ok (ownership.Decision.Refuse ownership.Refusal.Unsupported)
 
+/-- [gripsack_kernel::publication::Allocation]
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 27:0-34:1
+    Visibility: public -/
+structure publication.Allocation where
+  current : Option generation.GenerationId
+  newest : Option generation.GenerationId
+  floor : Option generation.GenerationId
+
+/-- [gripsack_kernel::publication::later]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 37:0-50:1
+    Visibility: public -/
+def publication.later
+  (a : Option generation.GenerationId) (b : Option generation.GenerationId) :
+  Result (Option generation.GenerationId)
+  := do
+  match a with
+  | none => match b with
+            | none => ok none
+            | some _ => ok b
+  | some a1 =>
+    match b with
+    | none => ok a
+    | some b1 =>
+      let i ← generation.GenerationId.value a1
+      let i1 ← generation.GenerationId.value b1
+      if i < i1
+      then ok b
+      else ok a
+
+/-- [gripsack_kernel::publication::above]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 55:0-60:1
+    Visibility: public -/
+def publication.above
+  (number : generation.GenerationId) (floor : Option generation.GenerationId) :
+  Result Bool
+  := do
+  match floor with
+  | none => ok true
+  | some floor1 =>
+    let i ← generation.GenerationId.value floor1
+    let i1 ← generation.GenerationId.value number
+    ok (i < i1)
+
+/-- [gripsack_kernel::publication::allocate]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 64:0-69:1
+    Visibility: public -/
+def publication.allocate
+  (observed : publication.Allocation) :
+  Result (Option generation.GenerationId)
+  := do
+  let o ← publication.later observed.current observed.newest
+  let o1 ← publication.later o observed.floor
+  match o1 with
+  | none => let gi ← generation.GenerationId.new 1#u64
+            ok (some gi)
+  | some top => generation.GenerationId.checked_next top
+
+/-- [gripsack_kernel::publication::FloorAction]
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 72:0-80:1
+    Visibility: public -/
+@[discriminant isize]
+inductive publication.FloorAction where
+| Nothing : publication.FloorAction
+| Seal : publication.FloorAction
+| Raise : generation.GenerationId → publication.FloorAction
+
+/-- [gripsack_kernel::publication::floor_action]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 85:0-99:1
+    Visibility: public -/
+def publication.floor_action
+  (observed : Option generation.GenerationId)
+  (retained : Option generation.GenerationId) :
+  Result publication.FloorAction
+  := do
+  let o ← publication.later observed retained
+  match o with
+  | none => ok publication.FloorAction.Nothing
+  | some floor =>
+    match observed with
+    | none => ok (publication.FloorAction.Raise floor)
+    | some observed1 =>
+      let b ← generation.GenerationId.same observed1 floor
+      if b
+      then ok publication.FloorAction.Seal
+      else ok (publication.FloorAction.Raise floor)
+
+/-- [gripsack_kernel::publication::CommitFacts]
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 102:0-117:1
+    Visibility: public -/
+structure publication.CommitFacts where
+  previous : Option selection.SelectionIdentity
+  reserved : selection.SelectionIdentity
+  allocated : generation.GenerationId
+  floor : Option generation.GenerationId
+  unchanged : Bool
+  touched : Bool
+  «exists» : Bool
+
+/-- [gripsack_kernel::publication::CommitRefusal]
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 119:0-128:1
+    Visibility: public -/
+@[discriminant isize]
+inductive publication.CommitRefusal where
+| Reused : publication.CommitRefusal
+| Misbound : publication.CommitRefusal
+| BelowFloor : publication.CommitRefusal
+| Exists : publication.CommitRefusal
+
+/-- [gripsack_kernel::publication::Commit]
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 130:0-136:1
+    Visibility: public -/
+@[discriminant isize]
+inductive publication.Commit where
+| Vacuous : publication.Commit
+| Publish : publication.Commit
+| Refuse : publication.CommitRefusal → publication.Commit
+
+/-- [gripsack_kernel::selection::fresh]:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 150:0-162:1
+    Visibility: public -/
+def selection.fresh
+  (reselect : selection.SelectionIdentity)
+  (previous : Option selection.SelectionIdentity) :
+  Result Bool
+  := do
+  match reselect with
+  | selection.SelectionIdentity.Legacy _ => ok false
+  | selection.SelectionIdentity.Transaction _ transaction =>
+    match previous with
+    | none => ok true
+    | some si =>
+      match si with
+      | selection.SelectionIdentity.Legacy _ => ok true
+      | selection.SelectionIdentity.Transaction _ replaced =>
+        let b ← selection.TransactionId.same transaction replaced
+        ok (¬ b)
+
+/-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::generation]:
+    Source: 'crates/gripsack-kernel/src/selection.rs', lines 78:4-83:5
+    Visibility: public -/
+def selection.SelectionIdentity.generation
+  (self : selection.SelectionIdentity) : Result generation.GenerationId := do
+  match self with
+  | selection.SelectionIdentity.Legacy generation => ok generation
+  | selection.SelectionIdentity.Transaction generation _ => ok generation
+
+/-- [gripsack_kernel::publication::admit_publication]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 158:0-170:1
+    Visibility: public -/
+def publication.admit_publication
+  (facts : publication.CommitFacts) : Result publication.Commit := do
+  let b ← selection.fresh facts.reserved facts.previous
+  if b
+  then
+    let gi ← selection.SelectionIdentity.generation facts.reserved
+    let b1 ← generation.GenerationId.same gi facts.allocated
+    if b1
+    then
+      let b2 ← publication.above facts.allocated facts.floor
+      if b2
+      then
+        if facts.exists
+        then ok (publication.Commit.Refuse publication.CommitRefusal.Exists)
+        else ok publication.Commit.Publish
+      else ok (publication.Commit.Refuse publication.CommitRefusal.BelowFloor)
+    else ok (publication.Commit.Refuse publication.CommitRefusal.Misbound)
+  else ok (publication.Commit.Refuse publication.CommitRefusal.Reused)
+
+/-- [gripsack_kernel::publication::vacuous]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 149:0-154:1
+    Visibility: public -/
+def publication.vacuous (facts : publication.CommitFacts) : Result Bool := do
+  match facts.previous with
+  | none => ok false
+  | some _ => if facts.unchanged
+              then ok (¬ facts.touched)
+              else ok false
+
+/-- [gripsack_kernel::publication::decide_commit]:
+    Source: 'crates/gripsack-kernel/src/publication.rs', lines 139:0-145:1
+    Visibility: public -/
+def publication.decide_commit
+  (facts : publication.CommitFacts) : Result publication.Commit := do
+  let b ← publication.vacuous facts
+  if b
+  then ok publication.Commit.Vacuous
+  else publication.admit_publication facts
+
 /-- [gripsack_kernel::recover::{gripsack_kernel::recover::Live}::same]:
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 76:4-83:5
     Visibility: public -/
@@ -4262,23 +5186,6 @@ structure recover.EntryFacts where
   before : Option recover.Ident
   intended : recover.Intended
   route : recover.Route
-
-/-- [gripsack_kernel::selection::TransactionId]
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 28:0-30:1
-    Visibility: public -/
-structure selection.TransactionId where
-  bytes : Array Std.U8 32#usize
-
-/-- [gripsack_kernel::selection::SelectionIdentity]
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 56:0-64:1
-    Visibility: public -/
-@[discriminant isize]
-inductive selection.SelectionIdentity where
-| Legacy : generation.GenerationId → selection.SelectionIdentity
-| Transaction :
-  generation.GenerationId →
-  selection.TransactionId →
-  selection.SelectionIdentity
 
 /-- [gripsack_kernel::recover::MarkerFacts]
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 128:0-131:1
@@ -4662,75 +5569,6 @@ structure selection.RecoveryFacts where
   previous : Option selection.SelectionIdentity
   target : selection.SelectionIdentity
   current : Option selection.SelectionIdentity
-
-/-- [gripsack_kernel::selection::TRANSACTION_ID_BYTES]
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 26:0-26:43
-    Visibility: public -/
-@[global_simps, irreducible]
-def selection.TRANSACTION_ID_BYTES : Std.Usize := 32#usize
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 44:8-51:5
-    Visibility: public -/
-@[rust_loop_body]
-def selection.TransactionId.same_loop.body
-  (self : selection.TransactionId) (other : selection.TransactionId)
-  (i : Std.Usize) :
-  Result (ControlFlow Std.Usize Bool)
-  := do
-  if i < selection.TRANSACTION_ID_BYTES
-  then
-    let i1 ← Array.index_usize self.bytes i
-    let i2 ← Array.index_usize other.bytes i
-    if i1 != i2
-    then ok (done false)
-    else let i3 ← i + 1#usize
-         ok (cont i3)
-  else ok (done true)
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]: loop 0:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 44:8-51:5
-    Visibility: public -/
-@[rust_loop]
-def selection.TransactionId.same_loop
-  (self : selection.TransactionId) (other : selection.TransactionId)
-  (i : Std.Usize) :
-  Result Bool
-  := do
-  loop
-    (fun i1 => selection.TransactionId.same_loop.body self other i1)
-    i
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::TransactionId}::same]:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 42:4-51:5
-    Visibility: public -/
-@[reducible]
-def selection.TransactionId.same
-  (self : selection.TransactionId) (other : selection.TransactionId) :
-  Result Bool
-  := do
-  selection.TransactionId.same_loop self other 0#usize
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::same]:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 95:4-110:5
-    Visibility: public -/
-def selection.SelectionIdentity.same
-  (self : selection.SelectionIdentity) (other : selection.SelectionIdentity) :
-  Result Bool
-  := do
-  match self with
-  | selection.SelectionIdentity.Legacy a =>
-    match other with
-    | selection.SelectionIdentity.Legacy b => generation.GenerationId.same a b
-    | selection.SelectionIdentity.Transaction _ _ => ok false
-  | selection.SelectionIdentity.Transaction a ta =>
-    match other with
-    | selection.SelectionIdentity.Legacy _ => ok false
-    | selection.SelectionIdentity.Transaction b tb =>
-      let b1 ← generation.GenerationId.same a b
-      if b1
-      then selection.TransactionId.same ta tb
-      else ok false
 
 /-- [gripsack_kernel::selection::Classification]
     Source: 'crates/gripsack-kernel/src/selection.rs', lines 16:0-24:1
@@ -5397,26 +6235,6 @@ def rollback.lands
     | recover.Live.Obj object => recover.Ident.same ident object
     | recover.Live.Unsupported => ok false
 
-/-- [gripsack_kernel::rollback::fresh]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 370:0-382:1
-    Visibility: public -/
-def rollback.fresh
-  (reselect : selection.SelectionIdentity)
-  (previous : Option selection.SelectionIdentity) :
-  Result Bool
-  := do
-  match reselect with
-  | selection.SelectionIdentity.Legacy _ => ok false
-  | selection.SelectionIdentity.Transaction _ transaction =>
-    match previous with
-    | none => ok true
-    | some si =>
-      match si with
-      | selection.SelectionIdentity.Legacy _ => ok true
-      | selection.SelectionIdentity.Transaction _ replaced =>
-        let b ← selection.TransactionId.same transaction replaced
-        ok (¬ b)
-
 /-- [gripsack_kernel::rollback::admit]:
     Source: 'crates/gripsack-kernel/src/rollback.rs', lines 355:0-366:1
     Visibility: public -/
@@ -5424,14 +6242,14 @@ def rollback.admit
   (plan : rollback.PlanFacts) : Result (Option rollback.Refusal) := do
   match plan.profile with
   | rollback.Profile.Retained =>
-    let b ← rollback.fresh plan.reselect plan.previous
+    let b ← selection.fresh plan.reselect plan.previous
     if b
     then ok none
     else ok (some rollback.Refusal.Reused)
   | rollback.Profile.Missing => ok (some rollback.Refusal.ProfileMissing)
 
 /-- [gripsack_kernel::rollback::refuse]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 384:0-387:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 368:0-371:1 -/
 def rollback.refuse
   (state : rollback.RollbackState) (refusal : rollback.Refusal) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5440,7 +6258,7 @@ def rollback.refuse
     refusal)
 
 /-- [gripsack_kernel::rollback::failed_or_protocol]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 389:0-394:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 373:0-378:1 -/
 def rollback.failed_or_protocol
   (state : rollback.RollbackState) (event : rollback.Event) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5459,7 +6277,7 @@ def rollback.failed_or_protocol
   | rollback.Event.Failed _ => rollback.refuse state rollback.Refusal.Failed
 
 /-- [gripsack_kernel::rollback::proceed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 397:0-407:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 381:0-391:1 -/
 def rollback.proceed
   (state : rollback.RollbackState) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5473,7 +6291,7 @@ def rollback.proceed
       state.plan.reselect)
 
 /-- [gripsack_kernel::rollback::advance]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 410:0-420:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 394:0-404:1 -/
 def rollback.advance
   (state : rollback.RollbackState) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5488,7 +6306,7 @@ def rollback.advance
       { state with index := next, unit := none, install := none }
 
 /-- [gripsack_kernel::rollback::report]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 422:0-433:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 406:0-417:1 -/
 def rollback.report
   (state : rollback.RollbackState) (dest : ids.DestId)
   (settled : rollback.Settled) :
@@ -5498,7 +6316,7 @@ def rollback.report
     state.index dest settled)
 
 /-- [gripsack_kernel::rollback::on_plan]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 435:0-444:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 419:0-428:1 -/
 def rollback.on_plan
   (state : rollback.RollbackState) (plan : rollback.PlanFacts) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5509,7 +6327,7 @@ def rollback.on_plan
   | some refusal => rollback.refuse state refusal
 
 /-- [gripsack_kernel::rollback::on_unit]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 446:0-461:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 430:0-445:1 -/
 def rollback.on_unit
   (state : rollback.RollbackState) (facts : rollback.UnitFacts) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5524,7 +6342,7 @@ def rollback.on_unit
       rollback.Command.Delegate state.index facts.dest)
 
 /-- [gripsack_kernel::rollback::on_observed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 463:0-489:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 447:0-473:1 -/
 def rollback.on_observed
   (state : rollback.RollbackState) (dest : ids.DestId) (live : recover.Live) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5549,7 +6367,7 @@ def rollback.on_observed
     else rollback.refuse state rollback.Refusal.Protocol
 
 /-- [gripsack_kernel::rollback::on_landed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 491:0-509:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 475:0-493:1 -/
 def rollback.on_landed
   (state : rollback.RollbackState) (live : recover.Live) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5568,7 +6386,7 @@ def rollback.on_landed
           facts.dest)
 
 /-- [gripsack_kernel::rollback::on_write_failed]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 511:0-528:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 495:0-512:1 -/
 def rollback.on_write_failed
   (state : rollback.RollbackState) (failure : recover.Failure) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5582,7 +6400,7 @@ def rollback.on_write_failed
   | recover.Failure.Io _ => rollback.refuse state rollback.Refusal.Failed
 
 /-- [gripsack_kernel::rollback::on_delegated]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 530:0-548:1 -/
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 514:0-532:1 -/
 def rollback.on_delegated
   (state : rollback.RollbackState) (event : rollback.Event) :
   Result (rollback.RollbackState × rollback.Command)
@@ -5605,7 +6423,7 @@ def rollback.on_delegated
     | rollback.Event.Failed _ => rollback.failed_or_protocol state event
 
 /-- [gripsack_kernel::rollback::rollback_step]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 554:0-596:1
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 538:0-580:1
     Visibility: public -/
 def rollback.rollback_step
   (state : rollback.RollbackState) (event : rollback.Event) :
@@ -5740,15 +6558,6 @@ def selection.SelectionIdentity.transaction
   Result selection.SelectionIdentity
   := do
   ok (selection.SelectionIdentity.Transaction generation transaction)
-
-/-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::generation]:
-    Source: 'crates/gripsack-kernel/src/selection.rs', lines 78:4-83:5
-    Visibility: public -/
-def selection.SelectionIdentity.generation
-  (self : selection.SelectionIdentity) : Result generation.GenerationId := do
-  match self with
-  | selection.SelectionIdentity.Legacy generation => ok generation
-  | selection.SelectionIdentity.Transaction generation _ => ok generation
 
 /-- [gripsack_kernel::selection::{gripsack_kernel::selection::SelectionIdentity}::transaction_id]:
     Source: 'crates/gripsack-kernel/src/selection.rs', lines 85:4-90:5

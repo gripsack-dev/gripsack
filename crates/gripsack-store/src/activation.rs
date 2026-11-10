@@ -1,4 +1,6 @@
-//! Transaction-bound activation plans and durable per-intent outcomes.
+//! Transaction-bound activation plans and durable per-intent outcomes. The
+//! kernel's activation machine decides every transition; this module stores
+//! them.
 //! Pending authority is separate from diagnostic logs. Legacy records migrate
 //! once before replay; known failures remain terminal warnings, not a retry
 //! queue or an excuse to roll back a committed generation.
@@ -12,9 +14,10 @@ mod pointer;
 mod storage;
 
 pub use inspect::{HookInspection, HookState, inspect, retained_schedule_roots};
-pub use ledger::{
-    ActivationBatch, LaunchPermit, ReadyActivation, has_pending, load_pending, prepare,
-};
+pub use ledger::{ActivationBatch, LaunchPermit, has_pending, load_pending, prepare};
+// The kernel's ledger vocabulary (plan/0056 F2 step 5), for callers that do
+// not depend on the kernel crate directly.
+pub use gripsack_kernel::activation::{AttemptNumber, HookResult, IntentState, last_attempt};
 pub use model::IdentityOrigin;
 pub use model::{ActivationId, Contributor, EffectiveIntent, IntentId, IntentOrdinal};
 pub use outcome::{AdmissionStage, IntentFailure};
