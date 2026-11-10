@@ -2003,6 +2003,12 @@ Gates (docker, `-p f2act`, one at a time, at `82b3133`): `test` passed
 standard axioms only, 67/67 mutants calibrated); `e2e` 689 passed in
 15m31s. On the host, the five activation/rollback/generation e2e files
 passed (72) and the FND-5 reproducer failed against the baseline binary.
+After merging `main` with the journal run (§19), at `e526a35`: `proofs`
+OK in 1460 s (no translation drift, 413 theorems, 81 claims, standard
+axioms only, 74/74 mutants calibrated); `test` passed (cargo test 861
+passed, 0 failed, 1 ignored); `e2e` 689 passed in 15m32s. The `check_verus`
+floor is 360: 371 at `bf44ad4`, minus the three `CleanupProgress`
+functions (§19) and the eight `activation` functions here.
 Not run: `verify` (the Verus floor change is counted, not measured),
 `model` (TLC; only negatives were removed), `tlaps`.
 
