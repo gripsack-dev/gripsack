@@ -52,7 +52,7 @@ pub use hash::{
     canonical_bytes_hash, canonical_bytes_identity, canonical_file_hash, canonical_file_hash_in,
     canonical_tree_hash,
 };
-pub use journal::{Entry as JournalEntry, Prior as JournalPrior, reconcile, record};
+pub use journal::{Entry as JournalEntry, Prior as JournalPrior, reconcile};
 pub use ownership::{ManagedBlockId, OwnershipKey, StoredOwnership};
 pub use paths::{
     GENERATIONS_DIR, HASH_LEN, STORE_DIR, canonical_dest, content_path, current_link, expand_home,

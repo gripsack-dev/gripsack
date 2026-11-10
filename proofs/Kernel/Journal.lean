@@ -5,8 +5,9 @@ import Extracted.GripsackKernel
 
 Theorems over the Aeneas translation of `gripsack_kernel::journal`
 (`Extracted/GripsackKernel.lean`). These are the former Verus contracts of
-`RecordPublication::{new, action, acknowledge, finish}` and
-`admit_mutation`, restated over the extracted functions.
+`RecordPublication::{new, action, acknowledge, finish}`, restated over the
+extracted functions. (`admit_mutation` is gone: the journal-run machine's P1,
+`Kernel/JournalRun.lean`, states when a mutation may follow.)
 -/
 
 open Aeneas Aeneas.Std Result
@@ -69,15 +70,5 @@ theorem RecordPublication.finish_spec (p : journal.RecordPublication) :
       (∀ d, r = some d → d.role = p.role) ⦄ := by
   obtain ⟨role, next⟩ := p
   cases next <;> simp [journal.RecordPublication.finish, journal.PublicationAction.same]
-
-/-- Mutation authority exists iff the marker is a run marker and the entry a
-mutation entry; the authority holds exactly the consumed entry. -/
-theorem admit_mutation_spec (marker entry : journal.DurableRecord) :
-    journal.admit_mutation marker entry ⦃ r =>
-      (r.isSome ↔ (marker.role = .RunMarker ∧ entry.role = .MutationEntry)) ∧
-      (∀ a, r = some a → a.entry = entry) ⦄ := by
-  obtain ⟨mrole⟩ := marker
-  obtain ⟨erole⟩ := entry
-  cases mrole <;> cases erole <;> simp [journal.admit_mutation, journal.RecordRole.same]
 
 end Gripsack.Kernel

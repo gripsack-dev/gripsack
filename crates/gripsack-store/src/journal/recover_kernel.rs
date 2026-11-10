@@ -137,6 +137,17 @@ pub(super) fn link_ident(target: &Path) -> Option<Ident> {
 /// a crashed process is the only possible collision (and is replaced).
 static STAGING: AtomicU64 = AtomicU64::new(0);
 
+pub(super) fn staging_name(at: &Name, link: bool) -> Name {
+    let prefix = if link { "tmp-link" } else { "tmp-write" };
+    Name::new(format!(
+        ".{prefix}-{}-{}-{}.tmp",
+        std::process::id(),
+        STAGING.fetch_add(1, Ordering::Relaxed),
+        at.as_os_str().to_string_lossy()
+    ))
+    .expect("a staging name is one component")
+}
+
 struct StoreHost<'a> {
     storage: RealFs,
     home: &'a Dir,
@@ -376,14 +387,7 @@ impl RecoverHost for StoreHost<'_> {
     }
 
     fn staging_name(&self, at: &Name, link: bool) -> Name {
-        let prefix = if link { "tmp-link" } else { "tmp-write" };
-        Name::new(format!(
-            ".{prefix}-{}-{}-{}.tmp",
-            std::process::id(),
-            STAGING.fetch_add(1, Ordering::Relaxed),
-            at.as_os_str().to_string_lossy()
-        ))
-        .expect("a staging name is one component")
+        staging_name(at, link)
     }
 
     fn delegate(&mut self, step: Delegated) -> io::Result<()> {

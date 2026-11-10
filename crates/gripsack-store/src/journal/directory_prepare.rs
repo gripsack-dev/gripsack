@@ -101,7 +101,7 @@ pub fn reactivate(
             .ok_or_else(|| invalid("missing destination"))?,
     );
     nodes::staged(transition)?;
-    let captured = super::capture(
+    let prior = super::mutation::capture(
         run,
         parent.try_clone()?,
         name.clone(),
@@ -109,7 +109,7 @@ pub fn reactivate(
         expected,
     )?;
     let mut direction = Direction::Reactivate {
-        prior: super::PriorSerde::from(captured.prior()),
+        prior: super::PriorSerde::from(&prior),
     };
     for previous in run
         .directories
@@ -130,7 +130,7 @@ pub fn reactivate(
         };
     }
     persist(run, transition, direction)?;
-    if !matches!(captured.prior(), super::Prior::Absent) {
+    if !matches!(prior, super::Prior::Absent) {
         gripsack_fs::remove_file(&parent, &name)?;
         gripsack_fs::fsync_dir(&parent, Path::new("."))?;
     }
