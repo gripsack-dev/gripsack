@@ -741,9 +741,7 @@ pub(crate) fn remove_unit(
 
 /// A destination's one observation for a release: absent when it or its
 /// parent is gone.
-fn observe_existing(
-    dest: &std::path::Path,
-) -> std::io::Result<Option<crate::deploy::Observation>> {
+fn observe_existing(dest: &std::path::Path) -> std::io::Result<Option<crate::deploy::Observation>> {
     let parent = dest.parent().unwrap_or(std::path::Path::new("."));
     let directory = match gripsack_fs::open(parent) {
         Ok(directory) => directory,
