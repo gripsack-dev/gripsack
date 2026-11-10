@@ -9,7 +9,7 @@ import tempfile
 
 from seeds import build
 
-TARGETS = ("manifest", "journal", "store_gc", "archive")
+TARGETS = ("manifest", "journal", "archive")
 ROOT = Path(__file__).resolve().parent
 
 

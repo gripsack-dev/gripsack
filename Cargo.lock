@@ -1333,7 +1333,6 @@ dependencies = [
 name = "gripsack-fuzz"
 version = "0.0.0"
 dependencies = [
- "gripsack-exec",
  "gripsack-fetch",
  "gripsack-fs",
  "gripsack-ir",

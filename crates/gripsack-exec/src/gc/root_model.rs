@@ -256,21 +256,20 @@ fn unfinished_recovery_preserves_every_history_object() {
 
 #[test]
 fn pinned_collection_survives_root_replacement() {
-    use super::inventory::ObjectInventory;
+    use super::inventory::Collectable;
     let temporary = tempfile::tempdir().unwrap();
     let home = temporary.path().join("home");
     let cap = gripsack_fs::open_or_create(&home).unwrap();
     fs::create_dir_all(home.join("store/orphan")).unwrap();
     fs::write(home.join("store/orphan/payload"), b"owned").unwrap();
-    let inventory = ObjectInventory::open(&cap, &home, "store").unwrap();
-    let plan = inventory.plan(&[]).unwrap();
+    let inventory = Collectable::open(&cap, &home).unwrap();
+    let stamp = inventory.candidates().unwrap()[0].stamp;
     fs::rename(home.join("store"), home.join("moved-store")).unwrap();
     let outside = temporary.path().join("outside");
     fs::create_dir_all(outside.join("orphan")).unwrap();
     fs::write(outside.join("orphan/payload"), b"foreign").unwrap();
     std::os::unix::fs::symlink(&outside, home.join("store")).unwrap();
-    plan.collect(false, &mut super::GcReport::default())
-        .unwrap();
+    assert!(inventory.remove(0, stamp).unwrap());
     assert!(!home.join("moved-store/orphan").exists());
     assert_eq!(
         fs::read(outside.join("orphan/payload")).unwrap(),

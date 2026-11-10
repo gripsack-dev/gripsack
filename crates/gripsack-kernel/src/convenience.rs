@@ -66,6 +66,12 @@ impl<'a> IntoIterator for &'a GenerationList {
     }
 }
 
+impl Clone for GenerationList {
+    fn clone(&self) -> Self {
+        GenerationList::new(self.to_vec()).unwrap_or_else(GenerationList::empty)
+    }
+}
+
 impl GenerationList {
     /// The admitted identities, for callers that need to own them again.
     pub fn to_vec(&self) -> Vec<GenerationId> {
@@ -840,6 +846,230 @@ numeric_order!(DestId, CmdId);
 impl hash::Hash for Digest {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.as_bytes().hash(state);
+    }
+}
+
+// ---- the GC machine (plan/0056 F2 step 4) ---------------------------------
+
+use crate::gc::{
+    Command as GcCommand, Event as GcEvent, GcState, InventoryFacts, Mode as GcMode,
+    Outcome as GcOutcome, Phase as GcPhase, Refusal as GcRefusal,
+};
+use crate::retention::{
+    Candidate, Fate, Manifest, ManifestFacts, Scope as GcScope, Stamp, Unclosed,
+};
+
+copy_impls!(
+    GcMode, GcOutcome, GcRefusal, GcCommand, GcPhase, Fate, GcScope, Stamp, Unclosed,
+);
+
+same_eq!(
+    GcMode => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    GcOutcome => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    GcPhase => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Fate => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    GcScope => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    Stamp => |a, b| a.filesystem == b.filesystem && a.inode == b.inode,
+    GcRefusal => |a, b| match (a, b) {
+        (
+            GcRefusal::MissingPredecessor { generation: a },
+            GcRefusal::MissingPredecessor { generation: b },
+        ) => a == b,
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
+    GcCommand => |a, b| match (a, b) {
+        (GcCommand::ReadManifest(a), GcCommand::ReadManifest(b)) => a == b,
+        (
+            GcCommand::Retire { generation: a, current: x },
+            GcCommand::Retire { generation: b, current: y },
+        ) => a == b && x == y,
+        (
+            GcCommand::Remove { candidate: a, expect: x },
+            GcCommand::Remove { candidate: b, expect: y },
+        ) => a == b && x == y,
+        (GcCommand::Finish(a), GcCommand::Finish(b)) => a == b,
+        (GcCommand::Abort(a), GcCommand::Abort(b)) => a == b,
+        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
+    },
+);
+
+unit_debug!(
+    GcMode { Preview, Collect },
+    GcOutcome {
+        Previewed,
+        Collected
+    },
+    GcPhase {
+        Start,
+        ReadingInventory,
+        ReadingManifests,
+        ReadingRoots,
+        ReadingCandidates,
+        Planning,
+        SealingFloor,
+        Retiring,
+        Sealing,
+        Delegating,
+        Removing,
+        Finished,
+        Aborted
+    },
+    Fate { Retained, Retired },
+    GcScope {
+        Store,
+        Prior,
+        Staging
+    },
+);
+
+impl fmt::Debug for Stamp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Stamp")
+            .field("filesystem", &self.filesystem)
+            .field("inode", &self.inode)
+            .finish()
+    }
+}
+
+impl fmt::Debug for Unclosed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (name, generation) = match self {
+            Unclosed::MissingPredecessor { generation } => ("MissingPredecessor", generation),
+            Unclosed::Required { generation } => ("Required", generation),
+        };
+        f.debug_struct(name)
+            .field("generation", generation)
+            .finish()
+    }
+}
+
+impl fmt::Debug for GcRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GcRefusal::RecoveryPending => f.write_str("RecoveryPending"),
+            GcRefusal::CorruptCurrent => f.write_str("CorruptCurrent"),
+            GcRefusal::MissingPredecessor { generation } => f
+                .debug_struct("MissingPredecessor")
+                .field("generation", generation)
+                .finish(),
+            GcRefusal::Malformed => f.write_str("Malformed"),
+            GcRefusal::Drifted => f.write_str("Drifted"),
+            GcRefusal::Failed => f.write_str("Failed"),
+            GcRefusal::Protocol => f.write_str("Protocol"),
+        }
+    }
+}
+
+impl fmt::Debug for GcCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GcCommand::ReadInventory => f.write_str("ReadInventory"),
+            GcCommand::ReadManifest(generation) => {
+                f.debug_tuple("ReadManifest").field(generation).finish()
+            }
+            GcCommand::ReadRoots => f.write_str("ReadRoots"),
+            GcCommand::ReadCandidates => f.write_str("ReadCandidates"),
+            GcCommand::Plan => f.write_str("Plan"),
+            GcCommand::SealFloor => f.write_str("SealFloor"),
+            GcCommand::Retire {
+                generation,
+                current,
+            } => f
+                .debug_struct("Retire")
+                .field("generation", generation)
+                .field("current", current)
+                .finish(),
+            GcCommand::Barrier => f.write_str("Barrier"),
+            GcCommand::Delegate => f.write_str("Delegate"),
+            GcCommand::Remove { candidate, expect } => f
+                .debug_struct("Remove")
+                .field("candidate", candidate)
+                .field("expect", expect)
+                .finish(),
+            GcCommand::Finish(outcome) => f.debug_tuple("Finish").field(outcome).finish(),
+            GcCommand::Abort(refusal) => f.debug_tuple("Abort").field(refusal).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for InventoryFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InventoryFacts")
+            .field("recovery_pending", &self.recovery_pending)
+            .field("current", &self.current)
+            .field("generations", &self.generations)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ManifestFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ManifestFacts")
+            .field("id", &self.id)
+            .field("predecessors", &self.predecessors)
+            .field("roots", &self.roots.len())
+            .finish()
+    }
+}
+
+impl fmt::Debug for Manifest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Manifest")
+            .field("facts", &self.facts)
+            .field("fate", &self.fate)
+            .finish()
+    }
+}
+
+impl fmt::Debug for Candidate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Candidate")
+            .field("scope", &self.scope)
+            .field("path", &alloc::string::String::from_utf8_lossy(&self.path))
+            .field("stamp", &self.stamp)
+            .finish()
+    }
+}
+
+impl fmt::Debug for GcEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GcEvent::Start => f.write_str("Start"),
+            GcEvent::Inventory(facts) => f.debug_tuple("Inventory").field(facts).finish(),
+            GcEvent::Manifest(facts) => f.debug_tuple("Manifest").field(facts).finish(),
+            GcEvent::Roots(roots) => f.debug_tuple("Roots").field(&roots.len()).finish(),
+            GcEvent::Candidates(candidates) => {
+                f.debug_tuple("Candidates").field(candidates).finish()
+            }
+            GcEvent::Done => f.write_str("Done"),
+            GcEvent::Failed(failure) => f.debug_tuple("Failed").field(failure).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for GcState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GcState")
+            .field("phase", &self.phase)
+            .field("mode", &self.mode)
+            .field("keep", &self.keep)
+            .field("inventory", &self.inventory)
+            .field("prune", &self.prune)
+            .field("manifests", &self.manifests)
+            .field("doomed", &self.doomed)
+            .field("index", &self.index)
+            .finish()
+    }
+}
+
+impl GcState {
+    /// The generations this run retires, newest first (the order the
+    /// machine issues `Retire` in).
+    pub fn retired(&self) -> impl Iterator<Item = GenerationId> + '_ {
+        self.manifests
+            .iter()
+            .filter(|manifest| !manifest.fate.retained())
+            .map(|manifest| manifest.facts.id)
     }
 }
 

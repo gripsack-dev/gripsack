@@ -99,6 +99,12 @@ User-visible changes per release. Design archaeology lives in
   object aside and run the command again. See "Repairing a pending journal"
   in `docs/operations/storage.md`.
 
+- `grip gc` removes the staging directory an `apply` leaves behind when it
+  is killed while publishing a generation
+  (`generations/.staging-<N>-<pid>`). These were never removed and only
+  took disk space. `gc --dry-run` lists them ("removed stale staging …");
+  other names under `generations/` are left alone.
+
 ### Added
 
 - `grip doctor` shows a pending journal: whether the interrupted run
@@ -128,7 +134,20 @@ User-visible changes per release. Design archaeology lives in
   while recovery is restoring it now stops recovery (journal kept) instead
   of being overwritten.
 
+- `grip gc` runs as a state machine in `gripsack-kernel`, proved in Lean:
+  nothing is deleted while recovery or activation is pending or in a dry
+  run; a generation is pruned only from the oldest excess beyond
+  `keep_generations`, never the current one, and never while a kept
+  generation still needs it to roll back to; a store or prior entry is
+  removed only if no kept generation and no workspace or schedule root
+  references it; and payloads go only after the pruned generations are
+  durably retired. Before each deletion `gc` now re-checks what it
+  inventoried: if `current` changed, or an entry was replaced, it stops
+  ("run gc again") instead of deleting.
+
 ### Internal
+
+- The `store_gc` fuzz target is gone: what it asserted is now proved.
 
 - The hand-written recovery models (`journal/model.rs`,
   `repeated_model.rs`) are replaced by crash exploration of the shipped

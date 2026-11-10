@@ -2610,11 +2610,1096 @@ def block.decide_block
           else ok block.BlockDecision.Keep
     | block.Host.Foreign => ok block.BlockDecision.Keep
 
+/-- [gripsack_kernel::gc::Mode]
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 52:0-57:1
+    Visibility: public -/
+@[discriminant isize]
+inductive gc.Mode where
+| Preview : gc.Mode
+| Collect : gc.Mode
+
 /-- [gripsack_kernel::generation::GenerationId]
     Source: 'crates/gripsack-kernel/src/generation.rs', lines 10:0-12:1
     Visibility: public -/
 structure generation.GenerationId where
   number : Std.U64
+
+/-- [gripsack_kernel::generation::GenerationList]
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 82:0-84:1
+    Visibility: public -/
+structure generation.GenerationList where
+  ids : alloc.vec.Vec generation.GenerationId
+
+/-- [gripsack_kernel::gc::InventoryFacts]
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 60:0-66:1
+    Visibility: public -/
+structure gc.InventoryFacts where
+  recovery_pending : Bool
+  current : Option generation.GenerationId
+  generations : generation.GenerationList
+
+/-- [gripsack_kernel::gc::Outcome]
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 68:0-73:1
+    Visibility: public -/
+@[discriminant isize]
+inductive gc.Outcome where
+| Previewed : gc.Outcome
+| Collected : gc.Outcome
+
+/-- [gripsack_kernel::gc::Refusal]
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 77:0-95:1
+    Visibility: public -/
+@[discriminant isize]
+inductive gc.Refusal where
+| RecoveryPending : gc.Refusal
+| CorruptCurrent : gc.Refusal
+| MissingPredecessor : generation.GenerationId → gc.Refusal
+| Malformed : gc.Refusal
+| Drifted : gc.Refusal
+| Failed : gc.Refusal
+| Protocol : gc.Refusal
+
+/-- [gripsack_kernel::retention::Stamp]
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 172:0-175:1
+    Visibility: public -/
+structure retention.Stamp where
+  filesystem : Std.U64
+  inode : Std.U64
+
+/-- [gripsack_kernel::gc::Command]
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 97:0-129:1
+    Visibility: public -/
+@[discriminant isize]
+inductive gc.Command where
+| ReadInventory : gc.Command
+| ReadManifest : generation.GenerationId → gc.Command
+| ReadRoots : gc.Command
+| ReadCandidates : gc.Command
+| Plan : gc.Command
+| SealFloor : gc.Command
+| Retire :
+  generation.GenerationId →
+  Option generation.GenerationId →
+  gc.Command
+| Barrier : gc.Command
+| Delegate : gc.Command
+| Remove : Std.Usize → retention.Stamp → gc.Command
+| Finish : gc.Outcome → gc.Command
+| Abort : gc.Refusal → gc.Command
+
+/-- [gripsack_kernel::retention::Scope]
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 158:0-167:1
+    Visibility: public -/
+@[discriminant isize]
+inductive retention.Scope where
+| Store : retention.Scope
+| Prior : retention.Scope
+| Staging : retention.Scope
+
+/-- [gripsack_kernel::retention::Candidate]
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 178:0-182:1
+    Visibility: public -/
+structure retention.Candidate where
+  scope : retention.Scope
+  path : alloc.vec.Vec Std.U8
+  stamp : retention.Stamp
+
+/-- [gripsack_kernel::retention::ManifestFacts]
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 125:0-134:1
+    Visibility: public -/
+structure retention.ManifestFacts where
+  id : generation.GenerationId
+  predecessors : alloc.vec.Vec generation.GenerationId
+  roots : alloc.vec.Vec (alloc.vec.Vec Std.U8)
+
+/-- [gripsack_kernel::recover::Failure]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 293:0-298:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Failure where
+| Drift : recover.Failure
+| Io : Std.I32 → recover.Failure
+
+/-- [gripsack_kernel::gc::Event]
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 131:0-139:1
+    Visibility: public -/
+@[discriminant isize]
+inductive gc.Event where
+| Start : gc.Event
+| Inventory : gc.InventoryFacts → gc.Event
+| Manifest : retention.ManifestFacts → gc.Event
+| Roots : alloc.vec.Vec (alloc.vec.Vec Std.U8) → gc.Event
+| Candidates : alloc.vec.Vec retention.Candidate → gc.Event
+| Done : gc.Event
+| Failed : recover.Failure → gc.Event
+
+/-- [gripsack_kernel::gc::Phase]
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 141:0-155:1
+    Visibility: public -/
+@[discriminant isize]
+inductive gc.Phase where
+| Start : gc.Phase
+| ReadingInventory : gc.Phase
+| ReadingManifests : gc.Phase
+| ReadingRoots : gc.Phase
+| ReadingCandidates : gc.Phase
+| Planning : gc.Phase
+| SealingFloor : gc.Phase
+| Retiring : gc.Phase
+| Sealing : gc.Phase
+| Delegating : gc.Phase
+| Removing : gc.Phase
+| Finished : gc.Phase
+| Aborted : gc.Phase
+
+/-- [gripsack_kernel::retention::Fate]
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 137:0-140:1
+    Visibility: public -/
+@[discriminant isize]
+inductive retention.Fate where
+| Retained : retention.Fate
+| Retired : retention.Fate
+
+/-- [gripsack_kernel::retention::Manifest]
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 152:0-155:1
+    Visibility: public -/
+structure retention.Manifest where
+  facts : retention.ManifestFacts
+  fate : retention.Fate
+
+/-- [gripsack_kernel::gc::GcState]
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 157:0-174:1
+    Visibility: public -/
+structure gc.GcState where
+  phase : gc.Phase
+  mode : gc.Mode
+  keep : Option Std.Usize
+  inventory : gc.InventoryFacts
+  prune : alloc.vec.Vec generation.GenerationId
+  manifests : alloc.vec.Vec retention.Manifest
+  external : alloc.vec.Vec (alloc.vec.Vec Std.U8)
+  candidates : alloc.vec.Vec retention.Candidate
+  doomed : alloc.vec.Vec Std.Usize
+  index : Std.Usize
+
+/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationList}::empty]:
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 97:4-99:5
+    Visibility: public -/
+def generation.GenerationList.empty : Result generation.GenerationList := do
+  ok { ids := (alloc.vec.Vec.new generation.GenerationId) }
+
+/-- [gripsack_kernel::gc::{gripsack_kernel::gc::GcState}::new]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 177:4-194:5
+    Visibility: public -/
+def gc.GcState.new
+  (mode : gc.Mode) (keep : Option Std.Usize) : Result gc.GcState := do
+  let gl ← generation.GenerationList.empty
+  ok
+    {
+      phase := gc.Phase.Start,
+      mode,
+      keep,
+      inventory :=
+        { recovery_pending := true, current := none, generations := gl },
+      prune := (alloc.vec.Vec.new generation.GenerationId),
+      manifests := (alloc.vec.Vec.new retention.Manifest),
+      external := (alloc.vec.Vec.new (alloc.vec.Vec Std.U8)),
+      candidates := (alloc.vec.Vec.new retention.Candidate),
+      doomed := (alloc.vec.Vec.new Std.Usize),
+      index := 0#usize
+    }
+
+/-- [gripsack_kernel::retention::{gripsack_kernel::retention::Fate}::retained]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 143:4-148:5
+    Visibility: public -/
+def retention.Fate.retained (self : retention.Fate) : Result Bool := do
+  match self with
+  | retention.Fate.Retained => ok true
+  | retention.Fate.Retired => ok false
+
+/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::same]:
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 26:4-28:5
+    Visibility: public -/
+def generation.GenerationId.same
+  (self : generation.GenerationId) (other : generation.GenerationId) :
+  Result Bool
+  := do
+  ok (self.number = other.number)
+
+/-- [gripsack_kernel::retention::contains_generation]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 61:4-68:1
+    Visibility: public -/
+@[rust_loop_body]
+def retention.contains_generation_loop.body
+  (haystack : Slice generation.GenerationId) (needle : generation.GenerationId)
+  (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len haystack
+  if i < i1
+  then
+    let gi ← Slice.index_usize haystack i
+    let b ← generation.GenerationId.same gi needle
+    if b
+    then ok (done true)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else ok (done false)
+
+/-- [gripsack_kernel::retention::contains_generation]: loop 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 61:4-68:1
+    Visibility: public -/
+@[rust_loop]
+def retention.contains_generation_loop
+  (haystack : Slice generation.GenerationId) (needle : generation.GenerationId)
+  (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => retention.contains_generation_loop.body haystack needle i1)
+    i
+
+/-- [gripsack_kernel::retention::contains_generation]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 59:0-68:1
+    Visibility: public -/
+@[reducible]
+def retention.contains_generation
+  (haystack : Slice generation.GenerationId) (needle : generation.GenerationId)
+  :
+  Result Bool
+  := do
+  retention.contains_generation_loop haystack needle 0#usize
+
+/-- [gripsack_kernel::retention::needs]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 191:0-193:1
+    Visibility: public -/
+def retention.needs
+  (manifest : retention.Manifest) (generation : generation.GenerationId) :
+  Result Bool
+  := do
+  let b ← retention.Fate.retained manifest.fate
+  if b
+  then
+    let s := alloc.vec.Vec.deref manifest.facts.predecessors
+    retention.contains_generation s generation
+  else ok false
+
+/-- [gripsack_kernel::retention::required]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 203:4-210:1
+    Visibility: public -/
+@[rust_loop_body]
+def retention.required_loop.body
+  (manifests : Slice retention.Manifest) (generation : generation.GenerationId)
+  (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len manifests
+  if i < i1
+  then
+    let m ← Slice.index_usize manifests i
+    let b ← retention.needs m generation
+    if b
+    then ok (done true)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else ok (done false)
+
+/-- [gripsack_kernel::retention::required]: loop 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 203:4-210:1
+    Visibility: public -/
+@[rust_loop]
+def retention.required_loop
+  (manifests : Slice retention.Manifest) (generation : generation.GenerationId)
+  (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => retention.required_loop.body manifests generation i1)
+    i
+
+/-- [gripsack_kernel::retention::required]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 201:0-210:1
+    Visibility: public -/
+@[reducible]
+def retention.required
+  (manifests : Slice retention.Manifest) (generation : generation.GenerationId)
+  :
+  Result Bool
+  := do
+  retention.required_loop manifests generation 0#usize
+
+/-- [gripsack_kernel::gc::fate]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 199:0-205:1
+    Visibility: public -/
+def gc.fate
+  (prune : Slice generation.GenerationId)
+  (manifests : Slice retention.Manifest) (generation : generation.GenerationId)
+  :
+  Result retention.Fate
+  := do
+  let b ← retention.contains_generation prune generation
+  if b
+  then
+    let b1 ← retention.required manifests generation
+    if b1
+    then ok retention.Fate.Retained
+    else ok retention.Fate.Retired
+  else ok retention.Fate.Retained
+
+/-- [gripsack_kernel::gc::refuse]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 207:0-210:1 -/
+def gc.refuse
+  (state : gc.GcState) (refusal : gc.Refusal) :
+  Result (gc.GcState × gc.Command)
+  := do
+  ok ({ state with phase := gc.Phase.Aborted }, gc.Command.Abort refusal)
+
+/-- [gripsack_kernel::gc::failed_or_protocol]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 212:0-220:1 -/
+def gc.failed_or_protocol
+  (state : gc.GcState) (event : gc.Event) :
+  Result (gc.GcState × gc.Command)
+  := do
+  match event with
+  | gc.Event.Start => gc.refuse state gc.Refusal.Protocol
+  | gc.Event.Inventory _ => gc.refuse state gc.Refusal.Protocol
+  | gc.Event.Manifest _ => gc.refuse state gc.Refusal.Protocol
+  | gc.Event.Roots _ => gc.refuse state gc.Refusal.Protocol
+  | gc.Event.Candidates _ => gc.refuse state gc.Refusal.Protocol
+  | gc.Event.Done => gc.refuse state gc.Refusal.Protocol
+  | gc.Event.Failed failure =>
+    match failure with
+    | recover.Failure.Drift => gc.refuse state gc.Refusal.Drifted
+    | recover.Failure.Io _ => gc.refuse state gc.Refusal.Failed
+
+/-- [gripsack_kernel::retention::Unclosed]
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 225:0-231:1
+    Visibility: public -/
+@[discriminant isize]
+inductive retention.Unclosed where
+| MissingPredecessor : generation.GenerationId → retention.Unclosed
+| Required : generation.GenerationId → retention.Unclosed
+
+/-- [gripsack_kernel::retention::known]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 215:4-222:1
+    Visibility: public -/
+@[rust_loop_body]
+def retention.known_loop.body
+  (predecessors : Slice generation.GenerationId)
+  (inventory : Slice generation.GenerationId) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len predecessors
+  if i < i1
+  then
+    let gi ← Slice.index_usize predecessors i
+    let b ← retention.contains_generation inventory gi
+    if b
+    then let i2 ← i + 1#usize
+         ok (cont i2)
+    else ok (done false)
+  else ok (done true)
+
+/-- [gripsack_kernel::retention::known]: loop 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 215:4-222:1
+    Visibility: public -/
+@[rust_loop]
+def retention.known_loop
+  (predecessors : Slice generation.GenerationId)
+  (inventory : Slice generation.GenerationId) (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => retention.known_loop.body predecessors inventory i1)
+    i
+
+/-- [gripsack_kernel::retention::known]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 213:0-222:1
+    Visibility: public -/
+@[reducible]
+def retention.known
+  (predecessors : Slice generation.GenerationId)
+  (inventory : Slice generation.GenerationId) :
+  Result Bool
+  := do
+  retention.known_loop predecessors inventory 0#usize
+
+/-- [gripsack_kernel::retention::closes]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 248:0-270:1
+    Visibility: public -/
+def retention.closes
+  (manifests : Slice retention.Manifest) (manifest : retention.Manifest)
+  (inventory : Slice generation.GenerationId) :
+  Result (Option retention.Unclosed)
+  := do
+  match manifest.fate with
+  | retention.Fate.Retained =>
+    let s := alloc.vec.Vec.deref manifest.facts.predecessors
+    let b ← retention.known s inventory
+    if b
+    then ok none
+    else ok (some (retention.Unclosed.MissingPredecessor manifest.facts.id))
+  | retention.Fate.Retired =>
+    let b ← retention.required manifests manifest.facts.id
+    if b
+    then ok (some (retention.Unclosed.Required manifest.facts.id))
+    else ok none
+
+/-- [gripsack_kernel::retention::closure]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 237:4-244:1
+    Visibility: public -/
+@[rust_loop_body]
+def retention.closure_loop.body
+  (manifests : Slice retention.Manifest)
+  (inventory : Slice generation.GenerationId) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize (Option retention.Unclosed))
+  := do
+  let i1 := Slice.len manifests
+  if i < i1
+  then
+    let m ← Slice.index_usize manifests i
+    let o ← retention.closes manifests m inventory
+    match o with
+    | none => let i2 ← i + 1#usize
+              ok (cont i2)
+    | some _ => ok (done o)
+  else ok (done none)
+
+/-- [gripsack_kernel::retention::closure]: loop 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 237:4-244:1
+    Visibility: public -/
+@[rust_loop]
+def retention.closure_loop
+  (manifests : Slice retention.Manifest)
+  (inventory : Slice generation.GenerationId) (i : Std.Usize) :
+  Result (Option retention.Unclosed)
+  := do
+  loop
+    (fun i1 => retention.closure_loop.body manifests inventory i1)
+    i
+
+/-- [gripsack_kernel::retention::closure]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 235:0-244:1
+    Visibility: public -/
+@[reducible]
+def retention.closure
+  (manifests : Slice retention.Manifest)
+  (inventory : Slice generation.GenerationId) :
+  Result (Option retention.Unclosed)
+  := do
+  retention.closure_loop manifests inventory 0#usize
+
+/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationList}::as_slice]:
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 101:4-103:5
+    Visibility: public -/
+def generation.GenerationList.as_slice
+  (self : generation.GenerationList) :
+  Result (Slice generation.GenerationId)
+  := do
+  ok (alloc.vec.Vec.deref self.ids)
+
+/-- [gripsack_kernel::gc::next_manifest]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 224:0-241:1 -/
+def gc.next_manifest
+  (state : gc.GcState) : Result (gc.GcState × gc.Command) := do
+  if state.index > 0#usize
+  then
+    let s ← generation.GenerationList.as_slice state.inventory.generations
+    let i ← state.index - 1#usize
+    let generation ← Slice.index_usize s i
+    ok ({ state with phase := gc.Phase.ReadingManifests },
+      gc.Command.ReadManifest generation)
+  else
+    let s := alloc.vec.Vec.deref state.manifests
+    let s1 ← generation.GenerationList.as_slice state.inventory.generations
+    let o ← retention.closure s s1
+    match o with
+    | none =>
+      ok ({ state with phase := gc.Phase.ReadingRoots }, gc.Command.ReadRoots)
+    | some u =>
+      match u with
+      | retention.Unclosed.MissingPredecessor generation =>
+        gc.refuse state (gc.Refusal.MissingPredecessor generation)
+      | retention.Unclosed.Required _ => gc.refuse state gc.Refusal.Malformed
+
+/-- [gripsack_kernel::generation::names_generation]:
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 55:0-60:1
+    Visibility: public -/
+def generation.names_generation
+  (current : Option generation.GenerationId)
+  (candidate : generation.GenerationId) :
+  Result Bool
+  := do
+  match current with
+  | none => ok false
+  | some current1 => generation.GenerationId.same current1 candidate
+
+/-- [gripsack_kernel::retention::plan_prune]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 85:4-91:5
+    Visibility: public -/
+@[rust_loop_body]
+def retention.plan_prune_loop.body
+  (current : Option generation.GenerationId)
+  (generations : Slice generation.GenerationId) (excess : Std.Usize)
+  (pruned : alloc.vec.Vec generation.GenerationId) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec generation.GenerationId) × Std.Usize)
+    (alloc.vec.Vec generation.GenerationId))
+  := do
+  if i < excess
+  then
+    let candidate ← Slice.index_usize generations i
+    let b ← generation.names_generation current candidate
+    let pruned1 ←
+      if b
+      then ok pruned
+      else alloc.vec.Vec.push pruned candidate
+    let i1 ← i + 1#usize
+    ok (cont (pruned1, i1))
+  else ok (done pruned)
+
+/-- [gripsack_kernel::retention::plan_prune]: loop 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 85:4-91:5
+    Visibility: public -/
+@[rust_loop]
+def retention.plan_prune_loop
+  (current : Option generation.GenerationId)
+  (generations : Slice generation.GenerationId) (excess : Std.Usize)
+  (pruned : alloc.vec.Vec generation.GenerationId) (i : Std.Usize) :
+  Result (alloc.vec.Vec generation.GenerationId)
+  := do
+  loop
+    (fun (pruned1, i1) => retention.plan_prune_loop.body current generations
+      excess pruned1 i1)
+    (pruned, i)
+
+/-- [gripsack_kernel::retention::plan_prune]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 73:0-93:1
+    Visibility: public -/
+def retention.plan_prune
+  (inventory : generation.GenerationList)
+  (current : Option generation.GenerationId) (keep : Option Std.Usize) :
+  Result (alloc.vec.Vec generation.GenerationId)
+  := do
+  let generations ← generation.GenerationList.as_slice inventory
+  let excess ←
+    match keep with
+    | none => ok 0#usize
+    | some keep1 =>
+      let i := Slice.len generations
+      if i > keep1
+      then let i1 := Slice.len generations
+           i1 - keep1
+      else ok 0#usize
+  retention.plan_prune_loop current generations excess (alloc.vec.Vec.new
+    generation.GenerationId) 0#usize
+
+/-- [gripsack_kernel::retention::GcAdmission]
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 23:0-33:1
+    Visibility: public -/
+@[discriminant isize]
+inductive retention.GcAdmission where
+| Admitted : retention.GcAdmission
+| RecoveryPending : retention.GcAdmission
+| CorruptCurrent : retention.GcAdmission
+
+/-- [gripsack_kernel::retention::admit_gc]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 38:0-56:1
+    Visibility: public -/
+def retention.admit_gc
+  (recovery_pending : Bool) (current : Option generation.GenerationId)
+  (inventory : generation.GenerationList) :
+  Result retention.GcAdmission
+  := do
+  if recovery_pending
+  then ok retention.GcAdmission.RecoveryPending
+  else
+    match current with
+    | none => ok retention.GcAdmission.Admitted
+    | some current1 =>
+      let s ← generation.GenerationList.as_slice inventory
+      let b ← retention.contains_generation s current1
+      if b
+      then ok retention.GcAdmission.Admitted
+      else ok retention.GcAdmission.CorruptCurrent
+
+/-- [gripsack_kernel::gc::on_inventory]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 243:0-254:1 -/
+def gc.on_inventory
+  (state : gc.GcState) (facts : gc.InventoryFacts) :
+  Result (gc.GcState × gc.Command)
+  := do
+  let ga ←
+    retention.admit_gc facts.recovery_pending facts.current facts.generations
+  match ga with
+  | retention.GcAdmission.Admitted =>
+    let v ← retention.plan_prune facts.generations facts.current state.keep
+    let s ← generation.GenerationList.as_slice facts.generations
+    let i := Slice.len s
+    gc.next_manifest { state with inventory := facts, prune := v, index := i }
+  | retention.GcAdmission.RecoveryPending =>
+    gc.refuse state gc.Refusal.RecoveryPending
+  | retention.GcAdmission.CorruptCurrent =>
+    gc.refuse state gc.Refusal.CorruptCurrent
+
+/-- [gripsack_kernel::gc::on_manifest]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 256:0-272:1 -/
+def gc.on_manifest
+  (state : gc.GcState) (facts : retention.ManifestFacts) :
+  Result (gc.GcState × gc.Command)
+  := do
+  if state.index = 0#usize
+  then gc.refuse state gc.Refusal.Protocol
+  else
+    let unread ← state.index - 1#usize
+    let s ← generation.GenerationList.as_slice state.inventory.generations
+    let expected ← Slice.index_usize s unread
+    let b ← generation.GenerationId.same facts.id expected
+    if b
+    then
+      let s1 := alloc.vec.Vec.deref state.prune
+      let s2 := alloc.vec.Vec.deref state.manifests
+      let decided ← gc.fate s1 s2 facts.id
+      let v ←
+        alloc.vec.Vec.push state.manifests ({ facts, fate := decided } :
+          retention.Manifest)
+      gc.next_manifest { state with manifests := v, index := unread }
+    else gc.refuse state gc.Refusal.Protocol
+
+/-- [gripsack_kernel::retention::same_bytes]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 101:4-108:1
+    Visibility: public -/
+@[rust_loop_body]
+def retention.same_bytes_loop.body
+  (a : Slice Std.U8) (b : Slice Std.U8) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len a
+  if i < i1
+  then
+    let i2 ← Slice.index_usize a i
+    let i3 ← Slice.index_usize b i
+    if i2 != i3
+    then ok (done false)
+    else let i4 ← i + 1#usize
+         ok (cont i4)
+  else ok (done true)
+
+/-- [gripsack_kernel::retention::same_bytes]: loop 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 101:4-108:1
+    Visibility: public -/
+@[rust_loop]
+def retention.same_bytes_loop
+  (a : Slice Std.U8) (b : Slice Std.U8) (i : Std.Usize) : Result Bool := do
+  loop
+    (fun i1 => retention.same_bytes_loop.body a b i1)
+    i
+
+/-- [gripsack_kernel::retention::same_bytes]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 96:0-108:1
+    Visibility: public -/
+def retention.same_bytes
+  (a : Slice Std.U8) (b : Slice Std.U8) : Result Bool := do
+  let i := Slice.len a
+  let i1 := Slice.len b
+  if i != i1
+  then ok false
+  else retention.same_bytes_loop a b 0#usize
+
+/-- [gripsack_kernel::retention::contains_bytes]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 115:4-122:1
+    Visibility: public -/
+@[rust_loop_body]
+def retention.contains_bytes_loop.body
+  (haystack : Slice (alloc.vec.Vec Std.U8)) (needle : Slice Std.U8)
+  (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len haystack
+  if i < i1
+  then
+    let v ← Slice.index_usize haystack i
+    let s := alloc.vec.Vec.deref v
+    let b ← retention.same_bytes s needle
+    if b
+    then ok (done true)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else ok (done false)
+
+/-- [gripsack_kernel::retention::contains_bytes]: loop 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 115:4-122:1
+    Visibility: public -/
+@[rust_loop]
+def retention.contains_bytes_loop
+  (haystack : Slice (alloc.vec.Vec Std.U8)) (needle : Slice Std.U8)
+  (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => retention.contains_bytes_loop.body haystack needle i1)
+    i
+
+/-- [gripsack_kernel::retention::contains_bytes]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 113:0-122:1
+    Visibility: public -/
+@[reducible]
+def retention.contains_bytes
+  (haystack : Slice (alloc.vec.Vec Std.U8)) (needle : Slice Std.U8) :
+  Result Bool
+  := do
+  retention.contains_bytes_loop haystack needle 0#usize
+
+/-- [gripsack_kernel::retention::pins]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 196:0-198:1
+    Visibility: public -/
+def retention.pins
+  (manifest : retention.Manifest) (path : Slice Std.U8) : Result Bool := do
+  let b ← retention.Fate.retained manifest.fate
+  if b
+  then
+    let s := alloc.vec.Vec.deref manifest.facts.roots
+    retention.contains_bytes s path
+  else ok false
+
+/-- [gripsack_kernel::retention::pinned]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 275:4-282:1
+    Visibility: public -/
+@[rust_loop_body]
+def retention.pinned_loop.body
+  (manifests : Slice retention.Manifest) (path : Slice Std.U8) (i : Std.Usize)
+  :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := Slice.len manifests
+  if i < i1
+  then
+    let m ← Slice.index_usize manifests i
+    let b ← retention.pins m path
+    if b
+    then ok (done true)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else ok (done false)
+
+/-- [gripsack_kernel::retention::pinned]: loop 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 275:4-282:1
+    Visibility: public -/
+@[rust_loop]
+def retention.pinned_loop
+  (manifests : Slice retention.Manifest) (path : Slice Std.U8) (i : Std.Usize)
+  :
+  Result Bool
+  := do
+  loop
+    (fun i1 => retention.pinned_loop.body manifests path i1)
+    i
+
+/-- [gripsack_kernel::retention::pinned]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 273:0-282:1
+    Visibility: public -/
+@[reducible]
+def retention.pinned
+  (manifests : Slice retention.Manifest) (path : Slice Std.U8) :
+  Result Bool
+  := do
+  retention.pinned_loop manifests path 0#usize
+
+/-- [gripsack_kernel::retention::rooted]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 286:0-288:1
+    Visibility: public -/
+def retention.rooted
+  (manifests : Slice retention.Manifest)
+  (external : Slice (alloc.vec.Vec Std.U8)) (path : Slice Std.U8) :
+  Result Bool
+  := do
+  let b ← retention.pinned manifests path
+  if b
+  then ok true
+  else retention.contains_bytes external path
+
+/-- [gripsack_kernel::retention::{gripsack_kernel::retention::Candidate}::path]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 185:4-187:5
+    Visibility: public -/
+def retention.Candidate.impl.path
+  (self : retention.Candidate) : Result (Slice Std.U8) := do
+  ok (alloc.vec.Vec.deref self.path)
+
+/-- [gripsack_kernel::retention::plan_delete]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 299:4-304:5
+    Visibility: public -/
+@[rust_loop_body]
+def retention.plan_delete_loop.body
+  (manifests : Slice retention.Manifest)
+  (external : Slice (alloc.vec.Vec Std.U8))
+  (candidates : Slice retention.Candidate)
+  (deletions : alloc.vec.Vec Std.Usize) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.Usize) × Std.Usize) (alloc.vec.Vec
+    Std.Usize))
+  := do
+  let i1 := Slice.len candidates
+  if i < i1
+  then
+    let c ← Slice.index_usize candidates i
+    let s ← retention.Candidate.impl.path c
+    let b ← retention.rooted manifests external s
+    let deletions1 ←
+      if b
+      then ok deletions
+      else alloc.vec.Vec.push deletions i
+    let i2 ← i + 1#usize
+    ok (cont (deletions1, i2))
+  else ok (done deletions)
+
+/-- [gripsack_kernel::retention::plan_delete]: loop 0:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 299:4-304:5
+    Visibility: public -/
+@[rust_loop]
+def retention.plan_delete_loop
+  (manifests : Slice retention.Manifest)
+  (external : Slice (alloc.vec.Vec Std.U8))
+  (candidates : Slice retention.Candidate)
+  (deletions : alloc.vec.Vec Std.Usize) (i : Std.Usize) :
+  Result (alloc.vec.Vec Std.Usize)
+  := do
+  loop
+    (fun (deletions1, i1) => retention.plan_delete_loop.body manifests external
+      candidates deletions1 i1)
+    (deletions, i)
+
+/-- [gripsack_kernel::retention::plan_delete]:
+    Source: 'crates/gripsack-kernel/src/retention.rs', lines 292:0-306:1
+    Visibility: public -/
+@[reducible]
+def retention.plan_delete
+  (manifests : Slice retention.Manifest)
+  (external : Slice (alloc.vec.Vec Std.U8))
+  (candidates : Slice retention.Candidate) :
+  Result (alloc.vec.Vec Std.Usize)
+  := do
+  retention.plan_delete_loop manifests external candidates (alloc.vec.Vec.new
+    Std.Usize) 0#usize
+
+/-- [gripsack_kernel::gc::on_candidates]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 274:0-279:1 -/
+def gc.on_candidates
+  (state : gc.GcState) (candidates : alloc.vec.Vec retention.Candidate) :
+  Result (gc.GcState × gc.Command)
+  := do
+  let s := alloc.vec.Vec.deref state.manifests
+  let s1 := alloc.vec.Vec.deref state.external
+  let s2 := alloc.vec.Vec.deref candidates
+  let v ← retention.plan_delete s s1 s2
+  ok ({ state with phase := gc.Phase.Planning, candidates, doomed := v },
+    gc.Command.Plan)
+
+/-- [gripsack_kernel::gc::next_retired]: loop body 0:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 284:4-291:1
+    Visibility: public -/
+@[rust_loop_body]
+def gc.next_retired_loop.body
+  (manifests : Slice retention.Manifest) (i : Std.Usize) :
+  Result (ControlFlow Std.Usize (Option Std.Usize))
+  := do
+  let i1 := Slice.len manifests
+  if i < i1
+  then
+    let m ← Slice.index_usize manifests i
+    let b ← retention.Fate.retained m.fate
+    if b
+    then let i2 ← i + 1#usize
+         ok (cont i2)
+    else ok (done (some i))
+  else ok (done none)
+
+/-- [gripsack_kernel::gc::next_retired]: loop 0:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 284:4-291:1
+    Visibility: public -/
+@[rust_loop]
+def gc.next_retired_loop
+  (manifests : Slice retention.Manifest) (i : Std.Usize) :
+  Result (Option Std.Usize)
+  := do
+  loop
+    (fun i1 => gc.next_retired_loop.body manifests i1)
+    i
+
+/-- [gripsack_kernel::gc::next_retired]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 282:0-291:1
+    Visibility: public -/
+@[reducible]
+def gc.next_retired
+  (manifests : Slice retention.Manifest) («from» : Std.Usize) :
+  Result (Option Std.Usize)
+  := do
+  gc.next_retired_loop manifests «from»
+
+/-- [gripsack_kernel::gc::retire_next]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 295:0-315:1 -/
+def gc.retire_next
+  (state : gc.GcState) : Result (gc.GcState × gc.Command) := do
+  let s := alloc.vec.Vec.deref state.manifests
+  let o ← gc.next_retired s state.index
+  match o with
+  | none => ok ({ state with phase := gc.Phase.Sealing }, gc.Command.Barrier)
+  | some position =>
+    let m ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
+        retention.Manifest) state.manifests position
+    ok ({ state with phase := gc.Phase.Retiring, index := position },
+      gc.Command.Retire m.facts.id state.inventory.current)
+
+/-- [gripsack_kernel::gc::remove_next]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 318:0-332:1 -/
+def gc.remove_next
+  (state : gc.GcState) : Result (gc.GcState × gc.Command) := do
+  let i := alloc.vec.Vec.len state.doomed
+  if state.index < i
+  then
+    let candidate ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.Usize)
+        state.doomed state.index
+    let i1 := alloc.vec.Vec.len state.candidates
+    if candidate < i1
+    then
+      let c ←
+        alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
+          retention.Candidate) state.candidates candidate
+      ok ({ state with phase := gc.Phase.Removing }, gc.Command.Remove
+        candidate c.stamp)
+    else gc.refuse state gc.Refusal.Protocol
+  else
+    ok ({ state with phase := gc.Phase.Finished }, gc.Command.Finish
+      gc.Outcome.Collected)
+
+/-- [gripsack_kernel::gc::gc_step]:
+    Source: 'crates/gripsack-kernel/src/gc.rs', lines 338:0-433:1
+    Visibility: public -/
+def gc.gc_step
+  (state : gc.GcState) (event : gc.Event) :
+  Result (gc.GcState × gc.Command)
+  := do
+  match state.phase with
+  | gc.Phase.Start =>
+    match event with
+    | gc.Event.Start =>
+      ok ({ state with phase := gc.Phase.ReadingInventory },
+        gc.Command.ReadInventory)
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done => gc.failed_or_protocol state gc.Event.Done
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.ReadingInventory =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory facts => gc.on_inventory state facts
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done => gc.failed_or_protocol state gc.Event.Done
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.ReadingManifests =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest facts => gc.on_manifest state facts
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done => gc.failed_or_protocol state gc.Event.Done
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.ReadingRoots =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots external =>
+      ok ({ state with phase := gc.Phase.ReadingCandidates, external },
+        gc.Command.ReadCandidates)
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done => gc.failed_or_protocol state gc.Event.Done
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.ReadingCandidates =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates candidates => gc.on_candidates state candidates
+    | gc.Event.Done => gc.failed_or_protocol state gc.Event.Done
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.Planning =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done =>
+      match state.mode with
+      | gc.Mode.Preview =>
+        ok ({ state with phase := gc.Phase.Finished }, gc.Command.Finish
+          gc.Outcome.Previewed)
+      | gc.Mode.Collect =>
+        ok ({ state with phase := gc.Phase.SealingFloor },
+          gc.Command.SealFloor)
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.SealingFloor =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done => gc.retire_next { state with index := 0#usize }
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.Retiring =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done =>
+      let o ← lift (Usize.checked_add state.index 1#usize)
+      match o with
+      | none => gc.refuse state gc.Refusal.Malformed
+      | some index => gc.retire_next { state with index }
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.Sealing =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done =>
+      ok ({ state with phase := gc.Phase.Delegating }, gc.Command.Delegate)
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.Delegating =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done => gc.remove_next { state with index := 0#usize }
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.Removing =>
+    match event with
+    | gc.Event.Start => gc.failed_or_protocol state gc.Event.Start
+    | gc.Event.Inventory _ => gc.failed_or_protocol state event
+    | gc.Event.Manifest _ => gc.failed_or_protocol state event
+    | gc.Event.Roots _ => gc.failed_or_protocol state event
+    | gc.Event.Candidates _ => gc.failed_or_protocol state event
+    | gc.Event.Done =>
+      let o ← lift (Usize.checked_add state.index 1#usize)
+      match o with
+      | none => gc.refuse state gc.Refusal.Malformed
+      | some index => gc.remove_next { state with index }
+    | gc.Event.Failed _ => gc.failed_or_protocol state event
+  | gc.Phase.Finished => gc.refuse state gc.Refusal.Protocol
+  | gc.Phase.Aborted => gc.refuse state gc.Refusal.Protocol
 
 /-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::new]:
     Source: 'crates/gripsack-kernel/src/generation.rs', lines 16:4-18:5
@@ -2629,15 +3714,6 @@ def generation.GenerationId.new
 def generation.GenerationId.value
   (self : generation.GenerationId) : Result Std.U64 := do
   ok self.number
-
-/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::same]:
-    Source: 'crates/gripsack-kernel/src/generation.rs', lines 26:4-28:5
-    Visibility: public -/
-def generation.GenerationId.same
-  (self : generation.GenerationId) (other : generation.GenerationId) :
-  Result Bool
-  := do
-  ok (self.number = other.number)
 
 /-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationId}::checked_next]:
     Source: 'crates/gripsack-kernel/src/generation.rs', lines 30:4-38:5
@@ -2662,18 +3738,6 @@ def generation.GenerationId.checked_previous
   then ok none
   else let i ← self.number - 1#u64
        ok (some { number := i })
-
-/-- [gripsack_kernel::generation::names_generation]:
-    Source: 'crates/gripsack-kernel/src/generation.rs', lines 55:0-60:1
-    Visibility: public -/
-def generation.names_generation
-  (current : Option generation.GenerationId)
-  (candidate : generation.GenerationId) :
-  Result Bool
-  := do
-  match current with
-  | none => ok false
-  | some current1 => generation.GenerationId.same current1 candidate
 
 /-- [gripsack_kernel::generation::strictly_ascending]: loop body 0:
     Source: 'crates/gripsack-kernel/src/generation.rs', lines 66:4-73:1
@@ -2713,12 +3777,6 @@ def generation.strictly_ascending
   (ids : Slice generation.GenerationId) : Result Bool := do
   generation.strictly_ascending_loop ids 1#usize
 
-/-- [gripsack_kernel::generation::GenerationList]
-    Source: 'crates/gripsack-kernel/src/generation.rs', lines 82:0-84:1
-    Visibility: public -/
-structure generation.GenerationList where
-  ids : alloc.vec.Vec generation.GenerationId
-
 /-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationList}::new]:
     Source: 'crates/gripsack-kernel/src/generation.rs', lines 88:4-94:5
     Visibility: public -/
@@ -2732,17 +3790,8 @@ def generation.GenerationList.new
   then ok (some { ids })
   else ok none
 
-/-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationList}::as_slice]:
-    Source: 'crates/gripsack-kernel/src/generation.rs', lines 96:4-98:5
-    Visibility: public -/
-def generation.GenerationList.as_slice
-  (self : generation.GenerationList) :
-  Result (Slice generation.GenerationId)
-  := do
-  ok (alloc.vec.Vec.deref self.ids)
-
 /-- [gripsack_kernel::generation::{gripsack_kernel::generation::GenerationList}::into_vec]:
-    Source: 'crates/gripsack-kernel/src/generation.rs', lines 100:4-102:5 -/
+    Source: 'crates/gripsack-kernel/src/generation.rs', lines 105:4-107:5 -/
 def generation.GenerationList.into_vec
   (self : generation.GenerationList) :
   Result (alloc.vec.Vec generation.GenerationId)
@@ -3374,14 +4423,6 @@ inductive recover.Command where
 | Barrier : recover.Scope → recover.Command
 | Finish : recover.Outcome → recover.Command
 | Abort : recover.Refusal → recover.Command
-
-/-- [gripsack_kernel::recover::Failure]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 293:0-298:1
-    Visibility: public -/
-@[discriminant isize]
-inductive recover.Failure where
-| Drift : recover.Failure
-| Io : Std.I32 → recover.Failure
 
 /-- [gripsack_kernel::recover::Event]
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 300:0-310:1
@@ -4079,274 +5120,6 @@ def recover.recover_step
     | recover.Event.Failed _ => recover.failed_or_protocol state event
   | recover.Phase.Finished => recover.refuse state recover.Refusal.Protocol
   | recover.Phase.Aborted => recover.refuse state recover.Refusal.Protocol
-
-/-- [gripsack_kernel::retention::GcAdmission]
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 20:0-30:1
-    Visibility: public -/
-@[discriminant isize]
-inductive retention.GcAdmission where
-| Admitted : retention.GcAdmission
-| RecoveryPending : retention.GcAdmission
-| CorruptCurrent : retention.GcAdmission
-
-/-- [gripsack_kernel::retention::contains_generation]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 58:4-65:1
-    Visibility: public -/
-@[rust_loop_body]
-def retention.contains_generation_loop.body
-  (haystack : Slice generation.GenerationId) (needle : generation.GenerationId)
-  (i : Std.Usize) :
-  Result (ControlFlow Std.Usize Bool)
-  := do
-  let i1 := Slice.len haystack
-  if i < i1
-  then
-    let gi ← Slice.index_usize haystack i
-    let b ← generation.GenerationId.same gi needle
-    if b
-    then ok (done true)
-    else let i2 ← i + 1#usize
-         ok (cont i2)
-  else ok (done false)
-
-/-- [gripsack_kernel::retention::contains_generation]: loop 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 58:4-65:1
-    Visibility: public -/
-@[rust_loop]
-def retention.contains_generation_loop
-  (haystack : Slice generation.GenerationId) (needle : generation.GenerationId)
-  (i : Std.Usize) :
-  Result Bool
-  := do
-  loop
-    (fun i1 => retention.contains_generation_loop.body haystack needle i1)
-    i
-
-/-- [gripsack_kernel::retention::contains_generation]:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 56:0-65:1
-    Visibility: public -/
-@[reducible]
-def retention.contains_generation
-  (haystack : Slice generation.GenerationId) (needle : generation.GenerationId)
-  :
-  Result Bool
-  := do
-  retention.contains_generation_loop haystack needle 0#usize
-
-/-- [gripsack_kernel::retention::admit_gc]:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 35:0-53:1
-    Visibility: public -/
-def retention.admit_gc
-  (recovery_pending : Bool) (current : Option generation.GenerationId)
-  (inventory : generation.GenerationList) :
-  Result retention.GcAdmission
-  := do
-  if recovery_pending
-  then ok retention.GcAdmission.RecoveryPending
-  else
-    match current with
-    | none => ok retention.GcAdmission.Admitted
-    | some current1 =>
-      let s ← generation.GenerationList.as_slice inventory
-      let b ← retention.contains_generation s current1
-      if b
-      then ok retention.GcAdmission.Admitted
-      else ok retention.GcAdmission.CorruptCurrent
-
-/-- [gripsack_kernel::retention::plan_prune]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 82:4-88:5
-    Visibility: public -/
-@[rust_loop_body]
-def retention.plan_prune_loop.body
-  (current : Option generation.GenerationId)
-  (generations : Slice generation.GenerationId) (excess : Std.Usize)
-  (pruned : alloc.vec.Vec generation.GenerationId) (i : Std.Usize) :
-  Result (ControlFlow ((alloc.vec.Vec generation.GenerationId) × Std.Usize)
-    (alloc.vec.Vec generation.GenerationId))
-  := do
-  if i < excess
-  then
-    let candidate ← Slice.index_usize generations i
-    let b ← generation.names_generation current candidate
-    let pruned1 ←
-      if b
-      then ok pruned
-      else alloc.vec.Vec.push pruned candidate
-    let i1 ← i + 1#usize
-    ok (cont (pruned1, i1))
-  else ok (done pruned)
-
-/-- [gripsack_kernel::retention::plan_prune]: loop 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 82:4-88:5
-    Visibility: public -/
-@[rust_loop]
-def retention.plan_prune_loop
-  (current : Option generation.GenerationId)
-  (generations : Slice generation.GenerationId) (excess : Std.Usize)
-  (pruned : alloc.vec.Vec generation.GenerationId) (i : Std.Usize) :
-  Result (alloc.vec.Vec generation.GenerationId)
-  := do
-  loop
-    (fun (pruned1, i1) => retention.plan_prune_loop.body current generations
-      excess pruned1 i1)
-    (pruned, i)
-
-/-- [gripsack_kernel::retention::plan_prune]:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 70:0-90:1
-    Visibility: public -/
-def retention.plan_prune
-  (inventory : generation.GenerationList)
-  (current : Option generation.GenerationId) (keep : Option Std.Usize) :
-  Result (alloc.vec.Vec generation.GenerationId)
-  := do
-  let generations ← generation.GenerationList.as_slice inventory
-  let excess ←
-    match keep with
-    | none => ok 0#usize
-    | some keep1 =>
-      let i := Slice.len generations
-      if i > keep1
-      then let i1 := Slice.len generations
-           i1 - keep1
-      else ok 0#usize
-  retention.plan_prune_loop current generations excess (alloc.vec.Vec.new
-    generation.GenerationId) 0#usize
-
-/-- [gripsack_kernel::retention::same_bytes]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 98:4-105:1
-    Visibility: public -/
-@[rust_loop_body]
-def retention.same_bytes_loop.body
-  (a : Slice Std.U8) (b : Slice Std.U8) (i : Std.Usize) :
-  Result (ControlFlow Std.Usize Bool)
-  := do
-  let i1 := Slice.len a
-  if i < i1
-  then
-    let i2 ← Slice.index_usize a i
-    let i3 ← Slice.index_usize b i
-    if i2 != i3
-    then ok (done false)
-    else let i4 ← i + 1#usize
-         ok (cont i4)
-  else ok (done true)
-
-/-- [gripsack_kernel::retention::same_bytes]: loop 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 98:4-105:1
-    Visibility: public -/
-@[rust_loop]
-def retention.same_bytes_loop
-  (a : Slice Std.U8) (b : Slice Std.U8) (i : Std.Usize) : Result Bool := do
-  loop
-    (fun i1 => retention.same_bytes_loop.body a b i1)
-    i
-
-/-- [gripsack_kernel::retention::same_bytes]:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 93:0-105:1
-    Visibility: public -/
-def retention.same_bytes
-  (a : Slice Std.U8) (b : Slice Std.U8) : Result Bool := do
-  let i := Slice.len a
-  let i1 := Slice.len b
-  if i != i1
-  then ok false
-  else retention.same_bytes_loop a b 0#usize
-
-/-- [gripsack_kernel::retention::contains_bytes]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 112:4-119:1
-    Visibility: public -/
-@[rust_loop_body]
-def retention.contains_bytes_loop.body
-  (haystack : Slice (alloc.vec.Vec Std.U8)) (needle : Slice Std.U8)
-  (i : Std.Usize) :
-  Result (ControlFlow Std.Usize Bool)
-  := do
-  let i1 := Slice.len haystack
-  if i < i1
-  then
-    let v ← Slice.index_usize haystack i
-    let s := alloc.vec.Vec.deref v
-    let b ← retention.same_bytes s needle
-    if b
-    then ok (done true)
-    else let i2 ← i + 1#usize
-         ok (cont i2)
-  else ok (done false)
-
-/-- [gripsack_kernel::retention::contains_bytes]: loop 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 112:4-119:1
-    Visibility: public -/
-@[rust_loop]
-def retention.contains_bytes_loop
-  (haystack : Slice (alloc.vec.Vec Std.U8)) (needle : Slice Std.U8)
-  (i : Std.Usize) :
-  Result Bool
-  := do
-  loop
-    (fun i1 => retention.contains_bytes_loop.body haystack needle i1)
-    i
-
-/-- [gripsack_kernel::retention::contains_bytes]:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 110:0-119:1
-    Visibility: public -/
-@[reducible]
-def retention.contains_bytes
-  (haystack : Slice (alloc.vec.Vec Std.U8)) (needle : Slice Std.U8) :
-  Result Bool
-  := do
-  retention.contains_bytes_loop haystack needle 0#usize
-
-/-- [gripsack_kernel::retention::plan_delete]: loop body 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 128:4-133:5
-    Visibility: public -/
-@[rust_loop_body]
-def retention.plan_delete_loop.body
-  (referenced : Slice (alloc.vec.Vec Std.U8))
-  (candidates : Slice (alloc.vec.Vec Std.U8))
-  (deletions : alloc.vec.Vec Std.Usize) (i : Std.Usize) :
-  Result (ControlFlow ((alloc.vec.Vec Std.Usize) × Std.Usize) (alloc.vec.Vec
-    Std.Usize))
-  := do
-  let i1 := Slice.len candidates
-  if i < i1
-  then
-    let v ← Slice.index_usize candidates i
-    let s := alloc.vec.Vec.deref v
-    let b ← retention.contains_bytes referenced s
-    let deletions1 ←
-      if b
-      then ok deletions
-      else alloc.vec.Vec.push deletions i
-    let i2 ← i + 1#usize
-    ok (cont (deletions1, i2))
-  else ok (done deletions)
-
-/-- [gripsack_kernel::retention::plan_delete]: loop 0:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 128:4-133:5
-    Visibility: public -/
-@[rust_loop]
-def retention.plan_delete_loop
-  (referenced : Slice (alloc.vec.Vec Std.U8))
-  (candidates : Slice (alloc.vec.Vec Std.U8))
-  (deletions : alloc.vec.Vec Std.Usize) (i : Std.Usize) :
-  Result (alloc.vec.Vec Std.Usize)
-  := do
-  loop
-    (fun (deletions1, i1) => retention.plan_delete_loop.body referenced
-      candidates deletions1 i1)
-    (deletions, i)
-
-/-- [gripsack_kernel::retention::plan_delete]:
-    Source: 'crates/gripsack-kernel/src/retention.rs', lines 125:0-135:1
-    Visibility: public -/
-@[reducible]
-def retention.plan_delete
-  (referenced : Slice (alloc.vec.Vec Std.U8))
-  (candidates : Slice (alloc.vec.Vec Std.U8)) :
-  Result (alloc.vec.Vec Std.Usize)
-  := do
-  retention.plan_delete_loop referenced candidates (alloc.vec.Vec.new
-    Std.Usize) 0#usize
 
 /-- [gripsack_kernel::rollback::Place]
     Source: 'crates/gripsack-kernel/src/rollback.rs', lines 52:0-58:1

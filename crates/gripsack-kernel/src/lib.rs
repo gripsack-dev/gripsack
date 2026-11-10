@@ -19,6 +19,7 @@ extern crate alloc;
 
 pub mod block;
 pub mod convenience;
+pub mod gc;
 pub mod generation;
 pub mod ids;
 pub mod journal;
