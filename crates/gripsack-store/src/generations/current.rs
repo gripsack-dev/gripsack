@@ -94,9 +94,9 @@ pub struct CommittedSelection<'a> {
     run: crate::journal::JournalRun<'a>,
 }
 
-impl CommittedSelection<'_> {
-    pub(crate) fn journal_directory(&self) -> &gripsack_fs::Dir {
-        self.run.journal_directory()
+impl<'a> CommittedSelection<'a> {
+    pub(crate) fn run(&self) -> &crate::journal::JournalRun<'a> {
+        &self.run
     }
 }
 
@@ -114,6 +114,12 @@ pub fn flip(run: crate::journal::JournalRun<'_>) -> io::Result<CommittedSelectio
             "reserved selection identity changed before activation",
         ));
     }
-    gripsack_fs::symlink_replace(home, Path::new("current"), run.target())?;
+    // the kernel's journal-run machine stops at the flip; its cleanup
+    // starts only once the flip is acknowledged durable (commit_run)
+    run.request_flip()?;
+    if let Err(error) = gripsack_fs::symlink_replace(home, Path::new("current"), run.target()) {
+        run.flip_failed(&error);
+        return Err(error);
+    }
     Ok(CommittedSelection { run })
 }

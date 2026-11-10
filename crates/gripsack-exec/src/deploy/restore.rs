@@ -56,34 +56,6 @@ pub(crate) fn capture_prior(
     }
 }
 
-/// Write a prior state back to its destination (0015 §4). Every
-/// failure is an error (0027 §1): a prior that cannot be read,
-/// written, or chmod'd must abort the transaction — the bool era read
-/// those as "kept", committing a generation over a failed restore.
-/// The recorded mode rides the write exactly (0027 §6).
-pub(crate) fn restore_prior(
-    dest_dir: &gripsack_fs::Dir,
-    dest_name: &Path,
-    prior: &store::Prior,
-    home: &gripsack_fs::Dir,
-) -> std::io::Result<()> {
-    match prior {
-        store::Prior::File { hash, mode } => {
-            let bytes = store::prior::read_blob(home, hash)?;
-            #[cfg(unix)]
-            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, mode.bits())?;
-            #[cfg(not(unix))]
-            gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?;
-            Ok(())
-        }
-        store::Prior::Symlink { target } => {
-            // symlink_replace over remove+create: the swap is atomic
-            // and parent-fsync'd (strictly stronger than the old pair)
-            gripsack_fs::symlink_replace(dest_dir, dest_name, Path::new(target))
-        }
-    }
-}
-
 /// Rollback/prune for a deployed entry (0015 §4): when the destination
 /// is still exactly what gripsack deployed and a prior exists, restore
 /// the original file/symlink — "your original files have been

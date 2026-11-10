@@ -356,6 +356,13 @@ the crash e2e run both ways for one release before the legacy path goes.
    **Done 2026-11-09** (branch `foundation/f2-recover`, stacked on step 1);
    record in §14.
 3. Leaf + journal-run sub-machine; port `journal_protocol` to Lean.
+   **Done 2026-11-10** (branch `foundation/f2-journal`): the kernel journal-run
+   machine (`journal_run`: marker, per-destination leaf protocol, flip,
+   cleanup) drives every product leaf mutation and the run's completion over
+   `RealFs`; P1 and the cleanup half of P3 proved; the Verus
+   `journal_protocol` (`CleanupProgress`) and `admit_mutation` deleted;
+   rollback's writes go through the leaf protocol and are crash-explored over
+   MemFs; record in §19.
 4. GC machine incl. root derivation from manifests; `retention` Verus goes.
    **Done 2026-11-09** (branch `foundation/f2-gc`): the kernel GC machine
    decides every deletion, K4 and K4′ proved, the staging reaper (0058
@@ -1210,6 +1217,10 @@ passed in 11m50s.
    publish record, mutate under re-check) onto `Storage`; until then the
    restore→flip window is covered by the existing crash e2e
    (`after-rollback-restore`) and recovery by the proved recover machine.
+   **Mostly closed by §19:** every rollback write now goes through the
+   kernel's leaf protocol over `Storage` (`RealFs` in the product), and the
+   kernel rollback machine composed with that protocol is crash-explored over
+   MemFs (§19.5). What remains is in §19.7 item 3.
 2. **Managed blocks (K5) are delegated.** Rollback splices the retained
    block payload (store bytes verified by `tree256`) but does not compare it
    with the block's recorded hash; that lands with the K5 splice in the
@@ -1638,6 +1649,200 @@ reproduction is the unit test (§18.1).
    removal; before, it acted on the stale inventory. Under the lifecycle
    session only an external writer can cause either.
 
+## 19. F2 step 3 record — the leaf effect protocol and the journal run (P1, P3)
+
+- Branch `foundation/f2-journal` from `main` at `0625d3e`; date 2026-11-10.
+- Question: can the journal's run — its marker, the leaf effect protocol for
+  each destination (record prior evidence and intent durably, then mutate,
+  then `Landed`) and its completion — be a kernel machine the product drives
+  over `Storage`, with P1 and the cleanup half of P3 proved in Lean over the
+  shipped Rust?
+
+### 19.1 The machine (`crates/gripsack-kernel/src/journal_run.rs`)
+
+`run_step(RunState, Event) -> (RunState, Command)`, one command outstanding,
+living as long as the run (`begin_run` → leaves → flip → `commit_run`, or
+`end_run`).
+
+- **Marker:** `Start` → `Publish{Marker, a}` for `a` = stage, sync the file,
+  publish the name, sync the journal directory (the F1 `PublicationAction`
+  order, its `successor`), each answered `Done`; then `Ready`.
+- **Leaf, per destination** (`Unit(UnitFacts{dest, expect, intended,
+  follows})` answers `Ready`): `Observe`; refuse `Unsupported` (no journal
+  identity), `Drifted` (not the plan's `expect`) or `Interleaved` (a repeated
+  write whose destination is not this run's earlier intent); else
+  `CapturePrior{expect: observed}` (the driver re-checks, makes the prior
+  durable — a file's bytes and mode in the prior blob store — and returns the
+  entry); then `Publish{Entry, a}` ×4; only then `Mutate{expect: observed,
+  intended}` (the driver re-checks after staging, immediately before the
+  rename or unlink); `Landed{live}` is accepted only if it is the intended
+  object (`rollback::lands`), else `NotLanded`.
+- **Completion:** `Commit` → `Flip` (the caller flips; answering `Done` means
+  durable) → `Settle(Committed)`; `End` is refused (`Unfinished`) once any
+  unit landed, else `Settle(Ended)`. `Settled{records}` → `Unlink(Record k)`
+  for every record, `Barrier`, `Unlink(Marker)`, `Barrier`, `Finish`.
+- Directory records stay with the legacy domain: the host seals or checks
+  them when settling and reports how many records the cleanup removes.
+
+### 19.2 Proofs (`proofs/Kernel/JournalRun.lean`; `Audit.lean`: 268 theorems, 50 claims, standard axioms only)
+
+An execution is its log of (event, command) pairs (`Run`); `Inv` is kept by
+every step (`step_spec`, `run_inv`).
+
+- **P1 `mutate_after_durable_intent`:** in every execution, a `Mutate` is
+  issued only in answer to `Done`, after a log that *starts* with the marker's
+  complete publication (`pubSteps Marker Start SyncNamespace` then `(Done,
+  Ready)`) and *ends* with exactly this unit's leaf protocol: `(Unit f,
+  Observe u f.dest)`, `(Observed f.dest x, CapturePrior u f.dest x)`, then
+  the entry's stage, sync, publish and sync, each answered `Done`; with
+  `f.expect = x` (the plan's observation is what is mutated over) and
+  `f.intended` installed.
+- **P3 `record_unlink_needs_no_evidence`:** a journal record is unlinked only
+  after `(Commit, Flip)` was answered `Done` (so any later crash classifies
+  the run committed and needs no entry) or in a run that never published an
+  entry.
+- **P3 `marker_unlink_after_record_barrier`:** the marker unlink only right
+  after a journal barrier that follows the unlink of every record (the
+  0.19.x resurrection order, now for the run as for recovery).
+- `unit_accepted_only_landed`: the machine is ready again after a mutation
+  only when the landed object is the unit's intended one.
+- Helper specs the mutants are attributed to: `on_observed_spec`,
+  `on_landed_spec`, `on_end_spec`, `next_unlink_spec`.
+- Mutants (`proofs/mutants.py`, 48 total: 8 new, 1 removed with
+  `admit_mutation`), each rejected by exactly the named theorem:
+  `run-mutates-before-entry-barrier` (mutation after the entry's rename,
+  before its directory barrier: `step_spec`),
+  `run-ready-before-marker-barrier` (units accepted before the marker's
+  barrier: `step_spec`), `run-skips-prior-capture` (`on_observed_spec`),
+  `run-ignores-plan-drift` (`on_observed_spec`), `run-landed-unchecked`
+  (`on_landed_spec`), `run-cleans-before-flip` (`step_spec`),
+  `run-ends-after-mutation` (`on_end_spec`), `run-cleanup-barrier-swapped`
+  — the 0.19.2 order — (`next_unlink_spec`).
+
+### 19.3 Wiring
+
+- `gripsack-host::journal_run::RunDriver` executes the machine over any
+  `Storage` behind a `RunHost` (marker and entry wire, prior capture, identity
+  hashing, settling). Installs are `File{bytes, mode}`, `Link{target}`,
+  `Remove` and `Splice` (a managed block's upsert or removal, computed from
+  the re-checked latest bytes).
+- `gripsack-store` (`journal/mutation.rs`) is the product `RunHost` over
+  `RealFs`: `begin_run` publishes the marker through the machine and keeps it
+  in `JournalRun`; `journal::mutate` replaces `capture` → `record` →
+  `MutationPermit::execute`; `flip` asks the machine for the flip and reports
+  a failed one; `commit_run` and `end_run` are the machine's cleanup. Error
+  texts users saw are kept ("changed between the drift decision and the
+  mutation", "did not reach its intended state", "between journaled
+  mutations").
+- `gripsack-exec`: every `execute_op` arm (link, write, merge upsert, removal
+  and prior restore) passes an `Install`; `deploy::removal` replaces
+  `remove_or_restore_prior`/`remove_entry_deployed`/`restore_prior` — the
+  exact-target re-check is the leaf protocol's, the K1 decision the
+  planner's. Rollback writes through `execute_op`, so through the same
+  protocol.
+- The directory domain's reactivation keeps a prior capture
+  (`mutation::capture`, same observation and prior evidence) — its record
+  carries the prior; it is not a leaf mutation (step 9).
+- `GRIPSACK_ENGINE=legacy` still selects the legacy *recovery* in debug
+  builds; there is no legacy leaf path (nothing to switch).
+
+### 19.4 Defects and the S5 window, measured
+
+No new correctness defect was found. One measured change, not claimed as a
+reproduced product bug: the 0.53 leaf checked the destination against the
+plan once, at capture, then published the entry and wrote with no re-check.
+`the_leaf_never_overwrites_an_external_write_its_recheck_sees` lands an
+external write before each storage operation of a one-destination run: the
+0.53 order (restated in the test, as the 0.19.x cleanups are) overwrites it
+at 12 operations (the entry's whole publication and the staging); the kernel
+leaf at 2 (between the act's re-check and the rename), and otherwise stops
+with a drift refusal and leaves the user's bytes. This was measured on MemFs
+over a restatement of the old order, not on the old binary.
+
+### 19.5 Tests
+
+- `crates/gripsack-host/tests/journal_cleanup.rs` now drives the *run* through
+  `RunDriver` (the hand-written apply is gone) and the recovery through the
+  recover machine, every kill and power-loss cut of each, over MemFs: every
+  entry shape on fresh and existing machines, repeated writes, two
+  destinations, edits after each crash, ambiguity, the numeric-commit mutant,
+  the 0.19.1/0.19.2 calibrations, the wedge, recovery's S5 window. New: the
+  leaf's S5 window (§19.4); an ended run recovers to nothing after any crash;
+  a run that journaled a destination cannot end; and
+  `rollback_survives_every_crash_and_every_recovery_crash` — the kernel
+  rollback machine, its writes through the leaf protocol, the flip and the
+  cleanup, crashed everywhere (45 cuts / 186 images), each image's recovery
+  crashed everywhere (1922 cuts / 7553 images), then recovered: every
+  destination holds exactly the generation rolled back from or to.
+- Store and exec unit tests moved from `capture`/`record` to `mutate` (a
+  crash between entry and act is a failing `Splice`, `crash_after_entry`);
+  `unfinished_mutation_cannot_end_the_run` now exercises the kernel's
+  `Unfinished` refusal after a landed unit.
+- The `Batched` record order (all entries, then all mutations) is gone from
+  the explorer: the kernel cannot produce it and no shipped version did.
+- No separate kernel explorer: P1/P3 are proved, and the MemFs suites drive
+  the machine with a real host.
+
+### 19.6 Deleted
+
+`gripsack-policy/src/journal_protocol.rs` (Verus `CleanupProgress`: the
+`journal-cleanup` family, four Verus mutants, floor 371 → 368, an estimate
+until the next green `verify`), the kernel's `MutationAuthority` /
+`admit_mutation` and `admit_mutation_spec`, `marker::cleanup` and its
+`CleanupProgress` bookkeeping (legacy reconcile keeps a plain
+`cleanup_legacy`), `mutation::{CapturedPrior, MutationPermit, record}`,
+`deploy::{remove_or_restore_prior, remove_entry_deployed, restore_prior}`.
+
+### 19.7 Deviations and what is deferred
+
+1. **TLA+ `JournalLifecycle` stays.** Its TLC calibrations
+   (`MarkerCoversEntries`, `MutationHasDurableMarker`, `ExactCommitIdentity`)
+   are now Lean theorems at the machine level, but the module is the base of
+   `PublicationSelection`, `RepeatedRecovery` and the TLAPS journal stack
+   (P2-level), which F3 retires. Deleting its cfgs while the model stays
+   would only uncalibrate it.
+2. **P1 is about the machine's commands**; that a `Done` means durable is the
+   driver's contract over S1–S3 (ring 1, `Storage.lean`, F3), tested by the
+   MemFs suites, not proved.
+3. **Rollback's exec driver is not generic over `Storage`.** Its writes go
+   through the leaf protocol over `RealFs`, and the kernel rollback machine
+   composed with the leaf protocol is crash-explored over MemFs, but the
+   exploration uses a test host, not `gripsack-exec/src/rollback/restore.rs`
+   (manifest decoding, `plan_restore_op` and the store stay on the real
+   filesystem). Delegated units (managed blocks, directory transitions) are
+   outside that exploration.
+4. **Unjournaled effects stay listed, not proved:** prior blobs (deduplicated
+   by content, synced before the entry), parent directories created by
+   `dest_capability`, the selection reservation.
+5. `RecordPublication`/`DurableRecord` remain for directory records
+   (`Journal::write`); `RecordRole::RunMarker` is no longer used by the product.
+6. **e2e instrumentation:** `test_recovery_durability.py`'s
+   `before-second-restore` cut located the trace row `Before Symlink ".b"`
+   (gripsack-fs labelled the temporary link by its final name); `RealFs`
+   labels the boundary with the staging name it really creates, so the test
+   now finds the row by that name. Behaviour is unchanged; the test failed
+   on the first e2e run of this branch for that reason alone.
+
+Gates (docker, project `f2journal`, this branch): `proofs` passed in 820 s
+(no translation drift, 268 theorems, 50 claims, standard axioms only, 48/48
+mutants calibrated — the F1 file-barrier mutant now also breaks
+`JournalRun.step_spec`, as it should); `e2e` 682 passed in 15m39s. `test`:
+the compose run failed three times in the shared `gripsack-target-dev`
+BuildKit cache (an rlib missing behind a fresh fingerprint, other agents'
+builds sharing the cache), after all 37 test binaries had passed; the gate's
+exact commands (`cargo fmt --check`, `cargo clippy --locked --workspace
+--all-targets -D warnings`, `cargo test --locked`, then the conda-helper
+fmt/clippy/test) passed from the same `builder` stage with a private, clean
+target directory. Not run: `verify` (whose floor this branch lowers), `model`,
+`tlaps`, `ts-test`, fuzz.
+
+After merging `main` (the GC machine, §18; `proofs/Extracted` regenerated):
+`proofs` passed in 1700 s (no drift, 324 theorems, 61 claims, standard axioms
+only, 58/58 mutants calibrated); `test` passed as a compose run (`gate
+passed: fmt + clippy -D warnings + cargo test`); `e2e` 688 passed in 13m59s.
+The `check_verus` floor is 368: main's 371, which step 4 left unchanged, less
+this step's three.
+
 ## 20. F2 step 5 record — the activation machine (P4 kernel part, K6)
 
 - Branch `foundation/f2-activation` from `main` at `bf44ad4`; date
@@ -1819,9 +2024,9 @@ with TLAPS after P1–P3, §8).
 
 ### 20.8 Deviations and what is deferred
 
-1. **No MemFs crash exploration of activation.** As for rollback and gc
-   (§16.7, §18.7), the ledger writes go through `gripsack_fs`, not
-   `gripsack-host::Storage`. Durability of a `Persist` before its `Done` is
+1. **No MemFs crash exploration of activation.** As for gc (§18.7;
+   rollback's leaf writes are crash-explored since §19), the ledger writes
+   go through `gripsack_fs`, not `gripsack-host::Storage`. Durability of a `Persist` before its `Done` is
    the store's `atomic_write_with_mode` (file and directory fsync, S2); the
    ring-1 P4 statement over S1–S7 is F3. The crash e2e cuts
    (`hook-after-start`, `-effect`, `-receipt`, `hooks-before-cleanup`) and

@@ -16,7 +16,6 @@
 //! rendering stays out of the kernels.
 pub mod conda_admission;
 pub mod graph;
-pub mod journal_protocol;
 pub mod operation_budget;
 pub mod process_budget;
 pub mod rate_limit;

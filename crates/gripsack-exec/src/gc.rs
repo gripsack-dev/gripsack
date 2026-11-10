@@ -499,19 +499,28 @@ mod tests {
         fs::write(&dest, b"user bytes\n").unwrap();
         let directory = gripsack_fs::open(home).unwrap();
         let observed = store::journal::live_identity(&directory, Path::new("dest.txt")).unwrap();
-        let captured = store::journal::capture(
+        // the process dies after the entry is durable, before the removal
+        let crash = |_: &[u8], _: Option<gripsack_host::storage::Permissions>| {
+            Err(std::io::Error::other("simulated crash"))
+        };
+        store::journal::mutate(
             &run,
             directory,
             PathBuf::from("dest.txt"),
             &dest,
             observed.as_ref(),
+            &store::journal::Intended::Removed,
+            store::journal::Install::Splice(Box::new(crash)),
         )
-        .unwrap();
-        let store::journal::Prior::File { hash, .. } = captured.prior() else {
-            panic!("the actual destination must produce a retained file prior");
+        .expect_err("the simulated crash");
+        let blobs: Vec<PathBuf> = fs::read_dir(home.join("prior"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        let [blob_path] = blobs.as_slice() else {
+            panic!("the actual destination must produce one retained file prior: {blobs:?}");
         };
-        let blob_path = hash.path_in(home);
-        drop(store::journal::record(captured, &store::journal::Intended::Removed).unwrap());
+        let blob_path = blob_path.clone();
         assert!(blob_path.exists());
         (dir, blob_path)
     }

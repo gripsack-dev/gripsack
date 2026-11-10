@@ -24,6 +24,7 @@ pub mod gc;
 pub mod generation;
 pub mod ids;
 pub mod journal;
+pub mod journal_run;
 pub mod ownership;
 pub mod publication;
 pub mod recover;

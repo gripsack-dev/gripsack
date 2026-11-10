@@ -31,20 +31,20 @@ fn every_forward_durable_boundary_restores_exact_link_without_touching_store() {
             crate::journal::directory_nodes::install_all(&receipt).unwrap();
             let destination = receipt.destination.join("nested/command");
             let (parent, name) = receipt.leaf_parent(&destination).unwrap();
-            let captured = capture(&run, parent, name, &destination, None).unwrap();
             let intent = intended();
-            let permit = record(captured, &intent).unwrap();
             if cut == 5 {
-                permit
-                    .execute(|directory, name| {
-                        gripsack_fs::atomic_write_with_mode(
-                            directory,
-                            name,
-                            b"new command\n",
-                            0o755,
-                        )
-                    })
-                    .unwrap();
+                mutate(
+                    &run,
+                    parent,
+                    name,
+                    &destination,
+                    None,
+                    &intent,
+                    file(b"new command\n", 0o755),
+                )
+                .unwrap();
+            } else {
+                crash_after_entry(&run, parent, name, &destination, None, &intent);
             }
         }
         drop(run);

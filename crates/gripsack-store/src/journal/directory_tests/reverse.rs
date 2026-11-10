@@ -30,14 +30,16 @@ fn reverse_recovery_restores_parent_inode_before_child_priors_and_reactivation_r
         let destination = receipt.destination.join("nested/command");
         let (parent, name) = receipt.leaf_parent(&destination).unwrap();
         let expected = intended();
-        let captured = capture(&run, parent, name, &destination, expected.as_object()).unwrap();
-        record(captured, &Intended::Removed)
-            .unwrap()
-            .execute(|directory, name| {
-                gripsack_fs::remove_file(directory, name)?;
-                gripsack_fs::fsync_dir(directory, Path::new("."))
-            })
-            .unwrap();
+        mutate(
+            &run,
+            parent,
+            name,
+            &destination,
+            expected.as_object(),
+            &Intended::Removed,
+            Install::Remove,
+        )
+        .unwrap();
         reverse_directory(&run, &receipt).unwrap();
         assert_eq!(
             std::fs::read_link(&receipt.destination).unwrap(),
@@ -66,15 +68,16 @@ fn reverse_recovery_restores_parent_inode_before_child_priors_and_reactivation_r
             let name = PathBuf::from(receipt.destination.file_name().unwrap());
             let expected =
                 ObjectIdentity::Link(receipt.predecessor_target.to_str().unwrap().to_owned());
-            let captured =
-                capture(&run, parent, name, &receipt.destination, Some(&expected)).unwrap();
-            record(captured, &Intended::Removed)
-                .unwrap()
-                .execute(|directory, name| {
-                    gripsack_fs::remove_file(directory, name)?;
-                    gripsack_fs::fsync_dir(directory, Path::new("."))
-                })
-                .unwrap();
+            mutate(
+                &run,
+                parent,
+                name,
+                &receipt.destination,
+                Some(&expected),
+                &Intended::Removed,
+                Install::Remove,
+            )
+            .unwrap();
             drop(run);
             reconcile(&home, temporary.path()).unwrap();
         }
@@ -157,14 +160,16 @@ fn incarnation_exchange_restores_original_tree_before_original_child_priors() {
         directory::bind_existing(&run, &original).unwrap();
         let destination = original.destination.join("nested/command");
         let (parent, name) = original.leaf_parent(&destination).unwrap();
-        let captured = capture(&run, parent, name, &destination, intended().as_object()).unwrap();
-        record(captured, &Intended::Removed)
-            .unwrap()
-            .execute(|directory, name| {
-                gripsack_fs::remove_file(directory, name)?;
-                gripsack_fs::fsync_dir(directory, Path::new("."))
-            })
-            .unwrap();
+        mutate(
+            &run,
+            parent,
+            name,
+            &destination,
+            intended().as_object(),
+            &Intended::Removed,
+            Install::Remove,
+        )
+        .unwrap();
         reverse_directory(&run, &original).unwrap();
         if cut == 0 {
             directory::persist(
@@ -181,21 +186,19 @@ fn incarnation_exchange_restores_original_tree_before_original_child_priors() {
             directory::reactivate(&run, &target, Some(&expected)).unwrap();
             if cut >= 2 {
                 let (parent, name) = target.leaf_parent(&destination).unwrap();
-                let captured = capture(&run, parent, name, &destination, None).unwrap();
                 let replacement = Intended::Object(ObjectIdentity::File(
                     crate::canonical_bytes_identity(b"target incarnation\n", 0o755),
                 ));
-                record(captured, &replacement)
-                    .unwrap()
-                    .execute(|directory, name| {
-                        gripsack_fs::atomic_write_with_mode(
-                            directory,
-                            name,
-                            b"target incarnation\n",
-                            0o755,
-                        )
-                    })
-                    .unwrap();
+                mutate(
+                    &run,
+                    parent,
+                    name,
+                    &destination,
+                    None,
+                    &replacement,
+                    file(b"target incarnation\n", 0o755),
+                )
+                .unwrap();
             }
             if cut == 3 {
                 // Another process dies after restoring only the original
@@ -271,14 +274,16 @@ fn incarnation_exchange_restores_original_tree_before_original_child_priors() {
         .unwrap();
         directory::bind_existing(&retry, &original).unwrap();
         let (parent, name) = original.leaf_parent(&destination).unwrap();
-        let captured = capture(&retry, parent, name, &destination, intended().as_object()).unwrap();
-        record(captured, &Intended::Removed)
-            .unwrap()
-            .execute(|directory, name| {
-                gripsack_fs::remove_file(directory, name)?;
-                gripsack_fs::fsync_dir(directory, Path::new("."))
-            })
-            .unwrap();
+        mutate(
+            &retry,
+            parent,
+            name,
+            &destination,
+            intended().as_object(),
+            &Intended::Removed,
+            Install::Remove,
+        )
+        .unwrap();
         reverse_directory(&retry, &original).unwrap();
         let expected =
             ObjectIdentity::Link(original.predecessor_target.to_str().unwrap().to_owned());

@@ -2,7 +2,7 @@
 //! recovery path. No random generator, fuzz runner or corpus replay is involved.
 use super::marker::{RunMarker, RunOp, begin_run};
 use super::recover::reconcile;
-use super::{Entry, Intended, ObjectIdentity, entry_name, record};
+use super::{Entry, Intended, ObjectIdentity, entry_name};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -535,20 +535,13 @@ impl RecoveryFixture {
             RunOp::Apply,
         )
         .unwrap();
-        let captured = super::capture(
+        super::mutation::crash_after_entry(
             &run,
             gripsack_fs::open_or_create(temporary.path()).unwrap(),
             Path::new("destination").to_path_buf(),
             &destination,
             None,
-        )
-        .unwrap();
-        drop(
-            record(
-                captured,
-                &Intended::Object(ObjectIdentity::Link("installed".into())),
-            )
-            .unwrap(),
+            &Intended::Object(ObjectIdentity::Link("installed".into())),
         );
         drop(run);
         home.symlink("installed", Path::new("destination")).unwrap();

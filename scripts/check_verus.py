@@ -26,9 +26,13 @@ CRATE = ROOT / "crates/gripsack-policy"
 # their two obligations leave the floor. plan/0056 F2 step 6 moved the managed-
 # block splice and scanner to the kernel's `block` module (K5, Lean); the
 # eleven `merge` / `merge::scanner` obligations leave the floor. plan/0056 F2
-# step 5 moved the hook-intent ledger transitions (`activation`) into the
-# kernel's activation machine (P4, Lean); its eight obligations leave the floor.
-MIN_OBLIGATIONS = 363
+# step 3 moved the journal cleanup order (`journal_protocol::CleanupProgress`)
+# into the kernel's journal-run and recover machines (P1, P3, Lean); its three
+# obligations leave the floor (an estimate until the next green `verify` run).
+# plan/0056 F2 step 5 moved the hook-intent ledger transitions (`activation`)
+# into the kernel's activation machine (P4, Lean); its eight obligations leave
+# the floor.
+MIN_OBLIGATIONS = 360
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
@@ -115,9 +119,6 @@ FAMILIES = {
         "new", "counted_reports", "selected_count", "record", "finish",
     )) + tuple("update_survey::UpdateSummary::" + name for name in (
         "selected", "unchanged", "changed", "skipped", "failed", "outcome", "publishes_lock",
-    )),
-    "journal-cleanup": tuple("journal_protocol::CleanupProgress::" + name for name in (
-        "new", "action", "acknowledge",
     )),
     "semantic-framing": tuple("semantic::" + name for name in (
         "length_header", "lemma_le64_injective", "lemma_encode_frames_injective",
@@ -285,17 +286,6 @@ MUTANTS = (
     Mutant("survey-unchanged-publication", "update_survey.rs", "update_survey::UpdateSummary::publishes_lock",
            "{ mode == UpdateMode::Publish && self.counts.failed == 0 && self.counts.changed != 0 }",
            "{ mode == UpdateMode::Publish && self.counts.failed == 0 }"),
-    Mutant("journal-cleanup-uncommitted-authority", "journal_protocol.rs", "journal_protocol::CleanupProgress::new",
-           "reconciled: if scope == CleanupScope::Committed { total } else { 0 },",
-           "reconciled: total,"),
-    Mutant("journal-cleanup-action-guard", "journal_protocol.rs", "journal_protocol::CleanupProgress::acknowledge",
-           "if !succeeded || action != self.action() {", "if !succeeded {"),
-    Mutant("journal-cleanup-entry-accounting", "journal_protocol.rs", "journal_protocol::CleanupProgress::acknowledge",
-           "CleanupAction::RemoveEntry { index: _ } => { self.removed += 1; }",
-           "CleanupAction::RemoveEntry { index: _ } => { self.removed = self.total; }"),
-    Mutant("journal-cleanup-marker-barrier", "journal_protocol.rs", "journal_protocol::CleanupProgress::acknowledge",
-           "CleanupAction::SyncEntries => { self.phase = CleanupPhase::MarkerRemoval; }",
-           "CleanupAction::SyncEntries => { self.phase = CleanupPhase::MarkerBarrier; }"),
     # semantic normalization: framing header corruption
     Mutant("semantic-frame-length", "semantic.rs", "semantic::length_header",
            "        let byte = ((length >> shift) & 0xffu64) as u8;",

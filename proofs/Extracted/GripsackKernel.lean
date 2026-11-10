@@ -4729,36 +4729,6 @@ def journal.RecordPublication.finish
   then ok (some { role := self.role })
   else ok none
 
-/-- [gripsack_kernel::journal::MutationAuthority]
-    Source: 'crates/gripsack-kernel/src/journal.rs', lines 117:0-119:1
-    Visibility: public -/
-structure journal.MutationAuthority where
-  entry : journal.DurableRecord
-
-/-- [gripsack_kernel::journal::{gripsack_kernel::journal::MutationAuthority}::entry]:
-    Source: 'crates/gripsack-kernel/src/journal.rs', lines 122:4-124:5
-    Visibility: public -/
-def journal.MutationAuthority.impl.entry
-  (self : journal.MutationAuthority) : Result journal.DurableRecord := do
-  ok self.entry
-
-/-- [gripsack_kernel::journal::admit_mutation]:
-    Source: 'crates/gripsack-kernel/src/journal.rs', lines 127:0-133:1
-    Visibility: public -/
-def journal.admit_mutation
-  (marker : journal.DurableRecord) (entry : journal.DurableRecord) :
-  Result (Option journal.MutationAuthority)
-  := do
-  let b ← journal.RecordRole.same marker.role journal.RecordRole.RunMarker
-  if b
-  then
-    let b1 ←
-      journal.RecordRole.same entry.role journal.RecordRole.MutationEntry
-    if b1
-    then ok (some { entry })
-    else ok none
-  else ok none
-
 /-- [gripsack_kernel::recover::Ident]
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 50:0-53:1
     Visibility: public -/
@@ -4767,14 +4737,253 @@ inductive recover.Ident where
 | File : ids.Digest → recover.Ident
 | Link : ids.Digest → recover.Ident
 
-/-- [gripsack_kernel::ownership::Recorded]
-    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 37:0-46:1
+/-- [gripsack_kernel::recover::Intended]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 104:0-107:1
     Visibility: public -/
 @[discriminant isize]
-inductive ownership.Recorded where
-| Unrecorded : ownership.Recorded
-| Observed : ownership.Recorded
-| Wrote : recover.Ident → ownership.Recorded
+inductive recover.Intended where
+| Removed : recover.Intended
+| Obj : recover.Ident → recover.Intended
+
+/-- [gripsack_kernel::recover::Live]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 69:0-73:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.Live where
+| Absent : recover.Live
+| Obj : recover.Ident → recover.Live
+| Unsupported : recover.Live
+
+/-- [gripsack_kernel::journal_run::UnitFacts]
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 47:0-55:1
+    Visibility: public -/
+structure journal_run.UnitFacts where
+  dest : ids.DestId
+  expect : recover.Live
+  intended : recover.Intended
+  follows : Option recover.Intended
+
+/-- [gripsack_kernel::journal_run::Record]
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 58:0-62:1
+    Visibility: public -/
+@[discriminant isize]
+inductive journal_run.Record where
+| Marker : journal_run.Record
+| Entry : journal_run.Record
+
+/-- [gripsack_kernel::journal_run::Settle]
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 65:0-70:1
+    Visibility: public -/
+@[discriminant isize]
+inductive journal_run.Settle where
+| Committed : journal_run.Settle
+| Ended : journal_run.Settle
+
+/-- [gripsack_kernel::journal_run::Outcome]
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 72:0-75:1
+    Visibility: public -/
+@[discriminant isize]
+inductive journal_run.Outcome where
+| Committed : journal_run.Outcome
+| Ended : journal_run.Outcome
+
+/-- [gripsack_kernel::journal_run::Refusal]
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 78:0-97:1
+    Visibility: public -/
+@[discriminant isize]
+inductive journal_run.Refusal where
+| Drifted : Std.U32 → ids.DestId → journal_run.Refusal
+| Interleaved : Std.U32 → ids.DestId → journal_run.Refusal
+| Unsupported : Std.U32 → ids.DestId → journal_run.Refusal
+| NotLanded : Std.U32 → ids.DestId → journal_run.Refusal
+| Unfinished : journal_run.Refusal
+| Failed : journal_run.Refusal
+| Protocol : journal_run.Refusal
+| Overflow : journal_run.Refusal
+
+/-- [gripsack_kernel::recover::JournalName]
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 199:0-202:1
+    Visibility: public -/
+@[discriminant isize]
+inductive recover.JournalName where
+| Record : Std.U32 → recover.JournalName
+| Marker : recover.JournalName
+
+/-- [gripsack_kernel::journal_run::Command]
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 99:0-135:1
+    Visibility: public -/
+@[discriminant isize]
+inductive journal_run.Command where
+| Publish :
+  journal_run.Record →
+  journal.PublicationAction →
+  journal_run.Command
+| Ready : journal_run.Command
+| Observe : Std.U32 → ids.DestId → journal_run.Command
+| CapturePrior :
+  Std.U32 →
+  ids.DestId →
+  recover.Live →
+  journal_run.Command
+| Mutate :
+  Std.U32 →
+  ids.DestId →
+  recover.Live →
+  recover.Intended →
+  journal_run.Command
+| Flip : journal_run.Command
+| Settle : journal_run.Settle → journal_run.Command
+| Unlink : recover.JournalName → journal_run.Command
+| Barrier : journal_run.Command
+| Finish : journal_run.Outcome → journal_run.Command
+| Abort : journal_run.Refusal → journal_run.Command
+
+/-- [gripsack_kernel::journal_run::Event]
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 137:0-158:1
+    Visibility: public -/
+@[discriminant isize]
+inductive journal_run.Event where
+| Start : journal_run.Event
+| Done : journal_run.Event
+| Failed : recover.Failure → journal_run.Event
+| Unit : journal_run.UnitFacts → journal_run.Event
+| Commit : journal_run.Event
+| End : journal_run.Event
+| Observed : ids.DestId → recover.Live → journal_run.Event
+| Landed : recover.Live → journal_run.Event
+| Settled : Std.U32 → journal_run.Event
+
+/-- [gripsack_kernel::journal_run::Phase]
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 160:0-176:1
+    Visibility: public -/
+@[discriminant isize]
+inductive journal_run.Phase where
+| Start : journal_run.Phase
+| PublishingMarker : journal_run.Phase
+| Ready : journal_run.Phase
+| Observing : journal_run.Phase
+| Capturing : journal_run.Phase
+| PublishingEntry : journal_run.Phase
+| Mutating : journal_run.Phase
+| Flipping : journal_run.Phase
+| Settling : journal_run.Phase
+| UnlinkingRecord : journal_run.Phase
+| SyncingRecords : journal_run.Phase
+| UnlinkingMarker : journal_run.Phase
+| SyncingMarker : journal_run.Phase
+| Finished : journal_run.Phase
+| Aborted : journal_run.Phase
+
+/-- [gripsack_kernel::journal_run::RunState]
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 178:0-193:1
+    Visibility: public -/
+structure journal_run.RunState where
+  phase : journal_run.Phase
+  step : journal.PublicationAction
+  committed : Bool
+  units : Std.U32
+  unit : Option journal_run.UnitFacts
+  observed : recover.Live
+  records : Std.U32
+  index : Std.U32
+
+/-- [gripsack_kernel::journal_run::{gripsack_kernel::journal_run::RunState}::new]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 196:4-207:5
+    Visibility: public -/
+def journal_run.RunState.new : Result journal_run.RunState := do
+  ok
+    {
+      phase := journal_run.Phase.Start,
+      step := journal.PublicationAction.Stage,
+      committed := false,
+      units := 0#u32,
+      unit := none,
+      observed := recover.Live.Absent,
+      records := 0#u32,
+      index := 0#u32
+    }
+
+/-- [gripsack_kernel::journal_run::refuse]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 210:0-213:1 -/
+def journal_run.refuse
+  (state : journal_run.RunState) (refusal : journal_run.Refusal) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  ok ({ state with phase := journal_run.Phase.Aborted },
+    journal_run.Command.Abort refusal)
+
+/-- [gripsack_kernel::journal_run::failed_or_protocol]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 215:0-220:1 -/
+def journal_run.failed_or_protocol
+  (state : journal_run.RunState) (event : journal_run.Event) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  match event with
+  | journal_run.Event.Start =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Event.Done =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Event.Failed _ =>
+    journal_run.refuse state journal_run.Refusal.Failed
+  | journal_run.Event.Unit _ =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Event.Commit =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Event.End =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Event.Observed _ _ =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Event.Landed _ =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Event.Settled _ =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+
+/-- [gripsack_kernel::journal_run::on_marker_step]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 224:0-242:1 -/
+def journal_run.on_marker_step
+  (state : journal_run.RunState) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  let next ← journal.PublicationAction.successor state.step
+  match next with
+  | journal.PublicationAction.Stage =>
+    ok ({ state with step := journal.PublicationAction.Stage },
+      journal_run.Command.Publish journal_run.Record.Marker
+      journal.PublicationAction.Stage)
+  | journal.PublicationAction.SyncFile =>
+    ok ({ state with step := journal.PublicationAction.SyncFile },
+      journal_run.Command.Publish journal_run.Record.Marker
+      journal.PublicationAction.SyncFile)
+  | journal.PublicationAction.PublishName =>
+    ok ({ state with step := journal.PublicationAction.PublishName },
+      journal_run.Command.Publish journal_run.Record.Marker
+      journal.PublicationAction.PublishName)
+  | journal.PublicationAction.SyncNamespace =>
+    ok ({ state with step := journal.PublicationAction.SyncNamespace },
+      journal_run.Command.Publish journal_run.Record.Marker
+      journal.PublicationAction.SyncNamespace)
+  | journal.PublicationAction.Complete =>
+    ok ({ state with phase := journal_run.Phase.Ready },
+      journal_run.Command.Ready)
+  | journal.PublicationAction.Refused =>
+    ok ({ state with step := journal.PublicationAction.Refused },
+      journal_run.Command.Publish journal_run.Record.Marker
+      journal.PublicationAction.Refused)
+
+/-- [gripsack_kernel::journal_run::on_unit]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 244:0-251:1 -/
+def journal_run.on_unit
+  (state : journal_run.RunState) (facts : journal_run.UnitFacts) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  ok
+    ({
+       state
+         with
+         phase := journal_run.Phase.Observing,
+         unit := (some facts),
+         observed := recover.Live.Absent
+     }, journal_run.Command.Observe state.units facts.dest)
 
 /-- [gripsack_kernel::recover::{gripsack_kernel::recover::Ident}::same]:
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 56:4-62:5
@@ -4790,6 +4999,490 @@ def recover.Ident.same
     match other with
     | recover.Ident.File _ => ok false
     | recover.Ident.Link b => ids.Digest.same a b
+
+/-- [gripsack_kernel::rollback::lands]:
+    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 345:0-351:1
+    Visibility: public -/
+def rollback.lands
+  (install : recover.Intended) (live : recover.Live) : Result Bool := do
+  match install with
+  | recover.Intended.Removed =>
+    match live with
+    | recover.Live.Absent => ok true
+    | recover.Live.Obj _ => ok false
+    | recover.Live.Unsupported => ok false
+  | recover.Intended.Obj ident =>
+    match live with
+    | recover.Live.Absent => ok false
+    | recover.Live.Obj object => recover.Ident.same ident object
+    | recover.Live.Unsupported => ok false
+
+/-- [gripsack_kernel::journal_run::follows]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 254:0-259:1 -/
+def journal_run.follows
+  (previous : Option recover.Intended) (live : recover.Live) :
+  Result Bool
+  := do
+  match previous with
+  | none => ok true
+  | some intended => rollback.lands intended live
+
+/-- [gripsack_kernel::recover::{gripsack_kernel::recover::Live}::same]:
+    Source: 'crates/gripsack-kernel/src/recover.rs', lines 76:4-83:5
+    Visibility: public -/
+def recover.Live.same
+  (self : recover.Live) (other : recover.Live) : Result Bool := do
+  match self with
+  | recover.Live.Absent =>
+    match other with
+    | recover.Live.Absent => ok true
+    | recover.Live.Obj _ => ok false
+    | recover.Live.Unsupported => ok false
+  | recover.Live.Obj a =>
+    match other with
+    | recover.Live.Absent => ok false
+    | recover.Live.Obj b => recover.Ident.same a b
+    | recover.Live.Unsupported => ok false
+  | recover.Live.Unsupported =>
+    match other with
+    | recover.Live.Absent => ok false
+    | recover.Live.Obj _ => ok false
+    | recover.Live.Unsupported => ok true
+
+/-- [gripsack_kernel::journal_run::on_observed]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 261:0-291:1 -/
+def journal_run.on_observed
+  (state : journal_run.RunState) (dest : ids.DestId) (live : recover.Live) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  match state.unit with
+  | none => journal_run.refuse state journal_run.Refusal.Protocol
+  | some facts =>
+    let b ← ids.DestId.same facts.dest dest
+    if b
+    then
+      match live with
+      | recover.Live.Absent =>
+        let b1 ← recover.Live.same recover.Live.Absent facts.expect
+        if b1
+        then
+          let b2 ← journal_run.follows facts.follows recover.Live.Absent
+          if b2
+          then
+            ok
+              ({
+                 state
+                   with
+                   phase := journal_run.Phase.Capturing,
+                   observed := recover.Live.Absent
+               }, journal_run.Command.CapturePrior state.units dest
+              recover.Live.Absent)
+          else
+            journal_run.refuse state (journal_run.Refusal.Interleaved
+              state.units dest)
+        else
+          journal_run.refuse state (journal_run.Refusal.Drifted state.units
+            dest)
+      | recover.Live.Obj _ =>
+        let b1 ← recover.Live.same live facts.expect
+        if b1
+        then
+          let b2 ← journal_run.follows facts.follows live
+          if b2
+          then
+            ok
+              ({
+                 state
+                   with
+                   phase := journal_run.Phase.Capturing, observed := live
+               }, journal_run.Command.CapturePrior state.units dest live)
+          else
+            journal_run.refuse state (journal_run.Refusal.Interleaved
+              state.units dest)
+        else
+          journal_run.refuse state (journal_run.Refusal.Drifted state.units
+            dest)
+      | recover.Live.Unsupported =>
+        journal_run.refuse state (journal_run.Refusal.Unsupported state.units
+          dest)
+    else journal_run.refuse state journal_run.Refusal.Protocol
+
+/-- [gripsack_kernel::journal_run::on_act_failed]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 294:0-311:1 -/
+def journal_run.on_act_failed
+  (state : journal_run.RunState) (failure : recover.Failure) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  match failure with
+  | recover.Failure.Drift =>
+    match state.unit with
+    | none => journal_run.refuse state journal_run.Refusal.Protocol
+    | some facts =>
+      journal_run.refuse state (journal_run.Refusal.Drifted state.units
+        facts.dest)
+  | recover.Failure.Io _ => journal_run.refuse state journal_run.Refusal.Failed
+
+/-- [gripsack_kernel::journal_run::on_captured]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 313:0-323:1 -/
+def journal_run.on_captured
+  (state : journal_run.RunState) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  ok
+    ({
+       state
+         with
+         phase := journal_run.Phase.PublishingEntry,
+         step := journal.PublicationAction.Stage
+     }, journal_run.Command.Publish journal_run.Record.Entry
+    journal.PublicationAction.Stage)
+
+/-- [gripsack_kernel::journal_run::on_entry_step]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 327:0-359:1 -/
+def journal_run.on_entry_step
+  (state : journal_run.RunState) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  match state.unit with
+  | none => journal_run.refuse state journal_run.Refusal.Protocol
+  | some facts =>
+    let next ← journal.PublicationAction.successor state.step
+    match next with
+    | journal.PublicationAction.Stage =>
+      ok ({ state with step := journal.PublicationAction.Stage },
+        journal_run.Command.Publish journal_run.Record.Entry
+        journal.PublicationAction.Stage)
+    | journal.PublicationAction.SyncFile =>
+      ok ({ state with step := journal.PublicationAction.SyncFile },
+        journal_run.Command.Publish journal_run.Record.Entry
+        journal.PublicationAction.SyncFile)
+    | journal.PublicationAction.PublishName =>
+      ok ({ state with step := journal.PublicationAction.PublishName },
+        journal_run.Command.Publish journal_run.Record.Entry
+        journal.PublicationAction.PublishName)
+    | journal.PublicationAction.SyncNamespace =>
+      ok ({ state with step := journal.PublicationAction.SyncNamespace },
+        journal_run.Command.Publish journal_run.Record.Entry
+        journal.PublicationAction.SyncNamespace)
+    | journal.PublicationAction.Complete =>
+      ok ({ state with phase := journal_run.Phase.Mutating },
+        journal_run.Command.Mutate state.units facts.dest state.observed
+        facts.intended)
+    | journal.PublicationAction.Refused =>
+      ok ({ state with step := journal.PublicationAction.Refused },
+        journal_run.Command.Publish journal_run.Record.Entry
+        journal.PublicationAction.Refused)
+
+/-- [gripsack_kernel::journal_run::on_landed]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 361:0-385:1 -/
+def journal_run.on_landed
+  (state : journal_run.RunState) (live : recover.Live) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  match state.unit with
+  | none => journal_run.refuse state journal_run.Refusal.Protocol
+  | some facts =>
+    let b ← rollback.lands facts.intended live
+    if b
+    then
+      let o ← lift (U32.checked_add state.units 1#u32)
+      match o with
+      | none => journal_run.refuse state journal_run.Refusal.Overflow
+      | some units =>
+        ok
+          ({ state with phase := journal_run.Phase.Ready, units, unit := none },
+          journal_run.Command.Ready)
+    else
+      journal_run.refuse state (journal_run.Refusal.NotLanded state.units
+        facts.dest)
+
+/-- [gripsack_kernel::journal_run::on_end]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 387:0-393:1 -/
+def journal_run.on_end
+  (state : journal_run.RunState) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  if state.units != 0#u32
+  then journal_run.refuse state journal_run.Refusal.Unfinished
+  else
+    ok ({ state with phase := journal_run.Phase.Settling },
+      journal_run.Command.Settle journal_run.Settle.Ended)
+
+/-- [gripsack_kernel::journal_run::next_unlink]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 396:0-405:1 -/
+def journal_run.next_unlink
+  (state : journal_run.RunState) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  if state.index < state.records
+  then
+    ok ({ state with phase := journal_run.Phase.UnlinkingRecord },
+      journal_run.Command.Unlink (recover.JournalName.Record state.index))
+  else
+    ok ({ state with phase := journal_run.Phase.SyncingRecords },
+      journal_run.Command.Barrier)
+
+/-- [gripsack_kernel::journal_run::finish]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 407:0-414:1 -/
+def journal_run.finish
+  (state : journal_run.RunState) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  if state.committed
+  then
+    ok ({ state with phase := journal_run.Phase.Finished },
+      journal_run.Command.Finish journal_run.Outcome.Committed)
+  else
+    ok ({ state with phase := journal_run.Phase.Finished },
+      journal_run.Command.Finish journal_run.Outcome.Ended)
+
+/-- [gripsack_kernel::journal_run::run_step]:
+    Source: 'crates/gripsack-kernel/src/journal_run.rs', lines 420:0-520:1
+    Visibility: public -/
+def journal_run.run_step
+  (state : journal_run.RunState) (event : journal_run.Event) :
+  Result (journal_run.RunState × journal_run.Command)
+  := do
+  match state.phase with
+  | journal_run.Phase.Start =>
+    match event with
+    | journal_run.Event.Start =>
+      ok
+        ({
+           state
+             with
+             phase := journal_run.Phase.PublishingMarker,
+             step := journal.PublicationAction.Stage
+         }, journal_run.Command.Publish journal_run.Record.Marker
+        journal.PublicationAction.Stage)
+    | journal_run.Event.Done =>
+      journal_run.failed_or_protocol state journal_run.Event.Done
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.PublishingMarker =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done => journal_run.on_marker_step state
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.Ready =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done =>
+      journal_run.failed_or_protocol state journal_run.Event.Done
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit facts => journal_run.on_unit state facts
+    | journal_run.Event.Commit =>
+      ok ({ state with phase := journal_run.Phase.Flipping },
+        journal_run.Command.Flip)
+    | journal_run.Event.End => journal_run.on_end state
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.Observing =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done =>
+      journal_run.failed_or_protocol state journal_run.Event.Done
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed dest live =>
+      journal_run.on_observed state dest live
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.Capturing =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Done => journal_run.on_captured state
+    | journal_run.Event.Failed failure =>
+      journal_run.on_act_failed state failure
+    | journal_run.Event.Unit _ =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Commit =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.End =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Observed _ _ =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Landed _ =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Settled _ =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Phase.PublishingEntry =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done => journal_run.on_entry_step state
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.Mutating =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Done =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Failed failure =>
+      journal_run.on_act_failed state failure
+    | journal_run.Event.Unit _ =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Commit =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.End =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Observed _ _ =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+    | journal_run.Event.Landed live => journal_run.on_landed state live
+    | journal_run.Event.Settled _ =>
+      journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Phase.Flipping =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done =>
+      ok
+        ({ state with phase := journal_run.Phase.Settling, committed := true },
+        journal_run.Command.Settle journal_run.Settle.Committed)
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.Settling =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done =>
+      journal_run.failed_or_protocol state journal_run.Event.Done
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled records =>
+      journal_run.next_unlink { state with records, index := 0#u32 }
+  | journal_run.Phase.UnlinkingRecord =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done =>
+      let o ← lift (U32.checked_add state.index 1#u32)
+      match o with
+      | none => journal_run.refuse state journal_run.Refusal.Overflow
+      | some index => journal_run.next_unlink { state with index }
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.SyncingRecords =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done =>
+      ok ({ state with phase := journal_run.Phase.UnlinkingMarker },
+        journal_run.Command.Unlink recover.JournalName.Marker)
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.UnlinkingMarker =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done =>
+      ok ({ state with phase := journal_run.Phase.SyncingMarker },
+        journal_run.Command.Barrier)
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.SyncingMarker =>
+    match event with
+    | journal_run.Event.Start =>
+      journal_run.failed_or_protocol state journal_run.Event.Start
+    | journal_run.Event.Done => journal_run.finish state
+    | journal_run.Event.Failed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Unit _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Commit =>
+      journal_run.failed_or_protocol state journal_run.Event.Commit
+    | journal_run.Event.End =>
+      journal_run.failed_or_protocol state journal_run.Event.End
+    | journal_run.Event.Observed _ _ =>
+      journal_run.failed_or_protocol state event
+    | journal_run.Event.Landed _ => journal_run.failed_or_protocol state event
+    | journal_run.Event.Settled _ => journal_run.failed_or_protocol state event
+  | journal_run.Phase.Finished =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+  | journal_run.Phase.Aborted =>
+    journal_run.refuse state journal_run.Refusal.Protocol
+
+/-- [gripsack_kernel::ownership::Recorded]
+    Source: 'crates/gripsack-kernel/src/ownership.rs', lines 37:0-46:1
+    Visibility: public -/
+@[discriminant isize]
+inductive ownership.Recorded where
+| Unrecorded : ownership.Recorded
+| Observed : ownership.Recorded
+| Wrote : recover.Ident → ownership.Recorded
 
 /-- [gripsack_kernel::ownership::{gripsack_kernel::ownership::Recorded}::wrote]:
     Source: 'crates/gripsack-kernel/src/ownership.rs', lines 50:4-56:5
@@ -4855,14 +5548,6 @@ def ownership.Decision.writes (self : ownership.Decision) : Result Bool := do
   | ownership.Decision.TakeOver => ok true
   | ownership.Decision.Refuse _ => ok false
 
-/-- [gripsack_kernel::recover::Intended]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 104:0-107:1
-    Visibility: public -/
-@[discriminant isize]
-inductive recover.Intended where
-| Removed : recover.Intended
-| Obj : recover.Ident → recover.Intended
-
 /-- [gripsack_kernel::recover::intends]:
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 183:0-188:1 -/
 def recover.intends
@@ -4870,15 +5555,6 @@ def recover.intends
   match intended with
   | recover.Intended.Removed => ok false
   | recover.Intended.Obj ident => recover.Ident.same ident object
-
-/-- [gripsack_kernel::recover::Live]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 69:0-73:1
-    Visibility: public -/
-@[discriminant isize]
-inductive recover.Live where
-| Absent : recover.Live
-| Obj : recover.Ident → recover.Live
-| Unsupported : recover.Live
 
 /-- [gripsack_kernel::ownership::refusal]:
     Source: 'crates/gripsack-kernel/src/ownership.rs', lines 166:0-172:1 -/
@@ -5122,28 +5798,6 @@ def publication.decide_commit
   then ok publication.Commit.Vacuous
   else publication.admit_publication facts
 
-/-- [gripsack_kernel::recover::{gripsack_kernel::recover::Live}::same]:
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 76:4-83:5
-    Visibility: public -/
-def recover.Live.same
-  (self : recover.Live) (other : recover.Live) : Result Bool := do
-  match self with
-  | recover.Live.Absent =>
-    match other with
-    | recover.Live.Absent => ok true
-    | recover.Live.Obj _ => ok false
-    | recover.Live.Unsupported => ok false
-  | recover.Live.Obj a =>
-    match other with
-    | recover.Live.Absent => ok false
-    | recover.Live.Obj b => recover.Ident.same a b
-    | recover.Live.Unsupported => ok false
-  | recover.Live.Unsupported =>
-    match other with
-    | recover.Live.Absent => ok false
-    | recover.Live.Obj _ => ok false
-    | recover.Live.Unsupported => ok true
-
 /-- [gripsack_kernel::recover::Prior]
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 87:0-90:1
     Visibility: public -/
@@ -5247,14 +5901,6 @@ def recover.decide
         then ok recover.Decision.Restore
         else ok recover.Decision.Preserve
   | recover.Live.Unsupported => ok recover.Decision.Refuse
-
-/-- [gripsack_kernel::recover::JournalName]
-    Source: 'crates/gripsack-kernel/src/recover.rs', lines 199:0-202:1
-    Visibility: public -/
-@[discriminant isize]
-inductive recover.JournalName where
-| Record : Std.U32 → recover.JournalName
-| Marker : recover.JournalName
 
 /-- [gripsack_kernel::recover::Scope]
     Source: 'crates/gripsack-kernel/src/recover.rs', lines 205:0-210:1
@@ -6217,23 +6863,6 @@ def rollback.decide_restore
     | ownership.Decision.TakeOver => rollback.writing index unit
     | ownership.Decision.Refuse why =>
       ok (rollback.Restore.Leave (rollback.Settled.Kept why))
-
-/-- [gripsack_kernel::rollback::lands]:
-    Source: 'crates/gripsack-kernel/src/rollback.rs', lines 345:0-351:1
-    Visibility: public -/
-def rollback.lands
-  (install : recover.Intended) (live : recover.Live) : Result Bool := do
-  match install with
-  | recover.Intended.Removed =>
-    match live with
-    | recover.Live.Absent => ok true
-    | recover.Live.Obj _ => ok false
-    | recover.Live.Unsupported => ok false
-  | recover.Intended.Obj ident =>
-    match live with
-    | recover.Live.Absent => ok false
-    | recover.Live.Obj object => recover.Ident.same ident object
-    | recover.Live.Unsupported => ok false
 
 /-- [gripsack_kernel::rollback::admit]:
     Source: 'crates/gripsack-kernel/src/rollback.rs', lines 355:0-366:1

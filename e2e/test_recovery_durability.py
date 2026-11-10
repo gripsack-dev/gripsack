@@ -251,9 +251,13 @@ export default profile("demo", { files: [
     observed = invoke(["rollback", "1"], {"GRIPSACK_FS_TRACE": str(trace)})
     assert observed.returncode == 0, observed.stdout + observed.stderr
     rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
-    boundary = (["Before", "Symlink", '".b"'] if cut_phase == "before-second-restore"
-                else ["After", "FilePublish", '"current"'])
-    cut = next(int(row[0]) for row in rows if row[1:] == boundary)
+    # the leaf protocol stages a restored link under a temporary sibling name
+    # (`.tmp-link-<pid>-<n>-.b.tmp`) and renames it over `.b` after its re-check
+    def boundary(row):
+        if cut_phase == "before-second-restore":
+            return row[1:3] == ["Before", "Symlink"] and row[3].endswith('-.b.tmp"')
+        return row[1:] == ["After", "FilePublish", '"current"']
+    cut = next(int(row[0]) for row in rows if boundary(row))
     previous = (home / "current").readlink()
     for link in links:
         link.unlink()
