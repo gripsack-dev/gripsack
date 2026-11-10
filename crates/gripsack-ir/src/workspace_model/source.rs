@@ -59,7 +59,40 @@ pub struct CondaEnvironmentSource {
         skip_serializing_if = "Option::is_none"
     )]
     pub system_requirements: Option<CondaSystemRequirements>,
+    /// Refuse a prefix that needs any library outside its frozen closure
+    /// and the glibc runtime, including conda-forge's host platform
+    /// libraries (see [`PlatformLibraries`]). Omitted = host-provided.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict: bool,
     pub span: Span,
+}
+
+impl CondaEnvironmentSource {
+    pub fn platform_libraries(&self) -> PlatformLibraries {
+        if self.strict {
+            PlatformLibraries::Closed
+        } else {
+            PlatformLibraries::HostProvided
+        }
+    }
+}
+
+/// Where a Conda prefix's platform libraries come from: the libraries
+/// conda-forge deliberately leaves to the host system (its CDT policy —
+/// X11 client libraries, OpenGL/EGL, ALSA). plan/0059 step 1.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlatformLibraries {
+    /// The host supplies them when present, as every Conda consumer assumes.
+    #[default]
+    HostProvided,
+    /// `strict: true`: the prefix must not need them at all.
+    Closed,
+}
+impl PlatformLibraries {
+    pub fn is_host_provided(&self) -> bool {
+        *self == Self::HostProvided
+    }
 }
 
 /// Explicit native Conda solve floors. Nested values inherit the source span.

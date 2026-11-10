@@ -496,7 +496,10 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
     return v as AcquisitionSource;
   }
   if (rec.kind === "conda_environment") {
-    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "wheels", "span"]);
+    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "strict", "wheels", "span"]);
+    if (rec.strict !== undefined && typeof rec.strict !== "boolean") {
+      throw new Error(`${where}.strict must be a boolean`);
+    }
     const channels = rec.channels;
     if (!Array.isArray(channels) || channels.length === 0 ||
       channels.some((c) => typeof c !== "string" || c === "")) {

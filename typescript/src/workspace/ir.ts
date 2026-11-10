@@ -98,6 +98,8 @@ export interface CondaEnvironmentSource {
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
   system_requirements?: CondaSystemRequirements;
+  /** Emitted only when true; see `CondaEnvironmentSpec.strict`. */
+  strict?: boolean;
   wheels?: readonly WheelSource[];
   span: Span;
 }
@@ -366,6 +368,10 @@ export interface CondaEnvironmentSpec {
   systemRequirements?: CondaSystemRequirements;
   /** HTTPS binary wheels, each pinned by its lowercase SHA256 digest. */
   wheels?: readonly WheelSource[];
+  /** By default the host provides conda-forge's platform libraries (X11,
+   *  OpenGL, ALSA), as every Conda tool assumes. `true` refuses a prefix
+   *  that needs any of them: everything must be in the frozen closure. */
+  strict?: boolean;
 }
 
 /** Authoring spec for an explicit Pixi lock import — see

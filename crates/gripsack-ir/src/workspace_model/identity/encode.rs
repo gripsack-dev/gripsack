@@ -247,6 +247,7 @@ impl Encoder {
                     }
                 }
                 self.wheel_sources(&source.wheels);
+                // `strict` is admission policy, bound by package identity.
             }
             AcquisitionSource::PixiLock(source) => {
                 self.field(b"pixi-lock");
@@ -406,6 +407,16 @@ pub(super) fn package<D: AsRef<[u8; 32]>>(
         for directory in &policy.library_directories {
             writer.text(directory.as_str());
         }
+    }
+    // Like host search order, the platform-library policy is consumer
+    // authority over the same frozen closure: package identity, never the
+    // locked source projection. Omitted policy keeps retained identities.
+    if let crate::workspace_model::WorkspaceProducer::Provider {
+        provider: AcquisitionSource::CondaEnvironment(source),
+    } = &package.producer
+        && !source.platform_libraries().is_host_provided()
+    {
+        writer.text("gripsack/v10/closed-platform-libraries");
     }
     writer.archive_root(&package.archive_root);
     Ok(())

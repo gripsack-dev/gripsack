@@ -106,6 +106,7 @@ pub(super) fn acquisition(kind: &str) -> Option<&'static [&'static str]> {
             "wheels",
             "platforms",
             "system_requirements",
+            "strict",
             "span",
         ],
         "pixi_lock" => &["kind", "manifest", "lock", "environment", "span"],

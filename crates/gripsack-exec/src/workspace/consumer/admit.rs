@@ -10,6 +10,7 @@ mod elf;
 mod native;
 mod platform;
 pub(in crate::workspace) use native::NativeContext;
+pub(in crate::workspace) use platform::host_provided as host_platform_libraries;
 #[cfg(all(test, target_os = "linux", target_env = "gnu"))]
 mod host_runtime_tests;
 #[cfg(test)]
@@ -101,8 +102,24 @@ impl HostTarget {
     }
 }
 
-/// The one platform loader a relocatable dynamic executable may name for a
-/// declared target ABI. Anything else is a loader assumption we reject.
+/// The ABI, and its platform loader, that an ELF `PT_INTERP` names on this
+/// host platform. `None` is a loader we never admit.
+fn loader_abi(
+    os: TargetOs,
+    arch: TargetArch,
+    named: &std::ffi::OsStr,
+) -> Option<(BinaryAbi, &'static str)> {
+    [BinaryAbi::Gnu, BinaryAbi::Musl]
+        .into_iter()
+        .find_map(|abi| {
+            platform_loader(os, arch, abi)
+                .filter(|loader| named == *loader)
+                .map(|loader| (abi, loader))
+        })
+}
+
+/// The one platform loader a relocatable dynamic executable may name for an
+/// ABI. Anything else is a loader assumption we reject.
 fn platform_loader(os: TargetOs, arch: TargetArch, abi: BinaryAbi) -> Option<&'static str> {
     match (os, arch, abi) {
         (TargetOs::Linux, TargetArch::X86_64, BinaryAbi::Gnu) => {
@@ -114,16 +131,15 @@ fn platform_loader(os: TargetOs, arch: TargetArch, abi: BinaryAbi) -> Option<&'s
 }
 
 /// Compare one declared target against the host before any launch, on the
-/// same policy dimensions as the production kernel (os, arch, ABI, minimum
-/// floor). The native capability rule is exact, never a wildcard:
+/// same policy dimensions as the production kernel (os, arch, minimum floor).
+/// The native capability rule is exact, never a wildcard:
 ///
 /// - os and arch must equal the evaluated host facts;
-/// - a declared ABI must equal the host's libc fact (an unknown host ABI
-///   can never satisfy it);
-/// - an undeclared ABI admits only executables the classifier proves carry
-///   no dynamic ABI dependency (static ELF or scripts) — a dynamic loader
-///   dependency without a declared ABI is rejected by ELF admission;
-/// - a declared minimum-os floor must not exceed the measured host release.
+/// - a declared minimum-os floor must not exceed the measured host release;
+/// - the ABI is not a declaration-versus-host comparison: it is a property
+///   of the executable bytes. ELF admission reads it from `PT_INTERP`,
+///   checks any declared ABI as an assertion against that loader and admits
+///   static images on any host (plan/0059 step 1).
 ///
 /// A Linux artifact is refused by Mac admission (and vice versa) with its
 /// own span.
@@ -133,26 +149,31 @@ pub(super) fn admit_target(
     span: &Span,
     what: &str,
 ) -> Result<(), ExecError> {
-    let required = target.policy_requirement();
-    // ABI-independent native capability is separate from the host's dynamic
-    // loader capability. Every command claiming it must pass static/script
-    // layout admission below; None never satisfies a declared dynamic ABI.
+    // Both sides drop the ABI dimension: every command still passes ELF
+    // admission, which derives the ABI from the loader the image names.
+    let required = TargetRequirement {
+        abi: None,
+        ..target.policy_requirement()
+    };
     let available = TargetRequirement {
-        abi: if required.abi.is_none() {
-            None
-        } else {
-            host.abi
-        },
+        abi: None,
         ..host.requirement
     };
     if supports_target(&required, &available) {
         return Ok(());
     }
     Err(ExecError::Gate(
-        Diagnostic::error(codes::BAD_WORKSPACE_CONTEXT, format!(
-            "{what} targets {} with ABI {:?} and minimum OS {:?}; host {} has ABI {:?} and measured OS release {:?}",
-            platform_name(target), required.abi, required.minimum_os, host_name(host), host.abi, host.requirement.minimum_os,
-        )).with_label(Some(span.clone()), "incompatible target declared here"),
+        Diagnostic::error(
+            codes::BAD_WORKSPACE_CONTEXT,
+            format!(
+                "{what} targets {} with minimum OS {:?}; host {} has measured OS release {:?}",
+                platform_name(target),
+                required.minimum_os,
+                host_name(host),
+                host.requirement.minimum_os,
+            ),
+        )
+        .with_label(Some(span.clone()), "incompatible target declared here"),
     ))
 }
 

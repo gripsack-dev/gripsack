@@ -532,6 +532,30 @@ Deno.test("v7 Conda solve baselines lower strictly and inherit source provenance
   }
 });
 
+Deno.test("Conda strict lowers to the wire only when it closes the platform libraries", () => {
+  const open = conda.environment({ channels: ["conda-forge"], packages: { python: "*" } });
+  assert.equal("strict" in open, false);
+  assert.equal("strict" in conda.environment({
+    channels: ["conda-forge"], packages: { python: "*" }, strict: false,
+  }), false);
+  const closed = conda.environment({
+    channels: ["conda-forge"], packages: { python: "*" }, strict: true,
+  });
+  assert.equal(closed.strict, true);
+  const output = pkg("python", {
+    producer: provider(closed), commands: { python: "bin/python" },
+    target: linux, layout: { kind: "prefix_materialized" },
+  });
+  assert.equal(emit(workspace({ outputs: [output] })).workspace.outputs[0].producer.provider.strict, true);
+  assert.throws(() => conda.environment({
+    channels: ["conda-forge"], packages: { python: "*" }, strict: "yes" as unknown as boolean,
+  }), /strict must be a boolean/);
+  assert.throws(() => provider({
+    kind: "conda_environment", channels: ["conda-forge"], packages: { python: "*" },
+    strict: 1 as unknown as boolean, span: { file: "wire.ts", line: 1 },
+  }), /strict must be a boolean/);
+});
+
 Deno.test("v7 host runtime authority is ordered package policy, never producer data", () => {
   const producer = provider(tarball("https://example.invalid/tool.tar.gz"));
   const spec = {
