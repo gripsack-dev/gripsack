@@ -1361,7 +1361,13 @@ decides and proves it), `GenerationDirectory::prune`, the old flat
 corpus (its assertions are K4/K4′; trim register). No GC Verus remained
 after F1, so `check_verus` is unchanged (floor 382).
 
-GATES_PLACEHOLDER
+Gates (docker, `-p f2gc`, this branch, one at a time): `test` passed (fmt,
+clippy `-D warnings`, cargo test: 850 passed, 0 failed, 1 ignored);
+`proofs` passed in 468 s (no translation drift, 213 theorems, 48 claims,
+standard axioms only, 41/41 mutants calibrated); `e2e` 680 passed in
+12m17s (679 before, plus the staging reaper). The new e2e was not run
+against the baseline binary; the baseline reproduction is the unit test
+(§17.1).
 
 ### 17.7 Deviations and what is deferred
 
