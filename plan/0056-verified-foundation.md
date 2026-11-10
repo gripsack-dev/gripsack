@@ -1792,6 +1792,15 @@ and `activation-terminal-rewritten` (`on_intent_spec`),
 - e2e: the FND-5 reproducer (§20.1); the existing activation, hook-outcome
   and workspace-hook flows run unchanged.
 
+Gates (docker, `-p f2act`, one at a time, at `82b3133`): `test` passed
+(fmt, clippy `-D warnings`, cargo test 857 passed, 0 failed, 1 ignored);
+`proofs` OK in 1284 s (no translation drift, 361 theorems, 77 claims,
+standard axioms only, 67/67 mutants calibrated); `e2e` 689 passed in
+15m31s. On the host, the five activation/rollback/generation e2e files
+passed (72) and the FND-5 reproducer failed against the baseline binary.
+Not run: `verify` (the Verus floor change is counted, not measured),
+`model` (TLC; only negatives were removed), `tlaps`.
+
 ### 20.7 Deleted
 
 `gripsack-policy/src/activation.rs` (the Verus ledger transitions; the
