@@ -17,6 +17,7 @@
 
 extern crate alloc;
 
+pub mod activation;
 pub mod block;
 pub mod convenience;
 pub mod gc;
@@ -25,6 +26,7 @@ pub mod ids;
 pub mod journal;
 pub mod journal_run;
 pub mod ownership;
+pub mod publication;
 pub mod recover;
 pub mod retention;
 pub mod rollback;

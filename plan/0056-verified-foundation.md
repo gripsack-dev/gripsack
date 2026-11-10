@@ -214,6 +214,7 @@ the Lean sources with their axioms.
 | FND-1 | A recorded (owned) symlink is re-pointed whatever is live: if the user replaced it with their own file, the next apply overwrites it. Breaks the drift promise for links | `gripsack-policy/src/ownership.rs:103` (`recorded ⇒ Link`), `ops/plan/link.rs:18`; `lineage_model.rs:199` encodes it as intended | **Fixed** in F2 step 6 part 1 (§15), together with the store-prefix widening (design review finding 3) |
 | FND-2 | Rollback backfills `generations/<n>/env/profile.sh` into an existing generation and deletes the legacy env file outside the journal | `gripsack-exec/src/env.rs:27-49`, called from `rollback.rs:72` | **Fixed** in F2 step 8 (§16): the backfill is gone, a target without its own profile is refused |
 | FND-3 | Suspected: on a case-insensitive mount, re-spelling only a destination's case deploys the new spelling, then prunes the old one — the same inode | admission folds (`deploy/destinations.rs:26`) but prune compares raw `PathBuf` keys (`apply.rs:443-486`) | needs a reproducer first; F2 step 7 |
+| FND-5 | A post-activation hook runs after its selection stopped being current: `current` was compared with the batch's selection once, before the first hook, so a hook (or any external writer) that moves `current` does not stop the hooks after it | `activation/ledger.rs` `authorize` at `bf44ad4`; e2e reproducer in §20.1 | **Fixed** in F2 step 5 (§20) |
 | FND-4 | A managed block whose payload has a carriage-return run before a line break (`a\r\r\nb`) never matches its own marker sha: content normalization (trim, then `\r\n` → `\n`) is not a fixed point of render-then-normalize. The second apply rewrites the block with CRLF line ends and reports it "hand-edited"; every later apply still cuts a new generation for a no-op | `managed_blocks/mod.rs` `normalized_content` + `str::lines` rendering at `524f576`; e2e reproducer in §17.1 | **Fixed** in F2 step 6 part 2 (§17) |
 
 ## 6. Target layout
@@ -368,6 +369,12 @@ the crash e2e run both ways for one release before the legacy path goes.
    item 4) folded in; record in §18. The `retention` Verus had already gone
    in F1 (§13.2), so the `check_verus` floor does not move.
 5. Activation machine (ledger order, authorize/supersede, attempts).
+   **Done 2026-11-10** (branch `foundation/f2-activation`): the kernel
+   activation machine decides every hook-ledger transition, P4 proved at
+   the kernel level, K6's numbering and publication decisions moved into
+   the kernel and proved, FND-5 (a hook ran after its selection stopped
+   being current) fixed; the Verus `activation` family and five TLC
+   activation negatives gone; record in §20.
 6. Planner into the kernel (copy/template/link/merge/remove/restore per
    unit; block generation on bytes). Fix FND-1. `lineage_model`,
    `ops/model`, `mode_model` become kernel property tests, then go.
@@ -1835,3 +1842,215 @@ only, 58/58 mutants calibrated); `test` passed as a compose run (`gate
 passed: fmt + clippy -D warnings + cargo test`); `e2e` 688 passed in 13m59s.
 The `check_verus` floor is 368: main's 371, which step 4 left unchanged, less
 this step's three.
+
+## 20. F2 step 5 record — the activation machine (P4 kernel part, K6)
+
+- Branch `foundation/f2-activation` from `main` at `bf44ad4`; date
+  2026-11-10. Taken in parallel with step 3 (`foundation/f2-journal`, §19).
+- Question: can the post-activation hook ledger (ledger order,
+  authorize/supersede, attempts) be the proved kernel's sans-IO machine, with
+  P4's kernel part proved over the shipped code, and can K6's numbering and
+  publication decisions move into the kernel and be proved?
+
+### 20.1 Before, and the defect
+
+The ledger transitions (`next_attempt`, `finish_attempt`, `supersede`) were
+Verus-checked in `gripsack-policy::activation` (eight obligations); the walk
+that used them — compare `current` with the batch's selection, supersede or
+authorize, start, launch, settle, archive, clear — was host code
+(`activation/ledger.rs` `authorize`/`ReadyActivation`), modelled in
+`Activation.tla` and the TLAPS activation proofs but not proved over the
+shipped code. K6's allocator (`publication.rs` `allocate`), floor update
+(`preserve_allocation_floor`) and the vacuous-run test (`apply.rs`
+`pre_flip`) were host code with no proof.
+
+**FND-5, confirmed:** `authorize` compared `current` with the batch's
+selection once, before the first hook. A hook that moves `current` (an
+external writer: the lifecycle lock cannot exclude a hook's own process)
+did not stop the hooks after it. Reproducer
+`e2e/test_workspace_hooks.py::test_hook_launches_only_while_its_selection_is_current`
+(hook 1 re-points `current` at the previous generation; hook 2 appends to a
+file): against the baseline binary (`bf44ad4`) it fails at "a hook ran
+after its selection stopped being current" — the run log shows hook `later`
+passing; on this branch it passes: hook 2 never runs, its record stays
+`Started` (`apply` warns "activation evidence retained"), and the next run
+supersedes it (`superseded`, `last_attempt: 1`) without running it.
+
+No K6 defect was found: allocation already took the maximum of `current`,
+the newest generation and the floor; the floor was raised before the
+publishing rename; vacuous runs cut no generation; rollback reselects
+under a fresh transaction (`rollback_flip_admitted`, §16).
+
+### 20.2 The machine (`crates/gripsack-kernel/src/activation.rs`)
+
+`activation_step(ActivationState, Event) -> (ActivationState, Command)`,
+one command outstanding, intents read one at a time.
+
+- **Ledger vocabulary (moved from `gripsack-policy`):** `AttemptNumber`
+  (positive), `IntentState = Pending | Started | Succeeded | Failed |
+  Superseded`, `terminal`, `last_attempt`, `next_attempt`,
+  `finish_attempt`, `supersede`, `HookResult`.
+- **Commands:** `ReadBatch`, `ReadCurrent`, `Authorize(selection)`,
+  `ReadIntent(k)`, `Persist{intent, state}` (answer `Done` only once
+  durable), `RunHook{intent, attempt, expect}` (the driver re-checks
+  `current == expect` immediately before launching and answers
+  `Failed(Drift)` otherwise), `Archive`, `Clear`, `Finish`, `Abort`.
+- **Decides:** run or supersede (`bound`: `current` is exactly the batch's
+  selection, transaction bytes included); per intent in ledger order, skip a
+  terminal record, persist `Started` with the attempt that replays the
+  record, launch, persist the returned outcome, move on; in a superseded
+  batch persist `Superseded` for every non-terminal record; archive after
+  every intent, clear after the archive. The command set has no flip and no
+  restore: a failure is recorded, never rolled back.
+- **Refusals:** `Exhausted{intent}`, `Drifted{intent}`, `Malformed`,
+  `Failed`, `Protocol`.
+
+### 20.3 K6 in the kernel (`crates/gripsack-kernel/src/publication.rs`)
+
+- `allocate(Allocation{current, newest, floor})`: one above all three.
+- `floor_action(observed, retained)`: `Nothing`, `Seal` (the observed floor
+  covers everything) or `Raise(max)`; never down.
+- `decide_commit(CommitFacts)`: `Vacuous` exactly when a previous generation
+  exists, the state is unchanged and nothing was touched; otherwise
+  `admit_publication`: `Publish` only for a reserved selection whose
+  transaction is fresh (`selection::fresh`, moved from `rollback.rs`, now
+  shared by apply and rollback), bound to the allocated number, above the
+  floor read again now, not yet published; else `Refuse(Reused | Misbound |
+  BelowFloor | Exists)`.
+
+### 20.4 Driver and wiring
+
+- `gripsack-exec/src/activate.rs::run` drives the machine: it answers reads
+  from the admitted `ActivationBatch`, executes each command through one
+  store method (`facts`, `record`, `authorize`, `persist`, `launch`,
+  `archive`, `clear`), re-reads `current` before each launch, and renders
+  each settled attempt as before (hooks and adapters as verification blocks
+  through `Reporter::started`/`verified`, scheduler registration as a step;
+  the `hook-after-start`, `hook-after-effect`, `hook-after-receipt` and
+  `hooks-before-cleanup` crash points are where they were). `launch` grants
+  the opaque `LaunchPermit` only while the intent's durable record is exactly
+  `Started{attempt}`. Refusals keep their messages ("activation attempt
+  counter exhausted; evidence retained").
+- `ActivationBatch::authorize` (the supersede-or-run decision) and
+  `ReadyActivation` (the walk, the in-flight attempt check, the outcome
+  check) are gone; the store keeps admission, records and the permit.
+- `publication.rs::allocate` and `preserve_allocation_floor` call the
+  kernel; `apply.rs::pre_flip` asks `decide_commit` with the re-read
+  `current`, the run's reservation, the floor and whether the number is
+  published; `publish_generation` keeps its existence check as the
+  driver's re-check before the rename.
+
+### 20.5 Proofs (`proofs/Kernel/Activation.lean`, `Publication.lean`; `Audit.lean`: 361 theorems, 77 claims, standard axioms only)
+
+Ledger: `next_attempt_spec` (a non-terminal record gets the attempt that
+replays it — 1 after `Pending`, `n + 1` after `Started n` — a terminal one
+none), `finish_attempt_spec` (only the in-flight attempt settles, as what it
+returned), `supersede_spec` (a non-terminal record becomes `Superseded`
+keeping its last attempt). Over every run (`Run`, `Inv`, `step_spec`):
+
+- `hook_after_durable_start`: a hook runs only in answer to the `Done` of
+  its intent's `Started` record, which is the immediately preceding command.
+- `hook_selection_current`: only when the run read `current` as exactly the
+  batch's selection and authorized it; the launch carries it as `expect`.
+- `hook_once_per_run`: no intent's hook runs twice in a run.
+- `start_replays`: `Started` is written only over the non-terminal record
+  just read, with the attempt that replays it.
+- `settle_returned`: `Succeeded`/`Failed` only for the attempt that just
+  returned, as what it returned (no rollback: the machine moves on).
+- `terminal_never_rewritten`, `terminal_never_runs`.
+- `superseded_runs_nothing`, `supersede_writes_superseded`.
+- `leaves_terminal`, `archive_after_every_intent`, `clear_after_archive`.
+
+K6: `allocate_exceeds_floor`, `floor_never_lowers`, `publish_admitted`
+(fresh transaction bound to the allocated number, above the floor, not
+published, not vacuous), `vacuous_iff`; `fresh_spec` moved to
+`Selection.lean` (rollback's `rollback_flip_admitted` uses it unchanged).
+
+Mutants (`proofs/mutants.py`, 67 total, 16 new, 1 moved), each rejected by
+exactly the named theorem: `activation-interrupted-attempt`
+(`next_attempt_spec`), `activation-stale-outcome` (`finish_attempt_spec`),
+`activation-supersession` (`supersede_spec`), `activation-launch-before-start`
+and `activation-terminal-rewritten` (`on_intent_spec`),
+`activation-early-success` (`on_started_spec`), `activation-generation-bound`
+(`bound_spec`), `activation-superseded-runs` (`on_current_spec`),
+`activation-settled-reread` (`step_spec`), `activation-clear-before-archive`
+(`proceed_spec`), `publication-allocate-ignores-floor`
+(`allocate_exceeds_floor`), `publication-floor-lowered`
+(`floor_never_lowers`), `publication-vacuous-touched` (`vacuous_spec`),
+`publication-overwrites-published`, `publication-below-floor` and
+`publication-unchecked-transaction` (`admit_publication_spec`);
+`rollback-reused-transaction` now mutates `selection.rs` and is rejected by
+`fresh_spec`.
+
+### 20.6 Tests
+
+- Kernel explorer `crates/gripsack-kernel/tests/activation.rs`: every batch
+  of up to three intents over six records (pending, started, started at the
+  counter's end, succeeded, failed, superseded), every `current` (the batch's
+  selection, another, none) and every hook result, driven through the
+  shipped `activation_step` by a host with a durable ledger, against an
+  oracle written without the kernel; a launch-time drift at every launch;
+  and a crash after every command followed by a replay: a terminal intent
+  never runs again, a replay continues the interrupted attempt, a superseded
+  intent runs zero times. Calibrated by hand against two kernel mutants
+  (supersession ignored; interrupted attempt not advanced): both fail it.
+- e2e: the FND-5 reproducer (§20.1); the existing activation, hook-outcome
+  and workspace-hook flows run unchanged.
+
+Gates (docker, `-p f2act`, one at a time, at `82b3133`): `test` passed
+(fmt, clippy `-D warnings`, cargo test 857 passed, 0 failed, 1 ignored);
+`proofs` OK in 1284 s (no translation drift, 361 theorems, 77 claims,
+standard axioms only, 67/67 mutants calibrated); `e2e` 689 passed in
+15m31s. On the host, the five activation/rollback/generation e2e files
+passed (72) and the FND-5 reproducer failed against the baseline binary.
+After merging `main` with the journal run (§19), at `e526a35`: `proofs`
+OK in 1460 s (no translation drift, 413 theorems, 81 claims, standard
+axioms only, 74/74 mutants calibrated); `test` passed (cargo test 861
+passed, 0 failed, 1 ignored); `e2e` 689 passed in 15m32s. The `check_verus`
+floor is 360: 371 at `bf44ad4`, minus the three `CleanupProgress`
+functions (§19) and the eight `activation` functions here.
+Not run: `verify` (the Verus floor change is counted, not measured),
+`model` (TLC; only negatives were removed), `tlaps`.
+
+### 20.7 Deleted
+
+`gripsack-policy/src/activation.rs` (the Verus ledger transitions; the
+`check_verus` floor drops by its eight obligations, 371 → 363 — counted per
+function as in §15/§17, to be confirmed by the next `verify` run, which was
+not run here) and its three Verus mutants; `ActivationBatch::authorize`'s
+decision and `ReadyActivation`; five TLC activation negatives
+(`activation-unsealed-start`, `-early-success`, `-retry-failure`,
+`-generation-commit`, `-early-clear`), whose invariants are now theorems
+over the shipped machine, each calibrated by a Lean mutant. Kept:
+`Activation.tla`/`RepeatedActivation.tla` positive models (the crash-layer
+bug-finders §8 lists for F3) with the `activation-generation-token`
+negative (intent identity hashing is host code), and the TLAPS activation
+proofs, which the transaction induction catalog still imports (they go
+with TLAPS after P1–P3, §8).
+
+### 20.8 Deviations and what is deferred
+
+1. **No MemFs crash exploration of activation.** As for gc (§18.7;
+   rollback's leaf writes are crash-explored since §19), the ledger writes
+   go through `gripsack_fs`, not `gripsack-host::Storage`. Durability of a `Persist` before its `Done` is
+   the store's `atomic_write_with_mode` (file and directory fsync, S2); the
+   ring-1 P4 statement over S1–S7 is F3. The crash e2e cuts
+   (`hook-after-start`, `-effect`, `-receipt`, `hooks-before-cleanup`) and
+   the kernel explorer's crash-and-replay run.
+2. **Host residue (ring 2/3, tested, not proved):** plan/pointer/outcome
+   admission and budgets, legacy pointer migration, intent identity hashing,
+   the outcome record's process-receipt consistency, the permit's opaque
+   type, and the effect adapters.
+3. **"Never-reused TxId"** is the kernel's `fresh` (the flip's transaction
+   differs from the one it replaces) plus the host's exclusive `create_dir`
+   of a 256-bit random reservation; the second is ring 2.
+4. **"Published generations are immutable"** composes `publish_admitted`
+   (a publication names an unpublished number), the host's re-check before
+   the no-clobber rename, `rollback_never_writes_generation` and
+   `gc_retire_pruned`; there is no single theorem over the store layout.
+5. **Behaviour change:** when `current` moves during the hooks, the
+   remaining hooks no longer run; their records stay `Started` until the
+   next run supersedes them. An apply that cannot publish (`Refuse`) now
+   stops before the flip with "generation N cannot be published"; under the
+   lifecycle lock only corruption or an external writer reaches it.
+

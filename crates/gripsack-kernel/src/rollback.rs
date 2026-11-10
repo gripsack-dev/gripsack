@@ -356,28 +356,12 @@ pub fn admit(plan: &PlanFacts) -> Option<Refusal> {
     match plan.profile {
         Profile::Missing => Some(Refusal::ProfileMissing),
         Profile::Retained => {
-            if fresh(&plan.reselect, &plan.previous) {
+            if crate::selection::fresh(&plan.reselect, &plan.previous) {
                 None
             } else {
                 Some(Refusal::Reused)
             }
         }
-    }
-}
-
-/// A reselection binds a new transaction: never a legacy pointer, never the
-/// transaction it replaces.
-pub fn fresh(reselect: &SelectionIdentity, previous: &Option<SelectionIdentity>) -> bool {
-    match reselect {
-        SelectionIdentity::Legacy { .. } => false,
-        SelectionIdentity::Transaction { transaction, .. } => match previous {
-            None => true,
-            Some(SelectionIdentity::Legacy { .. }) => true,
-            Some(SelectionIdentity::Transaction {
-                transaction: replaced,
-                ..
-            }) => !transaction.same(replaced),
-        },
     }
 }
 

@@ -7,3 +7,5 @@ import Kernel.Rollback
 import Kernel.Gc
 import Kernel.Block
 import Kernel.JournalRun
+import Kernel.Activation
+import Kernel.Publication

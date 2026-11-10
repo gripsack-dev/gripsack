@@ -143,3 +143,20 @@ pub fn classify(facts: RecoveryFacts) -> Classification {
         },
     }
 }
+
+/// A flip binds a new transaction (K6): never a legacy pointer, never the
+/// transaction of the selection it replaces. Apply's publication and
+/// rollback's reselection both ask this before their flip.
+pub fn fresh(reselect: &SelectionIdentity, previous: &Option<SelectionIdentity>) -> bool {
+    match reselect {
+        SelectionIdentity::Legacy { .. } => false,
+        SelectionIdentity::Transaction { transaction, .. } => match previous {
+            None => true,
+            Some(SelectionIdentity::Legacy { .. }) => true,
+            Some(SelectionIdentity::Transaction {
+                transaction: replaced,
+                ..
+            }) => !transaction.same(replaced),
+        },
+    }
+}

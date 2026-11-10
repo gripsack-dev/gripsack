@@ -20,7 +20,9 @@ mod wire;
 pub use current::{CommittedSelection, current, current_in, current_selection_in, flip};
 pub(crate) use inventory::admit_manifest_at;
 pub use inventory::{GenerationDirectory, admit_manifest, list, read_manifest};
-pub use publication::{allocate, is_staging_name, publish_generation, write_manifest};
+pub use publication::{
+    allocate, high_water, is_staging_name, publish_generation, published, write_manifest,
+};
 pub(crate) use selection::{
     SelectionReservation, parse as parse_selection, reserve as reserve_selection,
 };
