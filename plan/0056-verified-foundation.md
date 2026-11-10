@@ -1598,13 +1598,15 @@ decides and proves it), `GenerationDirectory::prune`, the old flat
 corpus (its assertions are K4/K4′; trim register). No GC Verus remained
 after F1, so `check_verus` is unchanged (floor 382).
 
-Gates (docker, `-p f2gc`, this branch, one at a time): `test` passed (fmt,
-clippy `-D warnings`, cargo test: 850 passed, 0 failed, 1 ignored);
-`proofs` passed in 468 s (no translation drift, 213 theorems, 48 claims,
-standard axioms only, 41/41 mutants calibrated); `e2e` 680 passed in
-12m17s (679 before, plus the staging reaper). The new e2e was not run
-against the baseline binary; the baseline reproduction is the unit test
-(§18.1).
+Gates (docker, `-p f2gc`, one at a time). On the branch before the merge:
+`test` 850 passed, 0 failed, 1 ignored; `proofs` OK in 468 s (213
+theorems, 48 claims, 41/41 mutants); `e2e` 680 passed. After merging
+`main` with the K5 splice (§17), at the merge commit: `test` passed (fmt,
+clippy `-D warnings`, cargo test 848 passed, 0 failed, 1 ignored);
+`proofs` OK in 1191 s (no translation drift, 272 theorems, 57 claims,
+standard axioms only, 51/51 mutants calibrated); `e2e` 683 passed in
+16m47s. The new e2e was not run against the baseline binary; the baseline
+reproduction is the unit test (§18.1).
 
 ### 18.7 Deviations and what is deferred
 
