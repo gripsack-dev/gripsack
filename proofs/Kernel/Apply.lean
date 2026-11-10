@@ -342,7 +342,7 @@ theorem on_landed_spec (live : recover.Live) :
       step with Rollback.lands_spec as ⟨ b, hb ⟩
       split_ifs with h
       · simp only [apply.report, WP.spec_ok]
-        exact Or.inr ⟨f, i, rfl, rfl, hb.mp h, by simp [he, hi]⟩
+        exact Or.inr ⟨f, i, rfl, rfl, hb.mp h, by simp⟩
       · simp [apply.refuse, he, hi]
 
 theorem on_write_failed_spec (failure : recover.Failure) :
@@ -362,7 +362,7 @@ theorem on_delegated_spec (e : apply.Event) :
   | none => simp [apply.refuse, he]
   | some f =>
     cases e with
-    | Delegated m => cases m <;> simp [apply.report, he]
+    | Delegated m => cases m <;> simp [apply.report]
     | _ => simp [apply.failed_or_protocol, apply.refuse, he]
 
 theorem on_commit_spec (inp : apply.CommitInputs) :
