@@ -1625,4 +1625,22 @@ until the next green `verify`), the kernel's `MutationAuthority` /
    `dest_capability`, the selection reservation.
 5. `RecordPublication`/`DurableRecord` remain for directory records
    (`Journal::write`); `RecordRole::RunMarker` is no longer used by the product.
-6. Gates: GATES
+6. **e2e instrumentation:** `test_recovery_durability.py`'s
+   `before-second-restore` cut located the trace row `Before Symlink ".b"`
+   (gripsack-fs labelled the temporary link by its final name); `RealFs`
+   labels the boundary with the staging name it really creates, so the test
+   now finds the row by that name. Behaviour is unchanged; the test failed
+   on the first e2e run of this branch for that reason alone.
+
+Gates (docker, project `f2journal`, this branch): `proofs` passed in 820 s
+(no translation drift, 268 theorems, 50 claims, standard axioms only, 48/48
+mutants calibrated — the F1 file-barrier mutant now also breaks
+`JournalRun.step_spec`, as it should); `e2e` 682 passed in 15m39s. `test`:
+the compose run failed three times in the shared `gripsack-target-dev`
+BuildKit cache (an rlib missing behind a fresh fingerprint, other agents'
+builds sharing the cache), after all 37 test binaries had passed; the gate's
+exact commands (`cargo fmt --check`, `cargo clippy --locked --workspace
+--all-targets -D warnings`, `cargo test --locked`, then the conda-helper
+fmt/clippy/test) passed from the same `builder` stage with a private, clean
+target directory. Not run: `verify` (whose floor this branch lowers), `model`,
+`tlaps`, `ts-test`, fuzz.
