@@ -90,13 +90,14 @@ MUTANTS = (
     Mutant("journal-publication-file-barrier", "journal.rs",
            "            Self::Stage => Self::SyncFile,",
            "            Self::Stage => Self::PublishName,",
-           ("Gripsack.Kernel.PublicationAction.successor_spec",)),
+           # the journal run issues its records' publication by `successor`
+           ("Gripsack.Kernel.PublicationAction.successor_spec", "Gripsack.Kernel.JournalRun.step_spec")),
     # journal: a failed effect is never accepted
     Mutant("journal-publication-failed-ack", "journal.rs",
            "        if !succeeded || !action.same(self.next) {",
            "        if !action.same(self.next) {",
            ("Gripsack.Kernel.RecordPublication.acknowledge_spec",)),
-    # journal: authority only after the namespace barrier completed
+    # journal: a durable record only after the namespace barrier completed
     Mutant("journal-publication-early-authority", "journal.rs",
            "        if self.next.same(PublicationAction::Complete) {",
            "        if self.next.same(PublicationAction::PublishName) {",
