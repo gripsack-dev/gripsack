@@ -74,6 +74,7 @@ fn mutate_at(captured: Captured<'_>, intended: &Intended, install: Install<'_>) 
         intended,
         install,
     )
+    .map(drop)
 }
 
 #[test]

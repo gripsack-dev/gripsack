@@ -1,7 +1,7 @@
 //! Native adapters share executable/environment admission and bounded process
 //! supervision. Diagnostics retain identities/status, never script/argv bytes.
 use super::output::CapturedOutput;
-use crate::report::{ReportKind, StepReport};
+use crate::report::{StepReport, Tone};
 use gripsack_process::{
     ActivationEnvironment, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessReceipt,
     ProcessRole, SelectedProgram,
@@ -214,10 +214,10 @@ pub(super) fn run(
         report: StepReport {
             output: report_output,
             summary,
-            kind: if failure.is_some() {
-                ReportKind::Warned
+            tone: if failure.is_some() {
+                Tone::Warned
             } else {
-                ReportKind::Configured
+                Tone::Done
             },
         },
     }

@@ -7,7 +7,7 @@
 //! written; renderer colour follows the palette (TTY, `NO_COLOR`).
 
 use crate::render::Palette;
-use gripsack_exec::{Progress, ReportKind, StepReport, Verification};
+use gripsack_exec::{Progress, StepReport, Tone, Verification};
 use gripsack_process::terminal;
 use std::fmt::Write as _;
 use std::io::{IsTerminal, Write};
@@ -153,10 +153,10 @@ impl LiveRenderer {
     }
 
     fn step(&self, report: &StepReport) -> String {
-        let symbol = match report.kind {
-            ReportKind::Warned => self.palette.warn("⚠"),
-            ReportKind::Satisfied => self.palette.dim("·"),
-            _ => self.palette.good("✓"),
+        let symbol = match report.tone {
+            Tone::Warned => self.palette.warn("⚠"),
+            Tone::Unchanged => self.palette.dim("·"),
+            Tone::Done => self.palette.good("✓"),
         };
         format!(
             "  {} {symbol} {}\n",

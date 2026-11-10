@@ -18,6 +18,7 @@
 extern crate alloc;
 
 pub mod activation;
+pub mod apply;
 pub mod block;
 pub mod convenience;
 pub mod gc;

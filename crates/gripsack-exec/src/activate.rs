@@ -8,7 +8,7 @@ mod output;
 use crate::progress::{
     Reporter, Verification, VerificationKind, VerificationLabel, VerificationLabels, process_status,
 };
-use crate::report::{ReportKind, StepReport};
+use crate::report::{StepReport, Tone};
 use gripsack_kernel::activation::{
     ActivationState, Command, Event, HookResult, IntentState, Refusal, activation_step,
 };
@@ -318,7 +318,7 @@ pub fn resume_activation(
         let resumed = StepReport {
             output: "*".into(),
             summary: "resumed interrupted activation; durable outcomes are retained".into(),
-            kind: ReportKind::Warned,
+            tone: Tone::Warned,
         };
         reporter.step(&resumed);
         reports.insert(0, resumed);

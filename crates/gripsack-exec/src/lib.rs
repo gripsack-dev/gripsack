@@ -39,8 +39,8 @@ pub use progress::{
     VerificationLabels,
 };
 pub use report::{
-    ApplyResult, ReportKind, StepReport, UpdateCheckOutcome, UpdateReport, UpdateStatus,
-    UpdateSummary, UpdateSurvey,
+    ApplyResult, StepReport, Tone, UpdateCheckOutcome, UpdateReport, UpdateStatus, UpdateSummary,
+    UpdateSurvey,
 };
 pub use rollback::rollback_generation;
 pub use source::preflight::{
@@ -86,6 +86,3 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
 pub fn waves(ir: &Ir) -> Result<Vec<Vec<String>>, PlanError> {
     Ok(vec![build_order(ir)?])
 }
-
-#[cfg(all(test, unix))]
-mod mode_model;

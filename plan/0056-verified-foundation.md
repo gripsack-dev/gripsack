@@ -213,7 +213,7 @@ the Lean sources with their axioms.
 |---|---|---|---|
 | FND-1 | A recorded (owned) symlink is re-pointed whatever is live: if the user replaced it with their own file, the next apply overwrites it. Breaks the drift promise for links | `gripsack-policy/src/ownership.rs:103` (`recorded ⇒ Link`), `ops/plan/link.rs:18`; `lineage_model.rs:199` encodes it as intended | **Fixed** in F2 step 6 part 1 (§15), together with the store-prefix widening (design review finding 3) |
 | FND-2 | Rollback backfills `generations/<n>/env/profile.sh` into an existing generation and deletes the legacy env file outside the journal | `gripsack-exec/src/env.rs:27-49`, called from `rollback.rs:72` | **Fixed** in F2 step 8 (§16): the backfill is gone, a target without its own profile is refused |
-| FND-3 | Suspected: on a case-insensitive mount, re-spelling only a destination's case deploys the new spelling, then prunes the old one — the same inode | admission folds (`deploy/destinations.rs:26`) but prune compares raw `PathBuf` keys (`apply.rs:443-486`) | needs a reproducer first; F2 step 7 |
+| FND-3 | On a case-insensitive mount, re-spelling only a destination's case deployed the new spelling ("unchanged"), recorded it, then pruned the old one — the same inode — leaving nothing; rolling back across such a re-spelling deleted it too | admission folds (`deploy/destinations.rs:26`) but prune compared raw `PathBuf` keys (`apply.rs:443-486`); reproduced on WSL `/mnt/c` with the baseline binary (§21.1) | **Fixed** in F2 step 7 (§21): the kernel decides every release against the run's claims by interned destination identity, which the host folds and probes by object |
 | FND-5 | A post-activation hook runs after its selection stopped being current: `current` was compared with the batch's selection once, before the first hook, so a hook (or any external writer) that moves `current` does not stop the hooks after it | `activation/ledger.rs` `authorize` at `bf44ad4`; e2e reproducer in §20.1 | **Fixed** in F2 step 5 (§20) |
 | FND-4 | A managed block whose payload has a carriage-return run before a line break (`a\r\r\nb`) never matches its own marker sha: content normalization (trim, then `\r\n` → `\n`) is not a fixed point of render-then-normalize. The second apply rewrites the block with CRLF line ends and reports it "hand-edited"; every later apply still cuts a new generation for a no-op | `managed_blocks/mod.rs` `normalized_content` + `str::lines` rendering at `524f576`; e2e reproducer in §17.1 | **Fixed** in F2 step 6 part 2 (§17) |
 
@@ -391,9 +391,23 @@ the crash e2e run both ways for one release before the legacy path goes.
    for blocks proved, rollback's block restore checked against its record
    (§16.7 deviation 2 closed), FND-4 fixed; the Verus splice/scanner,
    `MergeBoundary.tla` and the `merge` fuzz target deleted; record in §17.
+   **Remainder done 2026-11-10** with step 7 (§21): `ops/model` and
+   `mode_model` are gone — the lifting they explored is now checked on every
+   apply (the planner's op must install exactly what the kernel commanded)
+   and by a planner-vs-kernel agreement test; the permission policy is a
+   table test beside `WritePermissions`.
 7. Apply machine end to end (`mutated` flag replaces `ReportKind`); directory
    transitions are an opaque `DirectoryStep` still run by legacy code.
    Reproduce/fix FND-3.
+   **Done 2026-11-10** (branch `foundation/f2-apply`): the kernel apply
+   machine decides every whole-object unit, every release, whether the run
+   cuts a generation and when it flips; K2 and K1 through apply, the flip's
+   K6 admission after every unit, refusal before the flip and FND-3 proved;
+   the commit is judged on the machine's own `mutated` flag (`ReportKind` is
+   a presentation-only `Tone`); FND-3 reproduced on `/mnt/c` and fixed, with
+   its rollback sibling; apply crash-explored over MemFs; `ops/model`,
+   `mode_model` and `Ownership.tla` gone; record in §21. Managed blocks and the
+   directory domain stay delegated.
 8. Rollback machine (per-unit loop, fresh selection); fix FND-2.
    **Done 2026-11-09** (branch `foundation/f2-rollback`, stacked on step 6
    part 1, taken ahead of steps 3–5/7 by owner priority): the kernel
@@ -2054,3 +2068,245 @@ with TLAPS after P1–P3, §8).
    stops before the flip with "generation N cannot be published"; under the
    lifecycle lock only corruption or an external writer reaches it.
 
+## 21. F2 step 7 record — the apply machine (K1/K2 through apply, K6 at the flip, FND-3)
+
+- Branch `foundation/f2-apply` from `main` at `4327004`; date 2026-11-10.
+- Question: can apply — every unit's decision, every release, whether the
+  run cuts a generation, and the flip — be the proved kernel's sans-IO
+  machine composing the decisions already proved (K1 `decide_unit`, K6
+  `decide_commit`, the leaf protocol of §19), with the host executing only
+  what it is commanded? And is FND-3 real?
+
+### 21.1 FND-3, checked on the baseline
+
+Real. Reproduced with the baseline binary (`4327004`, host debug build) on
+WSL's `/mnt/c` (drvfs over 9p, case-insensitive: `Foo` and `foo` stat to one
+inode). A tracked copy cannot be used there (drvfs without `metadata` holds
+every file at 0777, so the leaf protocol refuses: "did not reach its
+intended state" — fail-closed, correct), so the reproducer is an owned link:
+
+1. `symlinkTo(".../Config.toml")`, `apply` → generation 1, `Config.toml`
+   links into the store.
+2. re-spell to `.../config.toml`, `apply` → printed `config.toml unchanged`
+   and activated generation 2 recording `config.toml`; the directory was then
+   **empty**: deploy saw the existing link through the new spelling (an
+   unrecorded object equal to the intent: satisfied), and prune — comparing
+   raw `PathBuf` keys — removed `Config.toml`, the same inode.
+3. A sibling, found while verifying the fix: `grip rollback` across such a
+   re-spelling also deleted the link (rollback's units were keyed by raw
+   spelling; the current-only spelling was released after the target-only
+   spelling was satisfied).
+
+The suspected code was right. The baseline e2e reproducer
+(`test_destination_ownership.py::test_a_case_only_respelling_keeps_the_destination`,
+a hard link standing in for the folded name off WSL; it uses a real
+case-insensitive directory when `GRIPSACK_E2E_CASEFOLD_DIR` names one) fails
+on the baseline binary at "the old spelling's object was pruned under the new
+spelling" and passes after. On `/mnt/c` after the fix: the link survives, the
+manifest records the new spelling, the third apply is satisfied, and
+rollback leaves `Config.toml` in place.
+
+### 21.2 The machine (`crates/gripsack-kernel/src/apply.rs`)
+
+`apply_step(ApplyState, Event) -> (ApplyState, Command)`, one command
+outstanding, units read one at a time until the host answers `Exhausted`.
+
+- **Unit facts:** `dest` (interned), `slot: Whole | Block(owner)`, `route:
+  Leaf | Delegated`, `recorded` (gripsack's record, §15), `want: Deploy{ident,
+  adopted} | Release(Intended)`, `consent`, `drift: Keep | Stop`. `adopted`
+  is what a take-over installs (the intended bytes at the live object's
+  mode, 0033 R1); a release brings back the epoch's origin or nothing.
+- **Decision** `decide_apply`: `decide_unit` asked about the deploy's
+  identity or a removal; `Create`/`ReplaceOwn` install the want,
+  `TakeOver` the adoption; `Satisfied` → `Leave(Already)`; a refusal of a
+  deploy stops the run when the unit says `Stop` (an owned link the user
+  replaced, a migration predecessor that changed) or the object has no
+  identity, and is kept (`Leave(Kept)`) otherwise; a release always keeps.
+- **Releases (FND-3):** every deploy unit records a `Claim{dest, slot}`; a
+  release `covered` by a claim (any deploy at the destination for a
+  whole-object release; the same block for a block's) is reported
+  `Declared` and never observed or written. A deploy unit after the first
+  release aborts (`Order`), so a release is never contradicted later.
+- **Commands:** `ReadUnit(k)`, `Observe`, `Mutate{unit, dest, expect,
+  install, write}` (driver re-checks `expect`; `Landed{live}` must be
+  `install`, else `NotApplied`), `Delegate` (answered `Delegated{mutated}`
+  or `Refused`), `Report{unit, dest, settled}`, `DirectoryStep`,
+  `ReadCommit`, `Publish(generation)`, `Flip(selection)`, `Activate`,
+  `Finish(Vacuous | Applied)`, `Abort(refusal)`.
+- **Commit:** the host's `CommitInputs` (previous, reserved, allocated,
+  floor, unchanged, exists) plus the machine's own `mutated` flag (a unit
+  landed, or a delegated unit reported a change) form K6's `CommitFacts`;
+  `decide_commit` (§20.3) gives `Vacuous` → `Finish(Vacuous)`, `Publish` →
+  `Publish` → `Flip(reserved)` → `Activate` → `Finish(Applied)`, or
+  `Refuse(why)` → `Abort(Unpublishable)`. `Activate` is answered `Done`
+  whatever the hooks returned: nothing is rolled back (0001 §3.8).
+
+### 21.3 Proofs (`proofs/Kernel/Apply.lean`; `Audit.lean`: 474 theorems, 94 claims, standard axioms only)
+
+- `decide_apply_spec`: a `Write i w` installs what the unit wants with
+  authority `w` (`Installs`: the deploy's identity for create/replace, the
+  adoption for take-over, the release's origin for a replace-release) and
+  `w` is justified by the observation (`Authorized`: absence for create,
+  gripsack's own last write for replace, consent and a deploy for
+  take-over); the decision never claims `Applied`.
+- `decide_apply_drift_never_written` (K1): without consent, a live object
+  that is not gripsack's last write is never written.
+- `decide_apply_refused`: a `Stop` deploy over a user's object that is not
+  already the intent refuses the run, naming the unit.
+- Over every run (`Run` from `ApplyState::new`, invariant `Inv`, `step_spec`):
+  `apply_installs_intended` (K2: a write answers the observation of the unit
+  under decision, carries it as `expect`, installs exactly what the unit
+  wants), `apply_write_k1`, `apply_applied_landed` (applied only when the
+  landed object is the install; kept, already, declared and delegated never
+  claim it), `apply_release_undeclared` (FND-3: a release is written only
+  for a destination no deploy of the run claims, after releases began),
+  `apply_no_deploy_after_release`, `apply_flip_after_every_unit` (every unit
+  read was reported, the flip names the admitted commit's reserved
+  selection), `apply_flip_admitted` (K6: fresh transaction bound to the
+  allocated generation, above the floor, not published, not vacuous, and
+  `touched` is the machine's `mutated`), `apply_vacuous_untouched` (a run
+  that applied a unit never finishes vacuous), `apply_refused_aborts` and
+  `apply_aborted_terminal` (a refusal aborts; nothing follows an abort).
+- Mutants (`proofs/mutants.py`, 87 total, 13 new), each rejected by exactly
+  the named theorems: `apply-installs-not-intent` and
+  `apply-takeover-ignores-adoption` (`decide_apply_spec`),
+  `apply-consent-assumed` (`decide_apply_spec`, `decide_apply_refused`;
+  `decide_apply_drift_never_written` is their corollary),
+  `apply-drift-stop-kept` (`decide_apply_refused`), `apply-refused-settled`
+  (`on_observed_spec`, `apply_refused_aborts`), `apply-applied-unchecked`
+  and `apply-landed-not-mutated` (`on_landed_spec`),
+  `apply-release-ignores-claims` (`on_unit_spec`),
+  `apply-release-whole-uncovered` (`covers_spec`),
+  `apply-deploy-after-release` (`on_unit_spec`,
+  `apply_no_deploy_after_release`), `apply-flip-skips-unit`
+  (`advance_spec`), `apply-touched-ignored` (`commit_facts_ok`),
+  `apply-unpublishable-published` (`on_commit_spec`).
+
+### 21.4 Wiring
+
+- `gripsack-exec/src/apply/` (was `apply.rs`): `machine.rs` is the driver,
+  stepped by the host as it walks the workspace (deploy units in
+  `deploy_entry`, releases in `prune_undeclared`, then the commit and flip in
+  `apply_prepared`). For a whole-object unit the host hands over the facts
+  (`ops::unit_want`: the record, the deploy's identity and the adoption, the
+  same identities the planner computes) and its one observation; the planner
+  then builds the op, and the driver refuses to execute it unless it is
+  exactly what the machine commanded (`agrees`: same write kind, authority
+  and installed identity, or the same inert outcome) — the lifting
+  `ops/model.rs` explored, now enforced on every apply. The leaf protocol's
+  `RunDriver::leaf` returns what landed (`journal::mutate` → `Live`), and the
+  driver answers `Landed` with it.
+- `apply/dests.rs` interns destinations: byte-equal, or equal under the
+  admission's case fold *and* resolving to the same object (`dev`, `ino`,
+  not following a final link) right now — the host side of S6. Releases are
+  interned after the deploys landed; the deploy-side lineage lookup follows
+  the same identity, so a re-spelled destination keeps its record.
+  Rollback's unit enumeration (`rollback/restore.rs::plan_units`) folds a
+  current-only and a target-only spelling the filesystem judges one object
+  into one unit (the sibling of §21.1 step 3).
+- Managed blocks are `Delegated` units: `plan_merge`/`decide_block` (K5)
+  settle them and report `mutated`; the machine records their claims
+  (`Block(owner)`), so a renamed block's release is still decided by it.
+- The directory domain: `bind_existing`, `publish_directories` and
+  `prepare_directory_changes` run before the first unit, as before;
+  `finish`/`retire` run at `DirectoryStep`. Their effect on the commit is
+  through `unchanged` (receipts are compared), not `mutated`.
+- `ReportKind` is gone: `Tone { Done, Unchanged, Warned }` is presentation
+  only (the CLI's glyph); the vacuous-run decision no longer reads reports.
+  Per-unit lines and verification blocks stream exactly as before
+  (`Reporter::step` per unit; `live.rs` matches the tone exhaustively).
+- `GRIPSACK_ENGINE`: there was never a legacy apply engine to switch to; the
+  debug-only switch still selects the legacy *recovery* only.
+
+### 21.5 Tests
+
+- e2e: `test_a_case_only_respelling_keeps_the_destination` (§21.1; fails on
+  the baseline binary, passes after).
+- Kernel explorer `crates/gripsack-kernel/tests/apply.rs`: every run of one
+  or two units (72 unit shapes: deploys over four live objects × three
+  records × consent × drift policy, releases with and without an origin, on
+  one or two destinations) × four commit facts, 41 760 runs, driven through
+  the shipped `apply_step` by a host with a disk, against an oracle written
+  without the kernel: writes land exactly the want over absence, gripsack's
+  own write or a consented object; refusals never flip; a claimed release is
+  never written; a deploy after a release aborts; vacuous exactly when
+  nothing changed and nothing landed; a host landing the wrong object never
+  flips; every unpublishable commit (reused, misbound, at the floor,
+  existing) aborts. Calibrated by hand against two kernel mutants (claims
+  ignored; consent assumed): both fail it.
+- MemFs crash exploration
+  (`gripsack-host/tests/journal_cleanup.rs::apply_survives_every_crash_and_every_recovery_crash`):
+  the kernel apply machine composed with the leaf protocol, a create, a
+  replace of gripsack's own write, a satisfied deploy followed by its own
+  spelling's release (FND-3's shape) and a release of gripsack's link, the
+  flip and the cleanup — every kill and power-loss cut (48 cuts / 203
+  images), each image's recovery crashed everywhere (1721 cuts / 5704
+  images), then recovered: every destination holds exactly the generation
+  applied from or the one applied. Calibrated: with the claims check
+  removed from the kernel it fails (`d holds Absent, expected File("one")`).
+- Host: `apply::machine::tests::the_planner_builds_exactly_the_op_the_kernel_commands`
+  (72 cases: copy and owned link × six live objects × three records ×
+  consent), `ops::plan::write::tests::the_permission_policy`,
+  `apply::dests::tests::spellings_are_one_destination_only_when_the_filesystem_says_so`.
+
+Gates (docker, `-p f2apply`, one at a time). `proofs` OK in 2458 s at
+`63e7b6d` (no translation drift, 474 theorems, 94 claims, standard axioms
+only, 87/87 mutants calibrated); the kernel and proofs are unchanged since.
+At `d715d04`: `test` passed (fmt, clippy `-D warnings`, cargo test); `e2e`
+690 passed in 13m01s. The first `e2e` run (at `63e7b6d`) failed three
+subset-apply tests (§21.7 item 3), fixed in `d715d04`. On the host, against
+the e2e image: `test_destination_ownership.py` 1 failed / 13 passed with the
+baseline binary, 14 passed after. Not run: `verify` (Verus; floor unchanged),
+`model` (TLC; `Ownership.tla` removed from its list), `tlaps`, `ts-test`,
+fuzz.
+
+### 21.6 Deleted
+
+`gripsack-exec/src/ops/model.rs` (651 lines: the planner/executor explorer —
+its decision oracle was already the kernel; the lifting is now enforced by
+`agrees` on every apply and pinned by the agreement test),
+`gripsack-exec/src/mode_model.rs` (≈380 lines: mode policy through planner
+and executor — the policy is the table test, the landing is the leaf
+protocol's and the machine's identity check, FileMode.tla stays as the
+independent model), `specs/Ownership.tla` and `cfg/ownership.cfg` (its
+`DriftNeverPromoted` and `UndeclareRestores` are `decide_apply_drift_never_written`
+and `apply_installs_intended`; `OriginSurvives` and `ObservedIsMarked` are
+the lineage explorer's oracles), `ReportKind`, and the deploy path's own
+link-refusal check (the machine refuses). No apply-level Verus remained (the
+ownership, merge, journal-protocol and activation families left in §15, §17,
+§19, §20), so the `check_verus` floor stays 360.
+
+### 21.7 Deviations and what is deferred
+
+1. **The planner still evaluates `decide_unit`** (it is shared with `grip
+   plan` and rollback); in apply it is checked, not trusted: an op that is
+   not the machine's command is refused before any write. For releases the
+   planner (`plan_remove_op`) observes the destination again; a difference
+   from the machine's observation fails the agreement check or the
+   journal's re-check.
+2. **Delegated, not decided by the kernel's K1/K2 theorems:** managed
+   blocks (K5, §17 decides them) and the directory domain (step 9).
+   Directory work before the first unit (`prepare_directory_changes`
+   removals, publication of directory records) is outside the machine.
+3. **Unit enumeration is host residue:** "every unit" means every unit the
+   host hands over. Release candidates are the previous entries the new
+   manifest no longer records under their own spelling (a subset apply,
+   `--only`, carries the other profiles' entries forward without deploying
+   them, so they are not deploy units and must not become releases — the
+   first e2e run of this branch failed three such tests before the rule was
+   restored host-side); among those, the kernel decides coverage by
+   identity. Skipped by rule as well: preserved drift (never gripsack's
+   write) and directory-domain destinations.
+4. **The apply driver is not generic over `Storage`.** As for rollback
+   (§19.7 item 3), the crash exploration composes the kernel machine with
+   the leaf protocol through a test host; the product driver's manifest
+   decoding, planner and store stay on the real filesystem.
+5. **Destination identity (S6) is a host probe:** fold-equal names that
+   resolve to one object are one destination. A hard link between
+   fold-equal names on a case-sensitive filesystem is conservatively one
+   destination (never released); names a filesystem equates by Unicode
+   normalization but not by case (APFS) are not folded — a residual case.
+6. An object without identity in place of a deploy still fails at the
+   host's observation (the message is unchanged) before the kernel sees it.
+7. Activation is a hand-off (`Activate`), not composed: §20's machine runs
+   inside it.

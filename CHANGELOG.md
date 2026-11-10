@@ -8,6 +8,15 @@ User-visible changes per release. Design archaeology lives in
 
 ### Fixed
 
+- On a case-insensitive filesystem (WSL's `/mnt/c`, macOS by default),
+  changing only the case of a destination's spelling no longer deletes it.
+  Before, `apply` reported the destination "unchanged" under its new
+  spelling and then pruned the old spelling — the same file — leaving
+  nothing behind while the new generation recorded it as deployed; rolling
+  back across such a change deleted it as well. A re-spelling the
+  filesystem resolves to the same object is now the same destination: its
+  ownership record follows it, and it is never pruned or released.
+
 - The release-archive example on the packages page ran into `E128` on an
   ordinary glibc Linux host: its target said `abi: "musl"`, and that was
   compared with the host's libc. The ABI is now read from each executable:

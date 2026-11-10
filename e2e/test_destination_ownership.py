@@ -1,6 +1,7 @@
 """Destination admission, permission identity and ownership lineage."""
 
 import hashlib
+from pathlib import Path
 
 from test_adopt import approved_adoption
 from conftest import grip, make_workspace_repo, refresh_workspace, remove_output
@@ -503,3 +504,58 @@ export default profile("terminal", { files: [
     assert "module=w1-" + hashlib.sha256(b"terminal").hexdigest() in content
     assert shell_marker not in content, f"ghost block left behind: {content}"
     assert content.count("export RENAMED=1") == 1
+
+
+def _casefold_dir(sandbox):
+    """A directory on a case-insensitive mount (GRIPSACK_E2E_CASEFOLD_DIR, e.g.
+    WSL's /mnt/c), or None: the test then stands a hard link in for the
+    folded name — two spellings, one object, as such a mount shows them."""
+    import os
+    import uuid
+    root = os.environ.get("GRIPSACK_E2E_CASEFOLD_DIR")
+    if not root:
+        return None
+    directory = Path(root) / f"gripsack-e2e-{uuid.uuid4().hex}"
+    directory.mkdir(parents=True)
+    return directory
+
+
+def test_a_case_only_respelling_keeps_the_destination(sandbox):
+    """plan/0056 FND-3: on a case-insensitive mount, re-spelling only a
+    destination's case must keep it — not deploy the new spelling and then
+    prune the old one, which is the same object (the baseline deleted it and
+    recorded it as deployed); rolling back must not delete it either."""
+    import os
+    real = _casefold_dir(sandbox)
+    base = real if real is not None else sandbox / "mount"
+    base.mkdir(parents=True, exist_ok=True)
+    upper, lower = base / "Config.toml", base / "config.toml"
+    declaration = """
+import {{ file, literalText, profile, symlinkTo }} from "@gripsack/core";
+
+export default profile("dots", {{ files: [
+    file({{ content: literalText("hello\\n"), destination: symlinkTo("{path}") }})
+  ] }});
+"""
+    repo = make_workspace_repo(sandbox / "env", {"dots": declaration.format(path=upper)})
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert upper.is_symlink()
+    if real is None:
+        os.link(upper, lower, follow_symlinks=False)
+    (repo / "outputs" / "dots.ts").write_text(declaration.format(path=lower))
+    refresh_workspace(repo)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert upper.is_symlink(), "the old spelling's object was pruned under the new spelling"
+    assert lower.read_text() == "hello\n"
+    state = sandbox / ".local/share/gripsack"
+    manifest = (state / "current" / "manifest.json").read_text()
+    assert str(lower) in manifest and str(upper) not in manifest
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "already satisfied" in out.stdout + out.stderr
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert upper.is_symlink() and upper.read_text() == "hello\n", \
+        "rollback released the object the target generation restores"

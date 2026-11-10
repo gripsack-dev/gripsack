@@ -1,8 +1,10 @@
 //! Journal recovery under crashes (plan/0056 F2 steps 1–2).
 //!
-//! The run below is the shipped apply at storage-op level (`begin_run` →
-//! `Journal::write` → leaf mutation → flip → `commit_run`), hand-written
-//! because the apply machine is F2 step 7. Recovery is **not** hand-written:
+//! The scenario runs below are the shipped journal run at storage-op level
+//! (`begin_run` → leaf mutation → flip → `commit_run`); the kernel's apply
+//! machine (F2 step 7) and rollback machine (F2 step 8) are also driven over
+//! the same leaf protocol at the end of this file. Recovery is **not**
+//! hand-written:
 //! it is the kernel's recover machine driven by `gripsack_host::recover`
 //! over `MemFs`, through a small test host that speaks this file's journal
 //! wire. Every crash of the run — kill and every power-loss subset — is
@@ -35,8 +37,13 @@ use gripsack_host::storage::{
     Boundary, Crash, CrashKinds, Exploration, ExploreError, ExternalWrite, MemDir, MemFs, Name,
     ObjectKind, Operation, PendingBound, Permissions, Storage, explore,
 };
+use gripsack_kernel::apply::{
+    ApplyState, Command as ApplyCommand, CommitInputs, Event as ApplyEvent, OnDrift, Slot,
+    UnitFacts as ApplyUnit, Want, apply_step,
+};
 use gripsack_kernel::journal_run::{Refusal as RunRefusal, Settle, UnitFacts};
 use gripsack_kernel::ownership::Recorded;
+use gripsack_kernel::ownership::{Consent, TakeOver};
 use gripsack_kernel::recover::{
     Delegated, EntryFacts, Ident, Intended, Intended as KernelIntended, JournalFacts, Live,
     MarkerFacts, Outcome, Prior, Refusal, Route,
@@ -361,7 +368,7 @@ fn write(
         name: name(dest.at),
         install: install(to),
     };
-    run.leaf(host, leaf).map_err(RunError::into_io)
+    run.leaf(host, leaf).map(drop).map_err(RunError::into_io)
 }
 
 /// One committed apply through the kernel's journal-run machine: the marker,
@@ -1350,9 +1357,12 @@ fn rollback(fs: &MemFs, units: &[Unit]) -> io::Result<()> {
                     install: install(to),
                 };
                 match run.leaf(&mut host, leaf) {
-                    Ok(()) => RollbackEvent::Landed {
-                        live: live(content_at(fs, at).map_err(io::Error::other)?),
-                    },
+                    Ok(landed) => {
+                        // the driver hands back what the leaf protocol saw land
+                        let observed = live(content_at(fs, at).map_err(io::Error::other)?);
+                        assert!(landed == observed, "the leaf reports what landed");
+                        RollbackEvent::Landed { live: landed }
+                    }
                     Err(error) => return Err(error.into_io()),
                 }
             }
@@ -1455,5 +1465,245 @@ fn rollback_survives_every_crash_and_every_recovery_crash() {
     .unwrap_or_else(|error| panic!("{error}"));
     let nested = nested.into_inner();
     eprintln!("rollback: {outer:?}, recoveries: {nested:?}");
+    assert!(outer.cuts > 30 && nested.images > outer.images);
+}
+
+// ---- apply over the leaf protocol (plan/0056 F2 step 7) -------------------
+
+const APPLY_FROM: &str = "generations/1";
+const APPLY_TO: &str = "generations/2";
+
+/// One unit of an apply: what the destination holds (gripsack's last write
+/// there, or nothing), and what the run wants: a deploy, or a release that
+/// brings back nothing.
+#[derive(Debug, Clone, Copy)]
+struct Applied {
+    at: &'static str,
+    held: Content,
+    /// `Some` deploys this content; `None` releases the destination.
+    deploy: Option<Content>,
+}
+
+/// The product's apply at storage-op level: the kernel apply machine decides
+/// every unit (a release of a destination a deploy claims is never written),
+/// each write goes through the journal run's leaf protocol, the machine
+/// admits the publication and the flip, and the run cleans up.
+fn apply_run(fs: &MemFs, units: &[Applied]) -> io::Result<()> {
+    let root = fs.root()?;
+    let mut host = RunWire::new(fs, APPLY_FROM, APPLY_TO);
+    let mut run = RunDriver::begin(&mut host).map_err(RunError::into_io)?;
+    let mut state = ApplyState::new();
+    let mut event = ApplyEvent::Start;
+    let dest_of =
+        |at: &str| DestId::new(units.iter().position(|unit| unit.at == at).unwrap_or(0) as u32);
+    loop {
+        let (next, command) = apply_step(state, event);
+        state = next;
+        event = match command {
+            ApplyCommand::ReadUnit(k) => match units.get(k as usize) {
+                None => ApplyEvent::Exhausted,
+                Some(unit) => ApplyEvent::UnitRead(ApplyUnit {
+                    dest: dest_of(unit.at),
+                    slot: Slot::Whole,
+                    route: Route::Leaf,
+                    recorded: ident(unit.held).map_or(Recorded::Unrecorded, Recorded::Wrote),
+                    want: match unit.deploy {
+                        Some(content) => {
+                            let ident = ident(content).expect("a deploy wants an object");
+                            Want::Deploy {
+                                ident,
+                                adopted: ident,
+                            }
+                        }
+                        None => Want::Release(KernelIntended::Removed),
+                    },
+                    consent: Consent {
+                        take_over: TakeOver::Withheld,
+                    },
+                    drift: OnDrift::Keep,
+                }),
+            },
+            ApplyCommand::Observe { unit, dest } => ApplyEvent::Observed {
+                dest,
+                live: live(content_at(fs, units[unit as usize].at).map_err(io::Error::other)?),
+            },
+            ApplyCommand::Mutate {
+                unit,
+                expect,
+                install: wanted,
+                ..
+            } => {
+                let Applied { at, held, deploy } = units[unit as usize];
+                let to = deploy.unwrap_or(Content::Absent);
+                assert!(lands(&wanted, &live(to)), "the machine installs the want");
+                host.unit = Some((at, held, to));
+                let leaf = Leaf {
+                    facts: UnitFacts {
+                        dest: DestId::new(unit),
+                        expect,
+                        intended: wanted,
+                        follows: None,
+                    },
+                    parent: root,
+                    name: name(at),
+                    install: install(to),
+                };
+                match run.leaf(&mut host, leaf) {
+                    Ok(landed) => ApplyEvent::Landed { live: landed },
+                    Err(error) => return Err(error.into_io()),
+                }
+            }
+            ApplyCommand::Report { .. } => ApplyEvent::Done,
+            ApplyCommand::Delegate { .. } => {
+                return Err(io::Error::other("no delegated units here"));
+            }
+            ApplyCommand::DirectoryStep => ApplyEvent::Done,
+            ApplyCommand::ReadCommit => ApplyEvent::CommitRead(CommitInputs {
+                previous: Some(SelectionIdentity::legacy(GenerationId::new(1))),
+                reserved: transaction(2, 2),
+                allocated: GenerationId::new(2),
+                floor: Some(GenerationId::new(1)),
+                unchanged: false,
+                exists: false,
+            }),
+            // the generation directory's publication is the store's own
+            // protocol, not modelled here: generation 2 already exists
+            ApplyCommand::Publish(_) => ApplyEvent::Done,
+            ApplyCommand::Flip(_) => {
+                run.commit(&mut host).map_err(RunError::into_io)?;
+                symlink_replace(fs, &root, "current", APPLY_TO)?;
+                run.flipped(&mut host).map_err(RunError::into_io)?;
+                ApplyEvent::Done
+            }
+            ApplyCommand::Activate => ApplyEvent::Done,
+            ApplyCommand::Finish(_) => return Ok(()),
+            ApplyCommand::Abort(refusal) => {
+                return Err(io::Error::other(format!("apply refused: {refusal:?}")));
+            }
+        };
+    }
+}
+
+fn apply_home(units: &[Applied]) -> MemFs {
+    let fs = rollback_home(&[]);
+    let root = fs.root().unwrap();
+    let mut seen: Vec<&str> = Vec::new();
+    for unit in units {
+        if !seen.contains(&unit.at) {
+            seen.push(unit.at);
+            put(&fs, &root, unit.at, unit.held).unwrap();
+        }
+    }
+    fs.unlink(&root, &name("current")).unwrap();
+    fs.symlink(&root, &name("current"), APPLY_FROM.as_ref())
+        .unwrap();
+    fs.settled()
+}
+
+/// After recovery: the journal is empty and either the apply committed
+/// (`current` is generation 2, every destination holds what the run wanted
+/// — a released one nothing, unless a deploy claims it) or it did not
+/// (generation 1, every destination holds what it held).
+fn applied_consistently(fs: &MemFs, units: &[Applied]) -> Result<(), String> {
+    let root = fs.root().map_err(|e| e.to_string())?;
+    let left = fs
+        .read_dir(&journal(fs).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    if !left.is_empty() {
+        return Err(format!("journal not cleared: {left:?}"));
+    }
+    let committed = match fs.read_link(&root, &name("current")) {
+        Ok(current) if current.as_os_str() == APPLY_TO => true,
+        Ok(current) if current.as_os_str() == APPLY_FROM => false,
+        other => return Err(format!("current is {other:?}")),
+    };
+    for unit in units {
+        let deployed = units
+            .iter()
+            .find_map(|other| (other.at == unit.at).then_some(other.deploy).flatten());
+        let found = content_at(fs, unit.at)?;
+        let expected = match (committed, deployed) {
+            (false, _) => units.iter().find(|other| other.at == unit.at).unwrap().held,
+            (true, Some(content)) => content,
+            (true, None) => Content::Absent,
+        };
+        if found != expected {
+            return Err(format!(
+                "{} holds {found:?}, expected {expected:?} (committed: {committed})",
+                unit.at
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The apply machine's writes go through the leaf protocol over MemFs: every
+/// kill and power-loss cut of the apply, every cut of the recovery after it,
+/// then recovery to the end, leaves either the generation applied from or
+/// the one applied — exactly, per destination — and a release of a
+/// destination a deploy of the run claims is never written (FND-3).
+#[test]
+fn apply_survives_every_crash_and_every_recovery_crash() {
+    let units = [
+        // created into absence
+        Applied {
+            at: "a",
+            held: Content::Absent,
+            deploy: Some(ONE),
+        },
+        // gripsack's own write replaced
+        Applied {
+            at: "b",
+            held: TWO,
+            deploy: Some(MID),
+        },
+        // FND-3's shape: a deploy already satisfied (the re-spelled name
+        // holds gripsack's own write), then the old spelling's release —
+        // the same destination, so it is never written
+        Applied {
+            at: "d",
+            held: ONE,
+            deploy: Some(ONE),
+        },
+        // releases come after every deploy: gripsack's own link released
+        Applied {
+            at: "c",
+            held: Content::Link("old"),
+            deploy: None,
+        },
+        Applied {
+            at: "d",
+            held: ONE,
+            deploy: None,
+        },
+    ];
+    let nested = RefCell::new(Exploration::default());
+    let recover_with = |fs: &MemFs| run_recovery(fs).map(drop).map_err(RecoverError::into_io);
+    let outer = explore(
+        &apply_home(&units),
+        CrashKinds::Both,
+        PendingBound::default(),
+        |fs| apply_run(fs, &units),
+        |image, _| {
+            let inner = explore(
+                &image,
+                CrashKinds::Both,
+                PendingBound::default(),
+                recover_with,
+                |again, _| {
+                    recover_with(&again).map_err(|e| format!("recovery failed: {e}"))?;
+                    applied_consistently(&again, &units)
+                },
+            )
+            .map_err(|error| format!("during recovery: {error}"))?;
+            let mut nested = nested.borrow_mut();
+            nested.cuts += inner.cuts;
+            nested.images += inner.images;
+            Ok(())
+        },
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    let nested = nested.into_inner();
+    eprintln!("apply: {outer:?}, recoveries: {nested:?}");
     assert!(outer.cuts > 30 && nested.images > outer.images);
 }

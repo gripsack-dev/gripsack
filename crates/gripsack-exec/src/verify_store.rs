@@ -3,7 +3,7 @@
 //! Historical deployment receipts retain their original hash domains.
 
 use crate::ctx::ExecError;
-use crate::report::ReportKind;
+use crate::report::Tone;
 use crate::workspace::integrity::{self, Finding, RootAuthority};
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -15,7 +15,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 pub fn verify_store(
     session: &crate::LifecycleSession,
     repair: bool,
-) -> Result<Vec<(String, ReportKind, String)>, ExecError> {
+) -> Result<Vec<(String, Tone, String)>, ExecError> {
     let mut out = Vec::new();
     let home = session.home();
     let current = gripsack_store::current_generation(home)?;
@@ -34,7 +34,7 @@ pub fn verify_store(
                 // gc fails closed; verify at least says what it skipped
                 out.push((
                     "*".into(),
-                    ReportKind::Warned,
+                    Tone::Warned,
                     format!("generation {n} manifest unreadable: {e}"),
                 ));
                 continue;
@@ -50,7 +50,7 @@ pub fn verify_store(
             if !path.exists() {
                 out.push((
                     name.clone(),
-                    ReportKind::Warned,
+                    Tone::Warned,
                     format!("store path missing: {}", path.display()),
                 ));
                 continue;
@@ -77,7 +77,7 @@ pub fn verify_store(
                 {
                     out.push((
                         name.clone(),
-                        ReportKind::Warned,
+                        Tone::Warned,
                         format!(
                             "drift: {} mode 0{mode:o} differs from recorded 0{expected:o}",
                             entry.to
@@ -221,7 +221,7 @@ pub fn verify_store(
     if repair && !native_repair {
         out.push((
             "workspace".into(),
-            ReportKind::Warned,
+            Tone::Warned,
             "native repair refused: retained receipt or payload evidence is incomplete".into(),
         ));
     }
@@ -240,7 +240,7 @@ pub fn verify_store(
             Finding::Unverifiable { root, detail } => {
                 out.push((
                     "workspace".into(),
-                    ReportKind::Warned,
+                    Tone::Warned,
                     format!("cannot verify {}: {detail}", root.display()),
                 ));
             }
@@ -254,7 +254,7 @@ pub fn verify_store(
 /// that does not sit inside `$home/store` — a tampered manifest must
 /// not turn `--repair` into an arbitrary directory delete.
 fn return_corrupt(
-    out: &mut Vec<(String, ReportKind, String)>,
+    out: &mut Vec<(String, Tone, String)>,
     repair: bool,
     home: &std::path::Path,
     path: &std::path::Path,
@@ -265,7 +265,7 @@ fn return_corrupt(
         if gripsack_store::paths::validate_store_root(home, path).is_err() {
             out.push((
                 name.to_string(),
-                ReportKind::Warned,
+                Tone::Warned,
                 format!(
                     "refusing to repair {}: outside {}",
                     path.display(),
@@ -281,7 +281,7 @@ fn return_corrupt(
         if !store.symlink_metadata(object)?.is_dir() {
             out.push((
                 name.to_owned(),
-                ReportKind::Warned,
+                Tone::Warned,
                 format!(
                     "refusing to repair {}: store object is not a real directory",
                     path.display()
@@ -292,11 +292,11 @@ fn return_corrupt(
         store.remove_dir_all(object)?;
         out.push((
             name.to_string(),
-            ReportKind::Configured,
+            Tone::Done,
             format!("removed corrupt {} (re-fetched next apply)", path.display()),
         ));
     } else {
-        out.push((name.to_string(), ReportKind::Warned, summary.to_string()));
+        out.push((name.to_string(), Tone::Warned, summary.to_string()));
     }
     Ok(())
 }

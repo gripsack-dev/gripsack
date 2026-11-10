@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::ctx::ExecError;
-use crate::report::ReportKind;
+use crate::report::Tone;
 use gripsack_host::storage::Permissions;
 use store::journal::Install;
 
@@ -19,14 +19,24 @@ fn dest_capability(
     }
 }
 
+/// What executing one op did.
+pub(crate) struct Executed {
+    /// The report row.
+    pub report: OpReport,
+    /// A take-over's captured prior (the entry assembly merges it).
+    pub prior: Option<store::Prior>,
+    /// What landed, for an op that mutated (the leaf protocol accepted it as
+    /// the op's intended object; the apply machine judges it again).
+    pub landed: Option<gripsack_kernel::recover::Live>,
+}
+
 /// Execute one op under the journal (0034): the precondition is the
 /// op's plan-time observation, re-validated at the mutation; the
-/// postcondition is the recorded intent. Returns the report row and a
-/// take-over's captured prior (the entry assembly merges it).
+/// postcondition is the recorded intent.
 pub(crate) fn execute_op(
     run: &store::journal::JournalRun<'_>,
     op: ExecutableOp<'_>,
-) -> Result<(OpReport, Option<store::Prior>), ExecError> {
+) -> Result<Executed, ExecError> {
     let op = op.0;
     let home_dir = run.home();
     let fail = |detail: String| ExecError::Step {
@@ -38,8 +48,8 @@ pub(crate) fn execute_op(
         // the ExecutableOp conversion already refused markers
         // (0046) — this arm is a classified error, never a panic
         OpKind::Deferred => Err(fail("a preview-only marker op reached the executor".into())),
-        OpKind::Satisfied => Ok((
-            OpReport {
+        OpKind::Satisfied => Ok(Executed {
+            report: OpReport {
                 // the mode's voice (0.21.1): a satisfied merge block
                 // is not an unchanged file
                 summary: match op.mode {
@@ -48,10 +58,11 @@ pub(crate) fn execute_op(
                     }
                     _ => format!("{} unchanged", op.declared_to()),
                 },
-                kind: ReportKind::Satisfied,
+                tone: Tone::Unchanged,
             },
-            None,
-        )),
+            prior: None,
+            landed: None,
+        }),
         OpKind::Preserved => {
             let note = match op.authority() {
                 Some(Authority::Foreign) => format!(
@@ -65,13 +76,14 @@ pub(crate) fn execute_op(
                 _ => format!("{} drifted — kept", op.declared_to()),
             };
             tracing::warn!("{}", note);
-            Ok((
-                OpReport {
+            Ok(Executed {
+                report: OpReport {
                     summary: note,
-                    kind: ReportKind::Warned,
+                    tone: Tone::Warned,
                 },
-                None,
-            ))
+                prior: None,
+                landed: None,
+            })
         }
         OpKind::Link { target } => {
             let (dest_dir, dest_name) = dest_capability(run, op.dest())
@@ -82,7 +94,7 @@ pub(crate) fn execute_op(
             } else {
                 None
             };
-            store::journal::mutate(
+            let landed = store::journal::mutate(
                 run,
                 dest_dir,
                 dest_name,
@@ -93,13 +105,14 @@ pub(crate) fn execute_op(
                     target: target.clone(),
                 },
             )?;
-            Ok((
-                OpReport {
+            Ok(Executed {
+                report: OpReport {
                     summary: format!("linked {} → {}", op.output(), op.declared_to()),
-                    kind: ReportKind::Installed,
+                    tone: Tone::Done,
                 },
                 prior,
-            ))
+                landed: Some(landed),
+            })
         }
         OpKind::Write { content, mode } => {
             let bytes = match content {
@@ -120,7 +133,7 @@ pub(crate) fn execute_op(
             } else {
                 None
             };
-            store::journal::mutate(
+            let landed = store::journal::mutate(
                 run,
                 dest_dir,
                 dest_name,
@@ -137,13 +150,14 @@ pub(crate) fn execute_op(
                 Some(Authority::TakeOver) => "took over",
                 _ => "copied",
             };
-            Ok((
-                OpReport {
+            Ok(Executed {
+                report: OpReport {
                     summary: format!("{} {} → {}", verb, op.output(), op.declared_to()),
-                    kind: ReportKind::Configured,
+                    tone: Tone::Done,
                 },
                 prior,
-            ))
+                landed: Some(landed),
+            })
         }
         OpKind::MergeUpsert {
             block_id,
@@ -175,7 +189,7 @@ pub(crate) fn execute_op(
                     .map_err(std::io::Error::other)?;
                 Ok(Some((new.into_bytes(), Permissions::new(*mode))))
             };
-            store::journal::mutate(
+            let landed = store::journal::mutate(
                 run,
                 dest_dir,
                 dest_name,
@@ -187,20 +201,21 @@ pub(crate) fn execute_op(
             // the report names what the plan saw (0.21.1 review):
             // regenerated hand-edits, stripped duplicates
             let note = op.note.as_deref().unwrap_or("");
-            Ok((
-                OpReport {
+            Ok(Executed {
+                report: OpReport {
                     summary: format!("merged {} → {}{}", op.output(), op.declared_to(), note),
-                    kind: ReportKind::Configured,
+                    tone: Tone::Done,
                 },
-                None,
-            ))
+                prior: None,
+                landed: Some(landed),
+            })
         }
         OpKind::Remove(target) => {
             // the variant CARRIES the removal authority (0046) — no
             // expect, no invalid state
             let (dest_dir, dest_name) = dest_capability(run, op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
-            store::journal::mutate(
+            let landed = store::journal::mutate(
                 run,
                 dest_dir,
                 dest_name,
@@ -209,13 +224,14 @@ pub(crate) fn execute_op(
                 op.intended(),
                 crate::deploy::removal(&target.entry, op.output(), home_dir)?,
             )?;
-            Ok((
-                OpReport {
+            Ok(Executed {
+                report: OpReport {
                     summary: format!("removed {}", op.declared_to()),
-                    kind: ReportKind::Configured,
+                    tone: Tone::Done,
                 },
-                None,
-            ))
+                prior: None,
+                landed: Some(landed),
+            })
         }
     }
 }

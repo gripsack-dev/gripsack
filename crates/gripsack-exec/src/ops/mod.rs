@@ -9,7 +9,7 @@
 //! the mutation. One planner makes the DECISIONS identical — the
 //! world is allowed to move.
 
-use crate::report::ReportKind;
+use crate::report::Tone;
 use gripsack_store as store;
 use gripsack_store::{DeploymentEntry, Ownership};
 use std::path::{Path, PathBuf};
@@ -287,19 +287,16 @@ pub struct ProducedEntry {
 /// The report row an executed (or previewed) op produces.
 pub struct OpReport {
     pub summary: String,
-    pub kind: ReportKind,
+    pub tone: Tone,
 }
 
 pub(crate) mod execute;
 pub mod plan;
 pub mod preview;
 
-#[cfg(test)]
-mod model;
-
 pub(crate) use execute::execute_op;
 pub(crate) use plan::{
     BlockSource, DestView, ModeInput, PreviousRecord, Retained, WritePermissions, kernel_live,
-    plan_entry_op, plan_remove_op, plan_restore_op, retained, take_over_consent,
+    plan_entry_op, plan_remove_op, plan_restore_op, retained, take_over_consent, unit_want,
 };
 pub use preview::preview_ops;

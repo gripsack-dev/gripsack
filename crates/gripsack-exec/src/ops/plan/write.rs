@@ -198,3 +198,89 @@ pub(super) fn plan_migration_write(
         )
         .with_produces(produced))
 }
+
+#[cfg(test)]
+mod tests {
+    //! The permission policy (0043; the independent model is FileMode.tla):
+    //! a fresh file follows the source's executability, an update keeps the
+    //! recorded mode and moves only the execute bits a source change asks
+    //! for (never widening read access), preserved drift confers no mode, and
+    //! a merge host keeps its own. Whether the chosen mode LANDED is the leaf
+    //! protocol's and the apply machine's identity check, not this table's.
+    use super::*;
+
+    fn mode(
+        prev: Option<(u32, bool, bool)>,
+        observed: Option<u32>,
+        permissions: WritePermissions,
+    ) -> u32 {
+        let dir = std::path::Path::new("/nonexistent");
+        let entry = DeploymentEntry {
+            from: "payload".into(),
+            to: "/nonexistent/dest".into(),
+            mode: Ownership::TrackedCopy,
+            vars: Default::default(),
+            marker: None,
+            span: None,
+        };
+        let record = prev.map(|(file_mode, executable, preserved)| store::DeployedEntry {
+            from: "payload".into(),
+            to: entry.to.clone(),
+            key: None,
+            ownership: store::StoredOwnership::Legacy(Ownership::TrackedCopy),
+            vars: Default::default(),
+            hash: store::canonical_bytes_identity(b"x", file_mode).into(),
+            file_mode: Some(file_mode),
+            source_executable: Some(executable),
+            prior: None,
+            preserved_drift: preserved,
+        });
+        let view = DestView {
+            output: "m",
+            entry: &entry,
+            dest: dir.join("dest"),
+            home: dir,
+            observed: observed.map(|mode| crate::deploy::Observation::File {
+                bytes: b"x".to_vec(),
+                mode,
+            }),
+            prev: record.as_ref().map(|entry| PreviousRecord {
+                entry,
+                store_path: dir,
+            }),
+            consent: take_over_consent(false),
+        };
+        permissions.resolve(&view)
+    }
+
+    #[test]
+    fn the_permission_policy() {
+        let source = |executable| WritePermissions::Source { executable };
+        // fresh: the source's executability
+        assert_eq!(mode(None, None, source(false)), 0o644);
+        assert_eq!(mode(None, None, source(true)), 0o755);
+        // update: the recorded mode, private data stays private
+        assert_eq!(
+            mode(Some((0o600, false, false)), None, source(false)),
+            0o600
+        );
+        // the source became executable: execute only where read was granted
+        assert_eq!(mode(Some((0o600, false, false)), None, source(true)), 0o700);
+        assert_eq!(mode(Some((0o644, false, false)), None, source(true)), 0o755);
+        // the source lost its execute bits
+        assert_eq!(mode(Some((0o755, true, false)), None, source(false)), 0o644);
+        // preserved drift confers no mode
+        assert_eq!(mode(Some((0o600, false, true)), None, source(false)), 0o644);
+        // a merge host keeps its own mode; rollback restores the record exactly
+        assert_eq!(mode(None, Some(0o640), WritePermissions::Preserve), 0o640);
+        assert_eq!(mode(None, None, WritePermissions::Preserve), 0o644);
+        assert_eq!(
+            mode(
+                Some((0o644, false, false)),
+                None,
+                WritePermissions::Exact(0o600)
+            ),
+            0o600
+        );
+    }
+}

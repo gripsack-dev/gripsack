@@ -183,7 +183,9 @@ impl RunHost for StoreRunHost<'_> {
 }
 
 /// The kernel's view of an intent.
-fn kernel_intended(intended: &Intended) -> io::Result<KernelIntended> {
+/// The kernel's identity of a journal intent (the apply machine compares the
+/// op a planner built with the install it commanded).
+pub fn kernel_intended(intended: &Intended) -> io::Result<KernelIntended> {
     Ok(match intended {
         Intended::Removed => KernelIntended::Removed,
         Intended::Object(identity) => KernelIntended::Obj(kernel_ident(identity)?),
@@ -236,7 +238,7 @@ pub fn mutate(
     expected: Option<&ObjectIdentity>,
     intended: &Intended,
     install: Install,
-) -> io::Result<()> {
+) -> io::Result<Live> {
     let (directory, leaf) = resolve(run, directory, leaf, destination)?;
     let utf8 = utf8(destination)?;
     let previous = match run.journal.read(&entry_name(destination)) {
