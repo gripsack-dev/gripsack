@@ -307,8 +307,8 @@ MUTANTS = (
            ("Gripsack.Kernel.Rollback.decide_restore_spec",)),
     # a unit out of stage order (a clear after a shape change) is accepted
     Mutant("rollback-out-of-order", "rollback.rs",
-           "    let next = unit_stage(&facts.target);\n    if !ordered(&state.stage, &next) {",
-           "    let next = unit_stage(&facts.target);\n    if false && !ordered(&state.stage, &next) {",
+           "    let next = unit_stage(&facts.target, &facts.when);\n    if !ordered(&state.stage, &next) {",
+           "    let next = unit_stage(&facts.target, &facts.when);\n    if false && !ordered(&state.stage, &next) {",
            ("Gripsack.Kernel.Rollback.on_unit_spec",
             "Gripsack.Kernel.Rollback.rollback_unit_out_of_stage_aborts")),
     # K6: a flip (rollback's reselection, apply's publication) reuses the
