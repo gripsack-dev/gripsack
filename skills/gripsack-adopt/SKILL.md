@@ -39,8 +39,8 @@ working command as an inventory step.
   trees and safe internal aliases, not a generated manifest.
 - **Command exposure:** select an environment and explicit profile launcher
   directory/commands for editor or SSH PATH. Activation alone does not create
-  a launcher. Match the actual target ABI; host library authority is explicit,
-  not inferred from direct host success.
+  a launcher. Leave the ABI undeclared: it is read from the executable. Host
+  library authority is explicit, not inferred from direct host success.
 - **Payload selection:** workspace selectors are literal. For a release with one
   versioned root directory, opt into `archiveRoot: { kind: "single_directory" }`
   and use root-relative selectors. Ambiguous roots must refuse. Release trees

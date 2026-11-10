@@ -8,6 +8,7 @@ settings and probe answers are injected, not discovered by authoring code.
 
 ## Declare a workspace
 
+<!-- example: examples/workspaces/15-symlink-dotfile/gripsack.ts -->
 ```ts
 // gripsack.ts
 import {
@@ -42,12 +43,13 @@ can require a lock update and renewed exact-digest source approval.
 
 ## Packages and environments
 
+<!-- example: examples/workspaces/16-conda-python/gripsack.ts -->
 ```ts
 import {
   conda, defineWorkspace, environment, pkg, provider, targetPlatform, workspace,
 } from "@gripsack/core";
 
-const target = targetPlatform({ os: "linux", arch: "x86_64", abi: "gnu" });
+const target = targetPlatform({ os: "linux", arch: "x86_64" });
 const tools = pkg("tools", {
   producer: provider(conda.environment({
     channels: ["conda-forge"],
@@ -71,6 +73,12 @@ lock, environment })` imports an existing Pixi lock; manifest and lock name
 captured workspace inputs. It does not re-solve or upgrade the external lock.
 Use `inputFile`/`inputDirectory` declarations for captured producer inputs.
 
+conda-forge leaves a few platform libraries to the host system (its CDT set:
+X11 client libraries such as `libX11.so.6`, OpenGL/EGL and ALSA); Python's Tk
+links `libX11` this way. The host provides those by default and `grip build`
+notes which ones a prefix uses. Declare `strict: true` on `conda.environment`
+to refuse a prefix that needs any of them instead.
+
 Conda sources can additionally declare `wheels: [{ name, version, url, sha256 }]`.
 Each entry names an exact binary distribution: canonical lowercase hyphenated
 PEP503 name, exact version, HTTPS `.whl` URL and lowercase 64-hex SHA256 digest.
@@ -86,7 +94,9 @@ contract.
 Other acquisition constructors are `githubRelease`, `tarball`, `git`, `fileFetch`
 and `pluginFetch`. A `provider(source)` acquires directly; a `pkg` names its
 producer, commands, Linux x86_64 target and installation layout. Select archive
-roots explicitly when an upstream archive has a wrapper directory.
+roots explicitly when an upstream archive has a wrapper directory. Leave `abi`
+out of the target: gripsack reads it from each executable's loader, runs static
+binaries on any host, and checks an `abi` you do declare against the binary.
 Executable recipes, Cargo builds, OCI image production and macOS/Homebrew
 authoring are not supported.
 

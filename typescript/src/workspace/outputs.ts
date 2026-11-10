@@ -78,8 +78,11 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
     return asAcquisitionSource({ kind: "fetch", fetch: source, span }, where);
   }
   if (rec.channels !== undefined || rec.packages !== undefined) {
-    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements", "wheels"]);
+    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements", "wheels", "strict"]);
     const conda = source as CondaEnvironmentSpec;
+    if (conda.strict !== undefined && typeof conda.strict !== "boolean") {
+      throw new Error(`${where}.strict must be a boolean`);
+    }
     return asAcquisitionSource({
       kind: "conda_environment",
       channels: conda.channels,
@@ -89,6 +92,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
         ? { system_requirements: asSystemRequirements(conda.systemRequirements, `${where}.systemRequirements`) }
         : {}),
       ...(conda.wheels !== undefined ? { wheels: conda.wheels } : {}),
+      ...(conda.strict === true ? { strict: true } : {}),
       span,
     }, where);
   }
@@ -113,7 +117,7 @@ export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSo
     );
   }
   const rec = asRecord(spec, "conda.environment(...)");
-  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements", "wheels"]);
+  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements", "wheels", "strict"]);
   return freezeDeep(asSourceValue(spec, span, "conda.environment(...)") as CondaEnvironmentSource);
 }
 

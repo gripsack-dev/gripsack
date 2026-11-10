@@ -145,7 +145,12 @@ impl<'a> NativeContext<'a> {
                         &package.producer.payload,
                     )
                     .map_err(|error| gate(span, error.to_string()))?;
-                    super::platform::admit(&receipt.system, &self.target, span)?;
+                    super::platform::admit(
+                        &receipt.system,
+                        receipt.platform_libraries,
+                        &self.target,
+                        span,
+                    )?;
                 }
                 (CatalogPackageLayout::PrefixMaterialized, None) => {
                     crate::workspace::sharing::readmit_projection(

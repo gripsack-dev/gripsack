@@ -1162,6 +1162,10 @@
             "system_requirements": {
               "$ref": "#/$defs/condaSystemRequirements"
             },
+            "strict": {
+              "type": "boolean",
+              "description": "Refuse a prefix that needs conda-forge's host platform libraries (X11, OpenGL, ALSA); omitted means the host provides them (plan/0059)."
+            },
             "kind": {
               "const": "conda_environment"
             },

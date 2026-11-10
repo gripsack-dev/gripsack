@@ -26,7 +26,7 @@ use gripsack_conda::CondaHelper;
 use gripsack_ir::{
     workspace::WorkspacePlatform,
     workspace_model::{
-        AcquisitionSource, LockedSource, PixiLockSource, WorkspaceCatalog,
+        AcquisitionSource, LockedSource, PixiLockSource, PlatformLibraries, WorkspaceCatalog,
         identity::conda_closure_digest,
         lock::{LockedCondaEnvironment, LockedPin, LockedVirtualPackage, ResolvedPinFields},
     },
@@ -59,6 +59,10 @@ pub(crate) struct CondaRuntimeReceipt {
     /// Measured ambient runtime the closure cannot satisfy itself.
     #[serde(default, skip_serializing_if = "SystemRuntime::is_empty")]
     pub system: SystemRuntime,
+    /// Declared policy for conda-forge's host platform libraries. The
+    /// default is omitted, so receipts published before it stay identical.
+    #[serde(default, skip_serializing_if = "PlatformLibraries::is_host_provided")]
+    pub platform_libraries: PlatformLibraries,
 }
 
 /// A validated materialization: artifact plus receipt authority.
@@ -259,6 +263,7 @@ fn admitted_materialization(
             final_prefix: prefix,
             closure: locked.clone(),
             system: validated.system,
+            platform_libraries: PlatformLibraries::default(),
         },
     }
 }
