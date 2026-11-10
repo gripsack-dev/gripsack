@@ -2433,5 +2433,6 @@ Docker, `-p f2verus`, one at a time, at `1486f63`: `proofs` OK in 3669 s
 95/95 mutants calibrated — the 8 new ones also ran alone first, 8/8); `test`
 passed (fmt, clippy `-D warnings`, cargo test; 676 s); `e2e` 712 passed in
 18m27s. Not run: `ts-test` (TypeScript untouched), `model`, `tlaps`, fuzz.
-On the host, two `gripsack-process` confinement tests fail with and without
-this change (host sandbox support); they pass in the `test` image.
+On the host, two `gripsack-process` confinement tests fail (the
+confinement code is untouched here; not re-run on the baseline); they pass in
+the `test` image.
