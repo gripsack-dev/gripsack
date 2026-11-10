@@ -237,6 +237,9 @@ COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
 RUN cd e2e && uv sync --locked
 COPY e2e ./e2e
 COPY examples ./examples
+# test_documented_examples.py binds the README code blocks to examples/.
+COPY README.md ./README.md
+COPY typescript/README.md ./typescript/README.md
 COPY install.sh ./install.sh
 COPY scripts ./scripts
 ENV GRIPSACK_E2E_IN_DOCKER=1

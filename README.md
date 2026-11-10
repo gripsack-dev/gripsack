@@ -50,6 +50,7 @@ There is no daemon: Docker Engine runs services, systemd owns timers.
 [Install `grip`](https://gripsack.dev/docs/install.html), then save this as
 `gripsack.ts` in its own repository (or run `grip init my-env`):
 
+<!-- example: examples/workspaces/14-managed-block/gripsack.ts -->
 ```ts
 import {
   defineWorkspace, file, literalText, managedBlock, profile, workspace,

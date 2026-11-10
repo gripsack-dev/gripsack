@@ -6,6 +6,31 @@ User-visible changes per release. Design archaeology lives in
 
 ## [Unreleased]
 
+### Fixed
+
+- The release-archive example on the packages page ran into `E128` on an
+  ordinary glibc Linux host: its target said `abi: "musl"`, and that was
+  compared with the host's libc. The ABI is now read from each executable:
+  a static binary runs on any Linux x86_64 host, and a dynamically linked
+  one must name the host's loader. Leave `abi` out of `targetPlatform`. If
+  you keep it, it is checked against the executable, so `abi: "musl"` on a
+  glibc-linked binary is refused.
+
+- A Conda environment with `python` refused to run anything, even
+  `python --version`, because conda-forge's Tk links `libX11.so.6` and the
+  prefix did not contain it. conda-forge expects its platform libraries
+  (X11 client libraries, OpenGL/EGL and ALSA: its "CDT" set) to come from
+  the host, and so does gripsack now. `grip build` and `grip apply` print
+  which ones a prefix uses (`tools: uses host libX11.so.6 …`). Add
+  `strict: true` to `conda.environment({...})` to refuse such a prefix
+  instead; switching it needs no new `grip update`.
+
+- Every complete workspace in the website docs and the READMEs is now an
+  `examples/workspaces/*` directory, and the e2e gate evaluates, approves,
+  updates and applies each one on a stock glibc image. Conda, Pixi and
+  Docker examples need the network or an Engine, so the gate only
+  evaluates, checks and plans those.
+
 ### Changed
 
 - `grip apply` shows progress while it works instead of printing
