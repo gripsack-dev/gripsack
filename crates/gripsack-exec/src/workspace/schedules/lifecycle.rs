@@ -529,7 +529,7 @@ pub fn disable(
 ) -> Result<Vec<store::journal::RecoveryNote>, ExecError> {
     let home = gripsack_fs::open(session.home())?;
     store::journal::reconcile(&home, session.home())?;
-    crate::activate::resume_activation(session)?;
+    crate::activate::resume_activation(session, crate::progress::Reporter::silent())?;
     let previous = current(session)?;
     let mut target = previous.clone();
     let (service, timer) = systemd::unit_names(job);

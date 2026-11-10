@@ -6,6 +6,7 @@ pub(super) mod snapshot;
 
 use super::{consumer, realize::Realization};
 use crate::ExecError;
+use crate::progress::{VerificationKind, VerificationLabel};
 use gripsack_ir::{
     Span,
     workspace_model::{HookTrigger, WorkspaceOutput},
@@ -21,14 +22,25 @@ pub(super) struct PreparedHook {
     file: String,
     digest: Sha256Digest,
     trigger: ActivationTrigger,
+    label: VerificationLabel,
 }
 impl PreparedHook {
-    pub(super) fn new(file: String, digest: Sha256Digest, trigger: ActivationTrigger) -> Self {
+    pub(super) fn new(
+        file: String,
+        digest: Sha256Digest,
+        trigger: ActivationTrigger,
+        label: VerificationLabel,
+    ) -> Self {
         Self {
             file,
             digest,
             trigger,
+            label,
         }
+    }
+    /// The display label of this hook's retained context in `profile`.
+    pub(super) fn label(&self, profile: &Path) -> (std::path::PathBuf, VerificationLabel) {
+        (profile.join(&self.file), self.label.clone())
     }
     pub(super) fn record(self, profile: &Path) -> store::IntentRecord {
         store::IntentRecord {
@@ -41,7 +53,9 @@ impl PreparedHook {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn prepare(
+    owner: &str,
     names: &[String],
     outputs: &BTreeMap<&str, &WorkspaceOutput>,
     realization: &Realization,
@@ -76,6 +90,12 @@ pub(super) fn prepare(
         prepared.push(PreparedHook {
             file,
             digest: Sha256Digest::of(&bytes),
+            label: VerificationLabel::for_command(
+                VerificationKind::Hook,
+                &hook.name,
+                owner,
+                &hook.run,
+            ),
             trigger: match hook.trigger {
                 HookTrigger::PostLink => ActivationTrigger::PostLink,
                 HookTrigger::PostActivate => ActivationTrigger::PostActivate,

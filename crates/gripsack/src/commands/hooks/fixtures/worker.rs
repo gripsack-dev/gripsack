@@ -104,7 +104,7 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
             }
         }
     }
-    gripsack_exec::activate::resume_activation(&session)?;
+    gripsack_exec::activate::resume_activation(&session, gripsack_exec::Reporter::silent())?;
     if !observe(&root, case)?.succeeded {
         return Err(invalid("fixture hook did not succeed"));
     }

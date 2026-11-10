@@ -1,6 +1,7 @@
 //! Native check supervision owns a durable process lease and its private input
 //! copy. Unknown cleanup keeps both, including after the preparation TempDir drops.
 use super::Protection;
+use crate::progress::{Reporter, Verification, VerificationLabel, process_status};
 use crate::{
     ExecError,
     workspace::{file_failure, hooks, roots},
@@ -13,6 +14,15 @@ use std::{
     time::Instant,
 };
 
+/// Where a check's completed output block goes.
+pub(super) struct Reporting<'a> {
+    pub label: &'a VerificationLabel,
+    pub reporter: Reporter<'a>,
+}
+
+/// Retained check stdout; the supervisor's own limits stay authoritative.
+const STDOUT_BYTES: usize = 16 * 1024 * 1024;
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run(
     context: &hooks::snapshot::Context,
@@ -22,6 +32,7 @@ pub(super) fn run(
     deadline: Instant,
     span: &Span,
     protection: &Protection<'_>,
+    reporting: Reporting<'_>,
 ) -> Result<(), ExecError> {
     let lease = roots::ProcessLease::register(protection.session, protection.closure)?;
     let directory = gripsack_fs::open(home)?;
@@ -41,6 +52,14 @@ pub(super) fn run(
             return Err(error.into());
         }
     };
+    let label = reporting.label;
+    reporting.reporter.started(
+        &label.owner,
+        &format!("running {} {}", label.kind.describe(), label.name),
+    );
+    let mut stdout = Vec::new();
+    let mut stdout_truncated = false;
+    let started = Instant::now();
     let outcome = hooks::run_context(
         context,
         &staging,
@@ -52,7 +71,12 @@ pub(super) fn run(
             worker: None,
             retention: Some(handle),
         }),
-        |_| Control::Continue,
+        |bytes| {
+            let retained = bytes.len().min(STDOUT_BYTES - stdout.len());
+            stdout.extend_from_slice(&bytes[..retained]);
+            stdout_truncated |= retained < bytes.len();
+            Control::Continue
+        },
     )
     .map_err(|error| {
         file_failure(
@@ -81,6 +105,15 @@ pub(super) fn run(
     // The shared supervisor's terminal receipt is the only cleanup authority.
     roots::remove_native_staging(&directory, lease.id())?;
     lease.release(protection.session, &outcome.receipt)?;
+    reporting.reporter.verified(&Verification {
+        label: label.clone(),
+        passed: outcome.success,
+        duration: started.elapsed(),
+        detail: (!outcome.success).then(|| process_status(&outcome.receipt)),
+        stdout,
+        stderr: outcome.stderr.clone(),
+        truncated: stdout_truncated || outcome.stderr_truncated,
+    });
     if !outcome.success {
         return Err(file_failure(
             span,

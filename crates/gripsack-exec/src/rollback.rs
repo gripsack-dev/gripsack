@@ -46,7 +46,7 @@ pub fn rollback_generation(
     // pending record naming the current generation re-runs its
     // intents; anything else is discarded, never run
     // same fail-closed rule as apply (0035 F5)
-    let resumed = crate::activate::resume_activation(session).map_err(|e| {
+    let resumed = crate::activate::resume_activation(session, crate::progress::Reporter::silent()).map_err(|e| {
         ExecError::Step {
             output: "*".into(),
             step: "activate".into(),
@@ -113,7 +113,13 @@ pub fn rollback_generation(
             // pending record is the source (it also carries the
             // removal hooks of modules this rollback undeclared)
             if let Some(batch) = activation {
-                match crate::activate::run(batch, &home, home_path) {
+                match crate::activate::run(
+                    batch,
+                    &home,
+                    home_path,
+                    crate::progress::Reporter::silent(),
+                    &crate::progress::VerificationLabels::new(),
+                ) {
                     Ok(reports) => {
                         for report in reports {
                             notes.push(store::journal::RecoveryNote {

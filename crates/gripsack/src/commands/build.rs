@@ -58,7 +58,14 @@ fn build_inner(repo: &Path, args: BuildArgs, sink: &mut DiagnosticSink) -> Resul
         take_over: false,
         take_over_entries: None,
         fetch: outcome.fetch,
-        on_progress: Some(Box::new(move |name, event| {
+        on_progress: Some(Box::new(move |event| {
+            let (name, event) = match event {
+                gripsack_exec::Progress::Started { output, activity } => (output, activity),
+                gripsack_exec::Progress::Step(report) => {
+                    (report.output.as_str(), report.summary.as_str())
+                }
+                gripsack_exec::Progress::Phase(_) | gripsack_exec::Progress::Verified(_) => return,
+            };
             eprintln!(
                 "{}: {}",
                 tame(progress_sources.logical_text(name).into_owned()),

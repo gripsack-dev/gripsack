@@ -6,6 +6,28 @@ User-visible changes per release. Design archaeology lives in
 
 ## [Unreleased]
 
+### Changed
+
+- `grip apply` shows progress while it works instead of printing
+  everything at the end. Phases and the unit in progress ("ripgrep …
+  acquiring github-release …", "personal … running hook verify-rg") appear
+  on stderr: as a spinner on a terminal, or one plain line each when
+  piped. Report lines and the final `applied —` line still go to stdout,
+  each printed as soon as its step finishes.
+
+- Checks and hooks that run during `apply` print one block each: a header
+  (`personal ▸ hook verify-rg $ rg --version`), then the tool's output
+  under a `│` (stdout) or `┆` (stderr) gutter, then a status line with
+  pass/fail and duration. A passing block shows only its first output line
+  and a line count; `grip apply --verbose` shows all of it. A failing block
+  always shows all of it, marked `✗ FAILED` with the exit status. Tool
+  output no longer mixes with gripsack's own lines or with the spinner.
+  The run log (`$GRIPSACK_HOME/runs/*.jsonl`) records each block's full
+  output.
+
+- Piped `apply` output and `NO_COLOR` runs no longer contain colour codes.
+  Before, the final `applied —` line was coloured even when piped.
+
 ## [0.53.0] — Proved ownership and rollback
 
 ### Fixed
