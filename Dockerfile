@@ -70,6 +70,10 @@ COPY schema/ir/v10.json ./schema/ir/v10.json
 # original mtimes, so another branch's newer build of the same crate could
 # look fresh. Every cached cargo step first touches the local sources: our
 # crates always rebuild; only registry dependencies come from the cache.
+# The target mounts are `sharing=locked`: two gates (or two branches) building
+# at once used to write the same target directory concurrently, which produced
+# spurious failures and could let a gate run another build's binaries. Locked
+# mounts serialize the cargo steps instead (and cap peak memory at one cargo).
 FROM builder AS test
 COPY tools/conda-helper ./tools/conda-helper
 RUN apk add --no-cache python3 build-base cmake perl linux-headers xz-dev bzip2-dev zstd-dev
