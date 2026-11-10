@@ -16,7 +16,7 @@ open Lean Elab Command
 def allowedAxioms : List Name := [``propext, ``Classical.choice, ``Quot.sound]
 
 /-- The headline claims: K3 (CLASSIFY-001), K4 retention admission, the
-journal publication transition and mutation authority, and the recover
+journal publication transition, and the recover
 machine (F2 step 2): the restore guard, unrestorable refusal, cleanup order
 and classification before restore; and the per-unit ownership decision (K1):
 writes only to absence, gripsack's own last write, or a consented object;
@@ -35,7 +35,12 @@ while recovery or activation is pending or in a preview; a retired generation
 is pruned, never current, and needed by no retained manifest; a removed
 candidate is pinned by no retained manifest and named by no external root; the
 retained generations are closed under predecessors; removal follows the
-durable retirement. -/
+durable retirement; and the journal run (F2 step 3): a mutation only right after its
+destination's observation, durable prior capture and durable entry, in a run
+whose marker is durable (P1); journal records removed only after the flip was
+acknowledged or in a run that journaled nothing, and the marker only after a
+barrier following every record unlink (P3); a unit accepted only when its
+intended object landed. -/
 def claims : List Name := [
   ``Gripsack.Kernel.classify_committed_iff,
   ``Gripsack.Kernel.classify_uncommitted_iff,
@@ -48,7 +53,6 @@ def claims : List Name := [
   ``Gripsack.Kernel.PublicationAction.successor_spec,
   ``Gripsack.Kernel.RecordPublication.acknowledge_spec,
   ``Gripsack.Kernel.RecordPublication.finish_spec,
-  ``Gripsack.Kernel.admit_mutation_spec,
   ``Gripsack.Kernel.decide_spec,
   ``Gripsack.Kernel.step_spec,
   ``Gripsack.Kernel.mutate_guard,
@@ -94,6 +98,11 @@ def claims : List Name := [
   ``Gripsack.Kernel.Block.decide_block_foreign_untouched,
   ``Gripsack.Kernel.Block.decide_block_mode_evidence_preserves,
   ``Gripsack.Kernel.Block.decide_block_restore_exact,
+  ``Gripsack.Kernel.JournalRun.step_spec,
+  ``Gripsack.Kernel.JournalRun.mutate_after_durable_intent,
+  ``Gripsack.Kernel.JournalRun.record_unlink_needs_no_evidence,
+  ``Gripsack.Kernel.JournalRun.marker_unlink_after_record_barrier,
+  ``Gripsack.Kernel.JournalRun.unit_accepted_only_landed,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/

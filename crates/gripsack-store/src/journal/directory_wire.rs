@@ -4,7 +4,7 @@ use super::{
     directory::{DirectoryTransition, invalid},
     storage::Journal,
 };
-use gripsack_kernel::journal::{RecordRole, admit_mutation};
+use gripsack_kernel::journal::RecordRole;
 use serde::{Deserialize, Serialize};
 use std::{
     io,
@@ -120,11 +120,9 @@ pub(super) fn persist(
         transition: transition.clone(),
     };
     let bytes = serde_json::to_vec(&record).map_err(io::Error::other)?;
-    let durable = run
-        .journal
+    // the run exists only once the kernel published its marker durably
+    run.journal
         .write(&record_name(transition), &bytes, RecordRole::MutationEntry)?;
-    admit_mutation(&run.marker_record, durable)
-        .ok_or_else(|| invalid("directory mutation lacks durable run authority"))?;
     let mut bindings = run
         .directories
         .write()

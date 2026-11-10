@@ -30,7 +30,7 @@ pub use migration::{Migration, MigrationEntry};
 pub(crate) mod remove;
 pub(crate) mod restore;
 
-pub use remove::{remove_entry_deployed, remove_or_restore_prior};
+pub use remove::removal;
 
 #[cfg(test)]
 use gripsack_store as store;
@@ -165,15 +165,27 @@ mod tests {
         .unwrap();
         let dest = dir.path().join("config");
         let (dest_dir, dest_name) = dest_capability(&dest).unwrap();
-        let captured = store::journal::capture(&run, dest_dir, dest_name, &dest, None).unwrap();
         let intended = store::journal::Intended::Object(store::journal::ObjectIdentity::Link(
             "intended".into(),
         ));
-        let error = store::journal::record(captured, &intended)
-            .unwrap()
-            .execute(|_, _| Ok(()))
-            .unwrap_err();
+        // an install that produces nothing: the destination stays absent
+        let error = store::journal::mutate(
+            &run,
+            dest_dir,
+            dest_name,
+            &dest,
+            None,
+            &intended,
+            store::journal::Install::Remove,
+        )
+        .unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert!(
+            error
+                .to_string()
+                .contains("did not reach its intended state"),
+            "{error}"
+        );
         assert!(dest.symlink_metadata().is_err());
         let pending = store::journal::pending_recovery(&home).unwrap().unwrap();
         assert_eq!(pending.entries, 1);

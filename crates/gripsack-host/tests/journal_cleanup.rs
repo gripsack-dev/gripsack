@@ -24,6 +24,9 @@
 
 mod support;
 
+use gripsack_host::journal_run::{
+    Install, JournalRecord, Leaf, Observation, RunDriver, RunError, RunHost,
+};
 use gripsack_host::recover::{
     Found, HostEntry, LeafSite, RecoverError, RecoverHost, Recovery, RestoreSource, Settled,
     recover,
@@ -32,11 +35,17 @@ use gripsack_host::storage::{
     Boundary, Crash, CrashKinds, Exploration, ExploreError, ExternalWrite, MemDir, MemFs, Name,
     ObjectKind, Operation, PendingBound, Permissions, Storage, explore,
 };
+use gripsack_kernel::journal_run::{Refusal as RunRefusal, Settle, UnitFacts};
+use gripsack_kernel::ownership::Recorded;
 use gripsack_kernel::recover::{
-    Delegated, EntryFacts, Ident, Intended, JournalFacts, MarkerFacts, Outcome, Prior, Refusal,
-    Route,
+    Delegated, EntryFacts, Ident, Intended, Intended as KernelIntended, JournalFacts, Live,
+    MarkerFacts, Outcome, Prior, Refusal, Route,
 };
-use gripsack_kernel::selection::SelectionIdentity;
+use gripsack_kernel::rollback::{
+    Bytes, Command as RollbackCommand, Event as RollbackEvent, Place, PlanFacts, Profile,
+    RollbackState, Target, UnitFacts as RollbackUnit, lands, rollback_step,
+};
+use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
 use gripsack_kernel::{DestId, Digest, GenerationId};
 use std::cell::RefCell;
 use std::io;
@@ -99,34 +108,23 @@ enum Cleanup {
     NoBarrier,
 }
 
-/// How the run interleaves records and mutations of several destinations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Order {
-    /// record a, mutate a, record b, mutate b
-    Interleaved,
-    /// record a, record b, mutate a, mutate b
-    Batched,
-}
-
 #[derive(Debug, Clone)]
 struct Scenario {
     /// A fresh machine: no generation selected before the run.
     fresh: bool,
     dests: Vec<Dest>,
-    order: Order,
     cleanup: Cleanup,
 }
 
 impl Scenario {
     fn one(dest: Dest) -> Self {
-        Self::many(vec![dest], Order::Interleaved)
+        Self::many(vec![dest])
     }
 
-    fn many(dests: Vec<Dest>, order: Order) -> Self {
+    fn many(dests: Vec<Dest>) -> Self {
         Self {
             fresh: false,
             dests,
-            order,
             cleanup: Cleanup::TwoBarriers,
         }
     }
@@ -176,18 +174,6 @@ fn home(scenario: &Scenario) -> MemFs {
 
 fn journal(fs: &MemFs) -> io::Result<MemDir> {
     fs.open_dir(&fs.root()?, &name("journal"))
-}
-
-/// `Journal::write`: the staged-file publication with mode 0600.
-fn publish_record(fs: &MemFs, journal: &MemDir, at: &str, bytes: &[u8]) -> io::Result<()> {
-    atomic_write(
-        fs,
-        journal,
-        at,
-        bytes,
-        Permissions::new(0o600),
-        WriteOrder::Shipped,
-    )
 }
 
 fn encode(content: Content) -> String {
@@ -248,55 +234,172 @@ fn entry_names(fs: &MemFs, journal: &MemDir) -> io::Result<Vec<Name>> {
         .collect())
 }
 
-/// One committed apply: declare, record, mutate, flip, clean up.
+/// The run's side of this file's wire, for the kernel's journal-run machine.
+struct RunWire<'a> {
+    fs: &'a MemFs,
+    /// The marker's selections, `previous\ntarget`.
+    marker: String,
+    /// The destination under way and what its entry records.
+    unit: Option<(&'static str, Content, Content)>,
+    records: Vec<Name>,
+}
+
+impl RunHost for RunWire<'_> {
+    type Storage = MemFs;
+
+    fn storage(&self) -> &MemFs {
+        self.fs
+    }
+
+    fn journal_dir(&self) -> io::Result<MemDir> {
+        journal(self.fs)
+    }
+
+    fn marker_name(&self) -> Name {
+        name(RUN_MARKER)
+    }
+
+    fn marker_bytes(&self) -> io::Result<Vec<u8>> {
+        Ok(self.marker.clone().into_bytes())
+    }
+
+    fn file_ident(&self, bytes: &[u8], mode: Permissions) -> Ident {
+        Ident::File(digest(b'F', mode.bits(), bytes))
+    }
+
+    fn link_ident(&self, target: &Path) -> Option<Ident> {
+        target
+            .to_str()
+            .map(|target| Ident::Link(digest(b'L', 0, target.as_bytes())))
+    }
+
+    fn staging_name(&self, at: &Name, link: bool) -> Name {
+        let prefix = if link { ".tmp-link-" } else { ".tmp-write-" };
+        name(&format!("{prefix}{}", at.as_os_str().to_string_lossy()))
+    }
+
+    /// The prior travels in the entry (this wire inlines content), so the
+    /// entry is the prior's durable evidence.
+    fn capture(&mut self, _: &UnitFacts, observed: &Observation) -> io::Result<JournalRecord> {
+        let (at, prior, intended) = self.unit.take().expect("a unit is under way");
+        let before = match observed {
+            Observation::Absent => Content::Absent,
+            Observation::File { bytes, .. } => {
+                Content::File(intern(&String::from_utf8_lossy(bytes)).expect("a known text"))
+            }
+            Observation::Link { target } => {
+                Content::Link(intern(&target.to_string_lossy()).expect("a known target"))
+            }
+            Observation::Unsupported(found) => panic!("captured {found}"),
+        };
+        Ok(JournalRecord {
+            name: name(&format!("{at}.json")),
+            bytes: encode_entry(at, prior, before, intended),
+        })
+    }
+
+    fn settle(&mut self, _: Settle) -> io::Result<u32> {
+        self.records = entry_names(self.fs, &journal(self.fs)?)?;
+        Ok(self.records.len() as u32)
+    }
+
+    fn record_name(&self, index: u32) -> io::Result<Name> {
+        Ok(self.records[index as usize].clone())
+    }
+}
+
+impl<'a> RunWire<'a> {
+    fn new(fs: &'a MemFs, previous: &str, target: &str) -> Self {
+        Self {
+            fs,
+            marker: format!("{previous}\n{target}"),
+            unit: None,
+            records: Vec::new(),
+        }
+    }
+}
+
+fn live(content: Content) -> Live {
+    ident(content).map_or(Live::Absent, Live::Obj)
+}
+
+fn intended(content: Content) -> KernelIntended {
+    ident(content).map_or(KernelIntended::Removed, KernelIntended::Obj)
+}
+
+fn install(content: Content) -> Install<'static> {
+    match content {
+        Content::Absent => Install::Remove,
+        Content::File(text) => Install::File {
+            bytes: text.as_bytes().to_vec(),
+            mode: DEST_MODE,
+        },
+        Content::Link(target) => Install::Link {
+            target: PathBuf::from(target),
+        },
+    }
+}
+
+/// One destination write under the kernel's leaf protocol.
+fn write(
+    run: &mut RunDriver<MemFs>,
+    host: &mut RunWire<'_>,
+    dest: &Dest,
+    from: Content,
+    to: Content,
+    follows: Option<Content>,
+) -> io::Result<()> {
+    host.unit = Some((dest.at, dest.prior, to));
+    let leaf = Leaf {
+        facts: UnitFacts {
+            dest: DestId::new(0),
+            expect: live(from),
+            intended: intended(to),
+            follows: follows.map(intended),
+        },
+        parent: host.fs.root()?,
+        name: name(dest.at),
+        install: install(to),
+    };
+    run.leaf(host, leaf).map_err(RunError::into_io)
+}
+
+/// One committed apply through the kernel's journal-run machine: the marker,
+/// each destination's leaf protocol, the flip, the cleanup.
 fn apply(fs: &MemFs, scenario: &Scenario) -> io::Result<()> {
     let root = fs.root()?;
-    let journal = journal(fs)?;
     let previous = if scenario.fresh { "none" } else { PREVIOUS };
-    // begin_run: the marker is durable before any mutation
-    publish_record(
-        fs,
-        &journal,
-        RUN_MARKER,
-        format!("{previous}\n{TARGET}").as_bytes(),
-    )?;
-    let record = |dest: &Dest, before: Content, intended: Content| {
-        publish_record(
-            fs,
-            &journal,
-            &format!("{}.json", dest.at),
-            &encode_entry(dest.at, dest.prior, before, intended),
-        )
-    };
+    let mut host = RunWire::new(fs, previous, TARGET);
+    let mut run = RunDriver::begin(&mut host).map_err(RunError::into_io)?;
     let first = |dest: &Dest| dest.first.unwrap_or(dest.intended);
-    match scenario.order {
-        Order::Interleaved => {
-            for dest in &scenario.dests {
-                record(dest, dest.prior, first(dest))?;
-                put(fs, &root, dest.at, first(dest))?;
-            }
-        }
-        Order::Batched => {
-            for dest in &scenario.dests {
-                record(dest, dest.prior, first(dest))?;
-            }
-            for dest in &scenario.dests {
-                put(fs, &root, dest.at, first(dest))?;
-            }
-        }
+    for dest in &scenario.dests {
+        write(&mut run, &mut host, dest, dest.prior, first(dest), None)?;
     }
     // repeated writes: the entry's immediate pre-state is the first write
     for dest in &scenario.dests {
         if let Some(written) = dest.first {
-            record(dest, written, dest.intended)?;
-            put(fs, &root, dest.at, dest.intended)?;
+            write(
+                &mut run,
+                &mut host,
+                dest,
+                written,
+                dest.intended,
+                Some(written),
+            )?;
         }
     }
     // the flip: the commit point
+    run.commit(&mut host).map_err(RunError::into_io)?;
     symlink_replace(fs, &root, "current", TARGET)?;
-    // commit_run
-    let entries = entry_names(fs, &journal)?;
-    cleanup(fs, &journal, &entries, scenario.cleanup)
+    match scenario.cleanup {
+        Cleanup::TwoBarriers => run.flipped(&mut host).map_err(RunError::into_io),
+        // the calibration mutants replace the kernel's cleanup
+        mutant => {
+            let journal = journal(fs)?;
+            let entries = entry_names(fs, &journal)?;
+            cleanup(fs, &journal, &entries, mutant)
+        }
+    }
 }
 
 // ---- the test host: this file's wire, for the kernel's recover machine ---
@@ -681,23 +784,18 @@ fn repeated_writes_restore_the_run_original_prior() {
 }
 
 #[test]
-fn independent_destinations_recover_in_every_record_order() {
-    for order in [Order::Interleaved, Order::Batched] {
-        explored(&Scenario::many(
-            vec![dest("a", ONE, TWO), dest("b", Content::Absent, MID)],
-            order,
-        ));
-    }
+fn independent_destinations_recover() {
+    explored(&Scenario::many(vec![
+        dest("a", ONE, TWO),
+        dest("b", Content::Absent, MID),
+    ]));
 }
 
 // ---- post-crash edits, ambiguity, the commit mutant -----------------------
 
 #[test]
 fn edits_after_each_crash_are_never_overwritten() {
-    let scenario = Scenario::many(
-        vec![dest("a", ONE, TWO), dest("b", ONE, MID)],
-        Order::Interleaved,
-    );
+    let scenario = Scenario::many(vec![dest("a", ONE, TWO), dest("b", ONE, MID)]);
     // an edit after the run's crash, and another after the recovery's crash
     // (possibly after `b` was already restored)
     for edits in [(Some("a"), None), (None, Some("b")), (Some("a"), Some("b"))] {
@@ -722,10 +820,7 @@ fn journal_records(fs: &MemFs) -> Vec<(Name, Vec<u8>)> {
 
 #[test]
 fn ambiguous_current_retains_the_journal_and_touches_nothing() {
-    let scenario = Scenario::many(
-        vec![dest("a", ONE, TWO), dest("b", Content::Absent, MID)],
-        Order::Interleaved,
-    );
+    let scenario = Scenario::many(vec![dest("a", ONE, TWO), dest("b", Content::Absent, MID)]);
     let contents = |fs: &MemFs| -> Vec<Content> {
         scenario
             .dests
@@ -992,4 +1087,373 @@ fn recovery_never_overwrites_an_external_write_its_recheck_sees() {
             overwritten.len()
         );
     }
+}
+
+// ---- S5 in the leaf protocol: the re-check before the act ----------------
+
+/// The 0.53 leaf order, restated for comparison: the destination is checked
+/// against the plan once, at capture; the entry is published; the write
+/// follows with no re-check. (The marker, flip and cleanup are the kernel's
+/// order; only the leaf differs.)
+fn apply_without_recheck(fs: &MemFs, dest: &Dest) -> io::Result<()> {
+    let root = fs.root()?;
+    let journal = journal(fs)?;
+    atomic_write(
+        fs,
+        &journal,
+        RUN_MARKER,
+        format!("{PREVIOUS}\n{TARGET}").as_bytes(),
+        Permissions::new(0o600),
+        WriteOrder::Shipped,
+    )?;
+    // capture: one observation, compared with the plan's
+    if content_at(fs, dest.at).map_err(io::Error::other)? != dest.prior {
+        return Err(io::Error::other(
+            "changed between the drift decision and the mutation",
+        ));
+    }
+    atomic_write(
+        fs,
+        &journal,
+        &format!("{}.json", dest.at),
+        &encode_entry(dest.at, dest.prior, dest.prior, dest.intended),
+        Permissions::new(0o600),
+        WriteOrder::Shipped,
+    )?;
+    put(fs, &root, dest.at, dest.intended)
+}
+
+/// The operations at which an external write of `dest`, landed just before
+/// them, is overwritten by the run (the S5 window), and the run's operations.
+fn overwritten_by(
+    image: &MemFs,
+    run: impl Fn(&MemFs) -> io::Result<()>,
+) -> (Vec<usize>, Vec<Operation>) {
+    let root = image.root().unwrap();
+    let probe = image.snapshot();
+    let first = probe.operations().len();
+    run(&probe).unwrap();
+    let operations = probe.operations();
+    let mut overwritten = Vec::new();
+    for at in first..=operations.len() {
+        let fs = image.snapshot();
+        fs.inject(
+            at,
+            ExternalWrite {
+                dir: root,
+                name: name("dest"),
+                bytes: USER.as_bytes().to_vec(),
+                permissions: DEST_MODE,
+            },
+        );
+        let _ = run(&fs);
+        if content_at(&fs, "dest") != Ok(EDITED) {
+            overwritten.push(at);
+        }
+    }
+    (overwritten, operations[first..].to_vec())
+}
+
+/// An external write of the destination landing anywhere in the run is kept
+/// unless it lands between the act's re-check (its last lookup of `dest` by
+/// name) and the rename — two operations — and the run then stops on a
+/// drift refusal rather than overwrite it. Measured against the 0.53 leaf
+/// order, whose window also spans the entry's publication.
+#[test]
+fn the_leaf_never_overwrites_an_external_write_its_recheck_sees() {
+    let dest = dest("dest", ONE, TWO);
+    let scenario = Scenario::one(dest);
+    let image = home(&scenario);
+    // obtained once, so later snapshots number their operations alike
+    let _ = image.root().unwrap();
+
+    let (overwritten, operations) = overwritten_by(&image, |fs| apply(fs, &scenario));
+    let first = image.snapshot().operations().len();
+    let named_dest = |op: &Operation| op.name.as_ref() == Some(&name("dest"));
+    let act = (0..operations.len())
+        .find(|&i| {
+            operations[i].boundary == Some(Boundary::FilePublish) && named_dest(&operations[i])
+        })
+        .expect("the installing rename")
+        + first;
+    let recheck = (0..act - first)
+        .rev()
+        .find(|&i| operations[i].boundary.is_none() && named_dest(&operations[i]))
+        .expect("the re-check lookup")
+        + first;
+    assert!(
+        overwritten.iter().all(|&at| at > recheck && at <= act),
+        "kernel leaf: overwritten at {overwritten:?}, re-check {recheck}, act {act}"
+    );
+    assert!(!overwritten.is_empty(), "the S5 window exists");
+
+    let (baseline, _) = overwritten_by(&image, |fs| apply_without_recheck(fs, &dest));
+    eprintln!(
+        "S5 window: kernel leaf {} operation(s) {overwritten:?}; 0.53 leaf {} operation(s) {baseline:?}",
+        overwritten.len(),
+        baseline.len()
+    );
+    // the 0.53 order overwrote a write landing while its entry was published
+    assert!(baseline.len() > overwritten.len() + 4, "{baseline:?}");
+}
+
+// ---- a run that journals nothing ------------------------------------------
+
+/// `end_run`: the marker is published, then removed under the kernel's
+/// cleanup order. Every crash recovers to an empty journal and the previous
+/// selection.
+#[test]
+fn an_ended_run_leaves_nothing_after_any_crash() {
+    let scenario = Scenario::many(Vec::new());
+    let explored = explore(
+        &home(&scenario),
+        CrashKinds::Both,
+        PendingBound::default(),
+        |fs| {
+            let mut host = RunWire::new(fs, PREVIOUS, TARGET);
+            let mut run = RunDriver::begin(&mut host).map_err(RunError::into_io)?;
+            run.end(&mut host).map_err(RunError::into_io)
+        },
+        |image, _| {
+            run_recovery(&image).map_err(|e| format!("recovery failed: {e}"))?;
+            recovered_state_is_consistent(&image, &scenario, &[])?;
+            match image.read_link(&image.root().unwrap(), &name("current")) {
+                Ok(current) if current.as_os_str() == PREVIOUS => Ok(()),
+                other => Err(format!("current is {other:?}")),
+            }
+        },
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert!(explored.cuts >= 8, "{explored:?}");
+}
+
+/// The kernel refuses to end a run that journaled a destination: its marker
+/// and entry stay for recovery.
+#[test]
+fn a_run_that_journaled_a_destination_cannot_end() {
+    let scenario = Scenario::one(dest("dest", ONE, TWO));
+    let fs = home(&scenario);
+    let mut host = RunWire::new(&fs, PREVIOUS, TARGET);
+    let mut run = RunDriver::begin(&mut host).unwrap();
+    write(&mut run, &mut host, &scenario.dests[0], ONE, TWO, None).unwrap();
+    let error = run.end(&mut host).unwrap_err();
+    assert!(
+        matches!(error.refusal(), Some(RunRefusal::Unfinished)),
+        "{error}"
+    );
+    let records: Vec<Name> = journal_records(&fs).into_iter().map(|(at, _)| at).collect();
+    assert_eq!(records, vec![name("dest.json"), name(RUN_MARKER)]);
+}
+
+// ---- rollback over the leaf protocol (§16.7 deviation 1) ------------------
+
+const CURRENT_GEN: &str = "generations/2";
+const ROLLBACK_TO: &str = "generations/1";
+
+/// One unit of a rollback: what generation 2 (current) deployed, what
+/// generation 1 (the target) recorded.
+#[derive(Debug, Clone, Copy)]
+struct Unit {
+    at: &'static str,
+    current: Content,
+    target: Content,
+}
+
+fn rollback_home(units: &[Unit]) -> MemFs {
+    let fs = MemFs::new();
+    let root = fs.root().unwrap();
+    for at in ["generations", "journal"] {
+        fs.create_dir(&root, &name(at), Permissions::new(0o700))
+            .unwrap();
+    }
+    let generations = fs.open_dir(&root, &name("generations")).unwrap();
+    for at in ["1", "2"] {
+        fs.create_dir(&generations, &name(at), Permissions::new(0o755))
+            .unwrap();
+    }
+    for unit in units {
+        put(&fs, &root, unit.at, unit.current).unwrap();
+    }
+    fs.symlink(&root, &name("current"), CURRENT_GEN.as_ref())
+        .unwrap();
+    fs.settled()
+}
+
+fn transaction(generation: u64, byte: u8) -> SelectionIdentity {
+    SelectionIdentity::transaction(
+        GenerationId::new(generation),
+        TransactionId::from_bytes([byte; 32]),
+    )
+}
+
+/// The product's rollback at storage-op level: the kernel rollback machine
+/// decides every unit, each write goes through the journal run's leaf
+/// protocol, the flip reselects generation 1, the run cleans up.
+fn rollback(fs: &MemFs, units: &[Unit]) -> io::Result<()> {
+    let root = fs.root()?;
+    let mut host = RunWire::new(fs, CURRENT_GEN, ROLLBACK_TO);
+    let mut run = RunDriver::begin(&mut host).map_err(RunError::into_io)?;
+    let mut state = RollbackState::new();
+    let mut event = RollbackEvent::Start;
+    loop {
+        let (next, command) = rollback_step(state, event);
+        state = next;
+        event = match command {
+            RollbackCommand::ReadPlan => RollbackEvent::PlanRead(PlanFacts {
+                units: units.len() as u32,
+                reselect: transaction(1, 2),
+                previous: Some(transaction(2, 1)),
+                profile: Profile::Retained,
+            }),
+            RollbackCommand::ReadUnit(k) => {
+                let unit = units[k as usize];
+                RollbackEvent::UnitRead(RollbackUnit {
+                    dest: DestId::new(k),
+                    place: Place::Outside,
+                    route: Route::Leaf,
+                    current: ident(unit.current).map_or(Recorded::Unrecorded, Recorded::Wrote),
+                    target: match ident(unit.target) {
+                        Some(ident) => Target::Wrote {
+                            ident,
+                            bytes: Bytes::Retained,
+                        },
+                        None => Target::Released(KernelIntended::Removed),
+                    },
+                })
+            }
+            RollbackCommand::Observe { unit, dest } => RollbackEvent::Observed {
+                dest,
+                live: live(content_at(fs, units[unit as usize].at).map_err(io::Error::other)?),
+            },
+            RollbackCommand::Mutate {
+                unit,
+                expect,
+                install: wanted,
+                ..
+            } => {
+                let Unit {
+                    at,
+                    current,
+                    target: to,
+                } = units[unit as usize];
+                assert!(lands(&wanted, &live(to)), "the machine installs the target");
+                host.unit = Some((at, current, to));
+                let leaf = Leaf {
+                    facts: UnitFacts {
+                        dest: DestId::new(unit),
+                        expect,
+                        intended: wanted,
+                        follows: None,
+                    },
+                    parent: root,
+                    name: name(at),
+                    install: install(to),
+                };
+                match run.leaf(&mut host, leaf) {
+                    Ok(()) => RollbackEvent::Landed {
+                        live: live(content_at(fs, at).map_err(io::Error::other)?),
+                    },
+                    Err(error) => return Err(error.into_io()),
+                }
+            }
+            RollbackCommand::Report { .. } => RollbackEvent::Done,
+            RollbackCommand::Delegate { .. } => {
+                return Err(io::Error::other("no delegated units here"));
+            }
+            RollbackCommand::Flip(_) => {
+                run.commit(&mut host).map_err(RunError::into_io)?;
+                symlink_replace(fs, &root, "current", ROLLBACK_TO)?;
+                RollbackEvent::Done
+            }
+            RollbackCommand::Finish(_) => {
+                return run.flipped(&mut host).map_err(RunError::into_io);
+            }
+            RollbackCommand::Abort(refusal) => {
+                return Err(io::Error::other(format!("rollback refused: {refusal:?}")));
+            }
+        };
+    }
+}
+
+/// After recovery: the journal is empty and either the rollback committed
+/// (`current` is generation 1, every destination holds its record there) or
+/// it did not (generation 2, every destination holds what it deployed).
+fn rolled_back_consistently(fs: &MemFs, units: &[Unit]) -> Result<(), String> {
+    let root = fs.root().map_err(|e| e.to_string())?;
+    let left = fs
+        .read_dir(&journal(fs).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    if !left.is_empty() {
+        return Err(format!("journal not cleared: {left:?}"));
+    }
+    let committed = match fs.read_link(&root, &name("current")) {
+        Ok(current) if current.as_os_str() == ROLLBACK_TO => true,
+        Ok(current) if current.as_os_str() == CURRENT_GEN => false,
+        other => return Err(format!("current is {other:?}")),
+    };
+    for unit in units {
+        let found = content_at(fs, unit.at)?;
+        let expected = if committed { unit.target } else { unit.current };
+        if found != expected {
+            return Err(format!(
+                "{} holds {found:?}, expected {expected:?} (rolled back: {committed})",
+                unit.at
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The rollback machine's writes go through the leaf protocol over MemFs:
+/// every kill and power-loss cut of the rollback, every cut of the recovery
+/// after it, then recovery to the end, leaves either the generation rolled
+/// back from or the one rolled back to — exactly, per destination.
+#[test]
+fn rollback_survives_every_crash_and_every_recovery_crash() {
+    let units = [
+        Unit {
+            at: "a",
+            current: TWO,
+            target: ONE,
+        },
+        Unit {
+            at: "b",
+            current: MID,
+            target: Content::Absent,
+        },
+        Unit {
+            at: "c",
+            current: Content::Link("new"),
+            target: Content::Link("old"),
+        },
+    ];
+    let nested = RefCell::new(Exploration::default());
+    let recover_with = |fs: &MemFs| run_recovery(fs).map(drop).map_err(RecoverError::into_io);
+    let outer = explore(
+        &rollback_home(&units),
+        CrashKinds::Both,
+        PendingBound::default(),
+        |fs| rollback(fs, &units),
+        |image, _| {
+            let inner = explore(
+                &image,
+                CrashKinds::Both,
+                PendingBound::default(),
+                recover_with,
+                |again, _| {
+                    recover_with(&again).map_err(|e| format!("recovery failed: {e}"))?;
+                    rolled_back_consistently(&again, &units)
+                },
+            )
+            .map_err(|error| format!("during recovery: {error}"))?;
+            let mut nested = nested.borrow_mut();
+            nested.cuts += inner.cuts;
+            nested.images += inner.images;
+            Ok(())
+        },
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    let nested = nested.into_inner();
+    eprintln!("rollback: {outer:?}, recoveries: {nested:?}");
+    assert!(outer.cuts > 30 && nested.images > outer.images);
 }

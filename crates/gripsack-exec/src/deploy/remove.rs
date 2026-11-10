@@ -1,56 +1,51 @@
 //! Removal of deployed destinations (prune-on-undeclare, 0006) with
 //! exact-target guards (0030 §15).
 
-use super::restore::restore_prior;
 use gripsack_store as store;
 use gripsack_store::Ownership;
-use std::path::Path;
+use store::journal::Install;
 
-/// Remove a destination we deployed, with drift guards (0001 §3.5):
-/// never delete user edits. `Ok(false)` is the drift POLICY (kept);
-/// every I/O failure is Err — a failed removal must never read as
-/// "user drift, kept" (0027 §1). Everything goes through the pinned
-/// parent capability the caller opened (0027 §5). Merge entries
-/// remove only our block from the foreign file.
-pub fn remove_entry_deployed(
-    dest_dir: &gripsack_fs::Dir,
-    dest_name: &Path,
-    entry: &store::DeployedEntry,
-    output: &str,
-    store_path: &Path,
-) -> std::io::Result<bool> {
-    if entry.preserved_drift {
-        return Ok(false);
+/// What pruning or rolling back a deployed destination installs (0015 §4):
+/// the recorded prior when one exists ("your original files have been
+/// restored"), with its recorded mode exactly (0027 §6); otherwise the
+/// destination is removed — a merge entry removes only its own block from
+/// the foreign file. The live object is the deployed one: the plan's K1
+/// decision observed it, and the journal's leaf protocol re-checks that
+/// observation immediately before acting (0030 §15's exact-target guard).
+pub fn removal<'a>(
+    entry: &'a store::DeployedEntry,
+    output: &'a str,
+    home: &gripsack_fs::Dir,
+) -> std::io::Result<Install<'a>> {
+    use gripsack_host::storage::Permissions;
+    if let Some(prior) = &entry.prior {
+        return Ok(match prior {
+            store::Prior::File { hash, mode } => Install::File {
+                bytes: store::prior::read_blob(home, hash)?,
+                mode: Permissions::new(mode.bits()),
+            },
+            store::Prior::Symlink { target } => Install::Link {
+                target: target.into(),
+            },
+        });
     }
-    match entry.ownership.policy() {
-        Ownership::Owned => {
-            // removal authority is the EXACT expected target (0030
-            // §15): a user-repointed link to another gripsack object
-            // is drift, never deletable
-            let ours = dest_dir
-                .read_link_contents(dest_name)
-                .map(|t| t == store_path.join(&entry.from))
-                .unwrap_or(false);
-            if !ours {
-                return Ok(false);
-            }
-            remove_if_present(dest_dir, dest_name)?;
-            Ok(true)
-        }
-        Ownership::Merge => {
-            let observation = super::observe(dest_dir, dest_name)?;
-            let Some(super::Observation::File { bytes, mode }) = observation else {
-                return Ok(observation.is_none());
+    if entry.ownership.policy() != Ownership::Merge {
+        return Ok(Install::Remove);
+    }
+    Ok(Install::Splice(Box::new(
+        move |bytes: &[u8], mode: Option<Permissions>| {
+            let Some(mode) = mode else {
+                return Ok(None);
             };
-            let existing = String::from_utf8(bytes)
+            let existing = std::str::from_utf8(bytes)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             let owner = entry.merge_owner(output);
-            let blocks = crate::managed_blocks::ManagedBlockSet::parse(&existing, owner)
+            let blocks = crate::managed_blocks::ManagedBlockSet::parse(existing, owner)
                 .map_err(std::io::Error::other)?;
             // the kernel's K1 for blocks: only an intact block is removed
             match blocks.decide(
                 Some(crate::managed_blocks::record(entry)),
-                &gripsack_kernel::block::Host::File { mode },
+                &gripsack_kernel::block::Host::File { mode: mode.bits() },
                 &gripsack_kernel::block::BlockIntent::Remove,
             ) {
                 gripsack_kernel::block::BlockDecision::Remove => {
@@ -58,58 +53,12 @@ pub fn remove_entry_deployed(
                         .remove(owner)
                         .map_err(std::io::Error::other)?
                         .expect("intact implies a block");
-                    if new.is_empty() {
-                        remove_if_present(dest_dir, dest_name)?;
-                    } else {
-                        gripsack_fs::atomic_write(dest_dir, dest_name, new.as_bytes())?;
-                    }
-                    Ok(true)
+                    Ok((!new.is_empty()).then(|| (new.into_bytes(), mode)))
                 }
-                _ => Ok(false),
+                _ => Err(std::io::Error::other(
+                    "the managed block is no longer intact; it is kept",
+                )),
             }
-        }
-        Ownership::TrackedCopy | Ownership::Template => {
-            let observation = super::observe(dest_dir, dest_name)?;
-            let Some(super::Observation::File { bytes, mode }) = observation else {
-                return Ok(observation.is_none());
-            };
-            if !entry.matches_file(&bytes, mode) {
-                return Ok(false);
-            }
-            remove_if_present(dest_dir, dest_name)?;
-            Ok(true)
-        }
-    }
-}
-
-/// remove_file where NotFound is success (the goal state), anything
-/// else is a real error (0027 §1).
-fn remove_if_present(dest_dir: &gripsack_fs::Dir, dest_name: &Path) -> std::io::Result<()> {
-    match gripsack_fs::remove_file(dest_dir, dest_name) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e),
-    }
-}
-
-/// Record what a destination is before a take-over absorbs it (0015
-/// Restore the recorded prior, or drift-guarded removal when there
-/// is none (0015 §4). Callers prove intactness at plan time (apply's
-/// prune and the rollback planner both check before journaling) — the
-/// redundant re-check used to receive `home` where `store_path` was
-/// expected and silently miscompared, deleting links it should have
-/// restored (0029).
-pub fn remove_or_restore_prior(
-    dest_dir: &gripsack_fs::Dir,
-    dest_name: &Path,
-    entry: &store::DeployedEntry,
-    output: &str,
-    home: &gripsack_fs::Dir,
-    store_path: &Path,
-) -> std::io::Result<bool> {
-    if let Some(prior) = &entry.prior {
-        restore_prior(dest_dir, dest_name, prior, home)?;
-        return Ok(true);
-    }
-    remove_entry_deployed(dest_dir, dest_name, entry, output, store_path)
+        },
+    )))
 }

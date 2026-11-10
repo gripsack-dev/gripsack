@@ -6,7 +6,6 @@
 //! with a warning. Never delete user edits.
 
 use gripsack_fs::Dir;
-use gripsack_policy::journal_protocol::{CleanupAction, CleanupProgress, CleanupScope};
 
 /// One recovery outcome from [`reconcile`], typed so callers render
 /// severity instead of parsing message text: a kept post-crash edit
@@ -32,9 +31,7 @@ impl std::fmt::Display for RecoveryNote {
 use std::io;
 use std::path::Path;
 
-use super::marker::{
-    Classification, RecoveryFacts, classify, cleanup, cleanup_order_error, run_marker,
-};
+use super::marker::{Classification, RecoveryFacts, classify, cleanup_legacy, run_marker};
 use super::storage::Journal;
 use super::{
     Entry, Intended, ObjectIdentity, PriorSerde, dest_capability, live_identity, prior_identity,
@@ -165,13 +162,12 @@ fn reconcile_legacy(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote
         // seal that observation before durable cleanup destroys the journal.
         gripsack_fs::fsync_dir(home, Path::new("."))?;
         super::directory_lifecycle::committed(&directories)?;
-        cleanup(
+        cleanup_legacy(
             &journal.directory,
             entries
                 .iter()
                 .map(|(path, _)| path.as_path())
                 .chain(directories.iter().map(|(path, _)| path.as_path())),
-            CleanupProgress::new(CleanupScope::Committed, entries.len() + directories.len()),
         )?;
         lines.push(RecoveryNote {
             severity: NoteSeverity::Info,
@@ -199,8 +195,6 @@ fn reconcile_legacy(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote
             retain_prepared,
         )?;
     }
-    let mut progress =
-        CleanupProgress::new(CleanupScope::Uncommitted, entries.len() + directories.len());
     for (index, (_, entry)) in entries.iter().enumerate() {
         if index == root_entries && root_entries != 0 {
             super::directory_recovery::recover_before_leaves(
@@ -209,10 +203,6 @@ fn reconcile_legacy(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote
                 home,
                 retain_prepared,
             )?;
-        }
-        let action = CleanupAction::ReconcileEntry { index };
-        if progress.action() != action {
-            return Err(cleanup_order_error());
         }
         let dest = Path::new(&entry.dest);
         // the drift check and the restore share ONE pinned parent
@@ -227,9 +217,6 @@ fn reconcile_legacy(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote
                 &entries,
             )?
         {
-            if !progress.acknowledge(action, true) {
-                return Err(cleanup_order_error());
-            }
             continue;
         }
         let (dest_dir, dest_name) = match super::directory::recovery_parent(&directories, dest)? {
@@ -275,9 +262,6 @@ fn reconcile_legacy(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote
                 });
             }
         }
-        if !progress.acknowledge(action, true) {
-            return Err(cleanup_order_error());
-        }
     }
     if root_entries != 0 && root_entries == entries.len() {
         super::directory_recovery::recover_before_leaves(
@@ -288,18 +272,12 @@ fn reconcile_legacy(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote
         )?;
     }
     super::directory_recovery::recover_after_leaves(&directories, home, retain_prepared)?;
-    for index in entries.len()..entries.len() + directories.len() {
-        if !progress.acknowledge(CleanupAction::ReconcileEntry { index }, true) {
-            return Err(cleanup_order_error());
-        }
-    }
-    cleanup(
+    cleanup_legacy(
         &journal.directory,
         entries
             .iter()
             .map(|(path, _)| path.as_path())
             .chain(directories.iter().map(|(path, _)| path.as_path())),
-        progress,
     )?;
     Ok(lines)
 }

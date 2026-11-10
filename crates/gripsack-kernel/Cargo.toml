@@ -22,6 +22,7 @@ start_from = [
     "gripsack_kernel::selection",
     "gripsack_kernel::retention",
     "gripsack_kernel::journal",
+    "gripsack_kernel::journal_run",
     "gripsack_kernel::recover",
     "gripsack_kernel::ownership",
     "gripsack_kernel::rollback",

@@ -5,6 +5,7 @@ use super::{
     *,
 };
 use gripsack_fs::Dir;
+use mutation::{crash_after_entry, file};
 use std::path::{Path, PathBuf};
 
 mod forward;
@@ -39,13 +40,16 @@ fn intended() -> Intended {
 fn write_leaf(run: &JournalRun<'_>, receipt: &DirectoryTransition) {
     let destination = receipt.destination.join("nested/command");
     let (parent, name) = receipt.leaf_parent(&destination).unwrap();
-    let captured = capture(run, parent, name, &destination, None).unwrap();
-    record(captured, &intended())
-        .unwrap()
-        .execute(|directory, name| {
-            gripsack_fs::atomic_write_with_mode(directory, name, b"new command\n", 0o755)
-        })
-        .unwrap();
+    mutate(
+        run,
+        parent,
+        name,
+        &destination,
+        None,
+        &intended(),
+        mutation::file(b"new command\n", 0o755),
+    )
+    .unwrap();
 }
 
 fn generation(number: u64, receipts: Vec<DirectoryTransition>) -> crate::Generation {
