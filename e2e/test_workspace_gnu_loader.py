@@ -39,7 +39,7 @@ def declare(sandbox, files, *, abi="gnu", environment_entries=None):
     archive = make_toolchain_tarball(sandbox / "native.tar.gz", files)
     repo = sandbox / "workspace"
     repo.mkdir()
-    target = '{os:"linux",arch:"x86_64"' + (',abi:"gnu"}' if abi else '}')
+    target = '{os:"linux",arch:"x86_64"' + (f',abi:"{abi}"}}' if abi else '}')
     environment = ",env:{" + ",".join(
         f"{json.dumps(key)}:lit({json.dumps(value)})"
         for key, value in (environment_entries or {}).items()
@@ -117,11 +117,18 @@ def test_gnu_hwcaps_mask_controls_actual_library_lookup(sandbox):
     assert result.stdout == "admitted"
 
 
-def test_dynamic_native_execution_still_requires_explicit_abi(sandbox):
+def test_dynamic_native_execution_reads_its_abi_from_the_loader(sandbox):
+    """plan/0059 step 1: PT_INTERP names the ABI; a declaration is checked."""
     repo = declare(sandbox, shell_payload(), abi=None)
+    result = grip("run", "--env", "dev", "--", "probe", "-c", "printf admitted", cwd=repo)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout == "admitted"
+    contradicted = sandbox / "musl"
+    contradicted.mkdir()
+    repo = declare(contradicted, shell_payload(), abi="musl")
     result = grip("run", "--env", "dev", "--", "probe", "-c", "printf escaped", cwd=repo)
     assert result.returncode != 0
-    assert "E128" in result.stderr and "ABI" in result.stderr
+    assert "E128" in result.stderr and "contradicts" in result.stderr, result.stderr
     assert "escaped" not in result.stdout
 
 
@@ -221,7 +228,7 @@ def native_command_checks(sandbox, files, abi):
         sandbox / "script.tar.gz",
         {"bin/script": ("#!" + str(retained / "bin/probe") + "\n").encode()},
     )
-    target = '{os:"linux",arch:"x86_64"' + (',abi:"gnu"}' if abi else '}')
+    target = '{os:"linux",arch:"x86_64"' + (f',abi:"{abi}"}}' if abi else '}')
     (repo / "gripsack.ts").write_text('''import {
       defineWorkspace, workspace, pkg, provider, tarball, check, task, exec, packageCommand, lit,
     } from "@gripsack/core";
@@ -251,9 +258,10 @@ def native_command_checks(sandbox, files, abi):
     ("static-pie-runpath", None, True),
     ("static-pie-rpath", None, True),
     ("static-pie-audit", None, False),
-    ("interpreted-pie", None, False),
+    ("interpreted-pie", None, True),
     ("interpreted-pie", "gnu", True),
-    ("dependency", None, False),
+    ("interpreted-pie", "musl", False),
+    ("dependency", None, True),
     ("dependency", "gnu", True),
     ("missing-dependency", "gnu", False),
     ("dependency-no-loader", "gnu", False),

@@ -129,9 +129,13 @@ impl<'a> Prepared<'a> {
                         }
                         let materialized =
                             super::conda::materialize_locked(ctx, session, name, locked)?;
+                        let mut receipt = materialized.receipt;
+                        if let AcquisitionSource::CondaEnvironment(declared) = source {
+                            receipt.platform_libraries = declared.platform_libraries();
+                        }
                         PreparedSource {
                             resolved: pin.resolved.clone(),
-                            conda: Some(materialized.receipt.clone()),
+                            conda: Some(receipt),
                             artifact: Arc::new(materialized.artifact),
                         }
                     }

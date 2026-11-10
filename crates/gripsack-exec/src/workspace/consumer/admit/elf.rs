@@ -2,8 +2,8 @@
 //! Retained package roots and explicit host roots are separate authorities.
 //! RPATH ancestry remains distinct from RUNPATH and the launch overlay.
 use super::{
-    BinaryAbi, EXECUTABLE_BYTES, ExecError, HostTarget, Package, Span, gate, operational,
-    platform_loader,
+    BinaryAbi, EXECUTABLE_BYTES, ExecError, HostTarget, Package, Span, gate, loader_abi,
+    operational,
 };
 use gripsack_policy::target::{TargetArch, TargetOs};
 use gripsack_process::executable::{
@@ -56,33 +56,44 @@ pub(super) fn admit(
     if metadata.interpreter.is_none() && metadata.needed_libraries.is_empty() {
         return Ok(Runtime::default());
     }
-    let abi = declared_abi.ok_or_else(|| {
-        gate(
+    // The ABI is read from the bytes: PT_INTERP names exactly one platform
+    // loader. A declared ABI is an assertion checked here, never a selector.
+    let Some(Interpreter::Loader(named)) = &metadata.interpreter else {
+        return Err(gate(
             span,
             format!(
-                "dynamic executable has no declared ABI; an omitted ABI is not a wildcard; \
-                 ELF evidence: object={:?}, PT_INTERP={:?}, DT_NEEDED={:?}, \
-                 DT_RPATH={:?}, DT_RUNPATH={:?}; declare the target ABI matching the \
-                 actual loader, not the archive filename; ABI selection does not grant \
-                 runtime libraries",
-                metadata.object,
-                metadata.interpreter,
-                metadata.needed_libraries,
-                metadata.rpaths,
-                metadata.runpaths,
+                "dynamic executable names no platform loader; ELF evidence: object={:?}, \
+                 PT_INTERP={:?}, DT_NEEDED={:?}",
+                metadata.object, metadata.interpreter, metadata.needed_libraries,
             ),
+        ));
+    };
+    let (abi, loader) = loader_abi(host.os, host.arch, named).ok_or_else(|| {
+        gate(
+            span,
+            format!("dynamic executable names {named:?}, which is no admitted platform loader"),
         )
     })?;
-    let loader = platform_loader(host.os, host.arch, abi)
-        .ok_or_else(|| gate(span, format!("no admitted platform loader for {abi:?}")))?;
-    match &metadata.interpreter {
-        Some(Interpreter::Loader(named)) if named == loader => {}
-        _ => {
-            return Err(gate(
-                span,
-                format!("dynamic executable must name the platform loader {loader:?}"),
-            ));
-        }
+    if let Some(declared) = declared_abi
+        && declared != abi
+    {
+        return Err(gate(
+            span,
+            format!(
+                "declared ABI {declared:?} contradicts the executable, whose loader {named:?} \
+                 is {abi:?}; omit abi to use the ABI the executable carries"
+            ),
+        ));
+    }
+    if host.abi != Some(abi) {
+        return Err(gate(
+            span,
+            format!(
+                "dynamic {abi:?} executable needs the loader {named:?}; host ABI is {:?}; \
+                 use a static build or one linked for the host libc",
+                host.abi
+            ),
+        ));
     }
     let gnu_loader = if abi == BinaryAbi::Gnu {
         Some(loader)

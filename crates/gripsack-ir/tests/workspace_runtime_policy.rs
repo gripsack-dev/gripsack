@@ -130,3 +130,50 @@ fn ordered_host_policy_changes_consumer_identity_not_producer() {
         original
     );
 }
+
+/// plan/0059 step 1: `strict` closes the Conda platform libraries. It is
+/// consumer policy over the same frozen closure: package identity changes,
+/// the locked source projection does not, and omitting it keeps identities.
+#[test]
+fn conda_strict_is_package_policy_not_locked_source() {
+    let current = schema();
+    let mut doc = document(gripsack_ir::IR_VERSION);
+    doc["workspace"]["outputs"][0]["layout"] = json!({"kind":"prefix_materialized"});
+    doc["workspace"]["outputs"][0]["producer"]["provider"] = json!({
+        "kind":"conda_environment","channels":["conda-forge"],"packages":{"python":"3.12.*"},
+        "span":{"file":"gripsack.ts","line":3}
+    });
+    let package = |doc: &Value| {
+        let mut ir = check(&doc.to_string()).unwrap();
+        let WorkspaceOutput::Package(package) = ir.workspace.outputs.remove(0) else {
+            panic!("package fixture")
+        };
+        package
+    };
+    let resolved = gripsack_ir::workspace_model::lock::ResolvedPinFields {
+        sha256: Some("b".repeat(64)),
+        ..Default::default()
+    };
+    let digest = |package: &gripsack_ir::workspace_model::PackageOutput| {
+        identity::provider_package_digest(package, &resolved, &BTreeMap::new()).unwrap()
+    };
+    let locked = |package: &gripsack_ir::workspace_model::PackageOutput| {
+        let WorkspaceProducer::Provider { provider } = &package.producer else {
+            panic!("provider fixture")
+        };
+        provider.locked()
+    };
+    assert!(current.is_valid(&doc));
+    let open = package(&doc);
+    doc["workspace"]["outputs"][0]["producer"]["provider"]["strict"] = json!(false);
+    assert!(current.is_valid(&doc));
+    assert_eq!(digest(&package(&doc)), digest(&open));
+    doc["workspace"]["outputs"][0]["producer"]["provider"]["strict"] = json!(true);
+    assert!(current.is_valid(&doc));
+    let closed = package(&doc);
+    assert_ne!(digest(&closed), digest(&open));
+    assert_eq!(locked(&closed), locked(&open));
+    doc["workspace"]["outputs"][0]["producer"]["provider"]["strict"] = json!("yes");
+    assert!(!current.is_valid(&doc));
+    assert!(check(&doc.to_string()).is_err());
+}

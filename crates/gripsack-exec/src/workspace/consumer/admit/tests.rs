@@ -360,3 +360,168 @@ fn imported_environment_values_are_command_scoped_not_profile_exports() {
         "literal $value"
     );
 }
+
+fn gnu_host() -> HostTarget {
+    HostTarget {
+        requirement: TargetRequirement {
+            os: TargetOs::Linux,
+            arch: TargetArch::X86_64,
+            abi: Some(BinaryAbi::Gnu),
+            minimum_os: None,
+        },
+        os: TargetOs::Linux,
+        arch: TargetArch::X86_64,
+        abi: Some(BinaryAbi::Gnu),
+    }
+}
+
+fn span() -> Span {
+    Span {
+        file: "workspace.ts".into(),
+        line: 7,
+        col: None,
+    }
+}
+
+fn platform(abi: Option<PlatformAbi>) -> WorkspacePlatform {
+    WorkspacePlatform {
+        os: PlatformOs::Linux,
+        arch: PlatformArch::X86_64,
+        abi,
+        minimum_os: None,
+    }
+}
+
+/// plan/0059 step 1: the ABI is a property of the executable's bytes. A
+/// declared ABI never compares against the host libc at target admission;
+/// ELF admission reads the loader and checks any declaration there.
+#[test]
+fn declared_abi_is_not_a_host_libc_gate() {
+    for declared in [None, Some(PlatformAbi::Gnu), Some(PlatformAbi::Musl)] {
+        assert!(
+            admit_target(&platform(declared), &gnu_host(), &span(), "environment").is_ok(),
+            "{declared:?}"
+        );
+    }
+    let unknown_libc = HostTarget {
+        requirement: TargetRequirement {
+            abi: None,
+            ..gnu_host().requirement
+        },
+        abi: None,
+        ..gnu_host()
+    };
+    assert!(
+        admit_target(
+            &platform(Some(PlatformAbi::Musl)),
+            &unknown_libc,
+            &span(),
+            "package"
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn elf_admission_infers_the_abi_from_the_loader() {
+    use crate::workspace::artifact::Artifact;
+    use gripsack_process::executable::ExecutableMetadata;
+    use std::sync::Arc;
+
+    let directory = tempfile::tempdir().unwrap();
+    let payload = directory.path().canonicalize().unwrap();
+    let package = Package {
+        archive_root: None,
+        selected_root: None,
+        identity: serde_json::from_str(&format!("\"{}\"", "0".repeat(64))).unwrap(),
+        root: payload.clone(),
+        selected_payload: None,
+        producer: Arc::new(Artifact {
+            root: payload.clone(),
+            payload: payload.clone(),
+            tree: serde_json::from_str(&format!("\"{}\"", "0".repeat(64))).unwrap(),
+            retention: BTreeSet::new(),
+        }),
+        commands: BTreeMap::new(),
+        runtime: Vec::new(),
+        target: platform(None),
+        layout: CatalogPackageLayout::Relocatable,
+        conda: None,
+        host_runtime: None,
+    };
+    let image = |loader: Option<&str>| ExecutableMetadata {
+        format: Some(ExecutableFormat::Elf),
+        class: Some(WordClass::SixtyFour),
+        arch: Some(ExecutableArch::X86_64),
+        endianness: Some(Endianness::Little),
+        object: Some(ObjectKind::Executable),
+        has_entry_point: true,
+        interpreter: loader.map(|loader| Interpreter::Loader(loader.into())),
+        ..ExecutableMetadata::default()
+    };
+    let admit = |metadata: &ExecutableMetadata, declared_abi: Option<BinaryAbi>| {
+        elf::admit(
+            metadata,
+            &payload.join("program"),
+            elf::ImageOwner {
+                package: &package,
+                payload: &payload,
+                declared_abi,
+            },
+            &RuntimeScope::new(&package, None),
+            &gnu_host(),
+            &span(),
+        )
+    };
+    let gnu = image(Some("/lib64/ld-linux-x86-64.so.2"));
+    let musl = image(Some("/lib/ld-musl-x86_64.so.1"));
+    let unknown = image(Some("/opt/loader.so"));
+    let static_image = image(None);
+
+    // Undeclared: the loader names the ABI; GNU selects the platform loader.
+    let runtime = admit(&gnu, None).unwrap();
+    assert_eq!(runtime.gnu_loader, Some("/lib64/ld-linux-x86-64.so.2"));
+    // A declaration is an assertion checked against the bytes.
+    assert!(admit(&gnu, Some(BinaryAbi::Gnu)).is_ok());
+    assert!(
+        admit(&gnu, Some(BinaryAbi::Musl)).is_err(),
+        "a declared ABI that contradicts PT_INTERP is refused"
+    );
+    // A dynamic musl image needs a musl host loader whatever is declared.
+    assert!(admit(&musl, None).is_err());
+    assert!(admit(&musl, Some(BinaryAbi::Musl)).is_err());
+    assert!(admit(&unknown, None).is_err());
+    // Static images carry no loader ABI and run on any host.
+    for declared in [None, Some(BinaryAbi::Gnu), Some(BinaryAbi::Musl)] {
+        let runtime = admit(&static_image, declared).unwrap();
+        assert!(runtime.gnu_loader.is_none() && runtime.directories.is_empty());
+    }
+}
+
+/// plan/0059 step 1: conda-forge leaves its CDT platform libraries (X11,
+/// OpenGL, ALSA) to the host; a prefix needing one is admitted by default.
+#[test]
+fn conda_platform_libraries_are_host_provided_by_default() {
+    use gripsack_ir::workspace_model::PlatformLibraries;
+    let system = crate::workspace::conda::SystemRuntime {
+        libraries: vec!["libX11.so.6".into(), "libGL.so.1".into()],
+        loaders: Vec::new(),
+    };
+    let policy = PlatformLibraries::HostProvided;
+    assert!(platform::admit(&system, policy, &gnu_host(), &span()).is_ok());
+    assert_eq!(
+        platform::host_provided(&system, policy).collect::<Vec<_>>(),
+        ["libX11.so.6", "libGL.so.1"]
+    );
+    // strict: true restores the closed check.
+    let closed = PlatformLibraries::Closed;
+    let refused = platform::admit(&system, closed, &gnu_host(), &span()).unwrap_err();
+    assert!(refused.to_string().contains("strict"), "{refused}");
+    assert_eq!(platform::host_provided(&system, closed).count(), 0);
+    // Anything outside the explicit CDT list stays a closure requirement.
+    let ambient = crate::workspace::conda::SystemRuntime {
+        libraries: vec!["libstdc++.so.6".into()],
+        loaders: Vec::new(),
+    };
+    assert!(platform::admit(&ambient, policy, &gnu_host(), &span()).is_err());
+}

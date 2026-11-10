@@ -47,11 +47,17 @@ Nothing else ships in the binary.
 
 Ordered. Each step is one or more PRs under the normal gates.
 
-### Step 1: make the documented examples run (bug, S–M)
+### Step 1: make the documented examples run (bug, S–M) — done on `fix/examples-run`
 - Infer the ABI from the ELF, which the classifier already does, and stop authoring it. Admit static binaries on any host.
 - Conda: treat the platform libraries (the CDT set, e.g. libX11) as host-provided by default and note it in the plan. `strict: true` restores the closed check.
 - Fix `doc/packages.md` and `typescript/README.md`.
 - Add an e2e gate that evaluates and applies every website example on a stock glibc image. This replaces prose that restates refusals (review #14).
+
+**Landed as:**
+- `admit_target` no longer compares a declared ABI with the host libc. ELF admission reads the ABI from `PT_INTERP`, checks a declared `abi` against it, and needs the host to have that loader only for a dynamic image. Static images run on any host.
+- conda-forge's CDT sonames (X11 client libraries, OpenGL/EGL, ALSA; an explicit list in `consumer/admit/platform.rs`) are host-provided by default, noted at `build`/`apply` ("uses host libX11.so.6"). Plan cannot say it: runtime admission is deferred there, and the measured set exists only after materialization. `conda.environment({ strict: true })` restores the closed check. `strict` is an additive optional field on the v10 `conda_environment` source (no `ir_version` bump; an older core refuses it by name). It enters package identity, not the locked source, so switching it needs no re-solve. The CDT relaxation covers the prefix-wide platform check, not a command whose own ELF closure links a CDT library.
+- Every complete workspace in the website docs and the READMEs is an `examples/workspaces/*` directory, bound by an `<!-- example: … -->` line that the website build and `e2e/test_documented_examples.py` check. The gate applies the dotfile and file-fetch examples, runs the release archive against a local GitHub-release fixture, and only evaluates/checks/plans the Conda, Pixi, Docker and systemd ones offline.
+- Found on the way, not fixed: a dynamically linked glibc release binary that does not ship its own libc still needs `hostRuntime`, and with it a declared `abi: "gnu"`, because `libc.so.6` is outside a relocatable package's closure. Step 3's inference should cover it.
 
 ### Step 2: approval binds the evaluation closure (rework, M)
 - The approved bundle becomes: the `gripsack.ts` import graph, the files its declarations name, and the SDK identity. A README edit no longer needs re-approval.

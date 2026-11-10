@@ -2010,6 +2010,8 @@ export interface CondaEnvironmentSource {
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
   system_requirements?: CondaSystemRequirements;
+  /** Emitted only when true; see `CondaEnvironmentSpec.strict`. */
+  strict?: boolean;
   wheels?: readonly WheelSource[];
   span: Span;
 }
@@ -2278,6 +2280,10 @@ export interface CondaEnvironmentSpec {
   systemRequirements?: CondaSystemRequirements;
   /** HTTPS binary wheels, each pinned by its lowercase SHA256 digest. */
   wheels?: readonly WheelSource[];
+  /** By default the host provides conda-forge's platform libraries (X11,
+   *  OpenGL, ALSA), as every Conda tool assumes. `true` refuses a prefix
+   *  that needs any of them: everything must be in the frozen closure. */
+  strict?: boolean;
 }
 
 /** Authoring spec for an explicit Pixi lock import — see
@@ -2501,8 +2507,11 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
     return asAcquisitionSource({ kind: "fetch", fetch: source, span }, where);
   }
   if (rec.channels !== undefined || rec.packages !== undefined) {
-    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements", "wheels"]);
+    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements", "wheels", "strict"]);
     const conda = source as CondaEnvironmentSpec;
+    if (conda.strict !== undefined && typeof conda.strict !== "boolean") {
+      throw new Error(`${where}.strict must be a boolean`);
+    }
     return asAcquisitionSource({
       kind: "conda_environment",
       channels: conda.channels,
@@ -2512,6 +2521,7 @@ function asSourceValue(source: unknown, span: Span, where: string): AcquisitionS
         ? { system_requirements: asSystemRequirements(conda.systemRequirements, `${where}.systemRequirements`) }
         : {}),
       ...(conda.wheels !== undefined ? { wheels: conda.wheels } : {}),
+      ...(conda.strict === true ? { strict: true } : {}),
       span,
     }, where);
   }
@@ -2536,7 +2546,7 @@ export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSo
     );
   }
   const rec = asRecord(spec, "conda.environment(...)");
-  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements", "wheels"]);
+  rejectUnknownFields("conda.environment(...)", rec, ["channels", "packages", "platforms", "systemRequirements", "wheels", "strict"]);
   return freezeDeep(asSourceValue(spec, span, "conda.environment(...)") as CondaEnvironmentSource);
 }
 
@@ -3655,7 +3665,10 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
     return v as AcquisitionSource;
   }
   if (rec.kind === "conda_environment") {
-    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "wheels", "span"]);
+    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "strict", "wheels", "span"]);
+    if (rec.strict !== undefined && typeof rec.strict !== "boolean") {
+      throw new Error(`${where}.strict must be a boolean`);
+    }
     const channels = rec.channels;
     if (!Array.isArray(channels) || channels.length === 0 ||
       channels.some((c) => typeof c !== "string" || c === "")) {

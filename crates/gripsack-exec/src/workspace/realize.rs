@@ -277,6 +277,22 @@ fn publish_packages<'a>(
                 .map(|name| Arc::clone(&packages[name.as_str()]))
                 .collect();
             ctx.reporter().started(name, "publishing package");
+            if let Some(receipt) = identity.conda {
+                // plan/0059: say which conda-forge platform libraries come
+                // from the host rather than the frozen closure.
+                let host: Vec<_> = super::consumer::admit::host_platform_libraries(
+                    &receipt.system,
+                    receipt.platform_libraries,
+                )
+                .collect();
+                if !host.is_empty() {
+                    let note = format!(
+                        "uses host {} (conda-forge platform libraries; strict: true refuses)",
+                        host.join(", ")
+                    );
+                    ctx.reporter().started(name, &note);
+                }
+            }
             packages.insert(
                 name,
                 artifact::publish_package(

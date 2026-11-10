@@ -23,6 +23,6 @@ pub use image::*;
 pub use service::*;
 pub use source::{
     AcquisitionSource, CondaEnvironmentSource, CondaLibcRequirement, CondaSystemRequirements,
-    LockedCondaSource, LockedPixiSource, LockedSource, PixiLockSource,
+    LockedCondaSource, LockedPixiSource, LockedSource, PixiLockSource, PlatformLibraries,
 };
 pub use wheel::WheelSource;

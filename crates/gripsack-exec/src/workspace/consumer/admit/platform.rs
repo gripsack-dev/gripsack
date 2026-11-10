@@ -2,11 +2,54 @@
 //! explicit GNU host-runtime policy; never ld.so.cache, PATH or host packages.
 use super::{BinaryAbi, ExecError, HostTarget, Span, elf, gate, operational, platform_loader};
 use crate::workspace::conda::SystemRuntime;
+use gripsack_ir::workspace_model::PlatformLibraries;
 use gripsack_policy::target::{TargetArch, TargetOs};
 use std::path::{Path, PathBuf};
 
+/// Sonames conda-forge leaves to the host system rather than shipping in the
+/// closure: its "Core Dependency Tree" (CDT) policy (conda-forge maintainer
+/// knowledge base, <https://conda-forge.org/docs/maintainer/knowledge_base/>,
+/// "Core Dependency Tree Packages") — X11 client libraries, OpenGL/EGL and
+/// ALSA. conda-forge's `tk`, pulled in by every `python`, links
+/// `libX11.so.6` this way (only a `run_constrained` on `xorg-libx11`).
+/// Keep this list explicit and small: anything else stays in the closure.
+const HOST_PLATFORM_LIBRARIES: &[&str] = &[
+    // X11 client libraries.
+    "libX11.so.6",
+    "libX11-xcb.so.1",
+    "libxcb.so.1",
+    "libXau.so.6",
+    "libXdmcp.so.6",
+    "libXext.so.6",
+    "libXrender.so.1",
+    "libXft.so.2",
+    "libXss.so.1",
+    // OpenGL / EGL (the vendor-neutral dispatch libraries).
+    "libGL.so.1",
+    "libEGL.so.1",
+    "libGLX.so.0",
+    "libOpenGL.so.0",
+    "libGLdispatch.so.0",
+    // ALSA.
+    "libasound.so.2",
+];
+
+/// The measured platform libraries a prefix takes from the host under its
+/// policy; empty under `strict: true`, where admission refuses them instead.
+pub(in crate::workspace) fn host_provided(
+    system: &SystemRuntime,
+    policy: PlatformLibraries,
+) -> impl Iterator<Item = &str> {
+    system
+        .libraries
+        .iter()
+        .map(String::as_str)
+        .filter(move |name| policy.is_host_provided() && HOST_PLATFORM_LIBRARIES.contains(name))
+}
+
 pub(super) fn admit(
     system: &SystemRuntime,
+    policy: PlatformLibraries,
     host: &HostTarget,
     span: &Span,
 ) -> Result<(), ExecError> {
@@ -22,9 +65,29 @@ pub(super) fn admit(
         }
     }
     for name in &system.libraries {
-        let path=library(name,host,span)?.ok_or_else(|| gate(span,format!(
-            "Conda prefix requires {name:?} outside the explicit OS runtime; include that library in the frozen package closure"
-        )))?;
+        let platform_library = HOST_PLATFORM_LIBRARIES.contains(&name.as_str());
+        if platform_library && policy.is_host_provided() {
+            // Loaded by the platform loader from the host when an optional
+            // module (Tk, say) is imported; a missing one fails that import.
+            continue;
+        }
+        let path = library(name, host, span)?.ok_or_else(|| {
+            gate(
+                span,
+                if platform_library {
+                    format!(
+                        "Conda prefix requires host platform library {name:?} and declares \
+                         strict: true; include that library in the frozen package closure \
+                         or drop strict"
+                    )
+                } else {
+                    format!(
+                        "Conda prefix requires {name:?} outside the explicit OS runtime; \
+                         include that library in the frozen package closure"
+                    )
+                },
+            )
+        })?;
         let mut file = std::fs::File::open(&path.canonical).map_err(operational)?;
         let status = file.metadata().map_err(operational)?;
         if !status.is_file() || status.len() > super::EXECUTABLE_BYTES {
