@@ -2427,3 +2427,11 @@ None in the shipped behaviour. Two findings:
    `debug_assert!`s.
 
 ### 23.6 Gates
+
+Docker, `-p f2verus`, one at a time, at `1486f63`: `proofs` OK in 3669 s
+(no translation drift, 486 theorems, 100 claims, standard axioms only,
+95/95 mutants calibrated — the 8 new ones also ran alone first, 8/8); `test`
+passed (fmt, clippy `-D warnings`, cargo test; 676 s); `e2e` 712 passed in
+18m27s. Not run: `ts-test` (TypeScript untouched), `model`, `tlaps`, fuzz.
+On the host, two `gripsack-process` confinement tests fail with and without
+this change (host sandbox support); they pass in the `test` image.
