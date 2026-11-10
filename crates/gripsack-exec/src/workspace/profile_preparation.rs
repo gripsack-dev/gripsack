@@ -41,6 +41,7 @@ impl NativeProfiles {
             std::time::Instant::now() + gripsack_process::Limits::default().timeout,
             predecessor.as_ref(),
             None,
+            crate::progress::Reporter::silent(),
         )
     }
 
@@ -56,6 +57,7 @@ impl NativeProfiles {
         deadline: std::time::Instant,
         predecessor: Option<&store::Generation>,
         protection: Option<&profile_checks::Protection<'_>>,
+        reporter: crate::progress::Reporter<'_>,
     ) -> Result<Self, ExecError> {
         let declarations = declarations::Declarations::from_ir(ir);
         let logical_source = |path: &str| match repository {
@@ -169,6 +171,8 @@ impl NativeProfiles {
                 }
                 if !readonly && !file.checks.is_empty() {
                     profile_checks::prepare(
+                        output.name(),
+                        reporter,
                         file.checks,
                         &files[first_file..],
                         &outputs,
@@ -261,6 +265,7 @@ impl NativeProfiles {
                 Vec::new()
             } else {
                 hooks::prepare(
+                    output.name(),
                     output.hooks(),
                     &outputs,
                     realization.ok_or_else(|| {
@@ -301,6 +306,10 @@ impl NativeProfiles {
                 .collect();
             let tree = store::canonical_tree_hash(&stage)?;
             let store_path = store::content_path(home, "workspace-files", tree.as_str());
+            let labels = prepared_hooks
+                .iter()
+                .map(|hook| hook.label(&store_path))
+                .collect();
             let mut intents: Vec<_> = prepared_hooks
                 .into_iter()
                 .map(|hook| hook.record(&store_path))
@@ -325,6 +334,7 @@ impl NativeProfiles {
                     deferred_checks,
                     intents,
                     pre_flip_checks: prepared_checks.pre_flip,
+                    labels,
                 },
             );
         }

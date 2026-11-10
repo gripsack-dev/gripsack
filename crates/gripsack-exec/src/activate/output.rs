@@ -54,6 +54,16 @@ impl CapturedOutput {
         outcome.success
     }
 
+    /// Complete captured bytes and whether any were dropped.
+    pub(super) fn parts(&self) -> (&[u8], &[u8], bool) {
+        (
+            &self.stdout,
+            &self.stderr,
+            self.stdout_truncated || self.stderr_truncated,
+        )
+    }
+
+    /// Raw passthrough for callers without a live renderer.
     pub(super) fn emit(self) -> io::Result<()> {
         let mut stdout = io::stdout().lock();
         gripsack_process::terminal::write_output(&mut stdout, &self.stdout)?;

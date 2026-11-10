@@ -14,6 +14,7 @@
 //! terminal — piped output is plain.
 
 mod commands;
+mod live;
 mod render;
 
 use clap::{Parser, Subcommand};
@@ -74,6 +75,10 @@ enum Command {
         /// Execute an exact saved review; never re-evaluate changed source.
         #[arg(long, conflicts_with_all = ["host", "profiles", "take_over"])]
         saved_plan: Option<PathBuf>,
+        /// Show the full output of passing checks and hooks (failures
+        /// always show everything)
+        #[arg(long, short)]
+        verbose: bool,
     },
     /// Acquire named direct workspace packages into the native store.
     Build(commands::BuildArgs),
@@ -335,6 +340,7 @@ fn main() -> ExitCode {
             profiles,
             take_over,
             saved_plan: None,
+            verbose,
         } => match commands::resolve_repo(repo.as_deref()) {
             Ok(repo) => commands::apply(
                 &repo,
@@ -343,6 +349,11 @@ fn main() -> ExitCode {
                     profiles,
                     take_over,
                     take_over_entries: None,
+                    detail: if verbose {
+                        live::Detail::Full
+                    } else {
+                        live::Detail::Collapsed
+                    },
                 },
                 palette,
             ),

@@ -14,10 +14,21 @@ pub struct Palette {
 }
 
 impl Palette {
+    /// Colour on a terminal stdout unless `NO_COLOR` is set (no-color.org).
     pub fn detect() -> Self {
         Palette {
-            enabled: std::io::stdout().is_terminal(),
+            enabled: std::io::stdout().is_terminal() && Self::colors_requested(),
         }
+    }
+
+    /// `NO_COLOR` present and non-empty disables every renderer colour.
+    fn colors_requested() -> bool {
+        std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty())
+    }
+
+    /// Colour may be used on a stream other than stdout (the spinner).
+    pub fn colors_allowed(&self) -> bool {
+        Self::colors_requested()
     }
 
     #[cfg(test)]
@@ -34,6 +45,10 @@ impl Palette {
 
     pub fn warn(&self, text: &str) -> String {
         self.style(text, |t| t.yellow().bold().to_string())
+    }
+
+    pub fn bold(&self, text: &str) -> String {
+        self.style(text, |t| t.bold().to_string())
     }
 
     pub fn cyan(&self, text: &str) -> String {

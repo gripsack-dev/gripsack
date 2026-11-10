@@ -39,6 +39,18 @@ pub(super) struct Prepared<'a> {
     pub packages: BTreeMap<String, PackageDigest>,
 }
 
+/// What a frozen acquisition is about to do, for live progress.
+fn acquisition_activity(source: &AcquisitionSource) -> String {
+    match source {
+        AcquisitionSource::Fetch(fetch) => {
+            format!("acquiring {}", crate::report::describe_fetch(&fetch.fetch))
+        }
+        AcquisitionSource::Package { .. } => "importing shared package".into(),
+        AcquisitionSource::CondaEnvironment(_) => "materializing conda environment".into(),
+        AcquisitionSource::PixiLock(_) => "materializing pixi environment".into(),
+    }
+}
+
 impl<'a> Prepared<'a> {
     pub fn frozen(
         ir: &'a Ir,
@@ -71,6 +83,7 @@ impl<'a> Prepared<'a> {
             };
             if let Some((source, platform)) = source {
                 let pin = pins.lookup(platform, name, &source.locked())?;
+                ctx.reporter().started(name, &acquisition_activity(source));
                 let prepared = match source {
                     AcquisitionSource::Fetch(fetch) => {
                         let acquired =
