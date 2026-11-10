@@ -63,6 +63,8 @@ struct PreparedProfile {
     deferred_checks: Vec<gripsack_ir::workspace_model::WorkspaceFileCheck>,
     intents: Vec<store::IntentRecord>,
     pre_flip_checks: Vec<profile_checks::PreparedCheck>,
+    /// Display labels of the hooks and deployed checks this run prepared.
+    labels: Vec<(PathBuf, crate::progress::VerificationLabel)>,
 }
 
 pub(crate) struct NativeProfiles {
@@ -97,6 +99,8 @@ impl NativeProfiles {
         {
             return Ok(());
         }
+        let reporter = ctx.reporter();
+        reporter.phase(crate::progress::Phase::Verify);
         let environment = gripsack_process::OperatorEnvironment::capture()?;
         for profile in self.profiles.values() {
             if profile.pre_flip_checks.is_empty() {
@@ -121,10 +125,19 @@ impl NativeProfiles {
                     &environment,
                     self.deadline,
                     &protection,
+                    reporter,
                 )?;
             }
         }
         Ok(())
+    }
+
+    /// Labels for rendering this run's activation hooks and checks.
+    pub(crate) fn verification_labels(&self) -> crate::progress::VerificationLabels {
+        self.profiles
+            .values()
+            .flat_map(|profile| profile.labels.iter().cloned())
+            .collect()
     }
 
     pub(crate) fn layout_evidence(&self) -> Vec<(String, crate::LayoutEvidence)> {
@@ -250,22 +263,21 @@ impl NativeProfiles {
                 crate::source::publish(ctx, name, &profile.stage, &profile.store_path)
                     .map_err(|error| file_failure(&profile.span, error))?;
             }
-            reports.push((
-                name.clone(),
-                vec![StepReport {
-                    output: name.clone(),
-                    summary: if present {
-                        "profile content reused".into()
-                    } else {
-                        "profile content published".into()
-                    },
-                    kind: if present {
-                        ReportKind::Satisfied
-                    } else {
-                        ReportKind::Fetched
-                    },
-                }],
-            ));
+            let report = StepReport {
+                output: name.clone(),
+                summary: if present {
+                    "profile content reused".into()
+                } else {
+                    "profile content published".into()
+                },
+                kind: if present {
+                    ReportKind::Satisfied
+                } else {
+                    ReportKind::Fetched
+                },
+            };
+            ctx.reporter().step(&report);
+            reports.push((name.clone(), vec![report]));
         }
         if let Some(migration) = migration.as_deref_mut() {
             crate::util::crash_hook("directory-before-publish");
@@ -297,11 +309,13 @@ impl NativeProfiles {
                 .map_err(|error| {
                     file_failure(file.entry.span.as_ref().unwrap_or(&profile.span), error)
                 })?;
-                file_reports.push(StepReport {
+                let report = StepReport {
                     output: name.clone(),
                     summary,
                     kind,
-                });
+                };
+                ctx.reporter().step(&report);
+                file_reports.push(report);
                 #[cfg(debug_assertions)]
                 {
                     completed_files += 1;
