@@ -56,6 +56,7 @@ impl NativeProfiles {
             Instant::now() + gripsack_process::Limits::default().timeout,
             predecessor.as_ref(),
             None,
+            crate::progress::Reporter::silent(),
         )
     }
 }
@@ -163,6 +164,7 @@ pub(crate) fn prepare_apply_in_session(
         options.deadline,
         predecessor.as_ref(),
         protection.as_ref(),
+        ctx.reporter(),
     )?;
     for (name, paths) in &held.closures {
         let profile = native.profiles.get_mut(name).ok_or_else(|| {

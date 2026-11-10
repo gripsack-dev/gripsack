@@ -20,7 +20,7 @@ mod wire;
 pub use current::{CommittedSelection, current, current_in, current_selection_in, flip};
 pub(crate) use inventory::admit_manifest_at;
 pub use inventory::{GenerationDirectory, admit_manifest, list, read_manifest};
-pub use publication::{allocate, publish_generation, write_manifest};
+pub use publication::{allocate, is_staging_name, publish_generation, write_manifest};
 pub(crate) use selection::{
     SelectionReservation, parse as parse_selection, reserve as reserve_selection,
 };
@@ -339,8 +339,29 @@ mod tests {
         publish_generation(&cap, &mk_gen(home, 1), Some("export A=1"), home).unwrap();
         assert!(home.join("generations/1/manifest.json").exists());
         assert!(home.join("generations/1/env/profile.sh").exists());
-        // no staging residue
-        assert!(!home.join("generations/.staging-1").exists());
+        // no staging residue (publish_generation stages under .staging-<N>-<pid>)
+        assert!(
+            std::fs::read_dir(home.join("generations"))
+                .unwrap()
+                .all(|entry| !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".staging-"))
+        );
+        assert!(is_staging_name(&format!(
+            ".staging-1-{}",
+            std::process::id()
+        )));
+        for name in [
+            ".staging-1",
+            ".staging-01-2",
+            ".staging-1-x",
+            ".staging--1-2",
+            "1",
+        ] {
+            assert!(!is_staging_name(name), "{name}");
+        }
         // no-clobber
         let err = publish_generation(&cap, &mk_gen(home, 1), None, home).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);

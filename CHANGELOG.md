@@ -8,6 +8,26 @@ User-visible changes per release. Design archaeology lives in
 
 ### Changed
 
+- `grip apply` shows progress while it works instead of printing
+  everything at the end. Phases and the unit in progress ("ripgrep …
+  acquiring github-release …", "personal … running hook verify-rg") appear
+  on stderr: as a spinner on a terminal, or one plain line each when
+  piped. Report lines and the final `applied —` line still go to stdout,
+  each printed as soon as its step finishes.
+
+- Checks and hooks that run during `apply` print one block each: a header
+  (`personal ▸ hook verify-rg $ rg --version`), then the tool's output
+  under a `│` (stdout) or `┆` (stderr) gutter, then a status line with
+  pass/fail and duration. A passing block shows only its first output line
+  and a line count; `grip apply --verbose` shows all of it. A failing block
+  always shows all of it, marked `✗ FAILED` with the exit status. Tool
+  output no longer mixes with gripsack's own lines or with the spinner.
+  The run log (`$GRIPSACK_HOME/runs/*.jsonl`) records each block's full
+  output.
+
+- Piped `apply` output and `NO_COLOR` runs no longer contain colour codes.
+  Before, the final `applied —` line was coloured even when piped.
+
 - `apply` and `rollback` check each destination again immediately before
   writing it, not only when they first journal it. A file another program
   changes while gripsack is recording it is now left alone and the run stops
@@ -88,6 +108,12 @@ User-visible changes per release. Design archaeology lives in
   object aside and run the command again. See "Repairing a pending journal"
   in `docs/operations/storage.md`.
 
+- `grip gc` removes the staging directory an `apply` leaves behind when it
+  is killed while publishing a generation
+  (`generations/.staging-<N>-<pid>`). These were never removed and only
+  took disk space. `gc --dry-run` lists them ("removed stale staging …");
+  other names under `generations/` are left alone.
+
 ### Added
 
 - `grip doctor` shows a pending journal: whether the interrupted run
@@ -117,7 +143,20 @@ User-visible changes per release. Design archaeology lives in
   while recovery is restoring it now stops recovery (journal kept) instead
   of being overwritten.
 
+- `grip gc` runs as a state machine in `gripsack-kernel`, proved in Lean:
+  nothing is deleted while recovery or activation is pending or in a dry
+  run; a generation is pruned only from the oldest excess beyond
+  `keep_generations`, never the current one, and never while a kept
+  generation still needs it to roll back to; a store or prior entry is
+  removed only if no kept generation and no workspace or schedule root
+  references it; and payloads go only after the pruned generations are
+  durably retired. Before each deletion `gc` now re-checks what it
+  inventoried: if `current` changed, or an entry was replaced, it stops
+  ("run gc again") instead of deleting.
+
 ### Internal
+
+- The `store_gc` fuzz target is gone: what it asserted is now proved.
 
 - The hand-written recovery models (`journal/model.rs`,
   `repeated_model.rs`) are replaced by crash exploration of the shipped

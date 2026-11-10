@@ -7,57 +7,6 @@ use std::{
     path::Path,
 };
 
-pub(super) fn admit(
-    directory: &store::generations::GenerationDirectory,
-    home: &gripsack_fs::Dir,
-    home_path: &Path,
-    pruned: &mut BTreeSet<store::GenerationId>,
-    dry_run: bool,
-) -> Result<BTreeMap<store::GenerationId, store::Generation>, ExecError> {
-    let mut manifests = BTreeMap::new();
-    for number in directory.inventory().as_slice() {
-        let manifest = if dry_run {
-            directory.inspect_manifest(home_path, *number)?
-        } else {
-            directory.admit_manifest(home, home_path, *number)?
-        };
-        manifests.insert(*number, manifest);
-    }
-    loop {
-        let dependencies: Vec<_> = manifests
-            .iter()
-            .filter(|(number, _)| !pruned.contains(*number))
-            .flat_map(|(_, generation)| {
-                generation
-                    .directory_transitions
-                    .iter()
-                    .map(|receipt| receipt.predecessor_generation)
-                    .chain(
-                        generation
-                            .migration
-                            .iter()
-                            .map(|receipt| receipt.predecessor),
-                    )
-            })
-            .collect();
-        let mut changed = false;
-        for predecessor in dependencies {
-            if !manifests.contains_key(&predecessor) {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "directory receipt predecessor generation is missing; refusing GC",
-                )
-                .into());
-            }
-            changed |= pruned.remove(&predecessor);
-        }
-        if !changed {
-            break;
-        }
-    }
-    Ok(manifests)
-}
-
 pub(super) fn pending(
     directory: &store::generations::GenerationDirectory,
     home: &gripsack_fs::Dir,
@@ -154,6 +103,20 @@ mod tests {
         .unwrap();
     }
 
+    /// An interrupted prune, as the GC machine's effects leave it.
+    fn prune(
+        directory: &store::generations::GenerationDirectory,
+        ids: &[store::GenerationId],
+    ) -> std::io::Result<()> {
+        directory.seal_floor()?;
+        for id in ids.iter().rev() {
+            directory.retire(*id)?;
+        }
+        directory.seal()
+    }
+
+    /// The kernel proves the closure (K4′); this checks the host decodes
+    /// migration receipts into predecessors.
     #[test]
     fn migration_recovery_roots_close_transitively_outside_the_keep_window() {
         let temporary = tempfile::tempdir().unwrap();
@@ -161,11 +124,18 @@ mod tests {
         publish(&home, 0, None);
         publish(&home, 1, Some(0));
         publish(&home, 2, Some(1));
-        let directory = store::generations::GenerationDirectory::open(&home).unwrap();
-        let mut pruned = BTreeSet::from([store::GenerationId::new(0), store::GenerationId::new(1)]);
-        let admitted = admit(&directory, &home, temporary.path(), &mut pruned, false).unwrap();
-        assert_eq!(admitted.len(), 3);
-        assert!(pruned.is_empty());
+        std::os::unix::fs::symlink("generations/2", temporary.path().join("current")).unwrap();
+        let session = crate::LifecycleSession::acquire(temporary.path()).unwrap();
+        let report = super::super::gc(&session, Some(1), false).unwrap();
+        assert!(report.generations_removed.is_empty());
+        for id in 0..=2 {
+            assert!(
+                temporary
+                    .path()
+                    .join(format!("generations/{id}/manifest.json"))
+                    .is_file()
+            );
+        }
     }
 
     #[test]
@@ -173,16 +143,13 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         let home = gripsack_fs::open_or_create(temporary.path()).unwrap();
         publish(&home, 1, Some(0));
-        let directory = store::generations::GenerationDirectory::open(&home).unwrap();
+        std::os::unix::fs::symlink("generations/1", temporary.path().join("current")).unwrap();
+        let session = crate::LifecycleSession::acquire(temporary.path()).unwrap();
+        let error = super::super::gc(&session, Some(0), false).unwrap_err();
         assert!(
-            admit(
-                &directory,
-                &home,
-                temporary.path(),
-                &mut BTreeSet::new(),
-                false
-            )
-            .is_err()
+            error
+                .to_string()
+                .contains("predecessor generation is missing")
         );
         assert!(
             temporary
@@ -241,7 +208,7 @@ mod tests {
                 .admit_manifest(&home, temporary.path(), store::GenerationId::new(1))
                 .unwrap();
             if sealed {
-                directory.prune(&[store::GenerationId::new(1)]).unwrap();
+                prune(&directory, &[store::GenerationId::new(1)]).unwrap();
             } else {
                 // The visible rename survived, but the process stopped before
                 // acknowledging its parent barrier. Retry must seal it first.
@@ -302,7 +269,7 @@ mod tests {
         directory
             .admit_manifest(&home, temporary.path(), store::GenerationId::new(1))
             .unwrap();
-        directory.prune(&[store::GenerationId::new(1)]).unwrap();
+        prune(&directory, &[store::GenerationId::new(1)]).unwrap();
         let session = crate::LifecycleSession::acquire(temporary.path()).unwrap();
         super::super::gc(&session, None, false).unwrap();
         assert!(stages(&receipt).iter().all(|path| path.is_dir()));
@@ -365,7 +332,7 @@ mod tests {
             directory
                 .admit_manifest(&home, temporary.path(), store::GenerationId::new(1))
                 .unwrap();
-            directory.prune(&[store::GenerationId::new(1)]).unwrap();
+            prune(&directory, &[store::GenerationId::new(1)]).unwrap();
             let pending = temporary.path().join("generations/.retiring-1");
             if malformed {
                 std::fs::write(pending.join("manifest.json"), b"{\"unknown\":true}").unwrap();
@@ -394,7 +361,7 @@ mod tests {
         directory
             .admit_manifest(&home, temporary.path(), store::GenerationId::new(1))
             .unwrap();
-        directory.prune(&[store::GenerationId::new(1)]).unwrap();
+        prune(&directory, &[store::GenerationId::new(1)]).unwrap();
         store::journal::retire_directory_staging(&receipt, &[]).unwrap();
         let generations = gripsack_fs::open_dir_nofollow(&home, Path::new("generations")).unwrap();
         gripsack_fs::rename_noreplace(
@@ -469,20 +436,16 @@ mod tests {
         publish(&home, 2, Some(1));
         publish(&home, 3, None);
         std::os::unix::fs::symlink("generations/3", temporary.path().join("current")).unwrap();
+        // The machine retires newest first (proved: gc_retire_newest_first).
+        // Deterministically interrupt its second rename with no-clobber
+        // failure, after inventory admission and the first retirement.
         let directory = store::generations::GenerationDirectory::open(&home).unwrap();
-        let ids = [
-            store::GenerationId::new(0),
-            store::GenerationId::new(1),
-            store::GenerationId::new(2),
-        ];
-        let mut pruned = BTreeSet::from(ids);
-        admit(&directory, &home, temporary.path(), &mut pruned, false).unwrap();
-        // Deterministically interrupt the second rename with no-clobber
-        // failure, after inventory admission but before any retirement.
         let collision = temporary.path().join("generations/.retiring-1");
         std::fs::create_dir(&collision).unwrap();
         std::fs::write(collision.join("foreign"), b"preserve").unwrap();
-        assert!(directory.prune(&ids).is_err());
+        directory.seal_floor().unwrap();
+        directory.retire(store::GenerationId::new(2)).unwrap();
+        assert!(directory.retire(store::GenerationId::new(1)).is_err());
         assert_eq!(
             std::fs::read(collision.join("foreign")).unwrap(),
             b"preserve"

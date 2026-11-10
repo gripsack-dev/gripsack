@@ -5,8 +5,7 @@ use gripsack_ir::HostName;
 use std::io;
 use std::path::PathBuf;
 
-/// Thread-safe workspace output progress events.
-pub type ProgressCallback = Box<dyn Fn(&str, &str) + Send + Sync>;
+use crate::progress::ProgressCallback;
 
 /// What an apply run needs beyond the IR.
 pub struct Ctx {
@@ -18,7 +17,7 @@ pub struct Ctx {
     pub only: Vec<String>,
     /// Host identity used for workspace lock and profile selection.
     pub host: HostName,
-    /// Progress events `(output, verb)` — the CLI renders spinners.
+    /// Live lifecycle events — the CLI streams them as they happen.
     pub on_progress: Option<ProgressCallback>,
     /// Overwrite foreign/drifted tracked_copy destinations (explicit
     /// user intent — 0009 critique finding 3).
@@ -38,6 +37,11 @@ pub struct Ctx {
 }
 
 impl Ctx {
+    /// The streaming handle on `on_progress`.
+    pub fn reporter(&self) -> crate::progress::Reporter<'_> {
+        crate::progress::Reporter::new(self.on_progress.as_ref())
+    }
+
     /// May this destination be taken over? Global flag or scoped set.
     pub fn takes_over(&self, to: &str) -> bool {
         self.take_over

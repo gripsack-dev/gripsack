@@ -292,7 +292,7 @@ moment their replacement is green.
 | `scripts/release_*.py` + tests (~6k lines) | replace with one `release-core.yml` (build → verify tarball → publish) and a ≤150-line installed-consumer smoke | F0, after one release goes out on the new flow |
 | `verification/guarantees.md` | freeze as historical; replaced by generated claims | now (freeze) / F3 (replace) |
 | Fuzz in the per-push gate + waiver machinery (`GRIPSACK_FUZZ_WAIVER`, `REL-*` IDs) | remove; weekly only | now |
-| Fuzz targets `merge`, `store_gc` | delete | after K4/K5 proofs |
+| Fuzz targets `merge`, `store_gc` | deleted: `merge` with K5 (§17), `store_gc` with K4 (§18) | after K4/K5 proofs |
 | GNU duplicate build, two-build repro, `mutants` campaign jobs | delete jobs (repro stays an on-demand script) | now |
 | TLAPS proofs (`*Proofs.tla`), `check_tlaps.py`, `tlaps` service | delete | after P1–P3 in Lean |
 | Remaining TLA+ | keep ≤5 TLC models that found real bugs (Transaction, Activation, UpdatePublication, ProcessSupervision, CredentialRouting candidates); delete the rest and the `MC`/bridge/witness modules | F3 |
@@ -361,8 +361,12 @@ the crash e2e run both ways for one release before the legacy path goes.
    `RealFs`; P1 and the cleanup half of P3 proved; the Verus
    `journal_protocol` (`CleanupProgress`) and `admit_mutation` deleted;
    rollback's writes go through the leaf protocol and are crash-explored over
-   MemFs; record in §18.
+   MemFs; record in §19.
 4. GC machine incl. root derivation from manifests; `retention` Verus goes.
+   **Done 2026-11-09** (branch `foundation/f2-gc`): the kernel GC machine
+   decides every deletion, K4 and K4′ proved, the staging reaper (0058
+   item 4) folded in; record in §18. The `retention` Verus had already gone
+   in F1 (§13.2), so the `check_verus` floor does not move.
 5. Activation machine (ledger order, authorize/supersede, attempts).
 6. Planner into the kernel (copy/template/link/merge/remove/restore per
    unit; block generation on bytes). Fix FND-1. `lineage_model`,
@@ -1206,10 +1210,10 @@ passed in 11m50s.
    publish record, mutate under re-check) onto `Storage`; until then the
    restore→flip window is covered by the existing crash e2e
    (`after-rollback-restore`) and recovery by the proved recover machine.
-   **Mostly closed by §18:** every rollback write now goes through the
+   **Mostly closed by §19:** every rollback write now goes through the
    kernel's leaf protocol over `Storage` (`RealFs` in the product), and the
    kernel rollback machine composed with that protocol is crash-explored over
-   MemFs (§18.5). What remains is in §18.7 item 3.
+   MemFs (§19.5). What remains is in §19.7 item 3.
 2. **Managed blocks (K5) are delegated.** Rollback splices the retained
    block payload (store bytes verified by `tree256`) but does not compare it
    with the block's recorded hash; that lands with the K5 splice in the
@@ -1458,7 +1462,187 @@ historical MERGE-SPLICE-001 / MERGE-SCAN-001 rows.
    because no retained payload reproduces that record under the kernel's
    normal form. Every other recorded block digest is unchanged.
 
-## 18. F2 step 3 record — the leaf effect protocol and the journal run (P1, P3)
+## 18. F2 step 4 record — the GC machine (K4, K4′)
+
+- Branch `foundation/f2-gc` from `main` at `524f576`; date 2026-11-09.
+- Question: can collection be the proved kernel's sans-IO machine, deciding
+  every deletion — generation retirement, payload and prior removal, and
+  the stale-staging reaper of 0058 item 4 — with K4 and K4′ proved over the
+  shipped code and the host executing only what it is commanded?
+
+### 18.1 Before: what was proved, what was trusted
+
+F1 moved three pure functions into the kernel (`admit_gc`, `plan_prune`,
+`plan_delete`). Everything between them was host code: the predecessor
+closure (`gc/directory_roots.rs::admit`, a fixpoint over manifests), root
+derivation from manifests, the effect order, and the decision of *which*
+effects to issue. `plan_delete` was proved over whatever flat root list the
+host built, so "roots include the closure of every retained manifest" (K4′)
+was not a theorem, and nothing tied an issued deletion to the admitted
+inventory.
+
+Defect checked (0058 item 4, §4.3): a publisher killed between staging and
+rename leaves `generations/.staging-<N>-<pid>`, and nothing ever removed it.
+Reproduced on the baseline: `gc::tests::stale_generation_staging_is_reaped`
+failed at "stale staging must be reaped"; it passes after. The
+`generations.rs` assertion on `.staging-1` (a name never created) was
+vacuous; it now asserts no `.staging-*` remains, and the canonical name has
+one parser (`generations::is_staging_name`) beside the one writer.
+
+### 18.2 The machine (`crates/gripsack-kernel/src/gc.rs`, helpers in `retention.rs`)
+
+`gc_step(GcState, Event) -> (GcState, Command)`, one command outstanding.
+
+- **Reads:** `ReadInventory` → `Inventory{recovery_pending, current,
+  generations}`; `ReadManifest(g)` (newest first, one per inventoried
+  generation; the event must name exactly that generation) →
+  `Manifest{id, predecessors, roots}`; `ReadRoots` → the workspace and
+  schedule roots (ring 3, tested, not proved); `ReadCandidates` → every
+  entry of `store/`, `prior/` and every canonical
+  `generations/.staging-<N>-<pid>`, each with the inode stamp the host saw.
+- **Decides:** admission (`admit_gc`), the prune plan (`plan_prune`), each
+  generation's `Fate` as its manifest arrives (retired only if pruned and no
+  retained newer manifest names it — reading newest first makes this the
+  closure in one pass, since receipt predecessors are strictly older), the
+  closure check over all fates (`closure`: retained predecessors are
+  inventoried, no retired generation is needed), and the deletion set
+  (`plan_delete` over `rooted` = pinned by a retained manifest or named by
+  an external root).
+- **Commands (collect mode, after `Plan`):** `SealFloor`; `Retire{generation,
+  current}` per retired generation, newest first; `Barrier`; `Delegate`
+  (the directory domain retires the receipts the retired generations held,
+  step 9); `Remove{candidate, expect}` per doomed candidate; `Finish`. A
+  preview finishes at `Plan`.
+- **Refusals:** `RecoveryPending`, `CorruptCurrent`,
+  `MissingPredecessor{generation}`, `Malformed`, `Drifted`, `Failed`,
+  `Protocol`.
+
+The staging reaper fits cleanly: publishers hold the lifecycle session, so
+under gc's session every canonical staging directory is stale; nothing names
+one, so it is a candidate no root names. Non-canonical names are not
+candidates.
+
+### 18.3 Driver (`crates/gripsack-exec/src/gc.rs`)
+
+`gc()` runs the loop. `Host` answers reads from the pinned home (journal
+and activation pending state, `GenerationDirectory`, manifests admitted with
+effect authority or inspected in a dry run, root inventories,
+`gc/inventory.rs::Collectable`) and executes only commanded effects:
+`Retire` re-reads `current` and answers `Failed(Drift)` if it is not the
+command's `current`; `Remove` re-reads the entry's `(dev, inode)` through
+the pinned directory and answers `Failed(Drift)` on mismatch; `Plan` reports
+and sizes the decision (every fallible size read precedes the first
+effect, as before). `GenerationDirectory::prune` is split into the commanded
+`admit_retirements`/`seal_floor`/`retire`/`seal`. Refusal messages are the
+old ones. `GcReport` gains `staging_removed`; `grip gc` prints "removed
+stale staging …".
+
+### 18.4 Proofs (`proofs/Kernel/Gc.lean`, `Retention.lean`; `Audit.lean`: 213 theorems, 48 claims, standard axioms only)
+
+Over every execution (`Run` from `GcState::new` in either mode, invariant
+`Inv` by phase, `step_spec`):
+
+- `gc_effects_admitted` (K4): an effect (`SealFloor`, `Retire`, `Barrier`,
+  `Delegate`, `Remove`) is issued only in collect mode, from an inventory
+  with no recovery or activation pending and `current` inventoried.
+  `gc_preview_effect_free`: a preview issues none.
+- `gc_retire_pruned` (K4): a retired generation is in the prune plan of the
+  admitted inventory, no retained manifest names it as a predecessor, and
+  the command carries the inventoried `current` for the driver's re-check.
+  `gc_never_retires_current`: never `current`, only inventoried
+  generations.
+- `gc_retire_newest_first`: when a generation is retired, every retired
+  generation before it in the manifest order (the inventory reversed) was
+  already retired — an interrupted batch never strands a live receipt's
+  predecessor.
+- `gc_remove_unreferenced` (K4, deletions ⊆ candidates − roots): a removal
+  names an inventoried candidate, carries its inventoried stamp, and no
+  retained manifest pins it and no external root names it.
+  `gc_doomed_exact`: the deletion set is exactly those candidates.
+- `gc_retained_closed` (K4′): at every effect, every inventoried
+  generation's manifest was read, and every retained generation's
+  predecessors are inventoried and retained — so the roots are the closure
+  of every retained manifest.
+- `gc_remove_after_retirement`: every removal follows the retirement of
+  every retired generation, the barrier on `generations/`, and the
+  delegated retirement of their receipts.
+- Helper claims `closure_spec`, `rooted_spec`; `plan_delete_spec` restated
+  over the structured roots.
+- Mutants (`proofs/mutants.py`, 41 total, 10 new, 1 updated), each rejected
+  by exactly the named theorem: `gc-roots-in-deletion` (updated,
+  `plan_delete_loop_spec`), `gc-external-roots-ignored` (`rooted_spec`),
+  `gc-closure-ignores-needed` and `gc-closure-ignores-missing`
+  (`closes_spec`), `gc-retires-unpruned` (`fate_spec`),
+  `gc-pending-admitted` (`on_inventory_spec`), `gc-manifest-unchecked`
+  (`on_manifest_spec`), `gc-remove-unstamped` (`remove_next_spec`),
+  `gc-preview-collects`, `gc-retirement-skipped` and
+  `gc-remove-before-delegate` (`step_spec`).
+
+### 18.5 Tests
+
+- Kernel explorer `crates/gripsack-kernel/tests/gc.rs`: every history of up
+  to three generations (each naming none, an older or a missing
+  predecessor, pinning none or one of three paths), every `current` and
+  `keep`, with and without an external root, collect and preview, pending
+  recovery, a corrupt current and a drifted removal, driven through the
+  shipped `gc_step` on a model home. The oracle is independent of the kernel
+  (prune plan's complement closed by fixpoint): the generations and payloads
+  left are exactly that set and its roots; previews and pending recovery
+  change nothing; a missing predecessor stops before any effect; retirement
+  is newest first; no removal precedes the barrier. Calibrated by hand
+  against two kernel mutants (external roots ignored; fate ignoring the
+  closure): both fail it.
+- Host: `stale_generation_staging_is_reaped` (new, failing before); the two
+  closure tests of `directory_roots` now run through `gc()` (they check the
+  host decodes migration receipts into predecessors); the interrupted-batch
+  test drives the commanded retirement steps in the kernel's order;
+  `root_model.rs` (real roots: payloads, build closures, priors; eight
+  recovery admissions; pinned removal under root replacement) unchanged in
+  substance. e2e: `test_gc_admission.py::test_gc_reaps_staging_left_by_a_dead_publisher`.
+
+### 18.6 Deleted
+
+`gc/directory_roots.rs::admit` (the host's predecessor fixpoint: the kernel
+decides and proves it), `GenerationDirectory::prune`, the old flat
+`plan_delete` and its proof, `gc::tests::never_prunes_the_current_generation`
+(now `gc_never_retires_current`), and the `store_gc` fuzz target with its
+corpus (its assertions are K4/K4′; trim register). No GC Verus remained
+after F1, so `check_verus` is unchanged (floor 382).
+
+Gates (docker, `-p f2gc`, one at a time). On the branch before the merge:
+`test` 850 passed, 0 failed, 1 ignored; `proofs` OK in 468 s (213
+theorems, 48 claims, 41/41 mutants); `e2e` 680 passed. After merging
+`main` with the K5 splice (§17), at the merge commit: `test` passed (fmt,
+clippy `-D warnings`, cargo test 848 passed, 0 failed, 1 ignored);
+`proofs` OK in 1191 s (no translation drift, 272 theorems, 57 claims,
+standard axioms only, 51/51 mutants calibrated); `e2e` 683 passed in
+16m47s. The new e2e was not run against the baseline binary; the baseline
+reproduction is the unit test (§18.1).
+
+### 18.7 Deviations and what is deferred
+
+1. **No MemFs crash exploration of gc.** As for rollback (§16.7), the
+   driver acts through `gripsack_fs`, not `gripsack-host::Storage`; the
+   crash order the old code relied on (floor, retirements, barrier, then
+   payloads) is now a theorem (`gc_remove_after_retirement`), and the
+   existing e2e prune-barrier oracle still runs.
+2. **The directory domain stays delegated** (`Delegate`): staging
+   retirement of directory-transition receipts and clearing `.retired-N`
+   are host code until step 9. They act only on `.retiring-`/`.retired-`
+   names, which only commanded retirements (or an earlier run's) create.
+3. **Ring-3 inputs are tested, not proved:** the manifest-to-roots decoding
+   (store paths, build closures, prior blobs, receipt predecessors), the
+   workspace and schedule roots, the pending-state reads, and the
+   classification of `generations/` entries into generations, retirements
+   and staging.
+4. **S5 residue:** between a re-check and its act (stat then rename/unlink)
+   an external writer can still race; `remove_dir_all` is not atomic.
+5. **Behaviour change:** gc now refuses ("run gc again") when `current`
+   changes before a retirement or an entry is replaced between inventory and
+   removal; before, it acted on the stale inventory. Under the lifecycle
+   session only an external writer can cause either.
+
+## 19. F2 step 3 record — the leaf effect protocol and the journal run (P1, P3)
 
 - Branch `foundation/f2-journal` from `main` at `0625d3e`; date 2026-11-10.
 - Question: can the journal's run — its marker, the leaf effect protocol for
@@ -1467,7 +1651,7 @@ historical MERGE-SPLICE-001 / MERGE-SCAN-001 rows.
   over `Storage`, with P1 and the cleanup half of P3 proved in Lean over the
   shipped Rust?
 
-### 18.1 The machine (`crates/gripsack-kernel/src/journal_run.rs`)
+### 19.1 The machine (`crates/gripsack-kernel/src/journal_run.rs`)
 
 `run_step(RunState, Event) -> (RunState, Command)`, one command outstanding,
 living as long as the run (`begin_run` → leaves → flip → `commit_run`, or
@@ -1493,7 +1677,7 @@ living as long as the run (`begin_run` → leaves → flip → `commit_run`, or
 - Directory records stay with the legacy domain: the host seals or checks
   them when settling and reports how many records the cleanup removes.
 
-### 18.2 Proofs (`proofs/Kernel/JournalRun.lean`; `Audit.lean`: 268 theorems, 50 claims, standard axioms only)
+### 19.2 Proofs (`proofs/Kernel/JournalRun.lean`; `Audit.lean`: 268 theorems, 50 claims, standard axioms only)
 
 An execution is its log of (event, command) pairs (`Run`); `Inv` is kept by
 every step (`step_spec`, `run_inv`).
@@ -1528,7 +1712,7 @@ every step (`step_spec`, `run_inv`).
   `run-ends-after-mutation` (`on_end_spec`), `run-cleanup-barrier-swapped`
   — the 0.19.2 order — (`next_unlink_spec`).
 
-### 18.3 Wiring
+### 19.3 Wiring
 
 - `gripsack-host::journal_run::RunDriver` executes the machine over any
   `Storage` behind a `RunHost` (marker and entry wire, prior capture, identity
@@ -1555,7 +1739,7 @@ every step (`step_spec`, `run_inv`).
 - `GRIPSACK_ENGINE=legacy` still selects the legacy *recovery* in debug
   builds; there is no legacy leaf path (nothing to switch).
 
-### 18.4 Defects and the S5 window, measured
+### 19.4 Defects and the S5 window, measured
 
 No new correctness defect was found. One measured change, not claimed as a
 reproduced product bug: the 0.53 leaf checked the destination against the
@@ -1568,7 +1752,7 @@ leaf at 2 (between the act's re-check and the rename), and otherwise stops
 with a drift refusal and leaves the user's bytes. This was measured on MemFs
 over a restatement of the old order, not on the old binary.
 
-### 18.5 Tests
+### 19.5 Tests
 
 - `crates/gripsack-host/tests/journal_cleanup.rs` now drives the *run* through
   `RunDriver` (the hand-written apply is gone) and the recovery through the
@@ -1576,7 +1760,7 @@ over a restatement of the old order, not on the old binary.
   entry shape on fresh and existing machines, repeated writes, two
   destinations, edits after each crash, ambiguity, the numeric-commit mutant,
   the 0.19.1/0.19.2 calibrations, the wedge, recovery's S5 window. New: the
-  leaf's S5 window (§18.4); an ended run recovers to nothing after any crash;
+  leaf's S5 window (§19.4); an ended run recovers to nothing after any crash;
   a run that journaled a destination cannot end; and
   `rollback_survives_every_crash_and_every_recovery_crash` — the kernel
   rollback machine, its writes through the leaf protocol, the flip and the
@@ -1592,7 +1776,7 @@ over a restatement of the old order, not on the old binary.
 - No separate kernel explorer: P1/P3 are proved, and the MemFs suites drive
   the machine with a real host.
 
-### 18.6 Deleted
+### 19.6 Deleted
 
 `gripsack-policy/src/journal_protocol.rs` (Verus `CleanupProgress`: the
 `journal-cleanup` family, four Verus mutants, floor 371 → 368, an estimate
@@ -1602,7 +1786,7 @@ until the next green `verify`), the kernel's `MutationAuthority` /
 `cleanup_legacy`), `mutation::{CapturedPrior, MutationPermit, record}`,
 `deploy::{remove_or_restore_prior, remove_entry_deployed, restore_prior}`.
 
-### 18.7 Deviations and what is deferred
+### 19.7 Deviations and what is deferred
 
 1. **TLA+ `JournalLifecycle` stays.** Its TLC calibrations
    (`MarkerCoversEntries`, `MutationHasDurableMarker`, `ExactCommitIdentity`)

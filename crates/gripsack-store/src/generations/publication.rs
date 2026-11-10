@@ -109,6 +109,31 @@ pub(super) fn preserve_allocation_floor(
     }
 }
 
+const STAGING: &str = ".staging-";
+
+/// The staging directory one publisher (`pid`) uses for generation `number`.
+fn staging_name(number: GenerationId, pid: u32) -> String {
+    format!("{STAGING}{number}-{pid}")
+}
+
+/// `name` is exactly a name [`publish_generation`] stages under
+/// (`.staging-<N>-<pid>`, canonical numbers). Publishers hold the lifecycle
+/// session, so while another session holder runs, every such directory is
+/// the residue of a publisher that died before its rename (plan/0058 item 4).
+pub fn is_staging_name(name: &str) -> bool {
+    let Some((number, pid)) = name
+        .strip_prefix(STAGING)
+        .and_then(|rest| rest.split_once('-'))
+    else {
+        return false;
+    };
+    let canonical = |text: &str, parsed: Option<String>| parsed.as_deref() == Some(text);
+    canonical(
+        number,
+        number.parse::<GenerationId>().ok().map(|n| n.to_string()),
+    ) && canonical(pid, pid.parse::<u32>().ok().map(|n| n.to_string()))
+}
+
 /// Publish a complete generation as ONE object (0027 §8): manifest and
 /// profile are staged under `generations/.staging-<N>` and renamed
 /// into place with a no-clobber check — a failed apply never leaves a
@@ -126,11 +151,8 @@ pub fn publish_generation(
     validate(generation, generation.number, home_path)?;
     // pid-tagged (0030 §18): a staging dir from a crashed apply is
     // cleared only when it's ours to clear
-    let staging = Path::new(crate::paths::GENERATIONS_DIR).join(format!(
-        ".staging-{}-{}",
-        generation.number,
-        std::process::id()
-    ));
+    let staging = Path::new(crate::paths::GENERATIONS_DIR)
+        .join(staging_name(generation.number, std::process::id()));
     let final_dir = Path::new(crate::paths::GENERATIONS_DIR).join(generation.number.to_string());
     if home.symlink_metadata(&final_dir).is_ok() {
         return Err(io::Error::new(

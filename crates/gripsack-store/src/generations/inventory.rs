@@ -183,20 +183,21 @@ impl GenerationDirectory {
         Ok(manifest)
     }
 
-    /// Move the admitted batch out of retained history without destroying its
-    /// receipt authority, then seal absence before any staging/payload deletion.
-    /// Empty retries seal earlier interrupted renames as well.
-    pub fn prune(&self, ids: &[GenerationId]) -> io::Result<()> {
-        let Some(directory) = &self.directory else {
-            return if ids.is_empty() {
-                Ok(())
-            } else {
-                Err(io::Error::from(io::ErrorKind::NotFound))
-            };
-        };
-        if ids.len() + self.retiring.len() + self.retired.len() > MAX_RETIREMENTS {
+    /// Refuse a retirement batch the bounded retirement inventory cannot hold,
+    /// before any effect.
+    pub fn admit_retirements(&self, count: usize) -> io::Result<()> {
+        if count + self.retiring.len() + self.retired.len() > MAX_RETIREMENTS {
             return Err(invalid("generation retirement inventory exceeds limit"));
         }
+        Ok(())
+    }
+
+    /// Persist the allocation floor before any generation leaves the inventory:
+    /// retiring the tip must never let its number be allocated again.
+    pub fn seal_floor(&self) -> io::Result<()> {
+        let Some(directory) = &self.directory else {
+            return Ok(());
+        };
         super::publication::preserve_allocation_floor(
             directory,
             self.inventory()
@@ -205,18 +206,32 @@ impl GenerationDirectory {
                 .copied()
                 .max(self.retiring.last().copied())
                 .max(self.retired.last().copied()),
-        )?;
-        // Receipt predecessors are strictly older. Remove descendants first:
-        // interruption must not leave a live receipt with a pruned predecessor.
-        for id in ids.iter().rev() {
-            let name = id.to_string();
-            gripsack_fs::rename_noreplace(
-                directory,
-                Path::new(&name),
-                Path::new(&format!("{RETIRING}{id}")),
-            )?;
+        )
+    }
+
+    /// Move one generation out of retained history without destroying its
+    /// receipt authority (`N` → `.retiring-N`). The GC machine retires
+    /// descendants first: receipt predecessors are strictly older, so an
+    /// interruption never leaves a live receipt with a retired predecessor.
+    pub fn retire(&self, id: GenerationId) -> io::Result<()> {
+        let directory = self
+            .directory
+            .as_ref()
+            .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+        gripsack_fs::rename_noreplace(
+            directory,
+            Path::new(&id.to_string()),
+            Path::new(&format!("{RETIRING}{id}")),
+        )
+    }
+
+    /// Barrier on `generations/`: every retirement is durable before any
+    /// staging or payload deletion. Also seals renames an interrupted run made.
+    pub fn seal(&self) -> io::Result<()> {
+        match &self.directory {
+            Some(directory) => gripsack_fs::fsync_pinned_dir(directory, Path::new(GENERATIONS_DIR)),
+            None => Ok(()),
         }
-        gripsack_fs::fsync_pinned_dir(directory, Path::new(GENERATIONS_DIR))
     }
 
     /// Only call after every staging deletion (including observed absence) is

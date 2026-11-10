@@ -276,6 +276,7 @@ fn publish_packages<'a>(
                 .iter()
                 .map(|name| Arc::clone(&packages[name.as_str()]))
                 .collect();
+            ctx.reporter().started(name, "publishing package");
             packages.insert(
                 name,
                 artifact::publish_package(

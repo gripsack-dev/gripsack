@@ -8,6 +8,7 @@ mod subject;
 mod tests;
 use super::{consumer, content::PreparedFile, hooks, realize::Realization};
 use crate::ExecError;
+use crate::progress::{Reporter, VerificationKind, VerificationLabel};
 use gripsack_ir::{
     Span,
     workspace_model::{
@@ -38,6 +39,7 @@ pub(super) struct PreparedCheck {
     file: String,
     digest: Sha256Digest,
     span: Span,
+    label: VerificationLabel,
 }
 
 impl PreparedCheck {
@@ -50,6 +52,7 @@ impl PreparedCheck {
         environment: &OperatorEnvironment,
         deadline: Instant,
         protection: &Protection<'_>,
+        reporter: Reporter<'_>,
     ) -> Result<(), ExecError> {
         let context = hooks::snapshot::read(home, &profile.join(&self.file), self.digest)?;
         execution::run(
@@ -60,6 +63,10 @@ impl PreparedCheck {
             deadline,
             &self.span,
             protection,
+            execution::Reporting {
+                label: &self.label,
+                reporter,
+            },
         )
     }
 }
@@ -89,6 +96,8 @@ pub(super) fn admit(profile: &ProfileOutput) -> Result<(), ExecError> {
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn prepare(
+    owner: &str,
+    reporter: Reporter<'_>,
     checks: &[WorkspaceFileCheck],
     files: &[PreparedFile],
     outputs: &BTreeMap<&str, &WorkspaceOutput>,
@@ -146,6 +155,12 @@ pub(super) fn prepare(
                     .map_err(|error| super::file_failure(&check.span, error))?,
                 destination: resolve_destination(&file.entry.to)?,
             };
+            let label = VerificationLabel::for_command(
+                VerificationKind::Check,
+                &check.check,
+                owner,
+                &declaration.run,
+            );
             let bound = bindings::bind(&declaration.run, &path)?;
             let context = hooks::snapshot::capture_file(
                 &declaration.run,
@@ -172,22 +187,29 @@ pub(super) fn prepare(
                         deadline,
                         &check.span,
                         protection,
+                        execution::Reporting {
+                            label: &label,
+                            reporter,
+                        },
                     )?;
                 }
                 FileCheckStage::PreFlip => prepared.pre_flip.push(PreparedCheck {
                     file: name,
                     digest,
                     span: check.span.clone(),
+                    label,
                 }),
                 FileCheckStage::PostLink => prepared.hooks.push(hooks::PreparedHook::new(
                     name,
                     digest,
                     ActivationTrigger::PostLink,
+                    label,
                 )),
                 FileCheckStage::PostActivate => prepared.hooks.push(hooks::PreparedHook::new(
                     name,
                     digest,
                     ActivationTrigger::PostActivate,
+                    label,
                 )),
             }
         }

@@ -409,24 +409,294 @@ theorem contains_bytes_spec (haystack : Slice (alloc.vec.Vec U8)) (needle : Slic
   · simp
   · intro j _ hj; simp at hj
 
+/-! ## The retained closure and the deletion set (plan/0056 F2 step 4) -/
+
+theorem Fate.retained_spec (f : retention.Fate) :
+    retention.Fate.retained f ⦃ b => b ↔ f = .Retained ⦄ := by
+  cases f <;> simp [retention.Fate.retained]
+
+/-- A retained manifest that names `g` as a predecessor. -/
+def Needs (m : retention.Manifest) (g : generation.GenerationId) : Prop :=
+  m.fate = .Retained ∧ g ∈ m.facts.predecessors.val
+
+theorem needs_spec (m : retention.Manifest) (g : generation.GenerationId) :
+    retention.needs m g ⦃ b => b ↔ Needs m g ⦄ := by
+  unfold retention.needs
+  step with Fate.retained_spec as ⟨ b, hb ⟩
+  split_ifs with h
+  · refine WP.spec_mono (contains_generation_spec _ _) ?_
+    intro r hr
+    simp only [deref_val] at hr
+    simp [Needs, hb.mp h, hr]
+  · simp only [WP.spec_ok, Bool.false_eq_true, false_iff, Needs, not_and]
+    intro hr
+    exact absurd (hb.mpr hr) h
+
+/-- The search from position `i`, knowing no manifest before `i` needs `g`. -/
+theorem required_loop_spec (ms : Slice retention.Manifest) (g : generation.GenerationId)
+    (i : Usize) (hi : i.val ≤ ms.val.length)
+    (hprefix : ∀ j (h : j < ms.val.length), j < i.val → ¬ Needs ms.val[j] g) :
+    retention.required_loop ms g i ⦃ r => r ↔ ∃ m ∈ ms.val, Needs m g ⦄ := by
+  unfold retention.required_loop
+  apply loop.spec_decr_nat (fun i : Usize => ms.val.length - i.val)
+    (fun i : Usize => i.val ≤ ms.val.length ∧
+      ∀ j (h : j < ms.val.length), j < i.val → ¬ Needs ms.val[j] g)
+  · intro i ⟨hi, hprefix⟩
+    unfold retention.required_loop.body
+    try dsimp only
+    split_ifs with hlt
+    · have hlt' : i.val < ms.val.length := by scalar_tac
+      step as ⟨ m, hm ⟩
+      apply WP.spec_bind (needs_spec m g)
+      intro b hb
+      split_ifs with hn
+      · simp only [WP.spec_ok, true_iff]
+        exact ⟨m, by rw [hm]; exact List.getElem_mem _, hb.mp hn⟩
+      · apply WP.spec_bind (Usize.add_spec (by scalar_tac))
+        intro i2 hi2
+        simp only [WP.spec_ok]
+        and_intros
+        all_goals try scalar_tac
+        intro j hj hji
+        by_cases hlt'' : j < i.val
+        · exact hprefix j hj hlt''
+        · have : j = i.val := by scalar_tac
+          subst this
+          intro hneed
+          exact hn (hb.mpr (by rw [hm]; exact hneed))
+    · simp only [WP.spec_ok, Bool.false_eq_true, false_iff]
+      have hlen : i.val = ms.val.length := by scalar_tac
+      rintro ⟨m, hmem, hn⟩
+      obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hmem
+      exact hprefix j hj (by omega) hn
+  · exact ⟨hi, hprefix⟩
+
+/-- `required` decides whether some retained manifest names `g`. -/
+theorem required_spec (ms : Slice retention.Manifest) (g : generation.GenerationId) :
+    retention.required ms g ⦃ r => r ↔ ∃ m ∈ ms.val, Needs m g ⦄ := by
+  unfold retention.required
+  apply required_loop_spec
+  · simp
+  · intro j _ hj; simp at hj
+
+/-- The check from position `i`, knowing every predecessor before `i` is known. -/
+theorem known_loop_spec (ps inv : Slice generation.GenerationId) (i : Usize)
+    (hi : i.val ≤ ps.val.length)
+    (hprefix : ∀ j (h : j < ps.val.length), j < i.val → ps.val[j] ∈ inv.val) :
+    retention.known_loop ps inv i ⦃ r => r ↔ ∀ p ∈ ps.val, p ∈ inv.val ⦄ := by
+  unfold retention.known_loop
+  apply loop.spec_decr_nat (fun i : Usize => ps.val.length - i.val)
+    (fun i : Usize => i.val ≤ ps.val.length ∧
+      ∀ j (h : j < ps.val.length), j < i.val → ps.val[j] ∈ inv.val)
+  · intro i ⟨hi, hprefix⟩
+    unfold retention.known_loop.body
+    try dsimp only
+    split_ifs with hlt
+    · have hlt' : i.val < ps.val.length := by scalar_tac
+      step as ⟨ p, hp ⟩
+      apply WP.spec_bind (contains_generation_spec inv p)
+      intro b hb
+      split_ifs with hin
+      · apply WP.spec_bind (Usize.add_spec (by scalar_tac))
+        intro i2 hi2
+        simp only [WP.spec_ok]
+        and_intros
+        all_goals try scalar_tac
+        intro j hj hji
+        by_cases hlt'' : j < i.val
+        · exact hprefix j hj hlt''
+        · have : j = i.val := by scalar_tac
+          subst this
+          rw [← hp]
+          exact hb.mp hin
+      · simp only [WP.spec_ok, Bool.false_eq_true, false_iff, not_forall]
+        exact ⟨p, by rw [hp]; exact List.getElem_mem _, fun h => hin (hb.mpr h)⟩
+    · simp only [WP.spec_ok, true_iff]
+      have hlen : i.val = ps.val.length := by scalar_tac
+      intro p hmem
+      obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hmem
+      exact hprefix j hj (by omega)
+  · exact ⟨hi, hprefix⟩
+
+theorem known_spec (ps inv : Slice generation.GenerationId) :
+    retention.known ps inv ⦃ r => r ↔ ∀ p ∈ ps.val, p ∈ inv.val ⦄ := by
+  unfold retention.known
+  apply known_loop_spec
+  · simp
+  · intro j _ hj; simp at hj
+
+/-- One manifest's part of the closure over the manifests `ms` and the
+inventory `inv`: a retained manifest's predecessors are inventoried, and no
+retained manifest names a retired one. -/
+def Closes (ms : List retention.Manifest) (m : retention.Manifest)
+    (inv : List generation.GenerationId) : Prop :=
+  (m.fate = .Retained → ∀ p ∈ m.facts.predecessors.val, p ∈ inv) ∧
+  (m.fate = .Retired → ¬ ∃ m' ∈ ms, Needs m' m.facts.id)
+
+theorem closes_spec (ms : Slice retention.Manifest) (m : retention.Manifest)
+    (inv : Slice generation.GenerationId) :
+    retention.closes ms m inv ⦃ o => o = none ↔ Closes ms.val m inv.val ⦄ := by
+  unfold retention.closes
+  cases hf : m.fate with
+  | Retained =>
+    simp only
+    step with known_spec as ⟨ b, hb ⟩
+    simp only [deref_val] at hb
+    split_ifs with h <;> simp_all [Closes]
+  | Retired =>
+    simp only
+    step with required_spec as ⟨ b, hb ⟩
+    split_ifs with h <;> simp_all [Closes]
+
+/-- The closure check from position `i`, knowing every manifest before `i`
+closes. -/
+theorem closure_loop_spec (ms : Slice retention.Manifest) (inv : Slice generation.GenerationId)
+    (i : Usize) (hi : i.val ≤ ms.val.length)
+    (hprefix : ∀ j (h : j < ms.val.length), j < i.val → Closes ms.val ms.val[j] inv.val) :
+    retention.closure_loop ms inv i ⦃ o => o = none → ∀ m ∈ ms.val, Closes ms.val m inv.val ⦄ := by
+  unfold retention.closure_loop
+  apply loop.spec_decr_nat (fun i : Usize => ms.val.length - i.val)
+    (fun i : Usize => i.val ≤ ms.val.length ∧
+      ∀ j (h : j < ms.val.length), j < i.val → Closes ms.val ms.val[j] inv.val)
+  · intro i ⟨hi, hprefix⟩
+    unfold retention.closure_loop.body
+    try dsimp only
+    split_ifs with hlt
+    · have hlt' : i.val < ms.val.length := by scalar_tac
+      step as ⟨ m, hm ⟩
+      apply WP.spec_bind (closes_spec ms m inv)
+      intro o ho
+      cases o with
+      | none =>
+        simp only
+        apply WP.spec_bind (Usize.add_spec (by scalar_tac))
+        intro i2 hi2
+        simp only [WP.spec_ok]
+        and_intros
+        all_goals try scalar_tac
+        intro j hj hji
+        by_cases hlt'' : j < i.val
+        · exact hprefix j hj hlt''
+        · have : j = i.val := by scalar_tac
+          subst this
+          rw [← hm]
+          exact ho.mp rfl
+      | some u => simp
+    · simp only [WP.spec_ok]
+      have hlen : i.val = ms.val.length := by scalar_tac
+      intro _ m hmem
+      obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hmem
+      exact hprefix j hj (by omega)
+  · exact ⟨hi, hprefix⟩
+
+/-- `closure` returns `none` only when every manifest closes. -/
+theorem closure_spec (ms : Slice retention.Manifest) (inv : Slice generation.GenerationId) :
+    retention.closure ms inv ⦃ o => o = none → ∀ m ∈ ms.val, Closes ms.val m inv.val ⦄ := by
+  unfold retention.closure
+  apply closure_loop_spec
+  · simp
+  · intro j _ hj; simp at hj
+
+/-- A retained manifest that pins the path `p`. -/
+def Pins (m : retention.Manifest) (p : List U8) : Prop :=
+  m.fate = .Retained ∧ ∃ v ∈ m.facts.roots.val, v.val = p
+
+/-- `p` is a root: a retained manifest pins it, or an external root names it. -/
+def Rooted (ms : List retention.Manifest) (ext : List (alloc.vec.Vec U8)) (p : List U8) : Prop :=
+  (∃ m ∈ ms, Pins m p) ∨ ∃ v ∈ ext, v.val = p
+
+theorem pins_spec (m : retention.Manifest) (p : Slice U8) :
+    retention.pins m p ⦃ b => b ↔ Pins m p.val ⦄ := by
+  unfold retention.pins
+  step with Fate.retained_spec as ⟨ b, hb ⟩
+  split_ifs with h
+  · refine WP.spec_mono (contains_bytes_spec _ _) ?_
+    intro r hr
+    simp only [deref_val] at hr
+    simp [Pins, hb.mp h, hr]
+  · simp only [WP.spec_ok, Bool.false_eq_true, false_iff, Pins, not_and]
+    intro hr
+    exact absurd (hb.mpr hr) h
+
+theorem pinned_loop_spec (ms : Slice retention.Manifest) (p : Slice U8)
+    (i : Usize) (hi : i.val ≤ ms.val.length)
+    (hprefix : ∀ j (h : j < ms.val.length), j < i.val → ¬ Pins ms.val[j] p.val) :
+    retention.pinned_loop ms p i ⦃ r => r ↔ ∃ m ∈ ms.val, Pins m p.val ⦄ := by
+  unfold retention.pinned_loop
+  apply loop.spec_decr_nat (fun i : Usize => ms.val.length - i.val)
+    (fun i : Usize => i.val ≤ ms.val.length ∧
+      ∀ j (h : j < ms.val.length), j < i.val → ¬ Pins ms.val[j] p.val)
+  · intro i ⟨hi, hprefix⟩
+    unfold retention.pinned_loop.body
+    try dsimp only
+    split_ifs with hlt
+    · have hlt' : i.val < ms.val.length := by scalar_tac
+      step as ⟨ m, hm ⟩
+      apply WP.spec_bind (pins_spec m p)
+      intro b hb
+      split_ifs with hn
+      · simp only [WP.spec_ok, true_iff]
+        exact ⟨m, by rw [hm]; exact List.getElem_mem _, hb.mp hn⟩
+      · apply WP.spec_bind (Usize.add_spec (by scalar_tac))
+        intro i2 hi2
+        simp only [WP.spec_ok]
+        and_intros
+        all_goals try scalar_tac
+        intro j hj hji
+        by_cases hlt'' : j < i.val
+        · exact hprefix j hj hlt''
+        · have : j = i.val := by scalar_tac
+          subst this
+          intro hpin
+          exact hn (hb.mpr (by rw [hm]; exact hpin))
+    · simp only [WP.spec_ok, Bool.false_eq_true, false_iff]
+      have hlen : i.val = ms.val.length := by scalar_tac
+      rintro ⟨m, hmem, hn⟩
+      obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hmem
+      exact hprefix j hj (by omega) hn
+  · exact ⟨hi, hprefix⟩
+
+theorem pinned_spec (ms : Slice retention.Manifest) (p : Slice U8) :
+    retention.pinned ms p ⦃ r => r ↔ ∃ m ∈ ms.val, Pins m p.val ⦄ := by
+  unfold retention.pinned
+  apply pinned_loop_spec
+  · simp
+  · intro j _ hj; simp at hj
+
+theorem rooted_spec (ms : Slice retention.Manifest) (ext : Slice (alloc.vec.Vec U8))
+    (p : Slice U8) :
+    retention.rooted ms ext p ⦃ r => r ↔ Rooted ms.val ext.val p.val ⦄ := by
+  unfold retention.rooted
+  step with pinned_spec as ⟨ b, hb ⟩
+  split_ifs with h
+  · simp [Rooted, hb.mp h]
+  · refine WP.spec_mono (contains_bytes_spec _ _) ?_
+    intro r hr
+    have : ¬ ∃ m ∈ ms.val, Pins m p.val := fun h' => h (hb.mpr h')
+    simp only [Rooted, hr, this, false_or]
+
 /-- A candidate position no root names. -/
-def Unreferenced (referenced candidates : Slice (alloc.vec.Vec U8)) (i : Nat) : Prop :=
-  ∃ c, candidates.val[i]? = some c ∧ ∀ v ∈ referenced.val, v.val ≠ c.val
+def Unreferenced (ms : List retention.Manifest) (ext : List (alloc.vec.Vec U8))
+    (candidates : List retention.Candidate) (i : Nat) : Prop :=
+  ∃ c, candidates[i]? = some c ∧ ¬ Rooted ms ext c.path.val
 
 /-- The deletion loop from position `i`: the deletions so far are exactly the
 unreferenced positions below `i`. -/
-theorem plan_delete_loop_spec (referenced candidates : Slice (alloc.vec.Vec U8))
+theorem plan_delete_loop_spec (ms : Slice retention.Manifest) (ext : Slice (alloc.vec.Vec U8))
+    (candidates : Slice retention.Candidate)
     (deletions : alloc.vec.Vec Usize) (i : Usize)
     (hi : i.val ≤ candidates.val.length)
-    (hdel : ∀ d : Usize, d ∈ deletions.val ↔ (d.val < i.val ∧ Unreferenced referenced candidates d.val))
+    (hdel : ∀ d : Usize, d ∈ deletions.val ↔
+      (d.val < i.val ∧ Unreferenced ms.val ext.val candidates.val d.val))
     (hlen : deletions.val.length ≤ i.val) :
-    retention.plan_delete_loop referenced candidates deletions i ⦃ v =>
-      ∀ d : Usize, d ∈ v.val ↔ Unreferenced referenced candidates d.val ⦄ := by
+    retention.plan_delete_loop ms ext candidates deletions i ⦃ v =>
+      ∀ d : Usize, d ∈ v.val ↔ Unreferenced ms.val ext.val candidates.val d.val ⦄ := by
   unfold retention.plan_delete_loop
   apply loop.spec_decr_nat
     (fun s : alloc.vec.Vec Usize × Usize => candidates.val.length - s.2.val)
     (fun s : alloc.vec.Vec Usize × Usize => s.2.val ≤ candidates.val.length ∧
-      (∀ d : Usize, d ∈ s.1.val ↔ (d.val < s.2.val ∧ Unreferenced referenced candidates d.val)) ∧
+      (∀ d : Usize, d ∈ s.1.val ↔
+        (d.val < s.2.val ∧ Unreferenced ms.val ext.val candidates.val d.val)) ∧
       s.1.val.length ≤ s.2.val)
   · rintro ⟨deletions, i⟩ ⟨hi, hdel, hlen⟩
     dsimp only at hi hdel hlen
@@ -435,12 +705,12 @@ theorem plan_delete_loop_spec (referenced candidates : Slice (alloc.vec.Vec U8))
     split_ifs with hlt
     · have hlt' : i.val < candidates.val.length := by scalar_tac
       step as ⟨ c, hc ⟩
-      apply WP.spec_bind (contains_bytes_spec _ _)
-      intro b hb
       have hci : candidates.val[i.val]? = some c := by
         rw [List.getElem?_eq_getElem hlt', hc]
-      have hbderef : (b = true) ↔ ∃ v ∈ referenced.val, v.val = c.val := by
-        simpa [alloc.vec.Vec.deref, Slice.from_val] using hb
+      simp only [retention.Candidate.impl.path, bind_ok]
+      apply WP.spec_bind (rooted_spec _ _ _)
+      intro b hb
+      simp only [deref_val] at hb
       split_ifs with href
       · try simp only [bind_ok]
         apply WP.spec_bind (Usize.add_spec (by scalar_tac))
@@ -459,8 +729,7 @@ theorem plan_delete_loop_spec (referenced candidates : Slice (alloc.vec.Vec U8))
           obtain ⟨c', hc', hall⟩ := hu
           rw [this, hci] at hc'
           cases hc'
-          obtain ⟨v, hv, hveq⟩ := hbderef.mp href
-          exact hall v hv hveq
+          exact hall (hb.mp href)
       · have hdlen : deletions.val.length < Usize.max := by
           have := candidates.property
           scalar_tac
@@ -477,9 +746,7 @@ theorem plan_delete_loop_spec (referenced candidates : Slice (alloc.vec.Vec U8))
           · rintro (⟨hd, hu⟩ | hd)
             · exact ⟨by scalar_tac, hu⟩
             · subst hd
-              refine ⟨by scalar_tac, c, hci, ?_⟩
-              intro v hv heq
-              exact href (hbderef.mpr ⟨v, hv, heq⟩)
+              exact ⟨by scalar_tac, c, hci, fun h => href (hb.mpr h)⟩
           · rintro ⟨hd, hu⟩
             by_cases hlt'' : d.val < i.val
             · exact Or.inl ⟨hlt'', hu⟩
@@ -500,10 +767,12 @@ theorem plan_delete_loop_spec (referenced candidates : Slice (alloc.vec.Vec U8))
   · exact ⟨hi, hdel, hlen⟩
 
 /-- K4 deletion: a position is deleted iff it is a candidate no root names —
-deletions ⊆ candidates − roots, and nothing unreferenced survives. -/
-theorem plan_delete_spec (referenced candidates : Slice (alloc.vec.Vec U8)) :
-    retention.plan_delete referenced candidates ⦃ v =>
-      ∀ d : Usize, d ∈ v.val ↔ Unreferenced referenced candidates d.val ⦄ := by
+no retained manifest pins it and no external root names it. Deletions ⊆
+candidates − roots, and nothing unreferenced survives. -/
+theorem plan_delete_spec (ms : Slice retention.Manifest) (ext : Slice (alloc.vec.Vec U8))
+    (candidates : Slice retention.Candidate) :
+    retention.plan_delete ms ext candidates ⦃ v =>
+      ∀ d : Usize, d ∈ v.val ↔ Unreferenced ms.val ext.val candidates.val d.val ⦄ := by
   unfold retention.plan_delete
   apply plan_delete_loop_spec
   · simp

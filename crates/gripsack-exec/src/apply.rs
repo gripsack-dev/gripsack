@@ -2,7 +2,8 @@
 
 use crate::ctx::Outcome;
 use crate::ctx::{Ctx, ExecError};
-use crate::report::ApplyResult;
+use crate::progress::Phase;
+use crate::report::{ApplyResult, StepReport};
 use gripsack_ir::Ir;
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,6 +20,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     {
         return Err(ExecError::Gate(diagnostic));
     }
+    ctx.reporter().phase(Phase::Prepare);
     let (session, native) = crate::workspace::prepare_apply(ir, ctx)?;
     apply_prepared(ctx, session, native)
 }
@@ -33,6 +35,7 @@ pub(crate) fn apply_in_session(
     {
         return Err(ExecError::Gate(diagnostic));
     }
+    ctx.reporter().phase(Phase::Prepare);
     let (session, native) = crate::workspace::prepare_apply_in_session(ir, ctx, session)?;
     apply_prepared(ctx, session, native)
 }
@@ -47,16 +50,25 @@ fn apply_prepared(
     // filesystem sits between generations. Restore the priors before
     // deploying anything; the run then proceeds from a clean floor.
     let recovered = store::journal::reconcile(ctx.home_dir()?, &ctx.home)?;
+    let reporter = ctx.reporter();
+    // every report streams the moment it exists; the result keeps them too
+    let report = |reports: &mut Vec<StepReport>, report: StepReport| {
+        reporter.step(&report);
+        reports.push(report);
+    };
     let mut reports = Vec::new();
     if !recovered.is_empty() {
-        reports.push(crate::report::StepReport {
-            output: "*".into(),
-            summary: format!(
-                "recovered {} destination(s) from an interrupted run",
-                recovered.len()
-            ),
-            kind: crate::report::ReportKind::Warned,
-        });
+        report(
+            &mut reports,
+            StepReport {
+                output: "*".into(),
+                summary: format!(
+                    "recovered {} destination(s) from an interrupted run",
+                    recovered.len()
+                ),
+                kind: crate::report::ReportKind::Warned,
+            },
+        );
         for line in &recovered {
             tracing::warn!("{line}");
         }
@@ -72,7 +84,7 @@ fn apply_prepared(
     // invalid pending metadata BLOCKS the run (0035 F5): mutating
     // over an unreadable activation record would strand the pending
     // generation's intents — same rule as the journal's quarantine
-    let resumed = crate::activate::resume_activation(&session).map_err(|e| {
+    let resumed = crate::activate::resume_activation(&session, reporter).map_err(|e| {
         ExecError::Step {
             output: "*".into(),
             step: "activate".into(),
@@ -144,6 +156,7 @@ fn apply_prepared(
         next_gen,
         store::journal::RunOp::Apply,
     )?;
+    reporter.phase(Phase::Deploy);
     let execution = (|| {
         if let Some(previous) = &prev_manifest {
             for receipt in &previous.directory_transitions {
@@ -257,22 +270,32 @@ fn apply_prepared(
     if let Err(e) = store::journal::commit_run(committed) {
         // the flip already committed — this is cleanup-pending, not a
         // failed apply (0029 §13); the next run's reconcile finishes it
-        reports.push(crate::report::StepReport {
-            output: "*".into(),
-            summary: format!(
-                "generation {next} active; journal cleanup pending ({e}) — the next apply finishes it"
-            ),
-            kind: crate::report::ReportKind::Warned,
-        });
+        report(
+            &mut reports,
+            StepReport {
+                output: "*".into(),
+                summary: format!(
+                    "generation {next} active; journal cleanup pending ({e}) — the next apply finishes it"
+                ),
+                kind: crate::report::ReportKind::Warned,
+            },
+        );
     }
     if let Some(batch) = activation {
-        match crate::activate::run(batch, ctx.home_dir()?, &ctx.home) {
+        reporter.phase(Phase::Activate);
+        let labels = native.verification_labels();
+        match crate::activate::run(batch, ctx.home_dir()?, &ctx.home, reporter, &labels) {
             Ok(outcomes) => reports.extend(outcomes),
-            Err(error) => reports.push(crate::report::StepReport {
-                output: "*".into(),
-                summary: format!("generation {next} active; activation evidence retained ({error}) — inspect hooks before retrying"),
-                kind: crate::report::ReportKind::Warned,
-            }),
+            Err(error) => report(
+                &mut reports,
+                StepReport {
+                    output: "*".into(),
+                    summary: format!(
+                        "generation {next} active; activation evidence retained ({error}) — inspect hooks before retrying"
+                    ),
+                    kind: crate::report::ReportKind::Warned,
+                },
+            ),
         }
     }
     info!(generation = %next, "activated");

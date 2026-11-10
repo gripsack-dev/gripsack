@@ -12,6 +12,7 @@ pub mod gc;
 mod http_client;
 pub mod managed_blocks;
 pub mod ops;
+pub mod progress;
 pub mod report;
 mod repository;
 pub use repository::{EvaluationInputs, Repository};
@@ -29,10 +30,14 @@ pub mod verify_store;
 mod workspace;
 
 pub use apply::apply;
-pub use ctx::{Ctx, ExecError, Outcome, ProgressCallback};
+pub use ctx::{Ctx, ExecError, Outcome};
 pub use env::{profile_path, retains_profile};
 pub use frontend::{ensure_deno, ensure_ts_frontend};
 pub use gc::{GcReport, PathOwner, gc, why_owns};
+pub use progress::{
+    Phase, Progress, ProgressCallback, Reporter, Verification, VerificationKind, VerificationLabel,
+    VerificationLabels,
+};
 pub use report::{
     ApplyResult, ReportKind, StepReport, UpdateCheckOutcome, UpdateReport, UpdateStatus,
     UpdateSummary, UpdateSurvey,
