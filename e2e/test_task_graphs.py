@@ -269,10 +269,13 @@ def test_deadline_includes_postcondition_and_closed_stdin(sandbox):
     repo = sandbox / "graph"
     workspace(repo, [
         'profile("subject", {})',
-        'check("slow", {subject:"subject",run:' + command("sleep 30") + '})',
+        'check("slow", {subject:"subject",run:' + command("sleep 300") + '})',
         task("root", 'test -z "$(cat)"', checks=["slow"]),
     ])
-    result, report = invoke(repo, "root", "--closed-stdin", "--timeout-seconds", "5")
+    # The deadline must leave the step room under a loaded qualification host
+    # (a 5 s deadline once expired before the step finished) while still
+    # cutting the postcondition off long before its sleep ends.
+    result, report = invoke(repo, "root", "--closed-stdin", "--timeout-seconds", "20")
     assert result.returncode == 1, result.stderr
     assert report["status"] == "failed"
     assert report["nodes"][0]["completed_steps"] == 1
