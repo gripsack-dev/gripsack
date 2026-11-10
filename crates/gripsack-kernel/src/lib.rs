@@ -32,6 +32,7 @@ pub mod recover;
 pub mod retention;
 pub mod rollback;
 pub mod selection;
+pub mod update_survey;
 
 pub use generation::{GenerationId, GenerationList};
 pub use ids::{CmdId, DestId, Digest, GenId, TxId};

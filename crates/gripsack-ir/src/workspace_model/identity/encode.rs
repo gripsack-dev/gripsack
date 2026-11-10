@@ -10,7 +10,6 @@ use crate::workspace_model::{
     PackageOutput, RecipeExecution, RecipeOutput, WheelSource, WorkspaceCatalog,
 };
 use crate::{FetchSpec, HostFacts};
-use gripsack_policy::semantic::length_header;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -23,11 +22,10 @@ impl Encoder {
         writer.field(domain);
         writer
     }
-    /// Stream one length-delimited field: the verified kernel supplies
-    /// the exact header bytes (semantic::length_header == le64), the
-    /// payload flows through uncopied.
+    /// Stream one length-delimited field: an 8-byte little-endian length
+    /// header, then the payload, uncopied.
     pub(super) fn field(&mut self, bytes: &[u8]) {
-        self.0.update(length_header(bytes.len() as u64));
+        self.0.update((bytes.len() as u64).to_le_bytes());
         self.0.update(bytes);
     }
     fn text(&mut self, text: &str) {

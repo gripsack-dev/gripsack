@@ -10,3 +10,4 @@ import Kernel.JournalRun
 import Kernel.Activation
 import Kernel.Publication
 import Kernel.Apply
+import Kernel.UpdateSurvey

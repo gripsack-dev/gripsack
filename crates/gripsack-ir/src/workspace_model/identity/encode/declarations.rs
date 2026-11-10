@@ -12,8 +12,7 @@ use crate::{
     workspace::{Weekday, WorkspaceCalendar, WorkspaceDestination},
     workspace_model::*,
 };
-use gripsack_policy::semantic::canonical_entries;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn strings(writer: &mut Encoder, values: &[String], ordered: bool) {
     if ordered {
@@ -23,15 +22,10 @@ fn strings(writer: &mut Encoder, values: &[String], ordered: bool) {
         }
         return;
     }
-    // The verified canonicalization kernel (gripsack-policy semantic):
-    // sorted, duplicate-free, determined by the entry set alone.
-    let entries: Vec<(&[u8], &[u8], ())> = values
-        .iter()
-        .map(|value| (value.as_bytes(), &[][..], ()))
-        .collect();
-    let canonical = canonical_entries(&entries);
+    // Byte-ordered and duplicate-free: determined by the set alone.
+    let canonical: BTreeSet<&[u8]> = values.iter().map(|value| value.as_bytes()).collect();
     writer.number(canonical.len() as u64);
-    for (bytes, _, ()) in canonical {
+    for bytes in canonical {
         writer.field(bytes);
     }
 }
@@ -51,9 +45,8 @@ fn steps(writer: &mut Encoder, values: &[WorkspaceStep]) {
     }
 }
 fn locks(writer: &mut Encoder, values: &[WorkspaceMutationLock]) {
-    // The verified canonicalization kernel: (scope, key) pair order,
-    // duplicate-free, determined by the lock set alone.
-    let entries: Vec<(&[u8], &[u8], ())> = values
+    // (scope, key) byte order, duplicate-free: determined by the lock set alone.
+    let canonical: BTreeSet<(&[u8], &[u8])> = values
         .iter()
         .map(|lock| {
             (
@@ -62,13 +55,11 @@ fn locks(writer: &mut Encoder, values: &[WorkspaceMutationLock]) {
                     MutationLockScope::Store => &b"store"[..],
                 },
                 lock.key.as_bytes(),
-                (),
             )
         })
         .collect();
-    let canonical = canonical_entries(&entries);
     writer.number(canonical.len() as u64);
-    for (scope, key, ()) in canonical {
+    for (scope, key) in canonical {
         writer.field(scope);
         writer.field(key);
     }
