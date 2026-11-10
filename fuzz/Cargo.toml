@@ -14,7 +14,6 @@ fuzzing = ["dep:libfuzzer-sys"]
 [dependencies]
 gripsack-store.workspace = true
 gripsack-fs.workspace = true
-gripsack-exec.workspace = true
 gripsack-fetch.workspace = true
 gripsack-ir.workspace = true
 serde_json.workspace = true
@@ -34,11 +33,6 @@ required-features = ["fuzzing"]
 [[bin]]
 name = "journal"
 path = "fuzz_targets/journal.rs"
-required-features = ["fuzzing"]
-
-[[bin]]
-name = "merge"
-path = "fuzz_targets/merge.rs"
 required-features = ["fuzzing"]
 
 [[bin]]

@@ -1,3 +1,0 @@
-<!-- >>> gripsack module=m sha=abcd >>> -->
-payload
-<!-- <<< gripsack module=m <<< -->

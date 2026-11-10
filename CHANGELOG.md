@@ -6,7 +6,26 @@ User-visible changes per release. Design archaeology lives in
 
 ## [Unreleased]
 
+## [0.53.0] — Proved ownership and rollback
+
 ### Fixed
+
+- A managed block whose content has carriage returns right before a line
+  break (`\r\r\n`, for example) is recognized as gripsack's own again.
+  Its recorded sha never matched its content, so every `apply` rewrote the
+  block, called it "hand-edited", could switch it to CRLF line ends, and
+  activated a new generation for nothing. Such a block is now written once
+  and left alone; carriage returns at the end of a content line are dropped.
+
+- `rollback` restores a managed block only from a retained payload that is
+  exactly the block the target generation recorded. A block whose retained
+  payload no longer matches its record used to be written anyway; rollback
+  now names the file and stops before switching ("cannot restore it
+  exactly"), leaving the current generation selected.
+
+- gripsack refuses to write a managed block it could not recognize again
+  afterwards (for example a comment marker containing spaces) instead of
+  appending a new copy of it on every `apply`.
 
 - `rollback` restores exactly what the target generation deployed, or
   refuses before switching. Every file and link is restored to the

@@ -23,8 +23,10 @@ CRATE = ROOT / "crates/gripsack-policy"
 # where Lean proves them (the `proofs` gate); their 26 obligations leave the
 # Verus floor. plan/0056 F2 moved the copy/link ownership decision
 # (plan_copy, plan_link) to the kernel's `ownership::decide_unit` (K1, Lean);
-# their two obligations leave the floor.
-MIN_OBLIGATIONS = 382
+# their two obligations leave the floor. plan/0056 F2 step 6 moved the managed-
+# block splice and scanner to the kernel's `block` module (K5, Lean); the
+# eleven `merge` / `merge::scanner` obligations leave the floor.
+MIN_OBLIGATIONS = 371
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
@@ -35,13 +37,6 @@ FAMILIES = {
         "AttemptNumber::admit", "AttemptNumber::first", "AttemptNumber::value",
         "AttemptNumber::checked_next", "IntentState::attempt",
         "next_attempt", "finish_attempt", "supersede",
-    )),
-    "merge": tuple("merge::" + name for name in (
-        "splice_bytes", "lemma_rest_is_gaps", "lemma_splice_canonical", "lemma_splice_identity",
-        "lemma_gaps_end_with_tail", "lemma_splice_preserves_edges",
-    )),
-    "merge-scanner": tuple("merge::scanner::" + name for name in (
-        "span_text", "lemma_ascii_successor", "next_line_end", "scan_admits_splice", "scan",
     )),
     "graph": ("graph::build_closure", "graph::lemma_reachable_visited"),
     "graph-roles": ("graph::roles::project_graph_role", "graph::roles::GraphRole::is_dependency"),
@@ -194,10 +189,6 @@ MUTANTS = (
     Mutant("activation-supersession", "activation.rs", "activation::supersede",
            "IntentState::Started { attempt } => IntentState::Superseded { last_attempt: Some(*attempt) },",
            "IntentState::Started { attempt } => IntentState::Started { attempt: *attempt },"),
-    Mutant("merge-splice", "merge.rs", "merge::splice_bytes", "    out.extend_from_slice(&text[cursor..]);", ""),
-    Mutant("merge-scanner-utf8", "merge/scanner.rs", "merge::scanner::scan",
-           "span: Span { start: active.start, end },",
-           "span: Span { start: active.start + 1, end },"),
     Mutant("graph-closure", "graph.rs", "graph::build_closure", "                    result.push(target);", ""),
     Mutant("graph-validation", "graph/roles.rs", "graph::roles::project_graph_role", "RoleDecision { build: false, required_validation: true },", "RoleDecision { build: false, required_validation: false },"),
     Mutant("graph-name-index", "graph/name_index.rs", "graph::name_index::bind_output_index", "    let same_name = names[position] == declared;", "    let same_name = true;"),
@@ -406,20 +397,20 @@ def main() -> None:
             evidence.mutant(status, path, expected, crate.parent.parent)
             print(f"calibration: {mutation.name} rejected in {','.join(expected)}", flush=True)
         # A real unrelated failing lemma in the same source file cannot
-        # impersonate the merge mutant's named production failure.
+        # impersonate the graph mutant's named production failure.
         crate = copy_crate(temporary / "unrelated-lemma")
-        path = crate / "src/merge.rs"
+        path = crate / "src/graph.rs"
         source = path.read_text()
         prefix, suffix = source.rsplit("}", 1)
         path.write_text(prefix + "pub proof fn unrelated_calibration_failure() ensures false {}\n}" + suffix)
         status, evidence = verify(crate, temporary / "unrelated-target")
-        evidence.mutant(status, path, ("merge::unrelated_calibration_failure",), crate.parent.parent)
+        evidence.mutant(status, path, ("graph::unrelated_calibration_failure",), crate.parent.parent)
         try:
-            evidence.mutant(status, path, ("merge::splice_bytes",), crate.parent.parent)
+            evidence.mutant(status, path, ("graph::build_closure",), crate.parent.parent)
         except EvidenceError:
-            print("calibration: unrelated lemma refused as merge evidence", flush=True)
+            print("calibration: unrelated lemma refused as graph evidence", flush=True)
         else:
-            raise EvidenceError("unrelated lemma falsely calibrated merge")
+            raise EvidenceError("unrelated lemma falsely calibrated graph")
         print(f"VERUS_CALIBRATIONS={len(MUTANTS) + 1}", flush=True)
         from check_collector_verus import check as check_collector
         check_collector(temporary)

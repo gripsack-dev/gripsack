@@ -343,6 +343,7 @@ impl NativeProfiles {
                                 payload: &payload,
                                 permissions: WritePermissions::Preserve,
                                 block_id: file.block_id.as_ref(),
+                                source: crate::ops::BlockSource::Declared,
                             },
                         )?
                     }

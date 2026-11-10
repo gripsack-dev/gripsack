@@ -26,4 +26,5 @@ start_from = [
     "gripsack_kernel::ownership",
     "gripsack_kernel::rollback",
     "gripsack_kernel::gc",
+    "gripsack_kernel::block",
 ]

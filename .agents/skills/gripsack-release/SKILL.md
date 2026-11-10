@@ -17,7 +17,10 @@ is manual, unsigned and GitHub-asset-only; no npm/crates.io publication.
    the helper pin (`crates/gripsack-fetch/src/conda_pins.rs`, measured with
    `tools/conda-helper/dist.sh`), and the version in `.ci/pilot.json`
    (its `version`, `artifacts` and the `package`/`smoke` file lists —
-   `scripts/test_release.py` fails if they drift). Merge through a PR.
+   `scripts/test_release.py` fails if they drift), and regenerate the embedded
+   frontend (`python3 scripts/gen_frontend_embed.py`; it embeds
+   `typescript/package.json`, so the `test` gate fails on a stale copy).
+   Merge through a PR.
 2. Qualify a clean checkout of the release commit on a local branch:
    ```sh
    cd /home/tarek/workspace/ci-infra

@@ -1,25 +1,101 @@
-//! One lossless marker scan feeds reconciliation, drift checks, pruning and reports.
-mod parse;
+//! Managed blocks over the proved kernel (`gripsack_kernel::block`, plan/0056
+//! K5): the kernel scans the hosting text, renders the block, splices it and
+//! decides when gripsack may touch it; this module supplies what the kernel
+//! cannot compute — the SHA-256 of the normalized content, the comment style
+//! of a destination — and turns kernel offsets into `&str` views for reports.
+use gripsack_kernel::Digest;
+use gripsack_kernel::block::{
+    self, BlockDecision, BlockIntent, BlockRecord, Host, LineKind, Malformation, ScanFailure, Seen,
+    SpliceRefusal, Style,
+};
 use gripsack_store as store;
-pub use parse::MergeParseError;
-pub(crate) use parse::validate_payload;
-use std::borrow::Cow;
 use std::ops::Range;
 use std::path::Path;
+
+#[derive(Debug, thiserror::Error)]
+#[error("malformed managed block at line {line}: {reason}")]
+pub struct MergeParseError {
+    pub line: usize,
+    pub reason: &'static str,
+}
+
+impl From<ScanFailure> for MergeParseError {
+    fn from(failure: ScanFailure) -> Self {
+        Self {
+            line: failure.line,
+            reason: match failure.malformation {
+                Malformation::Metadata => "invalid marker metadata or delimiter",
+                Malformation::Nested => "nested or interleaved managed opener",
+                Malformation::Orphan => "closing marker has no opener",
+                Malformation::Interleaved => "closing marker names a different owner",
+                Malformation::Unclosed => {
+                    "opening marker has no closing marker; following text is unowned"
+                }
+            },
+        }
+    }
+}
+
+impl From<SpliceRefusal> for MergeParseError {
+    fn from(refusal: SpliceRefusal) -> Self {
+        match refusal {
+            SpliceRefusal::Malformed(failure) => failure.into(),
+            SpliceRefusal::Unordered => Self {
+                line: 1,
+                reason: "the scan returned blocks out of order",
+            },
+            SpliceRefusal::Unrecognized => Self {
+                line: 1,
+                reason: "the rendered block would not read back as written (an owner, comment \
+                         prefix or payload line the marker grammar misreads)",
+            },
+        }
+    }
+}
+
+/// Refuse a payload with a line the marker grammar reads as a marker.
+pub(crate) fn validate_payload(payload: &str) -> Result<(), MergeParseError> {
+    for (index, line) in payload.lines().enumerate() {
+        match block::classify(line.as_bytes(), 0, line.len()) {
+            LineKind::Content => {}
+            LineKind::Malformed => {
+                return Err(ScanFailure {
+                    line: index + 1,
+                    malformation: Malformation::Metadata,
+                }
+                .into());
+            }
+            LineKind::Open { .. } | LineKind::Close { .. } => {
+                return Err(MergeParseError {
+                    line: index + 1,
+                    reason: "payload contains a managed marker",
+                });
+            }
+        }
+    }
+    Ok(())
+}
 
 pub struct ManagedBlock<'a> {
     pub range: Range<usize>,
     pub content: &'a str,
-    pub recorded_hash: &'a str,
     pub mode: Option<u32>,
     pub content_hash: store::hash::BytesHash,
+    /// The marker's recorded sha digits name `content_hash`.
+    pub marked: bool,
 }
 
 impl ManagedBlock<'_> {
     pub fn edited(&self) -> bool {
-        !self
-            .recorded_hash
-            .eq_ignore_ascii_case(&self.content_hash.as_str()[..16])
+        !self.marked
+    }
+
+    fn seen(&self) -> Seen {
+        Seen {
+            content: digest(&self.content_hash),
+            marked: self.marked,
+            mode: self.mode,
+        }
     }
 }
 
@@ -28,70 +104,81 @@ pub struct ManagedBlockSet<'a> {
     blocks: Vec<ManagedBlock<'a>>,
 }
 
-pub fn normalized_content(content: &str) -> Cow<'_, str> {
-    let content = content.trim_end_matches(['\r', '\n']);
-    if content.contains("\r\n") {
-        Cow::Owned(content.replace("\r\n", "\n"))
-    } else {
-        Cow::Borrowed(content)
+/// The SHA-256 a block records: of its content in the kernel's normal form.
+pub fn content_hash(content: &str) -> store::hash::BytesHash {
+    store::canonical_bytes_hash(&block::normalize(content.as_bytes()))
+}
+
+fn digest(hash: &store::hash::BytesHash) -> Digest {
+    store::hash::kernel::digest_hex(hash.as_str()).expect("a bytes hash is sha256 hex")
+}
+
+/// The record a manifest entry keeps for its block.
+pub fn record(entry: &store::DeployedEntry) -> BlockRecord {
+    BlockRecord {
+        hash: store::hash::kernel::digest_hex(entry.hash.as_str()),
+        mode: entry.file_mode,
+        preserved: entry.preserved_drift,
     }
 }
 
-pub fn content_hash(content: &str) -> store::hash::BytesHash {
-    store::canonical_bytes_hash(normalized_content(content).as_bytes())
+/// The hosting object as the decision sees it.
+pub fn host(observation: Option<&crate::deploy::Observation>) -> Host {
+    match observation {
+        None => Host::Absent,
+        Some(crate::deploy::Observation::File { mode, .. }) => Host::File { mode: *mode },
+        Some(crate::deploy::Observation::Symlink { .. }) => Host::Foreign,
+    }
 }
 
 impl<'a> ManagedBlockSet<'a> {
     pub fn parse(text: &'a str, owner: &str) -> Result<Self, MergeParseError> {
-        let blocks = parse::scan(text, owner)?
-            .into_iter()
-            .map(|block| ManagedBlock {
-                content_hash: content_hash(block.content),
-                range: block.span.start..block.span.end,
-                content: block.content,
-                recorded_hash: block.recorded_hash,
-                mode: block.mode,
-            })
-            .collect();
+        let found = block::scan(text.as_bytes(), owner.as_bytes())?;
+        let mut blocks = Vec::with_capacity(found.len());
+        for span in found {
+            // kernel offsets sit at line boundaries or inside the ASCII sha
+            // word, so every slice is on a char boundary
+            let content = &text[span.content_start..span.content_end];
+            let content_hash = content_hash(content);
+            let mut sha = [0u8; block::MARK_DIGITS];
+            sha.copy_from_slice(&text.as_bytes()[span.sha..span.sha + block::MARK_DIGITS]);
+            let marked = block::marks(&sha, &digest(&content_hash));
+            blocks.push(ManagedBlock {
+                range: span.start..span.end,
+                content,
+                mode: span.mode,
+                content_hash,
+                marked,
+            });
+        }
         Ok(Self { text, blocks })
     }
 
     pub fn blocks(&self) -> &[ManagedBlock<'a>] {
         &self.blocks
     }
+
     pub fn is_empty(&self) -> bool {
         self.blocks.is_empty()
     }
 
-    pub fn mode_conflicts(&self, live: u32, previous: Option<&store::DeployedEntry>) -> bool {
-        self.blocks
-            .iter()
-            .any(|block| block.mode.is_some_and(|mode| mode != live))
-            || previous
-                .filter(|entry| !entry.preserved_drift)
-                .and_then(|entry| entry.file_mode)
-                .is_some_and(|mode| mode != live)
+    /// The proved decision (plan/0056 K1 for blocks) over these blocks.
+    pub fn decide(
+        &self,
+        record: Option<BlockRecord>,
+        host: &Host,
+        intent: &BlockIntent,
+    ) -> BlockDecision {
+        let seen: Vec<Seen> = self.blocks.iter().map(ManagedBlock::seen).collect();
+        block::decide_block(&record, host, &seen, intent)
     }
 
-    pub fn satisfied(&self, desired: &store::hash::BytesHash, mode: u32) -> bool {
-        matches!(self.blocks.as_slice(), [block] if block.mode == Some(mode)
-            && block.content_hash == *desired && !block.edited())
-    }
-
-    pub fn intact(&self, entry: &store::DeployedEntry, mode: u32) -> bool {
-        !entry.preserved_drift
-            && matches!(self.blocks.as_slice(), [block]
-            if entry.file_mode.or(block.mode) == Some(mode)
-                && block.mode.is_none_or(|recorded| recorded == mode)
-                && block.content_hash.as_str() == entry.hash.as_str() && !block.edited())
-    }
-
-    /// No bytes outside complete owned spans are discarded or normalized.
-    pub fn remove(&self) -> Result<Option<String>, MergeParseError> {
-        if self.is_empty() {
-            return Ok(None);
+    /// The text with every block of `owner` removed, every other byte kept.
+    pub fn remove(&self, owner: &str) -> Result<Option<String>, MergeParseError> {
+        match block::remove(self.text.as_bytes(), owner.as_bytes())? {
+            None => Ok(None),
+            Some(bytes) => utf8(bytes).map(Some),
         }
-        self.splice("").map(Some)
     }
 
     pub fn upsert(
@@ -102,61 +189,18 @@ impl<'a> ManagedBlockSet<'a> {
         payload: &str,
         mode: u32,
     ) -> Result<String, MergeParseError> {
-        parse::validate_payload(payload)?;
-        let (prefix, suffix) = comment_style(dest, marker);
-        let newline = if self.text.contains("\r\n") {
-            "\r\n"
-        } else {
-            "\n"
-        };
-        let content = normalized_content(payload);
-        let hash = content_hash(&content);
-        let mut generated = format!(
-            "{prefix} >>> gripsack module={owner} sha={} mode=0{mode:o} >>>{suffix}{newline}{prefix} !! managed by gripsack — edit the module, not this block !!{suffix}{newline}",
-            &hash.as_str()[..16]
-        );
-        for line in content.lines() {
-            generated.push_str(line);
-            generated.push_str(newline);
-        }
-        generated.push_str(&format!(
-            "{prefix} <<< gripsack module={owner} <<<{suffix}{newline}"
-        ));
-        if self.is_empty() {
-            let mut output =
-                String::with_capacity(self.text.len() + generated.len() + newline.len());
-            output.push_str(self.text);
-            if !output.is_empty() && !output.ends_with('\n') {
-                output.push_str(newline)
-            }
-            output.push_str(&generated);
-            Ok(output)
-        } else {
-            self.splice(&generated)
-        }
-    }
-
-    fn splice(&self, replacement: &str) -> Result<String, MergeParseError> {
-        // The production scanner proves span order, bounds and UTF-8
-        // alignment. Keep the final conversion fallible as a defensive
-        // boundary for callers that bypass that construction.
-        let spans: Vec<gripsack_policy::merge::Span> = self
-            .blocks
-            .iter()
-            .map(|block| gripsack_policy::merge::Span {
-                start: block.range.start,
-                end: block.range.end,
-            })
-            .collect();
-        let bytes = gripsack_policy::merge::splice_bytes(
+        validate_payload(payload)?;
+        let desired = digest(&content_hash(payload));
+        let style = comment_style(dest, marker);
+        let bytes = block::upsert(
             self.text.as_bytes(),
-            &spans,
-            replacement.as_bytes(),
-        );
-        String::from_utf8(bytes).map_err(|_| MergeParseError {
-            line: 1,
-            reason: "splice output violates the scanner's UTF-8 boundary invariant",
-        })
+            owner.as_bytes(),
+            &style,
+            &desired,
+            mode,
+            payload.as_bytes(),
+        )?;
+        utf8(bytes)
     }
 
     pub fn report_note(&self) -> Option<String> {
@@ -175,19 +219,36 @@ impl<'a> ManagedBlockSet<'a> {
     }
 }
 
-fn comment_style<'a>(dest: &Path, marker: Option<&'a str>) -> (&'a str, &'static str) {
+/// The kernel splices UTF-8 text at line boundaries with UTF-8 blocks; the
+/// conversion stays fallible as a boundary check.
+fn utf8(bytes: Vec<u8>) -> Result<String, MergeParseError> {
+    String::from_utf8(bytes).map_err(|_| MergeParseError {
+        line: 1,
+        reason: "splice output is not UTF-8",
+    })
+}
+
+fn comment_style(dest: &Path, marker: Option<&str>) -> Style {
+    let (prefix, html) = comment_prefix(dest, marker);
+    Style {
+        prefix: prefix.as_bytes().to_vec(),
+        html,
+    }
+}
+
+fn comment_prefix<'a>(dest: &Path, marker: Option<&'a str>) -> (&'a str, bool) {
     if let Some(marker) = marker {
-        return (marker, "");
+        return (marker, false);
     }
     match dest
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or_default()
     {
-        ".vimrc" | "vimrc" | "init.vim" => return ("\"", ""),
+        ".vimrc" | "vimrc" | "init.vim" => return ("\"", false),
         ".bashrc" | "bashrc" | ".zshrc" | "zshrc" | ".profile" | "profile" | ".bash_profile"
         | "bash_profile" | ".gitconfig" | "gitconfig" | "tmux.conf" | ".tmux.conf"
-        | "ssh_config" => return ("#", ""),
+        | "ssh_config" => return ("#", false),
         _ => {}
     }
     match dest
@@ -196,13 +257,10 @@ fn comment_style<'a>(dest: &Path, marker: Option<&'a str>) -> (&'a str, &'static
         .unwrap_or_default()
     {
         "js" | "ts" | "jsx" | "tsx" | "jsonc" | "css" | "scss" | "rs" | "go" | "c" | "h"
-        | "cpp" | "hpp" | "java" | "kt" | "swift" => ("//", ""),
-        "lua" | "sql" => ("--", ""),
-        "vim" => ("\"", ""),
-        "html" | "xml" | "svg" | "md" => ("<!--", " -->"),
-        _ => ("#", ""),
+        | "cpp" | "hpp" | "java" | "kt" | "swift" => ("//", false),
+        "lua" | "sql" => ("--", false),
+        "vim" => ("\"", false),
+        "html" | "xml" | "svg" | "md" => ("<!--", true),
+        _ => ("#", false),
     }
 }
-
-#[cfg(test)]
-mod tests;

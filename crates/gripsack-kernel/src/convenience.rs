@@ -1072,3 +1072,68 @@ impl GcState {
             .map(|manifest| manifest.facts.id)
     }
 }
+
+// ---- managed blocks (`block.rs`) -------------------------------------------
+
+use crate::block::{
+    Block, BlockDecision, BlockRefusal, Malformation, Newline, ScanFailure, SpliceRefusal,
+};
+
+unit_debug!(
+    Malformation {
+        Metadata,
+        Nested,
+        Orphan,
+        Interleaved,
+        Unclosed
+    },
+    BlockRefusal {
+        Foreign,
+        Unrestorable
+    },
+    Newline { Lf, CrLf },
+);
+
+impl fmt::Debug for ScanFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScanFailure")
+            .field("line", &self.line)
+            .field("malformation", &self.malformation)
+            .finish()
+    }
+}
+
+impl fmt::Debug for SpliceRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SpliceRefusal::Malformed(failure) => f.debug_tuple("Malformed").field(failure).finish(),
+            SpliceRefusal::Unordered => f.write_str("Unordered"),
+            SpliceRefusal::Unrecognized => f.write_str("Unrecognized"),
+        }
+    }
+}
+
+impl fmt::Debug for BlockDecision {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockDecision::Write => f.write_str("Write"),
+            BlockDecision::Satisfied => f.write_str("Satisfied"),
+            BlockDecision::Preserve => f.write_str("Preserve"),
+            BlockDecision::Remove => f.write_str("Remove"),
+            BlockDecision::Keep => f.write_str("Keep"),
+            BlockDecision::Absent => f.write_str("Absent"),
+            BlockDecision::Refuse(why) => f.debug_tuple("Refuse").field(why).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Block {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Block")
+            .field("span", &(self.start..self.end))
+            .field("content", &(self.content_start..self.content_end))
+            .field("sha", &self.sha)
+            .field("mode", &self.mode)
+            .finish()
+    }
+}

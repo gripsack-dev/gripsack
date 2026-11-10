@@ -40,10 +40,6 @@ def build(root: Path) -> None:
                 for prefix in [b"", b" ", b"\n", b"\t"]:
                     name = f"{kind}-{previous}-{target}-{op}-{len(prefix)}-{prefix.hex()}-{entry[:8].hex()}.json"
                     (journal / name).write_bytes(marker + b"\0" + prefix + entry)
-    merge = root / "merge"
-    merge.mkdir(parents=True, exist_ok=True)
-    (merge / "crlf.txt").write_bytes(b"foreign\r\n# >>> gripsack module=m sha=abcd >>>\r\npayload\r\n# <<< gripsack module=m <<<\r\n")
-    (merge / "payload.txt").write_bytes(b"foreign\n\0echo '{{ literal }}'\n")
     archive_seeds(root / "archive")
 
 

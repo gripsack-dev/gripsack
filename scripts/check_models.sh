@@ -217,10 +217,6 @@ check CredentialRouting.tla cfg/credential-routing.cfg
 check CredentialRouting.tla cfg/credential-routing-base-authority.cfg TokensStayBound
 check CredentialRouting.tla cfg/credential-routing-redirect-forwarding.cfg NoRedirectDisclosure
 check CredentialRouting.tla cfg/credential-routing-repo-audience.cfg TokensStayBound
-check MergeBoundary.tla cfg/merge-boundary.cfg
-check MergeBoundary.tla cfg/merge-boundary-unclosed-marker.cfg ForeignTextPreserved
-check MergeBoundary.tla cfg/merge-boundary-first-mode.cfg AllModeEvidenceRequired
-check MergeBoundary.tla cfg/merge-boundary-first-prune.cfg PruneNeedsWholeEvidence
 
 # M-V6: finite discovery instances of the shared, crash-unbounded protocol.
 # The separate TLAPS catalog checks every generalized theorem dependency.

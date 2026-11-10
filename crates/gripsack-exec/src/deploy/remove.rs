@@ -44,22 +44,28 @@ pub fn remove_entry_deployed(
             };
             let existing = String::from_utf8(bytes)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-            let blocks =
-                crate::managed_blocks::ManagedBlockSet::parse(&existing, entry.merge_owner(output))
-                    .map_err(std::io::Error::other)?;
-            if blocks.intact(entry, mode) {
-                let new = blocks
-                    .remove()
-                    .map_err(std::io::Error::other)?
-                    .expect("intact implies a block");
-                if new.is_empty() {
-                    remove_if_present(dest_dir, dest_name)?;
-                } else {
-                    gripsack_fs::atomic_write(dest_dir, dest_name, new.as_bytes())?;
+            let owner = entry.merge_owner(output);
+            let blocks = crate::managed_blocks::ManagedBlockSet::parse(&existing, owner)
+                .map_err(std::io::Error::other)?;
+            // the kernel's K1 for blocks: only an intact block is removed
+            match blocks.decide(
+                Some(crate::managed_blocks::record(entry)),
+                &gripsack_kernel::block::Host::File { mode },
+                &gripsack_kernel::block::BlockIntent::Remove,
+            ) {
+                gripsack_kernel::block::BlockDecision::Remove => {
+                    let new = blocks
+                        .remove(owner)
+                        .map_err(std::io::Error::other)?
+                        .expect("intact implies a block");
+                    if new.is_empty() {
+                        remove_if_present(dest_dir, dest_name)?;
+                    } else {
+                        gripsack_fs::atomic_write(dest_dir, dest_name, new.as_bytes())?;
+                    }
+                    Ok(true)
                 }
-                Ok(true)
-            } else {
-                Ok(false)
+                _ => Ok(false),
             }
         }
         Ownership::TrackedCopy | Ownership::Template => {
