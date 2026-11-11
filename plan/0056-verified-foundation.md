@@ -2823,3 +2823,14 @@ Still open from F2 (not part of the exit line): deleting the debug-only
 legacy recovery engine (item 9).
 
 ### 24.5 Gates
+
+Docker, `-p f2dissolve`, one at a time, at `972400c`: `test` passed (fmt,
+clippy `-D warnings`, the architecture check with its `--self-check`
+calibration, cargo test: 892 tests; 4m22s) — the first run, at `a607abb`,
+failed the lease test of §24.3 item 6, the only change before the rerun;
+`e2e` 712 passed in 15m35s; `proofs` OK in 3626 s (no translation drift —
+the kernel is untouched — 579 theorems, 114 claims, standard axioms only,
+113/113 mutants calibrated). Not run: `ts-test` (TypeScript untouched),
+`model`, `tlaps`, fuzz (the fuzz targets were only type-checked with
+`--features fuzzing`). On the host the two known confinement tests (§23.6)
+still fail outside the `test` image.
