@@ -2401,7 +2401,7 @@ ownership, merge, journal-protocol and activation families left in §15, §17,
   `RetainedDirectory`, `ReverseDirectoryHierarchy`, `IncarnationExchange`
   and their cfgs) and the e2e directory flows, not proved.
 
-### 22.3 Proofs (`proofs/Kernel/Directory.lean`, `Apply.lean`, `Rollback.lean`; `Audit.lean`: 568 theorems, 108 claims, standard axioms only)
+### 22.3 Proofs (`proofs/Kernel/Directory.lean`, `Apply.lean`, `Rollback.lean`; `Audit.lean`: 567 theorems, 108 claims, standard axioms only)
 
 - `Directory.ordered_spec`, `stage_ok`, `commands_spec`, `names_spec`.
 - Apply: `apply_write_unheld` (no whole-object write — deploy, release or
@@ -2523,4 +2523,13 @@ ownership, merge, journal-protocol and activation families left in §15, §17,
 5. The legacy recovery engine (`GRIPSACK_ENGINE=legacy`, debug builds)
    still calls the domain's recovery directly; it goes with the legacy
    engine.
-6. Gate results: see §22.8.
+
+### 22.8 Gates
+
+Docker, `-p f2dir`, one at a time, at `4f5a02a`: `proofs` OK in 4152 s (no
+translation drift, 567 theorems, 108 claims, standard axioms only, 105/105
+mutants calibrated); `test` passed (fmt, clippy `-D warnings`, cargo test;
+an earlier run under concurrent mutant load failed the unrelated
+timing test `native_file_checks_preserve_operation_deadline`, which passed
+when rerun alone); `e2e` 712 passed in 16m00s. Not run: `verify`, `model`
+(the TLC directory models are unchanged), `tlaps`, `ts-test`, fuzz.
