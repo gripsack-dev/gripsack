@@ -1160,7 +1160,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "griplint"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -1173,7 +1173,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "clap",
  "dialoguer",
@@ -1202,7 +1202,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-conda"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "archspec",
  "astral-ini",
@@ -1234,7 +1234,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-config"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -1243,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-exec"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "base64 0.22.1",
  "bzip2",
@@ -1276,7 +1276,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fetch"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "bzip2",
  "crc32fast",
@@ -1319,7 +1319,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-host"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "cap-std",
  "getrandom 0.4.3",
@@ -1334,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-ir"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "jsonschema",
  "serde",
@@ -1346,11 +1346,11 @@ dependencies = [
 
 [[package]]
 name = "gripsack-kernel"
-version = "0.53.0"
+version = "0.54.0"
 
 [[package]]
 name = "gripsack-trace"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "gripsack-host",
  "tempfile",
