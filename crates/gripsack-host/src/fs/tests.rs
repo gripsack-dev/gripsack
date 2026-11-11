@@ -13,11 +13,21 @@ fn duplicate_handle_keeps_lease_locked_until_last_close() {
         "dropping_parent_released_live_child_lease",
     );
     drop(inherited);
-    assert!(
-        FlockGuard::try_acquire(directory.path(), "worker-lease")
-            .unwrap()
-            .is_some()
-    );
+    // The process tests share this binary: a sibling test's fork holds a copy
+    // of every descriptor (CLOEXEC included) until its exec, so the last
+    // close can be observed a moment late. Bounded retry, never a pass on
+    // a lease that stays held.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while FlockGuard::try_acquire(directory.path(), "worker-lease")
+        .unwrap()
+        .is_none()
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the lease outlived its last handle"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 }
 
 #[test]

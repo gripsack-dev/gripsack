@@ -438,9 +438,16 @@ the crash e2e run both ways for one release before the legacy path goes.
    closure deleted (standard-library equivalents and dead checks); every
    other policy kernel, the budgets and the IR's typed collector demoted to
    plain Rust with tests that kill every former Verus mutant; Verus, `vstd`,
-   the `verify` gate and its scripts deleted; record in §23. Remaining (10b):
-   dissolve `gripsack-store`/`-policy`/`-fs` (crate boundaries unchanged so
-   far).
+   the `verify` gate and its scripts deleted; record in §23.
+   **Done 2026-11-11 (10b)** (branch `foundation/f2-dissolve`): `gripsack-store`,
+   `-policy`, `-fs` and `-process` dissolved by moving every file to its user
+   — `gripsack-host` absorbs the fs, the process supervisor with its budgets
+   and the store layout and wire codecs; source bundle, trust list and
+   `DeploymentEntry` to exec; rate/retry budgets to fetch; target, command
+   and graph-role tables to the IR (no policy dependency); conda admission to
+   conda; task rules to exec — with no behaviour change;
+   `check_architecture.py` enforces the inward direction and rejects the
+   retired crates; record in §24. Step 10 is done.
 
 Each step's exit runs the matching e2e group (persistence matrix, recovery,
 GC, activation, ownership, merge, rollback, directory evolution).
@@ -2666,3 +2673,153 @@ passed (fmt, clippy `-D warnings`, cargo test; 676 s); `e2e` 712 passed in
 On the host, two `gripsack-process` confinement tests fail (the
 confinement code is untouched here; not re-run on the baseline); they pass in
 the `test` image.
+
+## 24. F2 step 10b record — store, policy, fs and process dissolved
+
+- Branch `foundation/f2-dissolve` from `foundation/f2-directory` at `014dac2`
+  (step 9, with `main` and step 10a merged); date 2026-11-11.
+- Question: can `gripsack-store`, `gripsack-policy`, `gripsack-fs` and
+  `gripsack-process` go — each file moved to the crate that uses it, with no
+  behaviour change — so that dependencies flow strictly inward
+  (`gripsack → exec/fetch → host → kernel`, `ir → kernel`)?
+
+### 24.1 Placement
+
+A move, not a rewrite: every file moved with `git mv` (141 renames, history
+kept); only paths, imports, module declarations and manifests changed, with
+the exceptions in §24.3. Line counts are Rust source lines at `014dac2`.
+
+| Old module | Lines | New home |
+|---|---:|---|
+| `gripsack-fs` (whole crate) | 1767 | `gripsack-host::fs` (`src/fs/`) |
+| `gripsack-process` (whole crate) | 7481 | `gripsack-host::process` (`src/process/`) |
+| `gripsack-policy::process_budget` | 610 | `gripsack-host::process::budget` |
+| `gripsack-policy::operation_budget` | 95 | `gripsack-host::process::operation_budget` (also read by fetch's retry budget) |
+| `gripsack-policy::rate_limit` | 457 | `gripsack-fetch::throttle::rate_limit` |
+| `gripsack-policy::retry_budget` | 284 | `gripsack-fetch` `http::retry_budget` |
+| `gripsack-policy::target` | 160 | `gripsack-ir::target` (IR admission and exec's consumer both read it) |
+| `gripsack-policy::workspace_command` | 196 | `gripsack-ir::workspace_command` (single user) |
+| `gripsack-policy::graph` | 83 | `gripsack-ir::workspace_model::graph::role` (single user; exec reads `GraphRole` through the IR) |
+| `gripsack-policy::conda_admission` | 193 | `gripsack-conda` `client::conda_admission` (single user) |
+| `gripsack-policy::task` + `tests/task.rs` | 69 | `gripsack-exec` `workspace::consumer::task_policy` (+ `task_policy/tests.rs`; single user) |
+| `gripsack-policy` `lib.rs` | 21 | deleted |
+| `gripsack-store::{activation, generations, generation_wire, selection_wire, journal, prior, hash, paths, ownership, jobs, private_state, verification}` and the `Ownership`/`ActivationTrigger`/`EnvironmentOperation` enums of `deployment` | 12179 | `gripsack-host::store` (`src/store/`): the store layout and wire codecs — journal, manifests, selections, generations, activation storage, schedule identities |
+| `gripsack-store::source_bundle` | 3097 | `gripsack-exec::source_bundle` (users: exec and the CLI) |
+| `gripsack-store::trust` | 1568 | `gripsack-exec::trust` (users: exec and the CLI; it builds on the source bundle), with the three schema symlinks its contract tests read |
+| `gripsack-store::DeploymentEntry` | 21 | `gripsack-exec::DeploymentEntry` (`deployment_entry.rs`; its only user) |
+
+Not moved, because the store crate never held them: the GC driver is
+`gripsack-exec/src/gc.rs` since step 4 (§18.3) and moves with the F4 split;
+the lock primitive was `gripsack-fs::FlockGuard`, now `gripsack-host::fs`.
+
+Crates removed: 4 (`gripsack-store`, `gripsack-policy`, `gripsack-fs`,
+`gripsack-process`; 14 → 10 crates). Rust lines by crate, before → after:
+`gripsack-host` 5367 → 27536, `gripsack-exec` 56194 → 61063,
+`gripsack-fetch` 7437 → 8190, `gripsack-ir` 10784 → 11226,
+`gripsack-conda` 4618 → 4813; the four retired crates 28260 → 0. Workspace
+(crates + fuzz) 136402 → 136561: +159 from module headers, rustfmt reflowing
+the rewritten imports and the new `deployment_entry.rs` header.
+
+### 24.2 The architecture rule (`scripts/check_architecture.py`)
+
+- `INWARD`: every workspace member declares the workspace crates it may
+  depend on — kernel ∅; host {kernel}; ir {kernel}; fetch {host, ir,
+  kernel}; conda {fetch, host, ir, kernel}; config {ir}; trace {host};
+  griplint {ir}; exec {conda, config, fetch, host, ir, kernel}; the CLI
+  anything; the fuzz harness {fetch, host, ir}. Any other workspace edge
+  "breaks the inward dependency direction"; a member without an entry is
+  rejected ("no declared ring").
+- `RETIRED`: the four dissolved crates may not come back as a member or a
+  dependency.
+- `EXTERNAL`: closed third-party allowlists for the inner rings — the kernel
+  none; the host `cap-std`, `rustix`, `libc`, `serde`, `serde_json`, `sha2`,
+  `tempfile`, `getrandom`; the IR as before without `gripsack-policy`.
+- rustls-only, member discovery from the workspace globs and the resolved
+  conda-helper graph check are unchanged. The `--self-check` calibration
+  (host→exec, host→fetch through a renamed target-specific dependency,
+  host→ir, ir→host, fetch→exec, exec→CLI, a retired dependency, a network
+  client in the host, a kernel dependency, aliased openssl, fuzz openssl, a
+  target-specific build edge, a revived retired member, an undeclared member,
+  a missing host — each must fail; the clean control must pass) now runs in
+  the `test` image next to the real check.
+
+The direction rule is a Python manifest check, not yet the `cargo-deny`/
+workspace-lint rule §6 names; that conversion stays with F4, when the last
+crates of §6 exist.
+
+### 24.3 Decisions and deviations
+
+1. **`DeploymentEntry` split from the store.** It carries the IR's `Span`; in
+   the host it would have made ring 2 depend on the IR. Nothing in the store
+   reads it (the manifest records `Ownership`, triggers and environment
+   operations, which stay), so it moved to its only user. Its serde shape is
+   unchanged.
+2. **Schedule identities (`jobs`) stay in the store**, not exec: activation
+   records embed `JobId`/`JobRevision` and the adapter process counts.
+3. **`private_state` is now public** (`gripsack_host::store::private_state`):
+   the trust list and the source bundle, now in exec, seal their files
+   through it as before.
+4. **`unsafe` lint.** The host's crate-level `#![forbid(unsafe_code)]` became
+   the same attribute on `journal_run`, `recover` and `storage`: `fs`
+   (`flock`), `process` (its `libc` supervision) and the store's `paths`
+   tests (`set_var`) always used `unsafe` in their own crates.
+5. **Self-re-executing tests name their new paths.** Eleven host tests
+   re-run the test binary on one test by `--exact` name: one in
+   `fs::persistence_model`, one in `process::input`, three in
+   `process::tests::native` and the six `process::tests::task` probes
+   (through `isolated`). The move prefixed their module paths, so the child
+   selected no test: the first five failed, and the six task probes
+   **passed without running their probe** (`isolated` checks only the
+   child's exit status, and a test binary that selects nothing exits 0). Fixed by naming the new
+   paths; listed here because the F4 split will move them again.
+6. **One test shares a binary with forking tests.** `fs`, `process` and
+   `store` tests now run in one test binary. The first `test` gate run
+   failed `fs::tests::duplicate_handle_keeps_lease_locked_until_last_close`:
+   a sibling process test forked while the lease was open, and the child
+   held a copy of the descriptor until its exec. The check that the lease is
+   free after the last close now retries for up to 5 s (a lease that stays
+   held still fails); the product's locking is unchanged.
+7. **One dead variant deleted.** `task::TaskState::Pending` was never
+   constructed in production (only its table test named it); while the
+   policy crate exported it no lint saw that, and in exec's private module
+   the dead-code lint does. Deleted with its test row; no behaviour change.
+8. **One test annotation.** The host now depends on `serde_json`, whose
+   `PartialEq<Value> for u8` made `assert_eq!(lines, [vec![], vec![]])` in a
+   process test ambiguous; the literal now names `Vec::<u8>`.
+9. **The legacy recovery engine stays.** It is about 250 lines of
+   `store/journal/recover.rs` (`reconcile_legacy`, `decide`, the `Engine`
+   switch) plus `marker::cleanup_legacy`, behind the
+   debug-only `GRIPSACK_ENGINE=legacy` switch; it moved with the journal as
+   one file, so deleting it would not make this move simpler. It and its
+   legacy directory-recovery call path are still due for deletion now that
+   0.53.0 shipped the kernel path (§9 F2, §22.7 item 5).
+10. **Not updated:** `verification/guarantees.md` (an evidence ledger already
+   naming files deleted with Verus in steps 1–10a) and earlier plans; they
+   are history. `docker-compose.yml` names no crate; the Dockerfile copies
+   `crates/` whole, so the only Dockerfile change is adding `--self-check`
+   to the architecture check. `proofs/` names only `crates/gripsack-kernel`.
+11. Both lockfiles regenerated by `cargo metadata` (the four crates' entries
+    gone; `gripsack-host` gains their dependencies); the conda helper's
+    measured source digest changes with any edit to the crates it builds, as
+    before.
+
+### 24.4 F2 phase exit
+
+- [x] K1 proved — copy/template/link/remove/restore (§15), blocks (§17),
+  through apply (§21).
+- [x] K2 proved — rollback (§16), apply (§21).
+- [x] K3 proved — commit classification (`selection::classify`, F1 §13).
+- [x] K4, K4′ proved — the GC machine (§18).
+- [x] K5 proved — the managed-block splice (§17).
+- [x] K6 proved — numbering and publication (§20), the flip's admission
+  (§21).
+- [x] No Verus — retired in step 10a (§23).
+- [x] `gripsack-store` gone (this step).
+- [x] `gripsack-policy` gone (this step).
+- [x] `gripsack-fs` gone (this step).
+- [x] `gripsack-process` gone (this step).
+
+Still open from F2 (not part of the exit line): deleting the debug-only
+legacy recovery engine (item 9).
+
+### 24.5 Gates
