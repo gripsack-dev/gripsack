@@ -6,6 +6,9 @@ User-visible changes per release. Design archaeology lives in
 
 ## [Unreleased]
 
+
+## [0.54.0] — The whole apply, proved
+
 ### Fixed
 
 - On a case-insensitive filesystem (WSL's `/mnt/c`, macOS by default),
@@ -78,6 +81,23 @@ User-visible changes per release. Design archaeology lives in
   written could be overwritten.
 - A destination that has become a directory or a special file is refused by
   name with "gripsack cannot journal it; move it aside to continue".
+
+### Internal
+
+- `grip apply` runs as a machine in the proved kernel: every write,
+  release and generation switch is decided there, and the host runs a step
+  only when it is exactly what the kernel commanded. Managed blocks,
+  garbage collection, the journal run, activation and `grip update`'s lock
+  decision are kernel machines too. Directory changes run only when the
+  apply or rollback machine commands them. 579 theorems in Lean, up from
+  157; the guarantees page lists them.
+
+- Verus is gone. One policy kernel moved into the Lean-proved kernel; the
+  rest are plain Rust with tests that catch every mutant Verus used to.
+  `gripsack-store`, `gripsack-policy`, `gripsack-fs` and
+  `gripsack-process` are folded into `gripsack-host` and their users, and
+  a build check rejects dependencies that point outward.
+
 
 ## [0.53.0] — Proved ownership and rollback
 

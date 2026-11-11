@@ -1563,7 +1563,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-conda"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "archspec",
  "astral-ini",
@@ -1594,7 +1594,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-conda-helper"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "base64 0.22.1",
  "gripsack-conda",
@@ -1622,7 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fetch"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "bzip2",
  "crc32fast",
@@ -1652,7 +1652,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-host"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "cap-std",
  "getrandom 0.4.3",
@@ -1667,7 +1667,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-ir"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1678,7 +1678,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-kernel"
-version = "0.53.0"
+version = "0.54.0"
 
 [[package]]
 name = "h2"
