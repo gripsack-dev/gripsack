@@ -1,10 +1,7 @@
 use super::{fail, values};
 use crate::workspace_model::graph::{bind_reference, references};
 use crate::{Diagnostic, Span, codes, workspace_model::*};
-use gripsack_policy::{
-    graph::{build_closure, roles::GraphRole},
-    target::supports_target,
-};
+use gripsack_policy::target::supports_target;
 use std::collections::BTreeMap;
 
 pub(super) fn check<'a>(
@@ -28,7 +25,6 @@ pub(super) fn check<'a>(
         check_inputs_and_context(output, catalog, inputs, &attached, out);
     }
     let mut dependencies = vec![Vec::new(); names.len()];
-    let mut production = vec![Vec::new(); names.len()];
     for edge in &edges {
         let Some(target) = catalog.get(edge.to) else {
             fail(
@@ -129,49 +125,19 @@ pub(super) fn check<'a>(
             );
             continue;
         };
-        if bound.dependency {
+        if edge.role.is_dependency() {
             dependencies[bound.from.position()].push(bound.to.position());
         }
-        if bound.decision.build {
-            production[bound.from.position()].push(bound.to.position());
-        }
-        if edge.role == GraphRole::Validation && !bound.decision.required_validation {
-            fail(
-                out,
-                codes::REQUIRED_WORKSPACE_EDGE_MISSING,
-                edge.at,
-                "a required publication/invocation check lost its validation role",
-            );
-        }
     }
-    if out.is_empty() {
-        if let Some(cycle) = cycle(&dependencies) {
-            fail(
-                out,
-                codes::WORKSPACE_CYCLE,
-                catalog[names[cycle]].span(),
-                "workspace dependency cycle",
-            );
-        } else {
-            let mut closures = BTreeMap::new();
-            for edge in &edges {
-                if matches!(edge.role, GraphRole::Production | GraphRole::BuildInput) {
-                    let from = indices[edge.from.name()];
-                    let to = indices[edge.to];
-                    let closure = closures
-                        .entry(from)
-                        .or_insert_with(|| build_closure(names.len(), &production, from));
-                    if !closure.contains(&to) {
-                        fail(
-                            out,
-                            codes::REQUIRED_WORKSPACE_EDGE_MISSING,
-                            edge.at,
-                            "a declared producer/input is absent from the admitted production closure",
-                        );
-                    }
-                }
-            }
-        }
+    if out.is_empty()
+        && let Some(cycle) = cycle(&dependencies)
+    {
+        fail(
+            out,
+            codes::WORKSPACE_CYCLE,
+            catalog[names[cycle]].span(),
+            "workspace dependency cycle",
+        );
     }
 }
 

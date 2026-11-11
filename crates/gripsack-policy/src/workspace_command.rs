@@ -1,58 +1,71 @@
 //! Context admission for the current workspace command grammar. The decoded
 //! variants, not filenames or cache flags, determine which references may cross
 //! each boundary. Effects and executable-byte acquisition remain in adapters.
-use vstd::prelude::*;
 
-verus! {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionContext { Host, IsolatedLinux }
+pub enum ExecutionContext {
+    Host,
+    IsolatedLinux,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DirectoryOrigin { Literal, Artifact, LiveHost, ProductionSource, StagingOutput }
+pub enum DirectoryOrigin {
+    Literal,
+    Artifact,
+    LiveHost,
+    ProductionSource,
+    StagingOutput,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArgumentPosition { Argument, Environment, Interpreter }
+pub enum ArgumentPosition {
+    Argument,
+    Environment,
+    Interpreter,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArgumentOrigin { Literal, Artifact, CapturedInput, PackageCommand, ProductionSource, StagingOutput }
+pub enum ArgumentOrigin {
+    Literal,
+    Artifact,
+    CapturedInput,
+    PackageCommand,
+    ProductionSource,
+    StagingOutput,
+}
 /// Production owns staging; artifact and explicitly attached file checks
 /// receive only their subject binding. A deployed file subject is observed
 /// host state, not an immutable package or writable production output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommandOwner { Production, ImmutableSubject, FileSubject, Invocation }
-
-pub open spec fn permitted_production_binding(owner: CommandOwner, origin: ArgumentOrigin) -> bool {
-    owner == CommandOwner::Production
-        || ((owner == CommandOwner::ImmutableSubject || owner == CommandOwner::FileSubject)
-            && origin == ArgumentOrigin::ProductionSource)
-        || (origin != ArgumentOrigin::ProductionSource && origin != ArgumentOrigin::StagingOutput)
+pub enum CommandOwner {
+    Production,
+    ImmutableSubject,
+    FileSubject,
+    Invocation,
 }
 
-pub fn admit_production_binding(owner: CommandOwner, origin: ArgumentOrigin) -> (admitted: bool)
-    ensures admitted == permitted_production_binding(owner, origin),
-{
+/// Only production may bind its own staging output; subjects may read a
+/// production source; anyone may bind an origin that is neither.
+pub fn admit_production_binding(owner: CommandOwner, origin: ArgumentOrigin) -> bool {
     matches!(owner, CommandOwner::Production)
-        || (matches!(owner, CommandOwner::ImmutableSubject | CommandOwner::FileSubject)
-            && matches!(origin, ArgumentOrigin::ProductionSource))
-        || !matches!(origin, ArgumentOrigin::ProductionSource | ArgumentOrigin::StagingOutput)
+        || (matches!(
+            owner,
+            CommandOwner::ImmutableSubject | CommandOwner::FileSubject
+        ) && matches!(origin, ArgumentOrigin::ProductionSource))
+        || !matches!(
+            origin,
+            ArgumentOrigin::ProductionSource | ArgumentOrigin::StagingOutput
+        )
 }
 
-pub open spec fn permitted_directory(context: ExecutionContext, origin: DirectoryOrigin) -> bool {
-    !(context == ExecutionContext::IsolatedLinux && origin == DirectoryOrigin::LiveHost)
-}
-pub fn admit_directory(context: ExecutionContext, origin: DirectoryOrigin) -> (admitted: bool)
-    ensures admitted == permitted_directory(context, origin),
-{
-    !matches!((context, origin), (ExecutionContext::IsolatedLinux, DirectoryOrigin::LiveHost))
+/// Isolated execution never sees a live host directory.
+pub fn admit_directory(context: ExecutionContext, origin: DirectoryOrigin) -> bool {
+    !matches!(
+        (context, origin),
+        (ExecutionContext::IsolatedLinux, DirectoryOrigin::LiveHost)
+    )
 }
 
-pub open spec fn permitted_argument(position: ArgumentPosition, origin: ArgumentOrigin) -> bool {
-    match position {
-        ArgumentPosition::Argument => true,
-        ArgumentPosition::Environment => origin != ArgumentOrigin::PackageCommand,
-        ArgumentPosition::Interpreter => origin == ArgumentOrigin::PackageCommand,
-    }
-}
-pub fn admit_argument(position: ArgumentPosition, origin: ArgumentOrigin) -> (admitted: bool)
-    ensures admitted == permitted_argument(position, origin),
-{
+/// Interpreters come only from package commands; package commands never
+/// enter the environment.
+pub fn admit_argument(position: ArgumentPosition, origin: ArgumentOrigin) -> bool {
     match position {
         ArgumentPosition::Argument => true,
         ArgumentPosition::Environment => !matches!(origin, ArgumentOrigin::PackageCommand),
@@ -60,33 +73,124 @@ pub fn admit_argument(position: ArgumentPosition, origin: ArgumentOrigin) -> (ad
     }
 }
 
-pub open spec fn strict_options(options: Seq<String>) -> bool {
-    options.len() == 4
-        && options[0]@ == "-e"@
-        && options[1]@ == "-u"@
-        && options[2]@ == "-o"@
-        && options[3]@ == "pipefail"@
-}
 /// Admit the literal, ordered strict option set. Executable acquisition and
 /// propagation of these options into the launcher are separate adapter duties.
-pub fn admit_bash_options(options: &[String]) -> (admitted: bool)
-    ensures admitted == strict_options(options@),
-{
-    options.len() == 4 && options[0].as_str() == "-e" && options[1].as_str() == "-u"
-        && options[2].as_str() == "-o" && options[3].as_str() == "pipefail"
+pub fn admit_bash_options(options: &[String]) -> bool {
+    options == ["-e", "-u", "-o", "pipefail"]
 }
 
-pub proof fn interpreter_and_environment_roles_are_disjoint(origin: ArgumentOrigin)
-    ensures !(permitted_argument(ArgumentPosition::Interpreter, origin)
-        && permitted_argument(ArgumentPosition::Environment, origin)),
-{}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-pub proof fn isolated_execution_never_admits_live_host_directory(origin: DirectoryOrigin)
-    requires permitted_directory(ExecutionContext::IsolatedLinux, origin),
-    ensures origin != DirectoryOrigin::LiveHost,
-{}
+    const CONTEXTS: [ExecutionContext; 2] =
+        [ExecutionContext::Host, ExecutionContext::IsolatedLinux];
+    const DIRECTORIES: [DirectoryOrigin; 5] = [
+        DirectoryOrigin::Literal,
+        DirectoryOrigin::Artifact,
+        DirectoryOrigin::LiveHost,
+        DirectoryOrigin::ProductionSource,
+        DirectoryOrigin::StagingOutput,
+    ];
+    const POSITIONS: [ArgumentPosition; 3] = [
+        ArgumentPosition::Argument,
+        ArgumentPosition::Environment,
+        ArgumentPosition::Interpreter,
+    ];
+    const ORIGINS: [ArgumentOrigin; 6] = [
+        ArgumentOrigin::Literal,
+        ArgumentOrigin::Artifact,
+        ArgumentOrigin::CapturedInput,
+        ArgumentOrigin::PackageCommand,
+        ArgumentOrigin::ProductionSource,
+        ArgumentOrigin::StagingOutput,
+    ];
+    const OWNERS: [CommandOwner; 4] = [
+        CommandOwner::Production,
+        CommandOwner::ImmutableSubject,
+        CommandOwner::FileSubject,
+        CommandOwner::Invocation,
+    ];
 
-pub proof fn file_subject_cannot_acquire_writable_output()
-    ensures !permitted_production_binding(CommandOwner::FileSubject, ArgumentOrigin::StagingOutput),
-{}
+    #[test]
+    fn isolated_execution_never_admits_a_live_host_directory() {
+        for context in CONTEXTS {
+            for origin in DIRECTORIES {
+                let expected = !(context == ExecutionContext::IsolatedLinux
+                    && origin == DirectoryOrigin::LiveHost);
+                assert_eq!(
+                    admit_directory(context, origin),
+                    expected,
+                    "{context:?} {origin:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn interpreter_and_environment_roles_are_disjoint() {
+        for position in POSITIONS {
+            for origin in ORIGINS {
+                let expected = match position {
+                    ArgumentPosition::Argument => true,
+                    ArgumentPosition::Environment => origin != ArgumentOrigin::PackageCommand,
+                    ArgumentPosition::Interpreter => origin == ArgumentOrigin::PackageCommand,
+                };
+                assert_eq!(
+                    admit_argument(position, origin),
+                    expected,
+                    "{position:?} {origin:?}"
+                );
+            }
+        }
+        for origin in ORIGINS {
+            assert!(
+                !(admit_argument(ArgumentPosition::Interpreter, origin)
+                    && admit_argument(ArgumentPosition::Environment, origin)),
+                "{origin:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_production_binds_its_staging_output() {
+        for owner in OWNERS {
+            for origin in ORIGINS {
+                let expected = owner == CommandOwner::Production
+                    || (matches!(
+                        owner,
+                        CommandOwner::ImmutableSubject | CommandOwner::FileSubject
+                    ) && origin == ArgumentOrigin::ProductionSource)
+                    || !matches!(
+                        origin,
+                        ArgumentOrigin::ProductionSource | ArgumentOrigin::StagingOutput
+                    );
+                assert_eq!(
+                    admit_production_binding(owner, origin),
+                    expected,
+                    "{owner:?} {origin:?}"
+                );
+            }
+        }
+        assert!(!admit_production_binding(
+            CommandOwner::FileSubject,
+            ArgumentOrigin::StagingOutput
+        ));
+    }
+
+    #[test]
+    fn bash_options_are_exactly_the_strict_set_in_order() {
+        let strict = ["-e", "-u", "-o", "pipefail"].map(String::from);
+        assert!(admit_bash_options(&strict));
+        for wrong in [
+            &["-e", "-e", "-o", "pipefail"][..],
+            &["-u", "-e", "-o", "pipefail"],
+            &["-e", "-u", "-o"],
+            &["-e", "-u", "-o", "pipefail", "-x"],
+            &[],
+        ] {
+            let wrong: Vec<String> = wrong.iter().map(|o| o.to_string()).collect();
+            assert!(!admit_bash_options(&wrong), "{wrong:?}");
+        }
+    }
 }

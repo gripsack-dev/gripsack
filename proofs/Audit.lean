@@ -49,7 +49,12 @@ what it returned and nothing is rolled back; a superseded batch runs nothing;
 the receipt follows every intent and precedes the pointer's removal; and
 generation numbering (K6): an allocated number exceeds the floor, the floor
 never lowers, a publication is the allocated number above the floor, not yet
-published, under a fresh transaction, and vacuous applies publish nothing. -/
+published, under a fresh transaction, and vacuous applies publish nothing;
+and update accounting (F2 step 10a): a report is admitted only at its own
+position while entries remain and is counted under its own disposition, a
+summary exists only for a survey that counted every selected entry, a failure
+outranks a change, and the lock is published only in publish mode from a
+complete survey with no failure and at least one change. -/
 def claims : List Name := [
   ``Gripsack.Kernel.classify_committed_iff,
   ``Gripsack.Kernel.classify_uncommitted_iff,
@@ -145,6 +150,13 @@ def claims : List Name := [
   ``Gripsack.Kernel.Apply.apply_vacuous_untouched,
   ``Gripsack.Kernel.Apply.apply_refused_aborts,
   ``Gripsack.Kernel.Apply.apply_aborted_terminal,
+  -- update accounting and lock publication (F2 step 10a)
+  ``Gripsack.Kernel.UpdateSurvey.record_spec,
+  ``Gripsack.Kernel.UpdateSurvey.finish_spec,
+  ``Gripsack.Kernel.UpdateSurvey.finish_complete,
+  ``Gripsack.Kernel.UpdateSurvey.outcome_spec,
+  ``Gripsack.Kernel.UpdateSurvey.publishes_lock_spec,
+  ``Gripsack.Kernel.UpdateSurvey.lock_published_only_complete,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/

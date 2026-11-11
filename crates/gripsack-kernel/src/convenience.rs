@@ -1856,3 +1856,52 @@ impl fmt::Debug for ApplyState {
             .finish()
     }
 }
+
+// ---- update accounting (F2 step 10) -----------------------------------------
+
+use crate::update_survey::{
+    SurveyProgress, UpdateCheckOutcome, UpdateDisposition, UpdateMode, UpdateSummary,
+};
+
+copy_impls!(UpdateMode, UpdateDisposition, UpdateCheckOutcome);
+
+same_eq!(
+    UpdateMode => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    UpdateDisposition => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+    UpdateCheckOutcome => |a, b| core::mem::discriminant(a) == core::mem::discriminant(b),
+);
+
+unit_debug!(
+    UpdateMode { Publish, Check },
+    UpdateDisposition {
+        Unchanged,
+        Changed,
+        Skipped,
+        Failed
+    },
+    UpdateCheckOutcome {
+        Current,
+        ChangesAvailable,
+        Incomplete
+    },
+);
+
+impl fmt::Debug for SurveyProgress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SurveyProgress")
+            .field("selected", &self.selected())
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for UpdateSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UpdateSummary")
+            .field("selected", &self.selected())
+            .field("unchanged", &self.unchanged())
+            .field("changed", &self.changed())
+            .field("skipped", &self.skipped())
+            .field("failed", &self.failed())
+            .finish()
+    }
+}

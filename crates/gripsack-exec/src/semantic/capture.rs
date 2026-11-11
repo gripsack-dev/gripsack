@@ -5,7 +5,7 @@ use gripsack_ir::{
         AcquisitionSource, WorkspaceOutput, WorkspaceProducer, graph, lock::WorkspaceLock,
     },
 };
-use gripsack_policy::graph::roles::GraphRole;
+use gripsack_policy::graph::GraphRole;
 use gripsack_store::{GenerationId, generations};
 use serde_json::Value;
 use std::{collections::BTreeSet, path::Path};

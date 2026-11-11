@@ -27,10 +27,10 @@ docker compose run --build --rm diagram   # render docs/diagrams/*.d2
 
 The required gates are `.ci/pilot.json` (test, ts-test, e2e, audit,
 package, smoke), run by the local Buildbot (see Workflow). Optional and only
-when asked: `model` (TLC), `tlaps`, `verify` (Verus), `fuzz`,
-`scripts/check_reproducible.sh`. `tlaps` and `verify` are being retired by
-plan/0056 as the Lean proofs replace them; don't extend them. Never
-dispatch fuzz without an owner request.
+when asked: `model` (TLC), `tlaps`, `fuzz`,
+`scripts/check_reproducible.sh`. `tlaps` is being retired by plan/0056 as
+the Lean proofs replace it; don't extend it. Never dispatch fuzz without an
+owner request.
 
 `--build` after every source change or the image runs stale code. Host
 `cargo test` / `pytest e2e` are fine for fast iteration; always finish
@@ -192,8 +192,8 @@ stored data needed for rollback and integrity retains its original meaning.
 - **Kernel code** (`gripsack-kernel`, once it exists): no IO, no floats, no
   `dyn`, no dependencies. Change it together with its Lean proofs; the
   `proofs` gate checks the committed translation has not drifted.
-- **One proof language.** Don't add new Verus contracts, TLAPS proofs or
-  hand-mirrored Rust "model" explorers. Never close a theorem with `sorry`
+- **One proof language.** Verus is gone (plan/0056 F2 step 10a). Don't add
+  TLAPS proofs or hand-mirrored Rust "model" explorers. Never close a theorem with `sorry`
   or an axiom that assumes the claim; the axiom audit rejects it.
 - **The survival rule.** An artifact stays only if it is a machine-checked
   proof, a test guarding user-visible behaviour, or a counterexample finder

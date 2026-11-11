@@ -486,6 +486,48 @@ MUTANTS = (
            "        Commit::Refuse(why) => refuse(state, Refusal::Unpublishable(why)),",
            "        Commit::Refuse(_) => {\n            state.phase = Phase::Publishing;\n            state.commit = Some(facts);\n            (state, Command::Publish(facts.allocated))\n        }",
            ("Gripsack.Kernel.Apply.on_commit_spec",)),
+
+    # ---- update accounting and lock publication (F2 step 10a) ----
+    # a report out of position is admitted (a skipped or repeated entry counts)
+    Mutant("survey-report-position", "update_survey.rs",
+           "        if self.invalid || reported != counted || counted == self.selected {",
+           "        if self.invalid || counted == self.selected {",
+           ("Gripsack.Kernel.UpdateSurvey.record_spec",)),
+    # a report beyond the selection is admitted (counted exceeds selected)
+    Mutant("survey-selected-bound", "update_survey.rs",
+           "        if self.invalid || reported != counted || counted == self.selected {",
+           "        if self.invalid || reported != counted {",
+           ("Gripsack.Kernel.UpdateSurvey.record_spec",)),
+    # a failed entry is counted as skipped, so the lock could be published
+    Mutant("survey-failure-accounting", "update_survey.rs",
+           "            UpdateDisposition::Failed => self.failed += 1,",
+           "            UpdateDisposition::Failed => self.skipped += 1,",
+           ("Gripsack.Kernel.UpdateSurvey.record_spec",)),
+    # a rejected report does not poison the survey
+    Mutant("survey-invalid-revival", "update_survey.rs",
+           "            self.invalid = true;",
+           "            self.invalid = false;",
+           ("Gripsack.Kernel.UpdateSurvey.record_spec",)),
+    # a partial survey yields a summary
+    Mutant("survey-partial-finish", "update_survey.rs",
+           "        if self.invalid || reported != self.selected || self.counted() != self.selected {",
+           "        if self.invalid || reported != self.selected {",
+           ("Gripsack.Kernel.UpdateSurvey.finish_spec", "Gripsack.Kernel.UpdateSurvey.finish_complete")),
+    # a change hides a failure in the outcome
+    Mutant("survey-error-precedence", "update_survey.rs",
+           "        if self.counts.failed != 0 {",
+           "        if self.counts.failed != 0 && self.counts.changed == 0 {",
+           ("Gripsack.Kernel.UpdateSurvey.outcome_spec",)),
+    # `--check` publishes the lock
+    Mutant("survey-check-publication", "update_survey.rs",
+           "            UpdateMode::Check => false,",
+           "            UpdateMode::Check => self.counts.failed == 0 && self.counts.changed != 0,",
+           ("Gripsack.Kernel.UpdateSurvey.publishes_lock_spec",)),
+    # an unchanged survey rewrites the lock
+    Mutant("survey-unchanged-publication", "update_survey.rs",
+           "            UpdateMode::Publish => self.counts.failed == 0 && self.counts.changed != 0,",
+           "            UpdateMode::Publish => self.counts.failed == 0,",
+           ("Gripsack.Kernel.UpdateSurvey.publishes_lock_spec",)),
 )
 
 # lake reports `error: <path>.lean:<line>:<col>: <message>`
