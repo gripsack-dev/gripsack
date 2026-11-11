@@ -50,6 +50,12 @@ the receipt follows every intent and precedes the pointer's removal; and
 generation numbering (K6): an allocated number exceeds the floor, the floor
 never lowers, a publication is the allocated number above the floor, not yet
 published, under a fresh transaction, and vacuous applies publish nothing;
+and the directory fence (F2 step 9, relative to premise D): no whole-object
+write of apply or rollback targets a destination the directory domain holds,
+no directory step is commanded for a destination a deploy (or a rollback
+restore) claims, a clear only removes gripsack's own write, a step is
+reported settled only when the host settled it and a refused step aborts,
+and no item is accepted out of stage order;
 and update accounting (F2 step 10a): a report is admitted only at its own
 position while entries remain and is counted under its own disposition, a
 summary exists only for a survey that counted every selected entry, a failure
@@ -150,6 +156,20 @@ def claims : List Name := [
   ``Gripsack.Kernel.Apply.apply_vacuous_untouched,
   ``Gripsack.Kernel.Apply.apply_refused_aborts,
   ``Gripsack.Kernel.Apply.apply_aborted_terminal,
+  ``Gripsack.Kernel.Apply.decide_apply_clear_refused,
+  ``Gripsack.Kernel.Apply.apply_write_unheld,
+  ``Gripsack.Kernel.Apply.apply_directory_unclaimed,
+  ``Gripsack.Kernel.Apply.apply_directory_settled_answers,
+  ``Gripsack.Kernel.Apply.apply_directory_refusal_aborts,
+  ``Gripsack.Kernel.Apply.apply_unit_out_of_stage_aborts,
+  ``Gripsack.Kernel.Apply.apply_directory_out_of_stage_aborts,
+  ``Gripsack.Kernel.Rollback.decide_restore_clear_refused,
+  ``Gripsack.Kernel.Rollback.rollback_write_unheld,
+  ``Gripsack.Kernel.Rollback.rollback_directory_unclaimed,
+  ``Gripsack.Kernel.Rollback.rollback_directory_settled_answers,
+  ``Gripsack.Kernel.Rollback.rollback_directory_refusal_aborts,
+  ``Gripsack.Kernel.Rollback.rollback_unit_out_of_stage_aborts,
+  ``Gripsack.Kernel.Rollback.rollback_directory_out_of_stage_aborts,
   -- update accounting and lock publication (F2 step 10a)
   ``Gripsack.Kernel.UpdateSurvey.record_spec,
   ``Gripsack.Kernel.UpdateSurvey.finish_spec,

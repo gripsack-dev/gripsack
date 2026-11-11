@@ -21,8 +21,15 @@
 //!   variables no longer render it), or when the write would land inside a
 //!   published generation's directory.
 //!
-//! Units the host settles itself (managed blocks, directory transitions)
-//! are delegated and reported settled or unrestorable.
+//! Units the host settles itself (managed blocks) are delegated and reported
+//! settled or unrestorable. The directory domain is a typed sub-protocol
+//! (step 9, [`crate::directory`]): its receipts are bound, the gripsack
+//! files a shape change needs gone are cleared as `Cleared` units decided
+//! here (gripsack's own write is removed, anything else refuses), shapes are
+//! changed by commanded steps, the target's nodes are held (a unit there is
+//! the domain's, and one the target writes there aborts), and a receipt the
+//! target does not keep is retired once every unit settled. Items come in
+//! stage order; an item out of order aborts.
 //!
 //! The selection flips only after every unit was reported settled, only to
 //! the target under a transaction that differs from the one being replaced,
@@ -33,19 +40,24 @@
 //! target generation's recorded identity for the unit under decision (K2),
 //! into absence or over gripsack's own current write (K1, no consent), never
 //! inside a generation directory, and a unit is reported restored only when
-//! the landed object is that identity; the flip is issued only after every
-//! unit was reported, and carries the planned selection with a fresh
-//! transaction.
+//! the landed object is that identity; no write targets a destination the
+//! directory domain holds, and no directory step is commanded for a
+//! destination whose target record a unit writes; a clear only removes
+//! gripsack's own write; the flip is issued only after every unit and every
+//! directory step was reported settled, and carries the planned selection
+//! with a fresh transaction. Relative to premise D of [`crate::directory`].
 //!
 //! Aeneas shape (lib.rs): no derives (impls in `convenience.rs`), equality as
 //! explicit `same` functions, owned `Copy` facts, no closures; counters
 //! advance with `checked_add`, so every step is total.
+use crate::directory::{Action, DirectoryFacts, Stage, commands, names, ordered, stage};
 use crate::ids::DestId;
 use crate::ownership::{
     Consent, Decision as UnitDecision, Recorded, Refusal as UnitRefusal, TakeOver, decide_unit,
 };
 use crate::recover::{Failure, Ident, Intended, Live, Route};
 use crate::selection::SelectionIdentity;
+use alloc::vec::Vec;
 
 /// Where a unit's destination lies, as the host classified its canonical
 /// path.
@@ -77,6 +89,22 @@ pub enum Target {
     /// The target kept a user's object here (preserved drift): it records
     /// no write, and rollback leaves the destination alone.
     Preserved,
+    /// A directory shape change needs this destination empty: gripsack's own
+    /// current write goes and nothing comes back. The user's object, or an
+    /// ownership epoch that would restore an origin (`Obj`), refuses the
+    /// rollback. (A later unit may install the target's record here again,
+    /// in the new shape.)
+    Cleared(Intended),
+}
+
+/// When a unit is settled relative to the directory shape changes.
+pub enum When {
+    /// Before: its destination lies where a target receipt's shape change
+    /// takes the current namespace away (a clear, or a release below a
+    /// borrowed directory the target no longer keeps).
+    BeforeShape,
+    /// After the shape changes and the holds (every other unit).
+    AfterShape,
 }
 
 /// One unit, as the host decoded it from both manifests.
@@ -87,6 +115,7 @@ pub struct UnitFacts {
     /// gripsack's record in the current generation (its lineage).
     pub current: Recorded,
     pub target: Target,
+    pub when: When,
 }
 
 /// Whether the target generation retains the shell profile its selection
@@ -117,9 +146,14 @@ pub enum Settled {
     /// The target recorded preserved drift: the destination is not
     /// gripsack's to restore.
     Untouched,
-    /// The host's own domain (managed blocks, directory transitions)
-    /// settled it.
+    /// The host's own domain (managed blocks) settled it.
     Delegated,
+    /// The directory domain holds the destination (a node of a target
+    /// receipt): nothing for the leaf protocol to restore; a `Hold` item
+    /// records the hold.
+    Held,
+    /// A directory step settled.
+    Directory,
 }
 
 /// The per-unit decision.
@@ -154,6 +188,17 @@ pub enum Refusal {
     Drifted { unit: u32, dest: DestId },
     /// The write did not land the intended identity.
     NotRestored { unit: u32, dest: DestId },
+    /// An item out of stage order.
+    Order { unit: u32 },
+    /// A unit that would write or clear a destination the directory domain
+    /// holds, or a directory step at a destination whose target record a
+    /// unit writes.
+    Overlap { unit: u32, dest: DestId },
+    /// A clear that may not empty its destination (the user's object, or an
+    /// origin its epoch would restore).
+    Blocked { unit: u32, dest: DestId },
+    /// The directory sub-protocol could not settle a step.
+    Directory { unit: u32, dest: DestId },
     /// A counter overflowed.
     Malformed,
     /// The host failed to execute a command.
@@ -184,6 +229,13 @@ pub enum Command {
         unit: u32,
         dest: DestId,
     },
+    /// Run one step of the directory sub-protocol for the receipt at
+    /// `dest`: answer `Done` when settled, `Refused` when it cannot be.
+    Directory {
+        unit: u32,
+        dest: DestId,
+        action: Action,
+    },
     /// Record how a unit was settled (the host's note); answer `Done`.
     Report {
         unit: u32,
@@ -200,6 +252,8 @@ pub enum Event {
     Start,
     PlanRead(PlanFacts),
     UnitRead(UnitFacts),
+    /// The next item is a directory step (or hold).
+    DirectoryRead(DirectoryFacts),
     Observed {
         dest: DestId,
         live: Live,
@@ -208,7 +262,8 @@ pub enum Event {
         live: Live,
     },
     Done,
-    /// A delegated unit cannot be restored.
+    /// A delegated unit cannot be restored, or a directory step cannot be
+    /// settled.
     Refused,
     Failed(Failure),
 }
@@ -220,6 +275,7 @@ pub enum Phase {
     Observing,
     Writing,
     Delegating,
+    Directing,
     Reporting,
     Flipping,
     Finished,
@@ -234,6 +290,14 @@ pub struct RollbackState {
     pub unit: Option<UnitFacts>,
     /// What the outstanding write installs.
     pub install: Option<Intended>,
+    /// The stage of the last item read.
+    pub stage: Stage,
+    /// Every destination the directory domain holds.
+    pub holds: Vec<DestId>,
+    /// Every destination a unit wrote the target's record to (or will).
+    pub claimed: Vec<DestId>,
+    /// The directory item under execution.
+    pub step: Option<DirectoryFacts>,
 }
 
 impl RollbackState {
@@ -251,6 +315,10 @@ impl RollbackState {
             index: 0,
             unit: None,
             install: None,
+            stage: Stage::Opening,
+            holds: Vec::new(),
+            claimed: Vec::new(),
+            step: None,
         }
     }
 }
@@ -270,6 +338,7 @@ fn authority(target: &Target) -> Option<Intended> {
         Target::Released(_) => Some(Intended::Removed),
         Target::Wrote { ident, .. } => Some(Intended::Obj(*ident)),
         Target::Preserved => None,
+        Target::Cleared(_) => Some(Intended::Removed),
     }
 }
 
@@ -279,6 +348,10 @@ pub fn install(target: &Target) -> Option<Intended> {
         Target::Released(origin) => Some(*origin),
         Target::Wrote { ident, .. } => Some(Intended::Obj(*ident)),
         Target::Preserved => None,
+        Target::Cleared(origin) => match origin {
+            Intended::Removed => Some(Intended::Removed),
+            Intended::Obj(_) => None,
+        },
     }
 }
 
@@ -291,7 +364,25 @@ fn retained(target: &Target) -> bool {
             Bytes::Missing => false,
         },
         Target::Preserved => false,
+        Target::Cleared(_) => true,
     }
+}
+
+/// Whether the unit clears its destination for a directory change.
+fn clears(target: &Target) -> bool {
+    match target {
+        Target::Cleared(_) => true,
+        Target::Released(_) => false,
+        Target::Wrote { .. } => false,
+        Target::Preserved => false,
+    }
+}
+
+fn blocked(index: u32, unit: &UnitFacts) -> Restore {
+    Restore::Refuse(Refusal::Blocked {
+        unit: index,
+        dest: unit.dest,
+    })
 }
 
 fn writable(place: &Place) -> bool {
@@ -310,7 +401,13 @@ pub fn decide_restore(index: u32, unit: &UnitFacts, live: &Live) -> Restore {
         None => Restore::Leave(Settled::Untouched),
         Some(asked) => match decide_unit(&unit.current, live, &asked, &withheld()) {
             UnitDecision::Satisfied => Restore::Leave(Settled::Already),
-            UnitDecision::Refuse(why) => Restore::Leave(Settled::Kept(why)),
+            UnitDecision::Refuse(why) => {
+                if clears(&unit.target) {
+                    blocked(index, unit)
+                } else {
+                    Restore::Leave(Settled::Kept(why))
+                }
+            }
             UnitDecision::Create | UnitDecision::ReplaceOwn | UnitDecision::TakeOver => {
                 writing(index, unit)
             }
@@ -322,7 +419,13 @@ pub fn decide_restore(index: u32, unit: &UnitFacts, live: &Live) -> Restore {
 /// identity, from retained bytes, outside generation directories.
 fn writing(index: u32, unit: &UnitFacts) -> Restore {
     match install(&unit.target) {
-        None => Restore::Leave(Settled::Untouched),
+        None => {
+            if clears(&unit.target) {
+                blocked(index, unit)
+            } else {
+                Restore::Leave(Settled::Untouched)
+            }
+        }
         Some(intended) => {
             if !retained(&unit.target) {
                 Restore::Refuse(Refusal::Unrestorable {
@@ -394,6 +497,7 @@ fn proceed(mut state: RollbackState) -> (RollbackState, Command) {
 fn advance(mut state: RollbackState) -> (RollbackState, Command) {
     state.unit = None;
     state.install = None;
+    state.step = None;
     match state.index.checked_add(1) {
         None => refuse(state, Refusal::Malformed),
         Some(next) => {
@@ -427,9 +531,62 @@ fn on_plan(mut state: RollbackState, plan: PlanFacts) -> (RollbackState, Command
     }
 }
 
+/// The stage a unit belongs to: a clear, or any unit the host settles
+/// before the shape changes, comes in the clearing stage.
+pub fn unit_stage(target: &Target, when: &When) -> Stage {
+    if clears(target) {
+        Stage::Clearing
+    } else {
+        match when {
+            When::BeforeShape => Stage::Clearing,
+            When::AfterShape => Stage::Units,
+        }
+    }
+}
+
+/// Whether the target records a write here: the unit claims the
+/// destination for the leaf protocol.
+fn records_write(target: &Target) -> bool {
+    match target {
+        Target::Wrote { .. } => true,
+        Target::Cleared(_) => false,
+        Target::Released(_) => false,
+        Target::Preserved => false,
+    }
+}
+
+/// Whether the unit would write the target's record or clear the
+/// destination (a write the directory domain's holds forbid).
+fn writes_target(target: &Target) -> bool {
+    match target {
+        Target::Wrote { .. } => true,
+        Target::Cleared(_) => true,
+        Target::Released(_) => false,
+        Target::Preserved => false,
+    }
+}
+
 fn on_unit(mut state: RollbackState, facts: UnitFacts) -> (RollbackState, Command) {
     let unit = state.index;
     let dest = facts.dest;
+    let next = unit_stage(&facts.target, &facts.when);
+    if !ordered(&state.stage, &next) {
+        return refuse(state, Refusal::Order { unit });
+    }
+    state.stage = next;
+    if names(&state.holds, dest) {
+        if writes_target(&facts.target) {
+            return refuse(state, Refusal::Overlap { unit, dest });
+        }
+        state.unit = Some(facts);
+        return report(state, dest, Settled::Held);
+    }
+    if records_write(&facts.target) {
+        if state.claimed.len() == usize::MAX {
+            return refuse(state, Refusal::Malformed);
+        }
+        state.claimed.push(dest);
+    }
     let route = facts.route;
     state.unit = Some(facts);
     match route {
@@ -441,6 +598,53 @@ fn on_unit(mut state: RollbackState, facts: UnitFacts) -> (RollbackState, Comman
             state.phase = Phase::Observing;
             (state, Command::Observe { unit, dest })
         }
+    }
+}
+
+/// A directory item: command its step (or record its hold), in stage order,
+/// never for a destination whose target record a unit writes.
+fn on_directory(mut state: RollbackState, facts: DirectoryFacts) -> (RollbackState, Command) {
+    let unit = state.index;
+    let dest = facts.dest;
+    let next = stage(&facts.action);
+    if !ordered(&state.stage, &next) {
+        return refuse(state, Refusal::Order { unit });
+    }
+    state.stage = next;
+    if names(&state.claimed, dest) {
+        return refuse(state, Refusal::Overlap { unit, dest });
+    }
+    let action = facts.action;
+    state.step = Some(facts);
+    if commands(&action) {
+        state.phase = Phase::Directing;
+        (state, Command::Directory { unit, dest, action })
+    } else {
+        if state.holds.len() == usize::MAX {
+            return refuse(state, Refusal::Malformed);
+        }
+        state.holds.push(dest);
+        report(state, dest, Settled::Held)
+    }
+}
+
+fn on_directed(state: RollbackState, event: Event) -> (RollbackState, Command) {
+    match state.step {
+        None => refuse(state, Refusal::Protocol),
+        Some(facts) => match event {
+            Event::Done => report(state, facts.dest, Settled::Directory),
+            Event::Refused => {
+                let unit = state.index;
+                refuse(
+                    state,
+                    Refusal::Directory {
+                        unit,
+                        dest: facts.dest,
+                    },
+                )
+            }
+            _ => failed_or_protocol(state, event),
+        },
     }
 }
 
@@ -551,6 +755,7 @@ pub fn rollback_step(state: RollbackState, event: Event) -> (RollbackState, Comm
         },
         Phase::ReadingUnit => match event {
             Event::UnitRead(facts) => on_unit(state, facts),
+            Event::DirectoryRead(facts) => on_directory(state, facts),
             _ => failed_or_protocol(state, event),
         },
         Phase::Observing => match event {
@@ -563,6 +768,7 @@ pub fn rollback_step(state: RollbackState, event: Event) -> (RollbackState, Comm
             _ => refuse(state, Refusal::Protocol),
         },
         Phase::Delegating => on_delegated(state, event),
+        Phase::Directing => on_directed(state, event),
         Phase::Reporting => match event {
             Event::Done => advance(state),
             _ => failed_or_protocol(state, event),

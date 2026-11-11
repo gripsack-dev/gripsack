@@ -9,5 +9,6 @@ import Kernel.Block
 import Kernel.JournalRun
 import Kernel.Activation
 import Kernel.Publication
+import Kernel.Directory
 import Kernel.Apply
 import Kernel.UpdateSurvey

@@ -235,7 +235,8 @@ impl NativeProfiles {
         ctx: &Ctx,
         journal: &store::journal::JournalRun<'_>,
         previous: &BTreeMap<String, store::DeploymentState>,
-        mut migration: Option<&mut crate::deploy::Migration>,
+        previous_receipts: &[store::journal::directory::DirectoryTransition],
+        migration: Option<&mut crate::deploy::Migration>,
         machine: &mut crate::apply::Machine,
     ) -> Result<DeploymentOutcome, ExecError> {
         let mut reports = Vec::new();
@@ -276,12 +277,17 @@ impl NativeProfiles {
             ctx.reporter().step(&report);
             reports.push((name.clone(), vec![report]));
         }
-        if let Some(migration) = migration.as_deref_mut() {
-            crate::util::crash_hook("directory-before-publish");
-            migration.publish_directories(journal)?;
-            crate::util::crash_hook("directory-after-publish");
-        }
-        self.prepare_directory_changes(ctx, journal, previous)?;
+        // the directory sub-protocol before the first deploy (plan/0056 F2
+        // step 9): every directory step is one the apply machine commands
+        let destinations = self.directory_destinations(journal, previous)?;
+        crate::apply::directories::open(
+            journal,
+            previous,
+            previous_receipts,
+            migration.as_deref(),
+            &destinations,
+            machine,
+        )?;
         let lineage = crate::deploy::previous_ownership(previous);
         let mut deployments = BTreeMap::new();
         #[cfg(debug_assertions)]

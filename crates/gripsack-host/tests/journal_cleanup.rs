@@ -50,7 +50,7 @@ use gripsack_kernel::recover::{
 };
 use gripsack_kernel::rollback::{
     Bytes, Command as RollbackCommand, Event as RollbackEvent, Place, PlanFacts, Profile,
-    RollbackState, Target, UnitFacts as RollbackUnit, lands, rollback_step,
+    RollbackState, Target, UnitFacts as RollbackUnit, When, lands, rollback_step,
 };
 use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
 use gripsack_kernel::{DestId, Digest, GenerationId};
@@ -1326,6 +1326,7 @@ fn rollback(fs: &MemFs, units: &[Unit]) -> io::Result<()> {
                         },
                         None => Target::Released(KernelIntended::Removed),
                     },
+                    when: When::AfterShape,
                 })
             }
             RollbackCommand::Observe { unit, dest } => RollbackEvent::Observed {
@@ -1365,6 +1366,9 @@ fn rollback(fs: &MemFs, units: &[Unit]) -> io::Result<()> {
                     }
                     Err(error) => return Err(error.into_io()),
                 }
+            }
+            RollbackCommand::Directory { .. } => {
+                return Err(io::Error::other("no directory items here"));
             }
             RollbackCommand::Report { .. } => RollbackEvent::Done,
             RollbackCommand::Delegate { .. } => {
@@ -1557,7 +1561,9 @@ fn apply_run(fs: &MemFs, units: &[Applied]) -> io::Result<()> {
             ApplyCommand::Delegate { .. } => {
                 return Err(io::Error::other("no delegated units here"));
             }
-            ApplyCommand::DirectoryStep => ApplyEvent::Done,
+            ApplyCommand::Directory { .. } => {
+                return Err(io::Error::other("no directory items here"));
+            }
             ApplyCommand::ReadCommit => ApplyEvent::CommitRead(CommitInputs {
                 previous: Some(SelectionIdentity::legacy(GenerationId::new(1))),
                 reserved: transaction(2, 2),

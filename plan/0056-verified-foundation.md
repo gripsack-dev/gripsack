@@ -421,6 +421,14 @@ the crash e2e run both ways for one release before the legacy path goes.
    destinations a directory transition owns (step 9).
 9. Directory domain fenced into host as a sub-protocol; its TLC models stay
    as bug-finders. Moving it into the kernel is F5 work — the largest risk.
+   **Done 2026-11-10** (branch `foundation/f2-directory`): every directory
+   step of apply and rollback is an item the kernel machine commands in
+   stage order (`gripsack_kernel::directory`), the leaf removals a directory
+   change needs are units it decides (`Clear`), the domain's nodes are held
+   (no whole-object write lands on one, no step runs where a deploy claims);
+   the flip follows every step's settlement; premise D states what the
+   theorems assume of a step; the pre-unit removals and rollback's
+   pre-machine `prepare` are gone; record in §22.
 10. Dissolve `gripsack-store`/`-policy`/`-fs`; port or demote the remaining
    policy kernels (`semantic`, `graph`, `task`, `target`, `conda_admission`,
    `workspace_command`, `update_survey`); delete Verus.
@@ -1257,7 +1265,9 @@ passed in 11m50s.
    target's record (`decide_block_restore_exact`), and refuses otherwise.
    The unit stays on the delegated route of the rollback machine.
 3. **Directory-transition destinations are delegated** to the directory
-   domain (step 9).
+   domain (step 9). **Closed by §22:** rollback's directory steps are items
+   of its plan, the target's nodes are held, and the children a shape change
+   takes away are units the machine decides.
 4. **The legacy `$GRIPSACK_HOME/env/profile.sh` is no longer removed.** It
    is inert since 0.22 (the rc line sources `current/env/profile.sh`); a
    one-shot cleanup belongs in `grip doctor` or the migration path the
@@ -2301,6 +2311,8 @@ ownership, merge, journal-protocol and activation families left in §15, §17,
    blocks (K5, §17 decides them) and the directory domain (step 9).
    Directory work before the first unit (`prepare_directory_changes`
    removals, publication of directory records) is outside the machine.
+   **Closed by §22:** every directory step is machine-commanded, the
+   removals are kernel-decided `Clear` units.
 3. **Unit enumeration is host residue:** "every unit" means every unit the
    host hands over. Release candidates are the previous entries the new
    manifest no longer records under their own spelling (a subset apply,
@@ -2323,6 +2335,224 @@ ownership, merge, journal-protocol and activation families left in §15, §17,
    host's observation (the message is unchanged) before the kernel sees it.
 7. Activation is a hand-off (`Activate`), not composed: §20's machine runs
    inside it.
+
+## 22. F2 step 9 record — the directory fence
+
+- Branch `foundation/f2-directory` from `main` at `5629518` (steps 1–8
+  landed); date 2026-11-10.
+- Question: can the directory domain (journal v3 receipts: a migrated owned
+  link turned into a real tree, its evolution, retirement, reactivation and
+  exchange; ~3.7k lines in `gripsack-store/src/journal/directory*.rs` plus
+  its callers) stay host code while the kernel apply and rollback machines
+  decide *when* each of its steps runs and *what it may touch* — with no
+  directory mutation outside a machine-commanded step?
+
+### 22.1 Before (code at `5629518`)
+
+- Apply: `bind_existing` (apply/mod.rs), `migration.publish_directories` and
+  `prepare_directory_changes` (evolution planning with staging `mkdir`s,
+  blocker removals through `plan_remove_op`/`execute_op`, evolution
+  publication) ran before the first unit, outside the machine; `finish` /
+  `retire` ran under one opaque `DirectoryStep`; prune skipped directory
+  destinations by two host filters (`receipt.destination == key`,
+  `is_directory`).
+- Rollback: `directory_transitions::prepare` (bind, child removals with
+  `execute_op`, `restore_shape`, `reverse` + `reactivate`) ran before the
+  machine started — before its plan admission (`ProfileMissing`, `Reused`)
+  — and `settle_delegated` reversed a current-only receipt from inside a
+  delegated unit; directory roots and "released" children were delegated.
+- Recovery already reached the domain only through the recover machine's
+  `Delegated::{Committed, BeforeLeaves, AfterLeaves}` hooks (§14), and GC
+  through its `Delegate` command (§18). Those hooks are unchanged; the
+  debug-only `GRIPSACK_ENGINE=legacy` recovery still calls the domain
+  directly until it is deleted (§9 F2, after one release).
+
+### 22.2 The boundary (`crates/gripsack-kernel/src/directory.rs`)
+
+- `Action { Bind, Birth, Plan, Evolve, Shape, Exchange, Reactivate, Hold,
+  Finish, Retire }`, `DirectoryFacts { dest, action }` (the receipt's root,
+  interned like any destination; for `Hold`, the held node).
+- `Stage { Opening, Clearing, Shaping, Holding, Units, Releases, Closing }`
+  with `rank`/`ordered`: items arrive in stage order — receipts opened
+  (bind, birth, plan), blockers cleared, shapes changed, nodes held, units
+  (apply: deploys, then releases), receipts closed (finish, retire). An item
+  of an earlier stage aborts (`Order`). This replaces apply's `releasing`
+  flag.
+- Both machines read directory items through the same `ReadUnit(k)` as
+  units (`Event::DirectoryRead`), so a directory item is a unit of the run:
+  `Command::Directory { unit, dest, action }`, answered `Directed {
+  mutated }` (apply) / `Done` (rollback) or `Refused` (aborts:
+  `Refusal::Directory`), then `Report { .., Settled::Directory }`. `Hold`
+  is never executed: it is recorded (`holds`) and reported `Held`.
+- Claims: a directory step at a destination a deploy of the run claims
+  (apply's `declared`, any slot) or a rollback unit restores the target's
+  record to (`claimed`) aborts (`Overlap`); a deploy, clear or rollback
+  restore at a held destination aborts (`Overlap`); a release there is
+  `Held` (the domain's, never observed or written).
+- `Want::Clear(origin)` (apply) / `Target::Cleared(origin)` (rollback): the
+  removal a directory change needs, decided by `decide_unit` as a removal
+  with consent withheld; gripsack's own unchanged write is removed, anything
+  else refuses the run (`Refused` / `Blocked`), and an epoch that would
+  bring an origin back refuses (`Blocked`). Rollback units carry `When {
+  BeforeShape, AfterShape }`: the releases below a borrowed directory the
+  target no longer keeps must settle before the shape change (the shape
+  change takes their parent's authority away) with the prune rule (drift
+  kept), so they run in the clearing stage too.
+- **Premise D** (the module doc): a commanded step changes only the
+  namespace of the receipt it names — its owned nodes, their private
+  staging siblings, and the predecessor link at its root (`Retire` restores
+  it, then releases it or reconciles it with the target's record;
+  `Reactivate` replaces gripsack's own object there or the receipt's
+  recorded origin, never a foreign one); it journals its record durably
+  before its first change; an interrupted step is recovered only through
+  the recover machine's delegated hooks; a step answered settled left the
+  namespace in the receipt's shape, one answered refused may have left a
+  journaled partial change that the run's compensation undoes. The kernel
+  theorems hold relative to D as ring 1 holds relative to S1–S7. D is
+  checked by the TLC directory models (bug-finders, unchanged:
+  `DirectoryEvolution`, `DirectoryHierarchy`, `OwnedDirectory`,
+  `RetainedDirectory`, `ReverseDirectoryHierarchy`, `IncarnationExchange`
+  and their cfgs) and the e2e directory flows, not proved.
+
+### 22.3 Proofs (`proofs/Kernel/Directory.lean`, `Apply.lean`, `Rollback.lean`; `Audit.lean`: 567 theorems, 108 claims, standard axioms only)
+
+- `Directory.ordered_spec`, `stage_ok`, `commands_spec`, `names_spec`.
+- Apply: `apply_write_unheld` (no whole-object write — deploy, release or
+  clear — targets a held destination); `apply_directory_unclaimed` (a
+  directory step is commanded only in answer to that item, for a destination
+  no deploy claims, never for a hold, in stage order);
+  `apply_directory_settled_answers` (a step is reported settled only in
+  answer to the host's settlement of the outstanding step, with the host's
+  `mutated`); `apply_directory_refusal_aborts`;
+  `apply_unit_out_of_stage_aborts`, `apply_directory_out_of_stage_aborts`;
+  `decide_apply_clear_refused` (a clear over anything but gripsack's last
+  write refuses); `decide_apply_spec` now covers clears (a clear installs
+  only the removal, only over gripsack's own write).
+  `apply_flip_after_every_unit` now also says every directory step
+  commanded was reported settled (`DirectoriesSettled`), and
+  `apply_vacuous_untouched` that a run whose directory step changed the
+  disk never finishes vacuous (the step's `mutated` feeds K6's `touched`).
+  `apply_release_undeclared` and `apply_no_deploy_after_release` restated
+  over the stage (`Releases`).
+- Rollback: `rollback_write_unheld`, `rollback_directory_unclaimed`,
+  `rollback_directory_settled_answers`, `rollback_directory_refusal_aborts`,
+  `rollback_unit_out_of_stage_aborts`,
+  `rollback_directory_out_of_stage_aborts`, `decide_restore_clear_refused`;
+  `rollback_flip_after_every_unit` adds `DirectoriesSettled`;
+  `decide_restore_drift_kept` now excludes clears (which refuse).
+- Mutants (`proofs/mutants.py`, 105 total, 18 new, one rewritten), each
+  rejected by exactly the named theorems: `apply-directory-out-of-order`,
+  `apply-directory-claimed`, `apply-deploy-held`,
+  `apply-release-held-written`, `apply-clear-held`, `apply-hold-forgotten`,
+  `apply-clear-restores-origin`, `apply-clear-drift-kept`,
+  `apply-directory-refusal-settled`, `apply-directory-mutation-ignored`,
+  `directory-hold-commanded`, `rollback-write-held`,
+  `rollback-directory-claimed`, `rollback-claim-forgotten`,
+  `rollback-directory-refusal-settled`, `rollback-clear-kept`,
+  `rollback-clear-restores-origin`, `rollback-out-of-order`;
+  `apply-deploy-after-release` now removes the stage check.
+
+### 22.4 Wiring
+
+- Apply (`gripsack-exec/src/apply/directories.rs`, new): `open` runs before
+  the first deploy — `Bind` per previous receipt, `Birth` per migration
+  directory (`Migration::birth`, one receipt each), `Plan` per active
+  receipt (`journal::directory::plan`, one receipt each, replacing
+  `plans`), the blockers' clears, `Evolve` per plan (`publish` now returns
+  whether the shape changed), `Hold` per owned node; `close` runs after the
+  last release — `Finish` (mutated when the receipt changed) or `Retire`.
+  Each step runs only inside `Machine::directory_step`, which hands the item
+  to the machine and executes the closure only on its `Directory` command; a
+  failing step is answered `Refused`. Blockers are admitted read-only first
+  (`admit_blockers`, the planner's judgement as before), so a refusal of a
+  later blocker never follows the removal of an earlier one; then each entry
+  at or below a blocker is a `Clear` unit through `remove_unit` (the shared
+  release path: observe, kernel verdict, planner agreement, leaf protocol).
+  Prune lost both directory filters: the kernel reports a release at a held
+  node `Held`; an object without identity there is `Unsupported`, settled by
+  the hold, and still an error elsewhere.
+- Rollback (`rollback/restore.rs`, `rollback/directory_transitions.rs`):
+  the plan is a list of items in stage order — `Bind` per current receipt;
+  per target receipt the children its shape change takes away (`clearing`:
+  structural ones as `Cleared` units, the others the target no longer
+  deploys as `BeforeShape` releases); `Shape` / `Exchange` / `Reactivate`;
+  `Hold` per node; every unit (destinations interned with apply's `Dests`,
+  no longer the unit index), without the roots of receipts the target does
+  not keep; `Retire` per such receipt (reverse, then the predecessor link is
+  settled from both records, as `settle_delegated` did). `prepare`, its
+  `Prepared`/`released` set and the directory branches of
+  `settle_delegated` are gone; only managed blocks are delegated.
+
+### 22.5 Tests
+
+- Kernel explorers: `tests/apply.rs` adds clears to the unit alphabet (the
+  oracle: remove only gripsack's write over a `Removed` origin) and
+  `the_directory_sub_protocol_is_fenced` — every sequence of up to three
+  items (clears, deploys, releases, plan/evolve/finish answered settled,
+  settled-with-change or refused, holds) over two destinations: no write on
+  a held destination, no step at a claimed one, out-of-order items abort,
+  the flip follows every step's settlement, vacuous exactly when nothing
+  changed. `tests/rollback.rs` likewise (clears of gripsack's and a user's
+  object, restores, releases, bind/shape/retire, holds).
+- e2e: the directory groups (`test_workspace_directory_evolution.py`,
+  `test_workspace_migration.py`) plus rollback fidelity, ownership,
+  recovery, generation history and repeated recovery: 74 tests. The first
+  run of this branch failed 20 (prune observed a held directory before the
+  kernel could hold it) and then 2 — `test_leaf_with_prior_refuses_…`
+  (a sequential clear removed an earlier blocker before a later one was
+  refused: fixed by the read-only admission) and
+  `test_growth_retirement_and_rollback_preserve_borrowed_ancestors` (a
+  release below a borrowed directory ran after `restore_shape` dropped its
+  authority: fixed by `When::BeforeShape`).
+
+### 22.6 Deleted
+
+`Command::DirectoryStep`, `Phase::Directories`, `ApplyState::releasing`,
+`Machine::directories_done`, `NativeProfiles::prepare_directory_changes`
+(its blocker logic moved into `apply::directories`),
+`Migration::publish_directories`/`receipts` and the `receipts` field,
+`journal::directory::plans` (per-receipt `plan`), rollback's `prepare` /
+`Prepared` and the `released` delegation, the directory branches of
+`settle_delegated`, prune's two directory filters, and the unreachable
+`clear_foreign` path. The directory TLC models stay.
+
+### 22.7 Deviations and what is deferred
+
+1. **No defect found.** The pre-machine rollback `prepare` changed the
+   directory namespace before plan admission (a target without its own
+   profile was refused only after the exchange, then compensated); with the
+   fence the admission comes first. Compensation restored the state, so no
+   user-visible failure was reproduced; it is recorded as a closed ordering
+   hazard, not a defect.
+2. **Premise D is not proved.** The steps' internals (staging, exchange,
+   reversal, the predecessor-link reconciliation inside `Retire` and the
+   root replacement inside `Reactivate`) stay host code checked by TLC and
+   e2e; moving them into the kernel is F5 work.
+3. **Holds are host-enumerated:** the kernel trusts that the host hands
+   over every owned node of every active receipt (as it trusts unit
+   enumeration, §21.7 item 3); the explorers and e2e check it.
+4. **Blocker admission is read-only host code** before the kernel's
+   per-clear decision, to keep "refuse before any removal".
+5. The legacy recovery engine (`GRIPSACK_ENGINE=legacy`, debug builds)
+   still calls the domain's recovery directly; it goes with the legacy
+   engine.
+
+### 22.8 Gates
+
+Docker, `-p f2dir`, one at a time, at `4f5a02a`: `proofs` OK in 4152 s (no
+translation drift, 567 theorems, 108 claims, standard axioms only, 105/105
+mutants calibrated); `test` passed (fmt, clippy `-D warnings`, cargo test;
+an earlier run under concurrent mutant load failed the unrelated
+timing test `native_file_checks_preserve_operation_deadline`, which passed
+when rerun alone); `e2e` 712 passed in 16m00s. Not run: `verify`, `model`
+(the TLC directory models are unchanged), `tlaps`, `ts-test`, fuzz.
+
+After merging `main` with step 10a (§23) at `e728b7b` (union of claims,
+mutants and kernel modules; `proofs/Extracted` regenerated by the gate's
+translation): `proofs` OK in 2926 s (no drift, 579 theorems, 114 claims,
+standard axioms only, 113/113 mutants calibrated); `test` passed. `e2e` not
+re-run: the merge touched no non-proof Rust beyond the kernel's
+`Cargo.toml` translation list and `convenience.rs` impls.
 
 ## 23. F2 step 10a record — Verus retired
 
