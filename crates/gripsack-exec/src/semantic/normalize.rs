@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 pub(super) fn digest(bytes: &[u8]) -> DefinitionDigest {
     let mut hash = Sha256::new();
     hash.update(b"gripsack/semantic-review/field/v1");
-    hash.update(gripsack_policy::semantic::length_header(bytes.len() as u64));
+    hash.update((bytes.len() as u64).to_le_bytes());
     hash.update(bytes);
     DefinitionDigest::from_bytes(hash.finalize().into())
 }

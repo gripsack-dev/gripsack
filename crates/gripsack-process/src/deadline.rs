@@ -67,8 +67,8 @@ impl OperationDeadline {
 
 fn duration(remaining: RemainingTime) -> Duration {
     let nanos = remaining.nanoseconds();
-    // The allowance originated in Duration::as_nanos; the verified kernel
-    // cannot enlarge it. Keep the conversion checked at the std/Verus seam.
+    // The allowance originated in Duration::as_nanos and the budget never
+    // enlarges it. Keep the conversion checked anyway.
     let seconds = u64::try_from(nanos / NANOS_PER_SECOND)
         .expect("remaining operation time exceeded its admitted Duration");
     Duration::new(seconds, (nanos % NANOS_PER_SECOND) as u32)

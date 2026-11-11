@@ -55,7 +55,12 @@ write of apply or rollback targets a destination the directory domain holds,
 no directory step is commanded for a destination a deploy (or a rollback
 restore) claims, a clear only removes gripsack's own write, a step is
 reported settled only when the host settled it and a refused step aborts,
-and no item is accepted out of stage order. -/
+and no item is accepted out of stage order;
+and update accounting (F2 step 10a): a report is admitted only at its own
+position while entries remain and is counted under its own disposition, a
+summary exists only for a survey that counted every selected entry, a failure
+outranks a change, and the lock is published only in publish mode from a
+complete survey with no failure and at least one change. -/
 def claims : List Name := [
   ``Gripsack.Kernel.classify_committed_iff,
   ``Gripsack.Kernel.classify_uncommitted_iff,
@@ -165,6 +170,13 @@ def claims : List Name := [
   ``Gripsack.Kernel.Rollback.rollback_directory_refusal_aborts,
   ``Gripsack.Kernel.Rollback.rollback_unit_out_of_stage_aborts,
   ``Gripsack.Kernel.Rollback.rollback_directory_out_of_stage_aborts,
+  -- update accounting and lock publication (F2 step 10a)
+  ``Gripsack.Kernel.UpdateSurvey.record_spec,
+  ``Gripsack.Kernel.UpdateSurvey.finish_spec,
+  ``Gripsack.Kernel.UpdateSurvey.finish_complete,
+  ``Gripsack.Kernel.UpdateSurvey.outcome_spec,
+  ``Gripsack.Kernel.UpdateSurvey.publishes_lock_spec,
+  ``Gripsack.Kernel.UpdateSurvey.lock_published_only_complete,
 ]
 
 /-- Every theorem under `Gripsack.Kernel`, sorted by name. -/

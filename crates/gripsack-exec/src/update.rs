@@ -3,7 +3,7 @@ use crate::ctx::{Ctx, ExecError};
 use crate::report::UpdateSurvey;
 use gripsack_ir::Ir;
 
-pub use gripsack_policy::update_survey::UpdateMode;
+pub use gripsack_kernel::update_survey::UpdateMode;
 
 pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, ExecError> {
     if let Some(diagnostic) =

@@ -8447,4 +8447,191 @@ def selection.SelectionIdentity.transaction_id
   | selection.SelectionIdentity.Transaction _ transaction =>
     ok (some transaction)
 
+/-- [gripsack_kernel::update_survey::UpdateMode]
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 19:0-24:1
+    Visibility: public -/
+@[discriminant isize]
+inductive update_survey.UpdateMode where
+| Publish : update_survey.UpdateMode
+| Check : update_survey.UpdateMode
+
+/-- [gripsack_kernel::update_survey::UpdateDisposition]
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 27:0-32:1
+    Visibility: public -/
+@[discriminant isize]
+inductive update_survey.UpdateDisposition where
+| Unchanged : update_survey.UpdateDisposition
+| Changed : update_survey.UpdateDisposition
+| Skipped : update_survey.UpdateDisposition
+| Failed : update_survey.UpdateDisposition
+
+/-- [gripsack_kernel::update_survey::UpdateCheckOutcome]
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 35:0-39:1
+    Visibility: public -/
+@[discriminant isize]
+inductive update_survey.UpdateCheckOutcome where
+| Current : update_survey.UpdateCheckOutcome
+| ChangesAvailable : update_survey.UpdateCheckOutcome
+| Incomplete : update_survey.UpdateCheckOutcome
+
+/-- [gripsack_kernel::update_survey::SurveyProgress]
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 44:0-51:1
+    Visibility: public -/
+structure update_survey.SurveyProgress where
+  selected : Std.Usize
+  unchanged : Std.Usize
+  changed : Std.Usize
+  skipped : Std.Usize
+  failed : Std.Usize
+  invalid : Bool
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::SurveyProgress}::new]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 54:4-63:5
+    Visibility: public -/
+def update_survey.SurveyProgress.new
+  (selected : Std.Usize) : Result update_survey.SurveyProgress := do
+  ok
+    {
+      selected,
+      unchanged := 0#usize,
+      changed := 0#usize,
+      skipped := 0#usize,
+      failed := 0#usize,
+      invalid := false
+    }
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::SurveyProgress}::counted]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 67:4-69:5 -/
+def update_survey.SurveyProgress.counted
+  (self : update_survey.SurveyProgress) : Result Std.Usize := do
+  let i ← self.unchanged + self.changed
+  let i1 ← i + self.skipped
+  i1 + self.failed
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::SurveyProgress}::selected]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 71:4-73:5
+    Visibility: public -/
+def update_survey.SurveyProgress.impl.selected
+  (self : update_survey.SurveyProgress) : Result Std.Usize := do
+  ok self.selected
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::SurveyProgress}::record]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 78:4-91:5
+    Visibility: public -/
+def update_survey.SurveyProgress.record
+  (self : update_survey.SurveyProgress) (reported : Std.Usize)
+  (disposition : update_survey.UpdateDisposition) :
+  Result (Bool × update_survey.SurveyProgress)
+  := do
+  let counted ← update_survey.SurveyProgress.counted self
+  if self.invalid
+  then ok (false, self)
+  else
+    if reported != counted
+    then ok (false, { self with invalid := true })
+    else
+      if counted = self.selected
+      then ok (false, { self with invalid := true })
+      else
+        match disposition with
+        | update_survey.UpdateDisposition.Unchanged =>
+          let i ← self.unchanged + 1#usize
+          ok (true, { self with unchanged := i })
+        | update_survey.UpdateDisposition.Changed =>
+          let i ← self.changed + 1#usize
+          ok (true, { self with changed := i })
+        | update_survey.UpdateDisposition.Skipped =>
+          let i ← self.skipped + 1#usize
+          ok (true, { self with skipped := i })
+        | update_survey.UpdateDisposition.Failed =>
+          let i ← self.failed + 1#usize
+          ok (true, { self with failed := i })
+
+/-- [gripsack_kernel::update_survey::UpdateSummary]
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 105:0-107:1
+    Visibility: public -/
+structure update_survey.UpdateSummary where
+  counts : update_survey.SurveyProgress
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::SurveyProgress}::finish]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 95:4-101:5
+    Visibility: public -/
+def update_survey.SurveyProgress.finish
+  (self : update_survey.SurveyProgress) (reported : Std.Usize) :
+  Result (Option update_survey.UpdateSummary)
+  := do
+  if self.invalid
+  then ok none
+  else
+    if reported != self.selected
+    then ok none
+    else
+      let i ← update_survey.SurveyProgress.counted self
+      if i != self.selected
+      then ok none
+      else ok (some { counts := self })
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::UpdateSummary}::selected]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 110:4-112:5
+    Visibility: public -/
+def update_survey.UpdateSummary.selected
+  (self : update_survey.UpdateSummary) : Result Std.Usize := do
+  ok self.counts.selected
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::UpdateSummary}::unchanged]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 114:4-116:5
+    Visibility: public -/
+def update_survey.UpdateSummary.unchanged
+  (self : update_survey.UpdateSummary) : Result Std.Usize := do
+  ok self.counts.unchanged
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::UpdateSummary}::changed]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 118:4-120:5
+    Visibility: public -/
+def update_survey.UpdateSummary.changed
+  (self : update_survey.UpdateSummary) : Result Std.Usize := do
+  ok self.counts.changed
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::UpdateSummary}::skipped]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 122:4-124:5
+    Visibility: public -/
+def update_survey.UpdateSummary.skipped
+  (self : update_survey.UpdateSummary) : Result Std.Usize := do
+  ok self.counts.skipped
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::UpdateSummary}::failed]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 126:4-128:5
+    Visibility: public -/
+def update_survey.UpdateSummary.failed
+  (self : update_survey.UpdateSummary) : Result Std.Usize := do
+  ok self.counts.failed
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::UpdateSummary}::outcome]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 132:4-140:5
+    Visibility: public -/
+def update_survey.UpdateSummary.outcome
+  (self : update_survey.UpdateSummary) :
+  Result update_survey.UpdateCheckOutcome
+  := do
+  if self.counts.failed != 0#usize
+  then ok update_survey.UpdateCheckOutcome.Incomplete
+  else
+    if self.counts.changed != 0#usize
+    then ok update_survey.UpdateCheckOutcome.ChangesAvailable
+    else ok update_survey.UpdateCheckOutcome.Current
+
+/-- [gripsack_kernel::update_survey::{gripsack_kernel::update_survey::UpdateSummary}::publishes_lock]:
+    Source: 'crates/gripsack-kernel/src/update_survey.rs', lines 144:4-149:5
+    Visibility: public -/
+def update_survey.UpdateSummary.publishes_lock
+  (self : update_survey.UpdateSummary) (mode : update_survey.UpdateMode) :
+  Result Bool
+  := do
+  match mode with
+  | update_survey.UpdateMode.Publish =>
+    if self.counts.failed = 0#usize
+    then ok (self.counts.changed != 0#usize)
+    else ok false
+  | update_survey.UpdateMode.Check => ok false
+
 end gripsack_kernel

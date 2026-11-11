@@ -281,6 +281,10 @@ one local release command that builds, verifies and publishes. Lean/Charon
 images are pinned by digest. Charon's nightly rustc lives only in the
 `proofs` image; the shipped binary still builds on stable musl with rustls.
 
+The optional Verus gate (`verify`, `scripts/check_verus*.py`, the Dockerfile
+`verify` stage, the `vstd` dependency) is gone since F2 step 10a (§23): the
+only proof gate is `proofs`.
+
 ## 8. Trim register
 
 "Now" items are no-regret and land in F0. "After X" items are deleted the
@@ -297,9 +301,9 @@ moment their replacement is green.
 | GNU duplicate build, two-build repro, `mutants` campaign jobs | delete jobs (repro stays an on-demand script) | now |
 | TLAPS proofs (`*Proofs.tla`), `check_tlaps.py`, `tlaps` service | delete | after P1–P3 in Lean |
 | Remaining TLA+ | keep ≤5 TLC models that found real bugs (Transaction, Activation, UpdatePublication, ProcessSupervision, CredentialRouting candidates); delete the rest and the `MC`/bridge/witness modules | F3 |
-| Verus annotations, `check_verus*.py`, `verify` service | delete per kernel as its Lean proof lands; no Verus at end of F2 | F2 |
+| Verus annotations, `check_verus*.py`, `verify` service | delete per kernel as its Lean proof lands; no Verus at end of F2 | **done** in F2 step 10a (§23) |
 | Rust explorers (`*_model.rs`) | replace with the crash-injecting storage harness driving the real machines; delete | F2 |
-| `rate_limit`, `process_budget`, `retry_budget`, `operation_budget` proofs | move to ring 2/3 as plain Rust plus property tests; no proof (no f64 in the kernel) | F2 |
+| `rate_limit`, `process_budget`, `retry_budget`, `operation_budget` proofs | move to ring 2/3 as plain Rust plus property tests; no proof (no f64 in the kernel) | **done** in F2 step 10a (§23): plain Rust in `gripsack-policy`, every former Verus mutant killed by a unit test; the move into ring-2/3 crates waits for the crate dissolution |
 | Plans 0018–0055 | stay as history; STATUS shrinks to one row each plus this plan's ledger | F0 |
 | e2e | keep; delete cases that only back a receipt or a removed feature | F4 |
 | AGENTS.md | rewrite build/test, hard rules and "Plan 0048 contract" sections to this plan | F0 |
@@ -428,6 +432,15 @@ the crash e2e run both ways for one release before the legacy path goes.
 10. Dissolve `gripsack-store`/`-policy`/`-fs`; port or demote the remaining
    policy kernels (`semantic`, `graph`, `task`, `target`, `conda_admission`,
    `workspace_command`, `update_survey`); delete Verus.
+   **Verus part (10a) done 2026-11-10** (branch `foundation/f2-verus`):
+   `update_survey` ported to the kernel and proved (the lock is published
+   only from a complete survey with no failure); `semantic` and the graph
+   closure deleted (standard-library equivalents and dead checks); every
+   other policy kernel, the budgets and the IR's typed collector demoted to
+   plain Rust with tests that kill every former Verus mutant; Verus, `vstd`,
+   the `verify` gate and its scripts deleted; record in §23. Remaining (10b):
+   dissolve `gripsack-store`/`-policy`/`-fs` (crate boundaries unchanged so
+   far).
 
 Each step's exit runs the matching e2e group (persistence matrix, recovery,
 GC, activation, ownership, merge, rollback, directory evolution).
@@ -2533,3 +2546,116 @@ an earlier run under concurrent mutant load failed the unrelated
 timing test `native_file_checks_preserve_operation_deadline`, which passed
 when rerun alone); `e2e` 712 passed in 16m00s. Not run: `verify`, `model`
 (the TLC directory models are unchanged), `tlaps`, `ts-test`, fuzz.
+
+## 23. F2 step 10a record — Verus retired
+
+- Branch `foundation/f2-verus` from `main` at `5629518`; date 2026-11-10.
+- Question: for each policy kernel still under Verus, prove it in Lean,
+  demote it to plain Rust with tests, or delete it (the owner's rule: prove
+  it or delete it; cut what has no use). Then remove Verus entirely. The
+  crate boundaries (`gripsack-store`/`-policy`/`-fs`/`-process`) are kept:
+  their dissolution is step 10b.
+
+### 23.1 Decisions
+
+| Kernel | Fate | Why |
+|---|---|---|
+| `update_survey` | **ported** → `gripsack-kernel::update_survey`, `proofs/Kernel/UpdateSurvey.lean` | "`grip update` writes the lock only from a complete survey with no failed entry" is a claim users rely on (the lock decides which bytes run), and it is over an unbounded domain (any sequence of reports), so no table test covers it. Counters, `&mut self` and `Option` translate with no contortion; the only change is `publishes_lock` matching on the mode instead of `==` |
+| `semantic` (framing, canonical order, identity lemmas) | **deleted** | Production called two functions. `length_header` is `u64::to_le_bytes`; `canonical_entries` was an O(n²) insertion sort plus dedup whose only callers pass `()` payloads — a `BTreeSet` of byte slices (or of `(scope, key)` pairs) gives the same order (`[u8]` order is the kernel's lexicographic order) and the same deduplication, so every identity digest is byte-identical. The injectivity and provenance lemmas were about spec functions (`encode_frames`, `DeclarationView`), not the shipped encoder, so there was nothing to port. Its other user, semantic review, is cut by plan 0059 step 5 |
+| `graph::build_closure`, `graph::roles::RoleDecision`, `graph::collector` | **deleted** | The closure's only caller checked that every declared production/build-input edge lies in its owner's closure — a one-step path, true by construction (the Verus lemma `lemma_projected_build_edge_in_closure` said exactly that), so the `E131` "absent from the admitted production closure" branch could never fire. Likewise "lost its validation role": `project_graph_role(Validation).required_validation` was constantly true. Both dead checks, the production adjacency they read, the closure, `RoleDecision` and the proof-only `collector` laws are gone |
+| `graph::name_index`, `GraphRole::is_dependency` | demoted (now `gripsack_policy::graph`) | defensive catalog-name binding and a seven-row role table; unit tests cover every role and every wrong candidate |
+| IR typed collector (`gripsack-ir` `workspace_model/graph*`: the Verus `typed-output-collector`, `typed-source-inputs`, `typed-catalog-binding` families) | demoted | walks serde types with `String`s and `BTreeMap`s — ring 3, not kernel-shaped. `graph/spec.rs` (212 lines of Verus type wrappers) deleted; new unit tests for the tree-source, image-entrypoint and Pixi-lock references; the admission coverage check (`sema/workspace/policy/coverage`) already cross-checks the collector on every workspace |
+| `task` | demoted | three one-line boolean rules over a finite domain; the existing table test enumerates every input |
+| `target` | demoted | enum equality plus a version-triple order (now a tuple comparison); exhaustive test over every OS × arch × ABI pair and floor shape. Plan 0059 step 3 reworks target inference |
+| `workspace_command` | demoted | four finite tables; exhaustive tests (every context × origin, position × origin, owner × origin) and the strict Bash option list. Plan 0059 step 4 reworks the pinned Bash |
+| `conda_admission` | demoted | advisory only ("not publication authority"), and its bindings borrow `&str` inside enums (borrows in ADTs: a translation contortion); a test per refusal |
+| `operation_budget`, `retry_budget`, `rate_limit` (`binary_rate`, `credit_balance`, `legacy_credits`), `process_budget` (`input`, `frame`, `output`, `tail`, `transfer`, `lifecycle`) | demoted | §8: resource budgets stay out of the kernel. Public preconditions Verus stated but never checked at the (unverified) call sites are now doc comments plus `debug_assert!`s; the call sites were read and satisfy them |
+
+### 23.2 Proofs (`proofs/Kernel/UpdateSurvey.lean`; `Audit.lean`: 486 theorems, 100 claims, standard axioms only)
+
+- `record_spec`: a report is admitted exactly when the survey is valid, the
+  report is at the next position and entries remain; an admitted report is
+  counted once, under its own disposition and no other; a rejected report
+  changes no count and poisons the survey, which stays poisoned; the
+  selection is kept, and so is the invariant counted ≤ selected (`Inv`).
+- `finish_spec`: a summary exists exactly for a valid survey that counted
+  every selected entry and whose caller holds that many reports; it carries
+  the survey's counts.
+- `finish_complete`: a summary's four counts add up to the selection.
+- `outcome_spec`: a failure makes the outcome `Incomplete` whatever else
+  changed; otherwise a change makes it `ChangesAvailable`; else `Current`.
+- `publishes_lock_spec`: the lock is published exactly in publish mode with
+  no failed entry and at least one change.
+- `lock_published_only_complete` (headline): for every survey a caller can
+  hold (`Reach`: fresh, then any sequence of recorded reports, admitted or
+  not), a summary accounts for every selected entry exactly once and a
+  published lock comes from a survey with no failure and at least one change.
+- Helpers: `new_spec`, `counted_spec` (no overflow under `Inv`), `reach_inv`.
+- Mutants (`proofs/mutants.py`, 95 total, 8 new — the former Verus
+  `update-survey` mutants rewritten for the kernel source), each rejected by
+  exactly the named theorems: `survey-report-position`,
+  `survey-selected-bound`, `survey-failure-accounting`,
+  `survey-invalid-revival` (`record_spec`); `survey-partial-finish`
+  (`finish_spec`, `finish_complete`); `survey-error-precedence`
+  (`outcome_spec`); `survey-check-publication`,
+  `survey-unchanged-publication` (`publishes_lock_spec`).
+  `lock_published_only_complete` and `reach_inv` are corollaries: a mutant
+  breaks the lemma they cite, as for `decide_apply_drift_never_written` (§21.3).
+
+### 23.3 Demotion calibrated
+
+Every former Verus mutant of a demoted module (47: `task` 3, `conda` 7,
+graph name index 1, `target` 1, `workspace` 4, rate/credit 6, operation 3,
+HTTP retry 6, process 12, IR collector 4) was re-applied to the plain Rust
+and `cargo test` of the policy crate plus its consumer run. The first pass
+left 23 alive — the Verus proofs were the only thing catching them: all of
+`conda_admission`, the rate refill unit and period-fraction rescale,
+operation deadline/terminal, five of six HTTP retry rules, input retry
+progress, three lifecycle rules and three collector references. Tests were
+added for each; the second pass killed all 47. (The runner is not committed:
+one-off calibration, §2 rule 5.) The mutants of deleted code (`graph-closure`,
+`graph-validation`, `graph-projection-coverage`, the six `semantic-*`) have
+no target left.
+
+### 23.4 Deleted
+
+- Verus: every `verus!` block, spec/proof function, ghost field and clause in
+  `gripsack-policy` and `gripsack-ir`; the `vstd` dependency of both crates
+  (75 lock lines in `Cargo.lock`, 88 in `tools/conda-helper/Cargo.lock`);
+  `gripsack-ir/src/workspace_model/graph/spec.rs` (212).
+- `gripsack-policy` 4779 → 2168 lines including its new tests:
+  `semantic.rs` (1312), the graph closure and `graph/{collector,roles,name_index}.rs`,
+  `update_survey.rs` (132, moved to the kernel), and ~2k lines of proofs
+  inside the budgets (`credit_balance.rs` alone lost 571).
+- The gate: `scripts/check_verus.sh`, `check_verus.py` (404),
+  `verus_evidence.py` (188), `check_collector_verus.py` (77); the Dockerfile
+  `verify` stage (39); the compose `verify` service; the `.verus-log/` ignore;
+  `vstd` in `scripts/check_architecture.py` (the policy crate now has no
+  dependencies).
+- References: AGENTS.md (gate list, "one proof language"), §7, §8.
+- `.ci/pilot.json` never listed `verify`; nothing to change there.
+
+### 23.5 Defects
+
+None in the shipped behaviour. Two findings:
+
+1. Dead admission checks (§23.1 graph row): two `E131` branches could not
+   fire. Removed with the closure.
+2. The Verus gate trusted its callers: `requires` clauses on public functions
+   (`admit_input_append`, `retain_tail`, `signal_succeeded`, `observe_reap`)
+   were never checked, since the callers in `gripsack-process` were not
+   verified. The callers satisfy them (read: the input buffer only grows by
+   admitted appends; the tail by `retain_tail`; `signal_succeeded` follows
+   `Signal`, `observe_reap` a true `begin_reap`); they are now
+   `debug_assert!`s.
+
+### 23.6 Gates
+
+Docker, `-p f2verus`, one at a time, at `1486f63`: `proofs` OK in 3669 s
+(no translation drift, 486 theorems, 100 claims, standard axioms only,
+95/95 mutants calibrated — the 8 new ones also ran alone first, 8/8); `test`
+passed (fmt, clippy `-D warnings`, cargo test; 676 s); `e2e` 712 passed in
+18m27s. Not run: `ts-test` (TypeScript untouched), `model`, `tlaps`, fuzz.
+On the host, two `gripsack-process` confinement tests fail (the
+confinement code is untouched here; not re-run on the baseline); they pass in
+the `test` image.

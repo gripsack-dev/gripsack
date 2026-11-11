@@ -1,8 +1,8 @@
 //! User-visible step reports (the CLI renders these).
 
 use crate::ctx::Outcome;
-use gripsack_policy::update_survey::{SurveyProgress, UpdateDisposition};
-pub use gripsack_policy::update_survey::{UpdateCheckOutcome, UpdateSummary};
+use gripsack_kernel::update_survey::{SurveyProgress, UpdateDisposition};
+pub use gripsack_kernel::update_survey::{UpdateCheckOutcome, UpdateSummary};
 
 /// One user-visible line of what a step did — the CLI renders these.
 #[derive(Debug, Clone, PartialEq)]

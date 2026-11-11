@@ -32,4 +32,5 @@ start_from = [
     "gripsack_kernel::publication",
     "gripsack_kernel::apply",
     "gripsack_kernel::directory",
+    "gripsack_kernel::update_survey",
 ]

@@ -1,23 +1,13 @@
 //! Monotone elapsed-time admission with irreversible terminal failure.
 //! Callers own the original clock origin/deadline and supply observations.
-use vstd::prelude::*;
 
-verus! {
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, StructuralEq)]
-pub struct RemainingTime { nanoseconds: u128 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RemainingTime {
+    nanoseconds: u128,
+}
 
 impl RemainingTime {
-    #[verifier::type_invariant]
-    spec fn positive(&self) -> bool { self.nanoseconds > 0 }
-
-    pub closed spec fn view(self) -> u128 { self.nanoseconds }
-
-    pub fn nanoseconds(self) -> (nanoseconds: u128)
-        ensures nanoseconds == self.view(), nanoseconds > 0,
-        no_unwind
-    {
-        proof { use_type_invariant(&self); }
+    pub fn nanoseconds(self) -> u128 {
         self.nanoseconds
     }
 }
@@ -30,75 +20,76 @@ pub struct OperationBudget {
 }
 
 impl OperationBudget {
-    #[verifier::type_invariant]
-    spec fn valid(&self) -> bool {
-        self.observed <= self.allowance && (self.observed == self.allowance ==> self.terminal)
+    pub fn new(allowance_ns: u128) -> Self {
+        Self {
+            allowance: allowance_ns,
+            observed: 0,
+            terminal: allowance_ns == 0,
+        }
     }
 
-    pub closed spec fn allowance(&self) -> u128 { self.allowance }
-    pub closed spec fn observed(&self) -> u128 { self.observed }
-    pub closed spec fn terminal(&self) -> bool { self.terminal }
-
-    pub fn new(allowance_ns: u128) -> (budget: Self)
-        ensures budget.allowance() == allowance_ns, budget.observed() == 0,
-            budget.terminal() <==> allowance_ns == 0,
-    {
-        Self { allowance: allowance_ns, observed: 0, terminal: allowance_ns == 0 }
-    }
-
-    pub fn observe(&mut self, elapsed_ns: u128) -> (remaining: Option<RemainingTime>)
-        ensures
-            final(self).allowance() == old(self).allowance(),
-            final(self).observed() >= old(self).observed(),
-            final(self).observed() == if elapsed_ns >= old(self).allowance() { old(self).allowance() }
-                else if elapsed_ns > old(self).observed() { elapsed_ns } else { old(self).observed() },
-            final(self).terminal() <==> old(self).terminal() || elapsed_ns >= old(self).allowance(),
-            remaining.is_some() <==> !final(self).terminal(),
-            remaining.is_some() ==> remaining.unwrap().view() == final(self).allowance() - final(self).observed(),
-            remaining.is_some() ==> final(self).observed() < final(self).allowance(),
-        no_unwind
-    {
-        proof { use_type_invariant(&*self); }
+    pub fn observe(&mut self, elapsed_ns: u128) -> Option<RemainingTime> {
         if elapsed_ns >= self.allowance {
             self.terminal = true;
             self.observed = self.allowance;
         } else if elapsed_ns > self.observed {
             self.observed = elapsed_ns;
         }
-        if self.terminal { None }
-        else { Some(RemainingTime { nanoseconds: self.allowance - self.observed }) }
+        if self.terminal {
+            None
+        } else {
+            Some(RemainingTime {
+                nanoseconds: self.allowance - self.observed,
+            })
+        }
     }
 
-    pub fn admit_wait(&mut self, elapsed_ns: u128, wait_ns: u128) -> (admitted: bool)
-        ensures
-            final(self).allowance() == old(self).allowance(),
-            final(self).observed() >= old(self).observed(),
-            final(self).observed() == if elapsed_ns >= old(self).allowance() { old(self).allowance() }
-                else if elapsed_ns > old(self).observed() { elapsed_ns } else { old(self).observed() },
-            admitted ==> !old(self).terminal() && !final(self).terminal(),
-            admitted ==> final(self).observed() + wait_ns < old(self).allowance(),
-            !admitted ==> final(self).terminal(),
-            admitted <==> !old(self).terminal() && elapsed_ns < old(self).allowance()
-                && wait_ns < old(self).allowance() - if elapsed_ns > old(self).observed() { elapsed_ns } else { old(self).observed() },
-        no_unwind
-    {
+    pub fn admit_wait(&mut self, elapsed_ns: u128, wait_ns: u128) -> bool {
         match self.observe(elapsed_ns) {
             None => false,
             Some(remaining) => {
-                if wait_ns < remaining.nanoseconds() { true }
-                else { self.terminal = true; false }
+                if wait_ns < remaining.nanoseconds() {
+                    true
+                } else {
+                    self.terminal = true;
+                    false
+                }
             }
         }
     }
 
-    pub fn stop(&mut self)
-        ensures final(self).allowance() == old(self).allowance(),
-            final(self).observed() == old(self).observed(), final(self).terminal(),
-        no_unwind
-    {
-        proof { use_type_invariant(&*self); }
+    pub fn stop(&mut self) {
         self.terminal = true;
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_rewound_clock_never_returns_spent_time() {
+        let mut budget = OperationBudget::new(100);
+        assert_eq!(budget.observe(40).unwrap().nanoseconds(), 60);
+        assert_eq!(budget.observe(10).unwrap().nanoseconds(), 60);
+        assert!(budget.observe(100).is_none());
+        assert!(budget.observe(0).is_none(), "expiry is terminal");
+    }
+
+    #[test]
+    fn a_wait_reaching_the_deadline_is_refused_for_good() {
+        let mut budget = OperationBudget::new(100);
+        assert!(budget.admit_wait(0, 99));
+        assert!(!budget.admit_wait(0, 100));
+        assert!(budget.observe(0).is_none());
+    }
+
+    #[test]
+    fn a_stopped_or_empty_budget_never_revives() {
+        let mut budget = OperationBudget::new(100);
+        budget.stop();
+        assert!(budget.observe(0).is_none());
+        assert!(!budget.admit_wait(0, 1));
+        assert!(OperationBudget::new(0).observe(0).is_none());
+    }
 }

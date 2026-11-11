@@ -13,7 +13,6 @@ typescript/dist/
 
 # Generated verification output is not source or durable evidence.
 *.log
-.verus-log/
 /specs/**/states/
 /specs/**/*TTrace*
 /specs/**/*.tlaps/

@@ -29,11 +29,11 @@ ALLOWED: dict[str, frozenset[str]] = {
     "gripsack-kernel": frozenset(),
     # plan/0056 ring 2: inward only. gripsack-fs until the host absorbs it.
     "gripsack-host": frozenset({"gripsack-fs", "gripsack-kernel", "rustix", "tempfile"}),
-    "gripsack-policy": frozenset({"vstd"}),
+    "gripsack-policy": frozenset(),
     "gripsack-ir": frozenset({
         "gripsack-policy", "serde", "serde_json", "thiserror", "jsonschema",
         # Pure semantic identities, workspace admission and credential-free URI parsing.
-        "sha2", "vstd", "url",
+        "sha2", "url",
     }),
     "gripsack-store": frozenset({
         "gripsack-fs", "gripsack-host", "gripsack-ir", "gripsack-kernel", "gripsack-policy", "gripsack-process",
