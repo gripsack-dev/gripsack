@@ -1,9 +1,9 @@
 //! Archive/lock-derived installed paths, relocation and generated Python wrappers.
 use super::super::archive::{ArchiveEntry, CondaArchive, EntryKind, safe_path};
+use gripsack_host::process::Sha256Digest;
 use gripsack_ir::workspace_model::lock::{
     LockedCondaEnvironment, LockedCondaPackage, LockedNoArch,
 };
-use gripsack_process::Sha256Digest;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 

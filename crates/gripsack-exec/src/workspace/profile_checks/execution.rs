@@ -6,8 +6,8 @@ use crate::{
     ExecError,
     workspace::{file_failure, hooks, roots},
 };
+use gripsack_host::process::{Control, OperatorEnvironment, ProcessDisposition, ProcessLeases};
 use gripsack_ir::Span;
-use gripsack_process::{Control, OperatorEnvironment, ProcessDisposition, ProcessLeases};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -35,7 +35,7 @@ pub(super) fn run(
     reporting: Reporting<'_>,
 ) -> Result<(), ExecError> {
     let lease = roots::ProcessLease::register(protection.session, protection.closure)?;
-    let directory = gripsack_fs::open(home)?;
+    let directory = gripsack_host::fs::open(home)?;
     let staging = match stage(context, root, home, lease.id()) {
         Ok(staging) => staging,
         Err(error) => {
@@ -92,7 +92,7 @@ pub(super) fn run(
         let receipt = staging.join("process.json");
         std::fs::write(&receipt, serde_json::to_vec(&outcome.receipt)?)?;
         std::fs::File::open(&receipt)?.sync_all()?;
-        gripsack_fs::fsync_pinned_dir(&gripsack_fs::open(&staging)?, &staging)?;
+        gripsack_host::fs::fsync_pinned_dir(&gripsack_host::fs::open(&staging)?, &staging)?;
         return Err(file_failure(
             span,
             format!(
@@ -140,10 +140,12 @@ fn stage(
         .ok_or_else(|| io::Error::other("missing file-check inputs"))?;
     // Admission checks the original captured file even for a deployed subject.
     inputs.path(root)?;
-    let directory = gripsack_fs::open(home)?;
-    gripsack_fs::create_dir_all(&directory, Path::new(roots::BUILD_STAGING_DIRECTORY))?;
-    let parent =
-        gripsack_fs::open_dir_nofollow(&directory, Path::new(roots::BUILD_STAGING_DIRECTORY))?;
+    let directory = gripsack_host::fs::open(home)?;
+    gripsack_host::fs::create_dir_all(&directory, Path::new(roots::BUILD_STAGING_DIRECTORY))?;
+    let parent = gripsack_host::fs::open_dir_nofollow(
+        &directory,
+        Path::new(roots::BUILD_STAGING_DIRECTORY),
+    )?;
     parent.create_dir(id.as_str())?;
     let staging = home.join(roots::BUILD_STAGING_DIRECTORY).join(id.as_str());
     #[cfg(unix)]
@@ -166,7 +168,7 @@ fn stage(
     std::fs::File::open(&context_path)?.sync_all()?;
     let mut cursor = target_parent;
     loop {
-        gripsack_fs::fsync_pinned_dir(&gripsack_fs::open(cursor)?, cursor)?;
+        gripsack_host::fs::fsync_pinned_dir(&gripsack_host::fs::open(cursor)?, cursor)?;
         if cursor == staging {
             break;
         }
@@ -174,6 +176,6 @@ fn stage(
             .parent()
             .ok_or_else(|| io::Error::other("file subject escaped staging"))?;
     }
-    gripsack_fs::fsync_pinned_dir(&parent, Path::new(roots::BUILD_STAGING_DIRECTORY))?;
+    gripsack_host::fs::fsync_pinned_dir(&parent, Path::new(roots::BUILD_STAGING_DIRECTORY))?;
     Ok(staging)
 }

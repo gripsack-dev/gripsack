@@ -1,4 +1,4 @@
-use gripsack_process::Sha256Digest;
+use gripsack_host::process::Sha256Digest;
 use sha2::{Digest, Sha256};
 use std::{
     io::{self, Read},

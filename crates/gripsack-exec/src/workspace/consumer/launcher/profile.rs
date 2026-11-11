@@ -261,14 +261,15 @@ impl Activation {
         lease: &crate::workspace::roots::ProcessLease,
         encoded: &str,
     ) -> Result<PathBuf, ExecError> {
-        let home_dir = gripsack_fs::open(home)?;
+        let home_dir = gripsack_host::fs::open(home)?;
         let parent_path = Path::new(crate::workspace::roots::BUILD_STAGING_DIRECTORY);
-        gripsack_fs::create_dir_all(&home_dir, parent_path)?;
-        let parent = gripsack_fs::open_dir_nofollow(&home_dir, parent_path)?;
+        gripsack_host::fs::create_dir_all(&home_dir, parent_path)?;
+        let parent = gripsack_host::fs::open_dir_nofollow(&home_dir, parent_path)?;
         parent.create_dir(lease.id().as_str())?;
-        let staging = gripsack_fs::open_dir_nofollow(&parent, Path::new(lease.id().as_str()))?;
+        let staging =
+            gripsack_host::fs::open_dir_nofollow(&parent, Path::new(lease.id().as_str()))?;
         staging.create_dir("bin")?;
-        gripsack_fs::fsync_pinned_dir(&parent, parent_path)?;
+        gripsack_host::fs::fsync_pinned_dir(&parent, parent_path)?;
         let bin = home.join(parent_path).join(lease.id().as_str()).join("bin");
         self.write_commands(home, &bin, encoded)?;
         Ok(bin)
@@ -289,15 +290,15 @@ impl Activation {
 }
 
 pub(super) fn remove_staging(home: &Path, id: &str) -> Result<(), ExecError> {
-    let home = gripsack_fs::open(home)?;
+    let home = gripsack_host::fs::open(home)?;
     let path = Path::new(crate::workspace::roots::BUILD_STAGING_DIRECTORY);
-    let parent = match gripsack_fs::open_dir_nofollow(&home, path) {
+    let parent = match gripsack_host::fs::open_dir_nofollow(&home, path) {
         Ok(parent) => parent,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(error.into()),
     };
     match parent.remove_dir_all(id) {
-        Ok(()) => gripsack_fs::fsync_pinned_dir(&parent, path)?,
+        Ok(()) => gripsack_host::fs::fsync_pinned_dir(&parent, path)?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }

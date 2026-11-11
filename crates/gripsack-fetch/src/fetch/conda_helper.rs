@@ -96,7 +96,7 @@ fn ensure_release(
         Warm::Ready => return Ok(provisioned(executable.clone(), pin)),
         Warm::Missing => None,
         Warm::Corrupt(actual) => {
-            gripsack_fs::remove_file(&slot.directory, Path::new(slot.name))?;
+            gripsack_host::fs::remove_file(&slot.directory, Path::new(slot.name))?;
             Some(actual)
         }
     };
@@ -144,14 +144,19 @@ fn provision(
     let mut download =
         context.download_tool(url, pin, context.limits().download_bytes, deadline)?;
     download.file.as_file_mut().rewind()?;
-    let expected = gripsack_process::Sha256Digest::parse(pin)?;
+    let expected = gripsack_host::process::Sha256Digest::parse(pin)?;
     let mut checked = checked::CheckedRead::new(
         download.file.as_file_mut(),
         expected,
         context.limits().download_bytes.get(),
         deadline,
     );
-    gripsack_fs::atomic_copy_with_mode(&slot.directory, Path::new(slot.name), &mut checked, 0o755)?;
+    gripsack_host::fs::atomic_copy_with_mode(
+        &slot.directory,
+        Path::new(slot.name),
+        &mut checked,
+        0o755,
+    )?;
     Ok(provisioned(slot.executable.clone(), pin))
 }
 
@@ -163,8 +168,8 @@ fn warm(
     context: &FetchContext,
     deadline: Instant,
 ) -> Result<Warm, FetchError> {
-    use gripsack_fs::cap_std::fs::{MetadataExt, PermissionsExt};
-    let file = match gripsack_fs::open_file_nofollow(&slot.directory, Path::new(slot.name)) {
+    use gripsack_host::fs::cap_std::fs::{MetadataExt, PermissionsExt};
+    let file = match gripsack_host::fs::open_file_nofollow(&slot.directory, Path::new(slot.name)) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Warm::Missing),
         Err(error) => return Err(error.into()),
@@ -290,9 +295,9 @@ mod tests {
         assert!(acquire(&url, deadline()).is_err());
         assert!(cold.path.symlink_metadata().unwrap().is_symlink());
         assert!(acquire(&url, Instant::now()).is_err());
-        let root = gripsack_fs::open_or_create(home.path()).unwrap();
-        let locks = gripsack_fs::open_dir_nofollow(&root, Path::new("locks")).unwrap();
-        let _lock = gripsack_fs::FlockGuard::try_acquire_in(&locks, "conda-helper")
+        let root = gripsack_host::fs::open_or_create(home.path()).unwrap();
+        let locks = gripsack_host::fs::open_dir_nofollow(&root, Path::new("locks")).unwrap();
+        let _lock = gripsack_host::fs::FlockGuard::try_acquire_in(&locks, "conda-helper")
             .unwrap()
             .unwrap();
         let start = Instant::now();
@@ -341,7 +346,7 @@ mod tests {
         let serving = tempfile::tempdir().unwrap();
         let asset = serving.path().join("conda-helper-fixture");
         std::fs::write(&asset, bytes).unwrap();
-        let pin = gripsack_store::hash::hex_sha256(bytes);
+        let pin = gripsack_host::store::hash::hex_sha256(bytes);
         (format!("file://{}", asset.display()), pin, serving)
     }
 }

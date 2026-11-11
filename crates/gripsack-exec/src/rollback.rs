@@ -22,7 +22,7 @@ mod directory_transitions;
 mod restore;
 
 use crate::ctx::ExecError;
-use gripsack_store as store;
+use gripsack_host::store;
 use std::collections::BTreeMap;
 use std::path::Path;
 use store::journal::RunOp;
@@ -38,7 +38,7 @@ pub fn rollback_generation(
     target: &store::Generation,
 ) -> Result<Vec<store::journal::RecoveryNote>, ExecError> {
     let home_path = session.home();
-    let home = gripsack_fs::open_or_create(home_path)?;
+    let home = gripsack_host::fs::open_or_create(home_path)?;
     // the clean-floor rule, same as apply: an interrupted run's
     // entries resolve BEFORE this run mutates anything
     let mut notes = store::journal::reconcile(&home, home_path)?;
@@ -190,7 +190,7 @@ fn rollback_intents(
                 continue;
             }
             for record in &state.intents {
-                if record.trigger == gripsack_store::ActivationTrigger::OnRemove {
+                if record.trigger == gripsack_host::store::ActivationTrigger::OnRemove {
                     intents.push(store::activation::PendingIntent {
                         output: name.clone(),
                         action: record.action.clone(),

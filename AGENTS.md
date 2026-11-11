@@ -90,7 +90,8 @@ permissions or preserved engine identity: verify both and run a retained image.
 | `docs/operations/` | workstation operator runbooks (storage) |
 | `schema/ir/v10.json` | Current native workspace, service and portable-package authoring contract. Strict historical readers exist only for retained data; current execution admits IR10 |
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
-| `crates/gripsack-store` | store paths, generations, GC |
+| `crates/gripsack-kernel` | ring 0: pure decisions and protocol machines, no dependencies, proved in Lean under `proofs/` |
+| `crates/gripsack-host` | ring 2: storage trait + MemFs, protocol drivers, cap-std `fs`, process supervisor (`process`), store layout and wire codecs (`store`: paths, hashes, journal, manifests, selections, generations, activation storage) |
 | `crates/gripsack-exec` | Native package/task/profile lifecycle, services, scheduled jobs, semantic review and portable sharing |
 | `crates/gripsack-fetch` | built-in fetchers + `gripfetch-*` plugin host + tool provisioning (deno) |
 | `crates/gripsack-conda` | Coherent Conda/wheel lock, archive, protocol and installed-tree admission |
@@ -189,6 +190,10 @@ stored data needed for rollback and integrity retains its original meaning.
   (sans-IO) are proved in Lean over the Aeneas translation of the shipped
   Rust. Ring 2 host code stays small with registered assumptions; ring 3
   admits untrusted input. Move code inward to gain guarantees.
+  Dependencies flow inward only: `gripsack → exec/fetch → host → kernel`,
+  `ir → kernel`; `scripts/check_architecture.py` (in the `test` gate)
+  enforces the edge map and rejects the retired `-store`/`-policy`/`-fs`/
+  `-process` crates.
 - **Kernel code** (`gripsack-kernel`, once it exists): no IO, no floats, no
   `dyn`, no dependencies. Change it together with its Lean proofs; the
   `proofs` gate checks the committed translation has not drifted.

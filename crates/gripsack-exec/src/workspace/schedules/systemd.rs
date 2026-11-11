@@ -9,8 +9,8 @@ pub(super) use manager::{register, remove};
 mod tests;
 
 use crate::ExecError;
+use gripsack_host::store::jobs::{JobId, JobRevision};
 use gripsack_ir::workspace::{Weekday, WorkspaceCalendar};
-use gripsack_store::jobs::{JobId, JobRevision};
 use std::{collections::BTreeMap, path::Path};
 
 /// Both strings are validated again by the lifecycle before protected publication.

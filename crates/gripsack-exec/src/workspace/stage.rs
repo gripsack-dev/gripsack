@@ -1,7 +1,7 @@
 //! Bounded tree admission for native inputs and retained producer payloads.
 use crate::ExecError;
+use gripsack_host::store;
 use gripsack_ir::workspace::RecipeOutputKind;
-use gripsack_store as store;
 use std::path::Path;
 
 pub struct ValidatedTree {

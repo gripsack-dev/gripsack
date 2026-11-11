@@ -1570,10 +1570,8 @@ dependencies = [
  "base64 0.22.1",
  "csv",
  "gripsack-fetch",
- "gripsack-fs",
+ "gripsack-host",
  "gripsack-ir",
- "gripsack-policy",
- "gripsack-process",
  "hex",
  "jiff",
  "mailparse",
@@ -1629,11 +1627,8 @@ dependencies = [
  "bzip2",
  "crc32fast",
  "flate2",
- "gripsack-fs",
+ "gripsack-host",
  "gripsack-ir",
- "gripsack-policy",
- "gripsack-process",
- "gripsack-store",
  "httpdate",
  "libc",
  "parking_lot",
@@ -1656,28 +1651,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "gripsack-fs"
-version = "0.53.0"
-dependencies = [
- "cap-std",
- "libc",
- "rustix 1.1.5",
-]
-
-[[package]]
 name = "gripsack-host"
 version = "0.53.0"
 dependencies = [
- "gripsack-fs",
+ "cap-std",
+ "getrandom 0.4.3",
  "gripsack-kernel",
+ "libc",
  "rustix 1.1.5",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
 ]
 
 [[package]]
 name = "gripsack-ir"
 version = "0.53.0"
 dependencies = [
- "gripsack-policy",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -1688,40 +1679,6 @@ dependencies = [
 [[package]]
 name = "gripsack-kernel"
 version = "0.53.0"
-
-[[package]]
-name = "gripsack-policy"
-version = "0.53.0"
-
-[[package]]
-name = "gripsack-process"
-version = "0.53.0"
-dependencies = [
- "gripsack-policy",
- "libc",
- "serde",
- "sha2 0.11.0",
- "tempfile",
-]
-
-[[package]]
-name = "gripsack-store"
-version = "0.53.0"
-dependencies = [
- "getrandom 0.4.3",
- "gripsack-fs",
- "gripsack-host",
- "gripsack-ir",
- "gripsack-kernel",
- "gripsack-policy",
- "gripsack-process",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tempfile",
- "toml",
- "url",
-]
 
 [[package]]
 name = "h2"

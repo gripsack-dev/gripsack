@@ -290,7 +290,7 @@ impl<'a> Prepared<'a> {
                 roots.extend(source.artifact.retention.iter().cloned());
             }
             if let Some(package) = self.packages.get(name) {
-                roots.insert(gripsack_store::content_path(
+                roots.insert(gripsack_host::store::content_path(
                     home,
                     "workspace-package",
                     &package.to_string(),

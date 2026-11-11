@@ -64,10 +64,10 @@ pub fn plan(
     json: bool,
 ) -> ExitCode {
     finish((|| {
-        let home = gripsack_store::gripsack_home();
-        let current = gripsack_store::current_generation(&home)
+        let home = gripsack_host::store::gripsack_home();
+        let current = gripsack_host::store::current_generation(&home)
             .map_err(|error| error.to_string())?
-            .map(|number| gripsack_store::generations::admit_manifest(&home, number))
+            .map(|number| gripsack_host::store::generations::admit_manifest(&home, number))
             .transpose()
             .map_err(|error| error.to_string())?;
         let operations = gripsack_exec::ops::preview_ops(
@@ -153,7 +153,7 @@ pub fn config(
 }
 
 fn select(selector: &str, repo: &Path) -> Result<SemanticSnapshot, String> {
-    let home = gripsack_store::gripsack_home();
+    let home = gripsack_host::store::gripsack_home();
     if selector == "current" {
         return semantic::capture_current(&home).map_err(|error| error.to_string());
     }

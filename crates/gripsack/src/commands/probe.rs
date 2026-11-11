@@ -8,10 +8,10 @@
 use super::eval::EvalEnvelope;
 use super::frontend::FrontendRunError;
 use crate::render::DiagnosticSink;
+use gripsack_exec::trust::evaluation::EvaluationSession;
+use gripsack_host::process::{Limits, ProcessDisposition, Sha256Digest};
 use gripsack_ir::diagnostic::codes;
 use gripsack_ir::{Diagnostic, Severity};
-use gripsack_process::{Limits, ProcessDisposition, Sha256Digest};
-use gripsack_store::trust::evaluation::EvaluationSession;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -68,7 +68,7 @@ pub(super) struct InputsEnvelope<'a> {
 /// the bytes bound into an earlier process receipt.
 pub(super) struct InputsFile {
     directory: tempfile::TempDir,
-    capability: gripsack_fs::Dir,
+    capability: gripsack_host::fs::Dir,
 }
 
 struct PreparedInput {
@@ -81,7 +81,7 @@ impl InputsFile {
         let directory = tempfile::Builder::new()
             .prefix("gripsack-inputs-")
             .tempdir()?;
-        let capability = gripsack_fs::open(directory.path())?;
+        let capability = gripsack_host::fs::open(directory.path())?;
         Ok(Self {
             directory,
             capability,
@@ -110,16 +110,18 @@ impl InputsFile {
         let name = format!("{round}.json");
         // These bytes are command-owned, never recovery authority. Exclusive
         // creation and read-only sealing suffice; only the receipt is durable.
-        let mut options = gripsack_fs::cap_std::fs::OpenOptions::new();
+        let mut options = gripsack_host::fs::cap_std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         let mut file = self
             .capability
             .open_with(&name, &options)
             .map_err(super::prepared::operational)?;
         std::io::Write::write_all(&mut file, &encoded.0).map_err(super::prepared::operational)?;
-        use gripsack_fs::cap_std::fs::PermissionsExt;
-        file.set_permissions(gripsack_fs::cap_std::fs::Permissions::from_mode(0o400))
-            .map_err(super::prepared::operational)?;
+        use gripsack_host::fs::cap_std::fs::PermissionsExt;
+        file.set_permissions(gripsack_host::fs::cap_std::fs::Permissions::from_mode(
+            0o400,
+        ))
+        .map_err(super::prepared::operational)?;
         Ok(PreparedInput {
             path: self.directory.path().join(name),
             digest: Sha256Digest::of(&encoded.0),

@@ -2,7 +2,7 @@
 //! the only retention authority; imported review documents cannot name roots.
 use super::{admission, model::*, normalize::subject};
 use crate::LifecycleSession;
-use gripsack_store::{DeploymentState, hash::PayloadHash};
+use gripsack_host::store::{DeploymentState, hash::PayloadHash};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -43,10 +43,10 @@ pub(crate) fn publish_profile(
         profile: subject("output", profile),
         snapshot: snapshot.into_document(),
     })?;
-    let home = gripsack_fs::open(session.home())?;
-    gripsack_fs::create_dir_all(&home, Path::new("store"))?;
-    let store = gripsack_fs::open_dir_nofollow(&home, Path::new("store"))?;
-    let tree = gripsack_store::hash::canonical_single_file_tree_hash(RECORD, &bytes);
+    let home = gripsack_host::fs::open(session.home())?;
+    gripsack_host::fs::create_dir_all(&home, Path::new("store"))?;
+    let store = gripsack_host::fs::open_dir_nofollow(&home, Path::new("store"))?;
+    let tree = gripsack_host::store::hash::canonical_single_file_tree_hash(RECORD, &bytes);
     let root = root_path(session.home(), &tree);
     let name = Path::new(
         root.file_name()
@@ -60,10 +60,10 @@ pub(crate) fn publish_profile(
                     "semantic artifact identity collision",
                 ));
             }
-            let directory = gripsack_fs::open_dir_nofollow(&store, name)?;
-            gripsack_fs::open_file_nofollow(&directory, Path::new(RECORD))?.sync_all()?;
-            gripsack_fs::fsync_pinned_dir(&directory, name)?;
-            gripsack_fs::fsync_pinned_dir(&store, Path::new("."))?;
+            let directory = gripsack_host::fs::open_dir_nofollow(&store, name)?;
+            gripsack_host::fs::open_file_nofollow(&directory, Path::new(RECORD))?.sync_all()?;
+            gripsack_host::fs::fsync_pinned_dir(&directory, name)?;
+            gripsack_host::fs::fsync_pinned_dir(&store, Path::new("."))?;
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -88,10 +88,10 @@ pub(crate) fn publish_profile(
                     .file_name()
                     .ok_or(SnapshotError::Invalid("semantic staging name"))?,
             );
-            let stage_dir = gripsack_fs::open_dir_nofollow(&store, stage_name)?;
-            gripsack_fs::fsync_pinned_dir(&stage_dir, Path::new("."))?;
-            gripsack_fs::rename_noreplace(&store, stage_name, name)?;
-            gripsack_fs::fsync_pinned_dir(&store, Path::new("."))?;
+            let stage_dir = gripsack_host::fs::open_dir_nofollow(&store, stage_name)?;
+            gripsack_host::fs::fsync_pinned_dir(&stage_dir, Path::new("."))?;
+            gripsack_host::fs::rename_noreplace(&store, stage_name, name)?;
+            gripsack_host::fs::fsync_pinned_dir(&store, Path::new("."))?;
         }
         Err(error) => return Err(error.into()),
     }
@@ -118,10 +118,10 @@ fn validate_binding(
 /// Only a wholly absent artifact can be re-created from a fresh capture.
 /// Missing members inside an existing root remain corruption, not cache misses.
 fn open_retained_directory(
-    parent: &gripsack_fs::Dir,
+    parent: &gripsack_host::fs::Dir,
     name: &Path,
-) -> Result<gripsack_fs::Dir, SnapshotError> {
-    match gripsack_fs::open_dir_nofollow(parent, name) {
+) -> Result<gripsack_host::fs::Dir, SnapshotError> {
+    match gripsack_host::fs::open_dir_nofollow(parent, name) {
         Ok(directory) => Ok(directory),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             Err(SnapshotError::MissingArtifact)
@@ -131,11 +131,11 @@ fn open_retained_directory(
 }
 
 fn read_record(home: &Path, root: &Path) -> Result<Record, SnapshotError> {
-    gripsack_store::paths::validate_store_root(home, root)?;
+    gripsack_host::store::paths::validate_store_root(home, root)?;
     if !is_root(root) {
         return Err(SnapshotError::Invalid("semantic artifact namespace"));
     }
-    let home_dir = gripsack_fs::open(home)?;
+    let home_dir = gripsack_host::fs::open(home)?;
     let store = open_retained_directory(&home_dir, Path::new("store"))?;
     let directory = open_retained_directory(
         &store,
@@ -145,7 +145,7 @@ fn read_record(home: &Path, root: &Path) -> Result<Record, SnapshotError> {
         ),
     )?;
     {
-        use gripsack_fs::cap_std::fs::MetadataExt;
+        use gripsack_host::fs::cap_std::fs::MetadataExt;
         if directory.metadata(".")?.mode() & 0o077 != 0 {
             return Err(SnapshotError::Invalid(
                 "semantic artifact directory is not private",
@@ -161,10 +161,10 @@ fn read_record(home: &Path, root: &Path) -> Result<Record, SnapshotError> {
             "semantic artifact must contain exactly its record",
         ));
     }
-    let file = gripsack_fs::open_file_nofollow(&directory, Path::new(RECORD))?;
+    let file = gripsack_host::fs::open_file_nofollow(&directory, Path::new(RECORD))?;
     let metadata = file.metadata()?;
     {
-        use gripsack_fs::cap_std::fs::MetadataExt;
+        use gripsack_host::fs::cap_std::fs::MetadataExt;
         if metadata.mode() & 0o377 != 0 || metadata.len() > MAX_SNAPSHOT_BYTES as u64 {
             return Err(SnapshotError::Invalid(
                 "semantic artifact privacy or byte bound",
@@ -178,7 +178,7 @@ fn read_record(home: &Path, root: &Path) -> Result<Record, SnapshotError> {
         return Err(SnapshotError::Bound("bytes"));
     }
     // The complete exact tree is checked, including extra entries and mode.
-    let tree = gripsack_store::hash::canonical_single_file_tree_hash(RECORD, &bytes);
+    let tree = gripsack_host::store::hash::canonical_single_file_tree_hash(RECORD, &bytes);
     if root_path(home, &tree) != root {
         return Err(SnapshotError::Invalid("semantic artifact tree identity"));
     }

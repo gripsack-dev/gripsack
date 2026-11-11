@@ -2,7 +2,7 @@
 //! drift guards the ops planner relies on — the rollback restore path
 //! lives in ops::plan (0034).
 
-use gripsack_store as store;
+use gripsack_host::store;
 use std::path::Path;
 
 /// Capture a destination's current state for a take-over (0015
@@ -15,9 +15,9 @@ use std::path::Path;
 /// for a file that existed but could not be captured would break the
 /// central promise (exact pre-adoption restoration).
 pub(crate) fn capture_prior(
-    dest_dir: &gripsack_fs::Dir,
+    dest_dir: &gripsack_host::fs::Dir,
     dest_name: &Path,
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
 ) -> std::io::Result<Option<store::Prior>> {
     let meta = match dest_dir.symlink_metadata(dest_name) {
         Ok(meta) => meta,
@@ -42,7 +42,7 @@ pub(crate) fn capture_prior(
         let hash = store::prior::store_blob(home, &bytes)?;
         #[cfg(unix)]
         let mode = {
-            use gripsack_fs::cap_std::fs::MetadataExt;
+            use gripsack_host::fs::cap_std::fs::MetadataExt;
             meta.mode() & 0o7777
         };
         #[cfg(not(unix))]
@@ -67,7 +67,7 @@ pub(crate) fn capture_prior(
 /// never observed afterward.
 pub fn prune_intent(
     entry: &store::DeployedEntry,
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
 ) -> std::io::Result<store::journal::Intended> {
     use store::journal::{Intended, ObjectIdentity};
     match &entry.prior {

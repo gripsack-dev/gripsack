@@ -101,7 +101,8 @@ fn captured_subject_binds_bytes_and_source_attribution() {
         file_span: span(),
         captured: "source".into(),
         command_span: span(),
-        captured_digest: gripsack_store::canonical_file_hash(&root.path().join("source")).unwrap(),
+        captured_digest: gripsack_host::store::canonical_file_hash(&root.path().join("source"))
+            .unwrap(),
         destination: root.path().join("destination"),
     };
     assert_eq!(
@@ -133,7 +134,7 @@ fn mode_change_and_destination_retarget_invalidate_observation() {
         file_span: span(),
         captured: "source".into(),
         command_span: span(),
-        captured_digest: gripsack_store::canonical_file_hash(&source).unwrap(),
+        captured_digest: gripsack_host::store::canonical_file_hash(&source).unwrap(),
         destination: destination.clone(),
     };
     let observation = inputs.observe(root.path()).unwrap();
@@ -171,7 +172,8 @@ fn declared_ancestor_alias_is_pinned_and_retargeting_is_refused() {
             file_span: span(),
             captured: "source".into(),
             command_span: span(),
-            captured_digest: gripsack_store::canonical_file_hash(&first.join("source")).unwrap(),
+            captured_digest: gripsack_host::store::canonical_file_hash(&first.join("source"))
+                .unwrap(),
             destination: root.path().join("destination"),
         };
         // Retained wire keeps relative captured paths, not the admitted alias.
@@ -225,7 +227,7 @@ fn parent_alias_retarget_is_refused_even_with_the_same_resolved_leaf() {
         file_span: span(),
         captured: "source".into(),
         command_span: span(),
-        captured_digest: gripsack_store::canonical_file_hash(&source).unwrap(),
+        captured_digest: gripsack_host::store::canonical_file_hash(&source).unwrap(),
         destination: alias.join("destination"),
     };
     let observation = inputs.observe(root.path()).unwrap();
@@ -238,7 +240,7 @@ fn parent_alias_retarget_is_refused_even_with_the_same_resolved_leaf() {
 #[cfg(target_os = "linux")]
 #[test]
 fn native_file_checks_preserve_operation_deadline() {
-    use gripsack_process::{Control, ProcessDisposition};
+    use gripsack_host::process::{Control, ProcessDisposition};
     use std::time::Duration;
     let home = tempfile::tempdir().unwrap();
     let root = tempfile::tempdir().unwrap();
@@ -280,7 +282,8 @@ fn native_file_checks_preserve_operation_deadline() {
         file_span: span(),
         captured: "source".into(),
         command_span: span(),
-        captured_digest: gripsack_store::canonical_file_hash(&root.path().join("source")).unwrap(),
+        captured_digest: gripsack_host::store::canonical_file_hash(&root.path().join("source"))
+            .unwrap(),
         destination: root.path().join("destination"),
     };
     let context = hooks::snapshot::capture_file(
@@ -300,7 +303,7 @@ fn native_file_checks_preserve_operation_deadline() {
         None,
         &environment,
         Instant::now() + Duration::from_millis(100),
-        Some(gripsack_process::ProcessLeases {
+        Some(gripsack_host::process::ProcessLeases {
             worker: None,
             retention: Some(std::fs::File::open(root.path()).unwrap()),
         }),

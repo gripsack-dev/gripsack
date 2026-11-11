@@ -2,7 +2,7 @@
 //! engine inspection payloads or application logs. External outcomes are observed.
 use super::{ServiceError, failure};
 use crate::{Ctx, LifecycleSession};
-use gripsack_process::Sha256Digest;
+use gripsack_host::process::Sha256Digest;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
@@ -143,12 +143,12 @@ impl ServiceState {
         })
     }
     pub fn read(ctx: &Ctx, id: &WorkspaceServiceId) -> Result<Option<Self>, ServiceError> {
-        let home = match gripsack_fs::open(&ctx.home) {
+        let home = match gripsack_host::fs::open(&ctx.home) {
             Ok(home) => home,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error.into()),
         };
-        let file = match gripsack_fs::open_file_nofollow(&home, &id.path()) {
+        let file = match gripsack_host::fs::open_file_nofollow(&home, &id.path()) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error.into()),
@@ -195,7 +195,7 @@ impl ServiceState {
         let directory = ctx.home_dir()?;
         let path = self.workspace.path();
         drop(
-            gripsack_fs::StagedFileWrite::with_mode(directory, &path, &bytes, 0o600)?
+            gripsack_host::fs::StagedFileWrite::with_mode(directory, &path, &bytes, 0o600)?
                 .sync_file()?
                 .publish()?
                 .sync_parent()?,

@@ -5,13 +5,13 @@ use crate::ctx::ExecError;
 use crate::ops::{
     DestView, ModeInput, Op, OpKind, WritePermissions, plan_entry_op, plan_remove_op,
 };
-use gripsack_store as store;
-use gripsack_store::Ownership;
+use gripsack_host::store;
+use gripsack_host::store::Ownership;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 pub(super) struct DeferredFile {
-    entry: store::DeploymentEntry,
+    entry: crate::DeploymentEntry,
     block: Option<store::ManagedBlockId>,
     tree: bool,
     output: String,
@@ -23,7 +23,7 @@ impl DeferredFile {
 
     pub fn launcher(path: String, span: gripsack_ir::Span, environment: String) -> Self {
         Self {
-            entry: store::DeploymentEntry {
+            entry: crate::DeploymentEntry {
                 from: String::new(),
                 to: path,
                 mode: Ownership::TrackedCopy,
@@ -39,7 +39,7 @@ impl DeferredFile {
 
     pub fn schedule(path: String, span: gripsack_ir::Span, schedule: &str) -> Self {
         Self {
-            entry: store::DeploymentEntry {
+            entry: crate::DeploymentEntry {
                 from: String::new(),
                 to: path,
                 mode: Ownership::TrackedCopy,
@@ -72,7 +72,7 @@ impl DeferredFile {
             _ => return Err(file_failure(&file.span, "deferred file has no producer")),
         };
         Ok(Self {
-            entry: store::DeploymentEntry {
+            entry: crate::DeploymentEntry {
                 from: String::new(),
                 to: path.clone(),
                 mode,
@@ -358,7 +358,7 @@ impl NativeProfiles {
             }
         }
         if let Some(previous) = previous {
-            let home_cap = gripsack_fs::open(home)?;
+            let home_cap = gripsack_host::fs::open(home)?;
             for (owner, state) in &previous.deployments {
                 if self.partial && !self.profiles.contains_key(owner) {
                     continue;

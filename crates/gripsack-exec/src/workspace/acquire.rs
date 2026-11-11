@@ -3,12 +3,12 @@
 //! a concrete lock unless the caller owns an explicit update operation.
 use crate::{Ctx, ExecError, LifecycleSession};
 use gripsack_fetch::FetchIdentity;
+use gripsack_host::store;
 use gripsack_ir::{
     Diagnostic, FetchSpec, codes,
     workspace::{RecipeOutputKind, WorkspaceFetch},
     workspace_model::lock::{LockedPin, ResolvedPinFields},
 };
-use gripsack_store as store;
 use std::{
     borrow::Cow,
     path::{Path, PathBuf},

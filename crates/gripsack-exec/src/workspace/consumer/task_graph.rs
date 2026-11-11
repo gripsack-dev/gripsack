@@ -18,7 +18,7 @@ const MAX_MUTATION_KEYS: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(transparent)]
-pub struct TaskRevision(pub(super) gripsack_process::Sha256Digest);
+pub struct TaskRevision(pub(super) gripsack_host::process::Sha256Digest);
 
 #[derive(Serialize)]
 pub struct TaskPlan {
@@ -126,9 +126,9 @@ impl<'a> TaskGraph<'a> {
         inputs.sort_by(|left, right| left.name.cmp(&right.name));
         let mut binding = serde_json::to_value((&ir.host, declarations, inputs))?;
         strip_spans(&mut binding);
-        let revision = TaskRevision(gripsack_process::Sha256Digest::of(&serde_json::to_vec(&(
-            root, binding,
-        ))?));
+        let revision = TaskRevision(gripsack_host::process::Sha256Digest::of(
+            &serde_json::to_vec(&(root, binding))?,
+        ));
         let plan = TaskPlan {
             root: root.to_owned(),
             revision,
@@ -186,7 +186,7 @@ fn visit<'a>(
         .ok_or_else(|| failure("task graph references an absent output"))?;
     let host_context = matches!(output, WorkspaceOutput::Task(task)
         if matches!(task.context, gripsack_ir::workspace_model::TaskContext::Host { .. }));
-    if !gripsack_policy::task::admit_task_edge(
+    if !super::task_policy::admit_task_edge(
         matches!(output, WorkspaceOutput::Task(_)),
         host_context,
     ) {

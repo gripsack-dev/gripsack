@@ -1,18 +1,22 @@
 [package]
 name = "gripsack-host"
-description = "gripsack ring-2 host (plan/0056 §6): storage trait, real and crash-injecting in-memory filesystems"
+description = "gripsack ring-2 host (plan/0056 §6): storage trait and filesystems, cap-std fs, process supervisor, store layout and wire codecs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
-# Ring 2 depends only inward: the kernel whose machines it drives, and
-# gripsack-fs, which supplies the fault-boundary vocabulary until this crate
-# absorbs it (plan/0056 §6, F2 step 10).
+# Ring 2 depends only inward, on the kernel whose machines it drives
+# (plan/0056 §6); scripts/check_architecture.py enforces the set. It absorbed
+# gripsack-fs, gripsack-process, the store layout of gripsack-store and the
+# process/operation budgets of gripsack-policy in F2 step 10b.
 [dependencies]
-gripsack-fs.workspace = true
 gripsack-kernel.workspace = true
-rustix = { version = "1", features = ["fs"] }
-
-[dev-dependencies]
+cap-std = "4"
+rustix = { version = "1", features = ["fs", "process"] }
+libc = "0.2"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 tempfile = "3"
+getrandom = "0.4"

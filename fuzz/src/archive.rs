@@ -67,8 +67,8 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         assert_eq!(hashed.as_str(), outcome.identity.as_str());
         // Both destinations materialized identical trees.
         let (a, b) = (
-            gripsack_store::canonical_tree_hash(&s.fixed("archive/out-a")).unwrap(),
-            gripsack_store::canonical_tree_hash(&s.fixed("archive/out-b")).unwrap(),
+            gripsack_host::store::canonical_tree_hash(&s.fixed("archive/out-a")).unwrap(),
+            gripsack_host::store::canonical_tree_hash(&s.fixed("archive/out-b")).unwrap(),
         );
         assert_eq!(a.as_str(), b.as_str());
         let (entries, bytes) = audit(&s.fixed("archive/out-a"));

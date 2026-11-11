@@ -23,6 +23,7 @@ use super::{
 };
 use crate::{Ctx, ExecError, LifecycleSession, UpdateMode};
 use gripsack_conda::CondaHelper;
+use gripsack_host::store;
 use gripsack_ir::{
     workspace::WorkspacePlatform,
     workspace_model::{
@@ -31,7 +32,6 @@ use gripsack_ir::{
         lock::{LockedCondaEnvironment, LockedPin, LockedVirtualPackage, ResolvedPinFields},
     },
 };
-use gripsack_store as store;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -152,7 +152,7 @@ fn materialization_key(locked: &LockedCondaEnvironment, context: &[&str]) -> Str
         hasher.update((field.len() as u64).to_le_bytes());
         hasher.update(field.as_bytes());
     }
-    gripsack_process::Sha256Digest::from_bytes(hasher.finalize().into()).to_string()
+    gripsack_host::process::Sha256Digest::from_bytes(hasher.finalize().into()).to_string()
 }
 
 pub(super) fn native_location(
@@ -367,7 +367,8 @@ fn verify_archive(
         }
         hasher.update(&buffer[..read]);
     }
-    let actual = gripsack_process::Sha256Digest::from_bytes(hasher.finalize().into()).to_string();
+    let actual =
+        gripsack_host::process::Sha256Digest::from_bytes(hasher.finalize().into()).to_string();
     if actual != sha256 {
         return Err(failure(
             output,
@@ -382,14 +383,14 @@ fn verify_archive(
 /// explicit error, never a silent fallback to ambient binaries.
 fn helper(ctx: &Ctx, output: &str) -> Result<CondaHelper, ExecError> {
     let deadline = std::time::Instant::now()
-        .checked_add(gripsack_process::Limits::default().timeout)
+        .checked_add(gripsack_host::process::Limits::default().timeout)
         .ok_or_else(|| failure(output, "Conda helper deadline overflow"))?;
     let (path, expected) = match std::env::var_os("GRIPSACK_CONDA_HELPER") {
         Some(path) if !path.is_empty() => (PathBuf::from(path), None),
         _ => {
             let provisioned = gripsack_conda::provision::ensure(&ctx.home, &ctx.fetch)
                 .map_err(|error| failure(output, error.to_string()))?;
-            let pin = gripsack_process::Sha256Digest::parse(&provisioned.pin)?;
+            let pin = gripsack_host::process::Sha256Digest::parse(&provisioned.pin)?;
             (provisioned.path, Some(pin))
         }
     };

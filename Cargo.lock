@@ -1181,11 +1181,8 @@ dependencies = [
  "gripsack-config",
  "gripsack-exec",
  "gripsack-fetch",
- "gripsack-fs",
+ "gripsack-host",
  "gripsack-ir",
- "gripsack-policy",
- "gripsack-process",
- "gripsack-store",
  "gripsack-trace",
  "indicatif",
  "libc",
@@ -1212,10 +1209,8 @@ dependencies = [
  "base64 0.22.1",
  "csv",
  "gripsack-fetch",
- "gripsack-fs",
+ "gripsack-host",
  "gripsack-ir",
- "gripsack-policy",
- "gripsack-process",
  "hex",
  "jiff",
  "libc",
@@ -1257,13 +1252,10 @@ dependencies = [
  "gripsack-conda",
  "gripsack-config",
  "gripsack-fetch",
- "gripsack-fs",
  "gripsack-host",
  "gripsack-ir",
  "gripsack-kernel",
- "gripsack-policy",
- "gripsack-process",
- "gripsack-store",
+ "jsonschema",
  "libc",
  "memchr",
  "reqwest",
@@ -1276,6 +1268,7 @@ dependencies = [
  "thiserror 2.0.20",
  "toml 0.9.12+spec-1.1.0",
  "tracing",
+ "url",
  "zeroize",
  "zip",
  "zstd",
@@ -1288,11 +1281,8 @@ dependencies = [
  "bzip2",
  "crc32fast",
  "flate2",
- "gripsack-fs",
+ "gripsack-host",
  "gripsack-ir",
- "gripsack-policy",
- "gripsack-process",
- "gripsack-store",
  "httpdate",
  "libc",
  "parking_lot",
@@ -1315,23 +1305,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "gripsack-fs"
-version = "0.53.0"
-dependencies = [
- "cap-std",
- "libc",
- "rustix",
- "tempfile",
-]
-
-[[package]]
 name = "gripsack-fuzz"
 version = "0.0.0"
 dependencies = [
  "gripsack-fetch",
- "gripsack-fs",
+ "gripsack-host",
  "gripsack-ir",
- "gripsack-store",
  "libfuzzer-sys",
  "serde",
  "serde_json",
@@ -1342,9 +1321,14 @@ dependencies = [
 name = "gripsack-host"
 version = "0.53.0"
 dependencies = [
- "gripsack-fs",
+ "cap-std",
+ "getrandom 0.4.3",
  "gripsack-kernel",
+ "libc",
  "rustix",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
  "tempfile",
 ]
 
@@ -1352,7 +1336,6 @@ dependencies = [
 name = "gripsack-ir"
 version = "0.53.0"
 dependencies = [
- "gripsack-policy",
  "jsonschema",
  "serde",
  "serde_json",
@@ -1366,46 +1349,10 @@ name = "gripsack-kernel"
 version = "0.53.0"
 
 [[package]]
-name = "gripsack-policy"
-version = "0.53.0"
-
-[[package]]
-name = "gripsack-process"
-version = "0.53.0"
-dependencies = [
- "gripsack-policy",
- "libc",
- "serde",
- "sha2 0.11.0",
- "tempfile",
-]
-
-[[package]]
-name = "gripsack-store"
-version = "0.53.0"
-dependencies = [
- "getrandom 0.4.3",
- "gripsack-fs",
- "gripsack-host",
- "gripsack-ir",
- "gripsack-kernel",
- "gripsack-policy",
- "gripsack-process",
- "jsonschema",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tempfile",
- "toml 0.9.12+spec-1.1.0",
- "url",
-]
-
-[[package]]
 name = "gripsack-trace"
 version = "0.53.0"
 dependencies = [
- "gripsack-fs",
- "gripsack-store",
+ "gripsack-host",
  "tempfile",
  "tracing",
  "tracing-subscriber",

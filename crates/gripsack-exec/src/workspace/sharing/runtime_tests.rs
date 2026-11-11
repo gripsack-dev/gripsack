@@ -6,12 +6,12 @@ use super::super::{
     trust,
 };
 use super::*;
-use base64::{Engine, engine::general_purpose::STANDARD};
-use ed25519_dalek::SigningKey;
-use gripsack_store::{
+use crate::{
     source_bundle::{SourceBundle, SourceCapturePolicy},
     trust::evaluation::EvaluationId,
 };
+use base64::{Engine, engine::general_purpose::STANDARD};
+use ed25519_dalek::SigningKey;
 use std::{fs, io::Write};
 
 fn admit_environment(
@@ -115,7 +115,7 @@ impl Fixture {
         }
         let archive = archive.into_inner().unwrap();
         let descriptor = BlobDescriptor {
-            sha256: gripsack_store::hash::hex_sha256(&archive),
+            sha256: gripsack_host::store::hash::hex_sha256(&archive),
             size: archive.len() as u64,
             media_type: TREE_MEDIA_TYPE.into(),
         };
@@ -140,7 +140,7 @@ impl Fixture {
                 id: "tool".into(),
                 payload: Some(descriptor),
                 tree: Some(
-                    gripsack_store::canonical_tree_hash(&component)
+                    gripsack_host::store::canonical_tree_hash(&component)
                         .unwrap()
                         .to_string(),
                 ),
@@ -152,7 +152,7 @@ impl Fixture {
                         path: "LICENSE".into(),
                         mode: 0o644,
                         kind: EntryKind::File {
-                            sha256: gripsack_store::hash::hex_sha256(license),
+                            sha256: gripsack_host::store::hash::hex_sha256(license),
                             size: license.len() as u64,
                         },
                     },
@@ -165,7 +165,7 @@ impl Fixture {
                         path: "bin/tool".into(),
                         mode: 0o755,
                         kind: EntryKind::File {
-                            sha256: gripsack_store::hash::hex_sha256(tool),
+                            sha256: gripsack_host::store::hash::hex_sha256(tool),
                             size: tool.len() as u64,
                         },
                     },
@@ -421,7 +421,8 @@ fn retained_payload_tampering_and_missing_receipts_fail_closed() {
     fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
     fs::write(&tool, b"#!/bin/sh\nexit 9\n").unwrap();
     assert!(inspect(&fixture.ctx.home, &facts.manifest).is_err());
-    let absent = gripsack_store::content_path(&fixture.ctx.home, "package-import", &"f".repeat(64));
+    let absent =
+        gripsack_host::store::content_path(&fixture.ctx.home, "package-import", &"f".repeat(64));
     assert!(readmit_roots(&fixture.ctx.home, [absent.as_path()]).is_err());
 }
 
@@ -496,8 +497,9 @@ fn fixed_placement_requires_signed_exact_recipient_prefix() {
             None,
         )
         .unwrap();
-    let tree = gripsack_store::canonical_tree_hash(&aggregate).unwrap();
-    let prefix = gripsack_store::content_path(&fixture.ctx.home, "package-payload", tree.as_str());
+    let tree = gripsack_host::store::canonical_tree_hash(&aggregate).unwrap();
+    let prefix =
+        gripsack_host::store::content_path(&fixture.ctx.home, "package-payload", tree.as_str());
     fixture.manifest.layout = RuntimeLayout::Fixed {
         prefix: prefix.to_str().unwrap().into(),
         contract: RuntimeContract {
@@ -576,7 +578,7 @@ fn empty_tree_uses_the_signed_tar_media_contract() {
     fs::create_dir(&empty).unwrap();
     let archive = tar::Builder::new(Vec::new()).into_inner().unwrap();
     let descriptor = BlobDescriptor {
-        sha256: gripsack_store::hash::hex_sha256(&archive),
+        sha256: gripsack_host::store::hash::hex_sha256(&archive),
         size: archive.len() as u64,
         media_type: TREE_MEDIA_TYPE.into(),
     };
@@ -588,7 +590,7 @@ fn empty_tree_uses_the_signed_tar_media_contract() {
     let component = &mut fixture.manifest.components[0];
     component.payload = Some(descriptor);
     component.tree = Some(
-        gripsack_store::canonical_tree_hash(&empty)
+        gripsack_host::store::canonical_tree_hash(&empty)
             .unwrap()
             .to_string(),
     );
@@ -953,7 +955,7 @@ fn independent_blob_tamper_and_tightened_layout_policy_reject() {
 #[test]
 fn closure_budgets_apply_to_metadata_members_entries_and_expansion() {
     let fixture = Fixture::new();
-    let directory = gripsack_fs::open(&fixture.bundle).unwrap();
+    let directory = gripsack_host::fs::open(&fixture.bundle).unwrap();
     let mut limits = FetchLimits {
         download_bytes: std::num::NonZeroU64::new(1).unwrap(),
         ..Default::default()
@@ -1415,10 +1417,11 @@ fn environment_fixed_member_requires_its_exact_real_destination() {
     let mut fixture = Fixture::new();
     let (_, mut child) = fixture.external();
     let embedded = fixture.import().unwrap();
-    let tree = gripsack_store::canonical_tree_hash(&embedded.payload.join("components/dependency"))
-        .unwrap();
+    let tree =
+        gripsack_host::store::canonical_tree_hash(&embedded.payload.join("components/dependency"))
+            .unwrap();
     let expected =
-        gripsack_store::content_path(&fixture.ctx.home, "package-payload", tree.as_str());
+        gripsack_host::store::content_path(&fixture.ctx.home, "package-payload", tree.as_str());
     child.layout = RuntimeLayout::Fixed {
         prefix: expected.to_str().unwrap().into(),
         contract: RuntimeContract {
@@ -1482,7 +1485,7 @@ fn mixed_local_archive_set_and_native_require_complete_originals_before_publicat
     let mut fixture = Fixture::new();
     // This is inventory admission coverage, not a runnable helper substitute.
     // The missing archive must be rejected before either member is published.
-    let digest = gripsack_store::hash::hex_sha256(b"original Conda archive");
+    let digest = gripsack_host::store::hash::hex_sha256(b"original Conda archive");
     let portable = super::super::conda::PortableConda {
         lock: serde_json::from_value(serde_json::json!({
             "platform":"linux-64", "channels":["https://example.invalid/channel/"],
@@ -1524,7 +1527,7 @@ fn mixed_local_archive_set_and_native_require_complete_originals_before_publicat
     let identity = fixture.manifest.digest().unwrap();
     assert!(fixture.import().is_err());
     assert!(inspect(&fixture.ctx.home, &identity).unwrap().is_none());
-    let native = gripsack_store::content_path(
+    let native = gripsack_host::store::content_path(
         &fixture.ctx.home,
         "package-payload",
         fixture.manifest.components[0].tree.as_ref().unwrap(),
@@ -1882,7 +1885,7 @@ fn operation_readmission_is_home_and_budget_bound() {
 fn retained_snapshot_walks_wide_trees_without_pinning_sibling_directories() {
     let temporary = tempfile::tempdir().unwrap();
     let home = temporary.path();
-    let root = gripsack_store::content_path(home, "package-payload", &"a".repeat(64));
+    let root = gripsack_host::store::content_path(home, "package-payload", &"a".repeat(64));
     fs::create_dir_all(&root).unwrap();
     // Exceed common per-process descriptor limits without changing the test
     // process's limits (other tests may be running concurrently).
@@ -1903,12 +1906,13 @@ fn operation_snapshot_pool_shares_256_member_scc_base_and_view_producers() {
     let mut scope = super::super::ReadmissionScope::new(home, FetchLimits::default());
     let mut members = Vec::new();
     for index in 0..256 {
-        let identity =
-            |member: usize| gripsack_process::Sha256Digest::of(&member.to_le_bytes()).to_string();
-        let base = gripsack_store::content_path(home, "package", &identity(index * 3));
-        let view = gripsack_store::content_path(home, "package", &identity(index * 3 + 1));
+        let identity = |member: usize| {
+            gripsack_host::process::Sha256Digest::of(&member.to_le_bytes()).to_string()
+        };
+        let base = gripsack_host::store::content_path(home, "package", &identity(index * 3));
+        let view = gripsack_host::store::content_path(home, "package", &identity(index * 3 + 1));
         let producer =
-            gripsack_store::content_path(home, "package-payload", &identity(index * 3 + 2));
+            gripsack_host::store::content_path(home, "package-payload", &identity(index * 3 + 2));
         for root in [&base, &view, &producer] {
             fs::create_dir_all(root).unwrap();
         }

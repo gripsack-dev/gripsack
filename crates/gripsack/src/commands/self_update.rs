@@ -165,7 +165,7 @@ fn run(args: &SelfUpdateArgs) -> Result<String, String> {
         .require_snapshot(&before)
         .map_err(|e| e.to_string())?;
     if let Err(e) = installed.publish(&mut source) {
-        if gripsack_fs::publication_occurred(&e) {
+        if gripsack_host::fs::publication_occurred(&e) {
             return Err(format!(
                 "executable changed to {latest}, but publication durability could not be confirmed: {e}; no rollback attempted"
             ));

@@ -19,6 +19,7 @@
 //! marker, [`RunDriver::leaf`] mutates one destination, [`RunDriver::commit`]
 //! stops at the flip (the caller flips) and [`RunDriver::flipped`] /
 //! [`RunDriver::end`] clean up.
+#![forbid(unsafe_code)]
 use crate::recover::Found;
 use crate::storage::{Name, ObjectKind, Permissions, Storage};
 use gripsack_kernel::journal::PublicationAction;

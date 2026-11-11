@@ -1,4 +1,4 @@
-use gripsack_store as store;
+use gripsack_host::store;
 use std::process::ExitCode;
 
 /// grip generations: list, marking the active one.

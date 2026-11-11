@@ -5,7 +5,7 @@ use super::{
 };
 use crate::render::{DiagnosticSink, Palette};
 use clap::Subcommand;
-use gripsack_store::{
+use gripsack_exec::{
     source_bundle::{SourceBundleDigest, SourceInventory},
     trust::{
         self, ApprovalInspection, EvaluationPolicy, EvaluationPolicyDigest, GitProvenance,
@@ -57,7 +57,7 @@ pub enum TrustCommand {
 }
 
 pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
-    let home = gripsack_store::gripsack_home();
+    let home = gripsack_host::store::gripsack_home();
     match command {
         TrustCommand::List { json } => list(&home, json),
         TrustCommand::Inspect {
@@ -146,7 +146,7 @@ pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
                     Ok(policy) => policy,
                     Err(error) => return operational(error),
                 },
-                gripsack_process::terminal::tame(
+                gripsack_host::process::terminal::tame(
                     prepared
                         .sources()
                         .repository_identity()
@@ -160,7 +160,7 @@ pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
             Ok(true) => {
                 println!(
                     "revoked approval for {}",
-                    gripsack_process::terminal::tame(path)
+                    gripsack_host::process::terminal::tame(path)
                 );
                 ExitCode::SUCCESS
             }
@@ -200,7 +200,7 @@ fn list(home: &Path, json: bool) -> ExitCode {
     for entry in &listing.approved {
         println!(
             "{}",
-            gripsack_process::terminal::tame(entry.repository.clone())
+            gripsack_host::process::terminal::tame(entry.repository.clone())
         );
         println!(
             "  bundle: {}  policy: {}",
@@ -214,7 +214,7 @@ fn list(home: &Path, json: bool) -> ExitCode {
     for entry in &listing.legacy {
         println!(
             "{} — legacy path-only approval; renewal required",
-            gripsack_process::terminal::tame(entry.path.clone())
+            gripsack_host::process::terminal::tame(entry.path.clone())
         );
     }
     ExitCode::SUCCESS
@@ -230,7 +230,7 @@ struct Inspection<'a> {
     provenance: &'a GitProvenance,
     inventory: &'a SourceInventory,
     capture_exclusions: &'a [String],
-    runtime_access: &'a gripsack_process::RuntimeAccess,
+    runtime_access: &'a gripsack_host::process::RuntimeAccess,
     approval: ApprovalInspection,
     focus: Option<&'a str>,
 }
@@ -280,7 +280,7 @@ fn inspect_receipt(home: &Path, id: &str, json: bool) -> ExitCode {
             println!("evaluation {}: {:?}", receipt.id, receipt.outcome);
             println!(
                 "  repository: {}",
-                gripsack_process::terminal::tame(receipt.repository)
+                gripsack_host::process::terminal::tame(receipt.repository)
             );
             println!(
                 "  bundle: {}  policy: {}",

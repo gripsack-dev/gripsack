@@ -53,7 +53,7 @@ impl NativeProfiles {
             limits,
             Some(&retained),
             true,
-            Instant::now() + gripsack_process::Limits::default().timeout,
+            Instant::now() + gripsack_host::process::Limits::default().timeout,
             predecessor.as_ref(),
             None,
             crate::progress::Reporter::silent(),
@@ -129,10 +129,10 @@ pub(crate) fn prepare_apply_in_session(
         retain_semantic_evidence(ir, ctx, &session, &mut native, None)?;
         return Ok((session, native));
     }
-    let environment = gripsack_process::OperatorEnvironment::capture()?;
+    let environment = gripsack_host::process::OperatorEnvironment::capture()?;
     let options = BuildOptions {
         environment: &environment,
-        deadline: Instant::now() + gripsack_process::Limits::default().timeout,
+        deadline: Instant::now() + gripsack_host::process::Limits::default().timeout,
     };
     let held = realize::realize_in_session(ir, ctx, &options, &selected, session)?;
     let predecessor = NativeProfiles::migration_predecessor(&ctx.home)?;
@@ -192,8 +192,8 @@ fn retain_semantic_evidence(
 ) -> Result<(), ExecError> {
     use crate::semantic::{SnapshotError, capture_profile, retention};
     let pins = super::pins::WorkspacePins::read(&ctx.repository)?;
-    let previous = gripsack_store::generations::current(&ctx.home)?
-        .map(|id| gripsack_store::generations::admit_manifest(&ctx.home, id))
+    let previous = gripsack_host::store::generations::current(&ctx.home)?
+        .map(|id| gripsack_host::store::generations::admit_manifest(&ctx.home, id))
         .transpose()?;
     for (name, profile) in &mut native.profiles {
         let snapshot = capture_profile(ir, &ctx.repository, &pins, name, realization)

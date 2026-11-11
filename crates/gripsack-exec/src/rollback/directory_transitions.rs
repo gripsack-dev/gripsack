@@ -12,11 +12,11 @@
 //! predecessor link.
 use super::DestMap;
 use crate::ExecError;
-use gripsack_kernel::directory::Action;
-use gripsack_store::{
+use gripsack_host::store::{
     self as store,
     journal::{ObjectIdentity, directory::DirectoryTransition},
 };
+use gripsack_kernel::directory::Action;
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
@@ -229,7 +229,7 @@ fn restored_origin(
         })
         .ok_or_else(|| failure("retained directory origin is unavailable"))?;
     if entry.preserved_drift
-        || entry.ownership.policy() != gripsack_store::Ownership::Owned
+        || entry.ownership.policy() != gripsack_host::store::Ownership::Owned
         || state.store_path.join(&entry.from) != receipt.predecessor_target
     {
         return Err(failure(

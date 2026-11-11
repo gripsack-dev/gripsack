@@ -1,0 +1,214 @@
+//! Strict persisted-generation admission shared by readers and publishers.
+use super::Generation;
+use crate::store::{ManagedBlockId, prior::FileMode};
+use std::collections::{BTreeMap, BTreeSet};
+use std::io;
+use std::path::Path;
+
+enum DestinationClaim<'a> {
+    Whole,
+    Blocks {
+        ids: BTreeSet<&'a ManagedBlockId>,
+        mode: FileMode,
+    },
+}
+
+pub(super) fn validate(
+    manifest: &Generation,
+    generation: crate::store::GenerationId,
+    home: &Path,
+) -> io::Result<()> {
+    let invalid = |why: String| io::Error::new(io::ErrorKind::InvalidData, why);
+    if manifest.number != generation {
+        return Err(invalid(format!(
+            "generation {generation}'s manifest claims number {} — directory and identity disagree",
+            manifest.number
+        )));
+    }
+    if manifest
+        .migration
+        .as_ref()
+        .is_some_and(|receipt| receipt.predecessor >= generation)
+    {
+        return Err(invalid(
+            "migration predecessor must precede its generation".into(),
+        ));
+    }
+    let directory_roots: BTreeSet<&Path> = manifest
+        .directory_transitions
+        .iter()
+        .map(|receipt| receipt.destination.as_path())
+        .collect();
+    if directory_roots.len() != manifest.directory_transitions.len() {
+        return Err(invalid("duplicate directory transition roots".into()));
+    }
+    for transition in &manifest.directory_transitions {
+        transition.validate()?;
+        if transition
+            .destination
+            .ancestors()
+            .skip(1)
+            .any(|root| directory_roots.contains(root))
+        {
+            return Err(invalid("overlapping directory transition roots".into()));
+        }
+        if transition.predecessor_generation >= generation {
+            return Err(invalid(
+                "directory predecessor must precede its generation".into(),
+            ));
+        }
+        let root = home.join(crate::store::STORE_DIR);
+        if !transition.predecessor_target.starts_with(&root) {
+            return Err(invalid(
+                "directory predecessor is outside retained store".into(),
+            ));
+        }
+    }
+    let mut destinations: BTreeMap<String, DestinationClaim<'_>> = BTreeMap::new();
+    let mut jobs = BTreeSet::new();
+    for (name, state) in &manifest.deployments {
+        if state.build_only
+            && (!state.entries.is_empty() || !state.intents.is_empty() || !state.env.is_empty())
+        {
+            return Err(invalid(format!(
+                "deployment {name:?}: build-only state contains deployment effects"
+            )));
+        }
+        if state.env.iter().any(|value| !value.valid_structured()) {
+            return Err(invalid(format!(
+                "deployment {name:?}: invalid structured environment contribution"
+            )));
+        }
+        crate::store::paths::validate_store_root(home, &state.store_path)
+            .map_err(|error| invalid(format!("deployment {name:?}: {error}")))?;
+        for path in &state.build_closure {
+            crate::store::paths::validate_store_root(home, path)
+                .map_err(|error| invalid(format!("deployment {name:?} build closure: {error}")))?;
+        }
+        for intent in &state.intents {
+            if let crate::store::activation::ActivationAction::WorkspaceHook { context, .. } =
+                &intent.action
+                && (context.parent() != Some(state.store_path.as_path())
+                    || context.file_name().is_none())
+            {
+                return Err(invalid(format!(
+                    "deployment {name:?}: workspace hook context is outside its retained profile"
+                )));
+            }
+        }
+        for intent in &state.intents {
+            if let crate::store::activation::ActivationAction::ScheduledJob {
+                job,
+                capture,
+                runner,
+                unit_directory,
+                closure,
+                enabled,
+                ..
+            } = &intent.action
+                && (!enabled
+                    || intent.trigger != crate::store::ActivationTrigger::PostActivate
+                    || !jobs.insert(job)
+                    || capture.parent() != Some(state.store_path.as_path())
+                    || capture.file_name().is_none()
+                    || !runner.is_absolute()
+                    || !state
+                        .build_closure
+                        .iter()
+                        .any(|root| runner.starts_with(root))
+                    || !closure
+                        .iter()
+                        .all(|root| state.build_closure.contains(root))
+                    || !closure.iter().any(|root| runner.starts_with(root))
+                    || !unit_directory.is_absolute()
+                    || ["service", "timer"].iter().any(|extension| {
+                        let filename = format!("gripsack-job-{job}.{extension}");
+                        !state.entries.iter().any(|entry| {
+                            entry.from == Path::new(&filename)
+                                && Path::new(&entry.to) == unit_directory.join(&filename)
+                                && entry.ownership.policy() == crate::store::Ownership::TrackedCopy
+                        })
+                    }))
+            {
+                return Err(invalid(format!(
+                    "deployment {name:?}: invalid or unretained scheduled job"
+                )));
+            }
+        }
+        for entry in &state.entries {
+            if entry
+                .from
+                .components()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
+            {
+                return Err(invalid(format!(
+                    "deployment {name:?}: source {:?} is not a plain relative path",
+                    entry.from
+                )));
+            }
+            // Legacy duplicate-path state remains invalid. New workspace blocks
+            // have explicit identities and may share a physical destination.
+            let block = entry.ownership.block_id();
+            let mode = entry
+                .file_mode
+                .map(FileMode::try_from)
+                .transpose()
+                .map_err(|error| {
+                    invalid(format!(
+                        "deployment {name:?}: destination {:?}: {error}",
+                        entry.to
+                    ))
+                })?;
+            let block_mode = block
+                .map(|_| {
+                    mode.ok_or_else(|| {
+                        invalid(format!(
+                            "deployment {name:?}: managed block at {:?} has no hosting-file mode",
+                            entry.to
+                        ))
+                    })
+                })
+                .transpose()?;
+            let key = entry.key().to_string_lossy().to_lowercase();
+            let duplicate = match destinations.entry(key) {
+                std::collections::btree_map::Entry::Vacant(slot) => {
+                    slot.insert(match (block, block_mode) {
+                        (Some(id), Some(mode)) => DestinationClaim::Blocks {
+                            ids: BTreeSet::from([id]),
+                            mode,
+                        },
+                        _ => DestinationClaim::Whole,
+                    });
+                    false
+                }
+                std::collections::btree_map::Entry::Occupied(mut slot) => {
+                    match (slot.get_mut(), block) {
+                        (DestinationClaim::Blocks { ids, mode }, Some(identity)) => {
+                            Some(*mode) != block_mode || !ids.insert(identity)
+                        }
+                        _ => true,
+                    }
+                }
+            };
+            if duplicate {
+                return Err(invalid(format!(
+                    "destination {:?} has conflicting ownership in generation {generation}",
+                    entry.to
+                )));
+            }
+            if entry.hash.as_str().len() != 64
+                || !entry
+                    .hash
+                    .as_str()
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
+            {
+                return Err(invalid(format!(
+                    "deployment {name:?}: destination {:?} has a malformed content hash",
+                    entry.to
+                )));
+            }
+        }
+    }
+    Ok(())
+}

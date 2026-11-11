@@ -1,6 +1,6 @@
 //! Transport bytes and canonical payload trees are different pin domains.
 
-use gripsack_store::hash::PayloadHash;
+use gripsack_host::store::hash::PayloadHash;
 use sha2::{Digest, Sha256};
 use std::fmt;
 

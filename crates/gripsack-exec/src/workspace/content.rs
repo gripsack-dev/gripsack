@@ -8,10 +8,11 @@ mod selection;
 mod tests;
 mod tree;
 use super::declarations::{Content, File, Source};
+use crate::DeploymentEntry;
 use crate::ctx::ExecError;
+use gripsack_host::store;
+use gripsack_host::store::Ownership;
 use gripsack_ir::workspace::WorkspaceDestination;
-use gripsack_store as store;
-use gripsack_store::{DeploymentEntry, Ownership};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::io::{self, Write};
@@ -25,10 +26,10 @@ struct CapturedFile {
 
 pub(super) struct Capture {
     pub temporary: tempfile::TempDir,
-    repository: gripsack_fs::Dir,
+    repository: gripsack_host::fs::Dir,
     captured_sources: Option<(
-        std::sync::Arc<store::source_bundle::SourceBundle>,
-        gripsack_fs::Dir,
+        std::sync::Arc<crate::source_bundle::SourceBundle>,
+        gripsack_host::fs::Dir,
     )>,
     sources: BTreeMap<String, CapturedFile>,
     maximum_bytes: u64,
@@ -43,7 +44,7 @@ impl Capture {
             temporary: tempfile::Builder::new()
                 .prefix("grip-workspace-")
                 .tempdir()?,
-            repository: gripsack_fs::open(repo)?,
+            repository: gripsack_host::fs::open(repo)?,
             captured_sources: None,
             sources: BTreeMap::new(),
             maximum_bytes: limits.download_bytes.get(),
@@ -65,7 +66,7 @@ impl Capture {
                     "captured repository has no root",
                 )
             })?;
-            capture.captured_sources = Some((sources.clone(), gripsack_fs::open(root)?));
+            capture.captured_sources = Some((sources.clone(), gripsack_host::fs::open(root)?));
         }
         Ok(capture)
     }
@@ -75,11 +76,11 @@ impl Capture {
         match self.sources.entry(path.to_owned()) {
             std::collections::btree_map::Entry::Occupied(entry) => Ok(entry.into_mut()),
             std::collections::btree_map::Entry::Vacant(entry) => {
-                let mut options = gripsack_fs::cap_std::fs::OpenOptions::new();
+                let mut options = gripsack_host::fs::cap_std::fs::OpenOptions::new();
                 options.read(true);
                 #[cfg(unix)]
                 {
-                    use gripsack_fs::cap_std::fs::OpenOptionsExt;
+                    use gripsack_host::fs::cap_std::fs::OpenOptionsExt;
                     options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
                 }
                 let source = match &self.captured_sources {
@@ -124,7 +125,7 @@ impl Capture {
                 }
                 #[cfg(unix)]
                 let executable = {
-                    use gripsack_fs::cap_std::fs::PermissionsExt;
+                    use gripsack_host::fs::cap_std::fs::PermissionsExt;
                     metadata.permissions().mode() & 0o111 != 0
                 };
                 #[cfg(not(unix))]
@@ -347,8 +348,8 @@ fn write_rendered(
     result_digest: Option<&str>,
 ) -> Result<(), ExecError> {
     if let Some(expected) = result_digest
-        && gripsack_process::Sha256Digest::of(rendered)
-            != gripsack_process::Sha256Digest::parse(expected)?
+        && gripsack_host::process::Sha256Digest::of(rendered)
+            != gripsack_host::process::Sha256Digest::parse(expected)?
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,

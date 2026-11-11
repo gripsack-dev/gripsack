@@ -101,8 +101,8 @@ impl VerificationLabel {
 }
 
 /// One-line description of how a supervised process ended.
-pub fn process_status(receipt: &gripsack_process::ProcessReceipt) -> String {
-    use gripsack_process::ProcessDisposition as D;
+pub fn process_status(receipt: &gripsack_host::process::ProcessReceipt) -> String {
+    use gripsack_host::process::ProcessDisposition as D;
     match (&receipt.disposition, receipt.exit_code, receipt.signal) {
         (D::Exited, Some(code), _) => format!("exit {code}"),
         (D::Exited, None, Some(signal)) => format!("signal {signal}"),

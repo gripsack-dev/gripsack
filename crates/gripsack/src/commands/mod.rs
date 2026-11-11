@@ -96,6 +96,6 @@ pub fn default_host() -> String {
 }
 /// `~/...` expands against $HOME; absolute paths pass through.
 pub fn expand_home(to: &str) -> PathBuf {
-    gripsack_store::expand_home(to)
+    gripsack_host::store::expand_home(to)
 }
 use std::path::PathBuf;

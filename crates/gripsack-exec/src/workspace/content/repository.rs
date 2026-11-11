@@ -74,7 +74,7 @@ impl Inventory<'_> {
         if ancestors.iter().any(|ancestor| ancestor == physical) {
             return Err(invalid("repository tree contains a directory alias cycle").into());
         }
-        let directory = gripsack_fs::open_dir_nofollow(&self.capture.repository, physical)?;
+        let directory = gripsack_host::fs::open_dir_nofollow(&self.capture.repository, physical)?;
         ancestors.push(physical.to_owned());
         for entry in directory.entries()? {
             let entry = entry?;

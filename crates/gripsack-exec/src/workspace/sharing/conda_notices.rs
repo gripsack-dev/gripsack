@@ -3,7 +3,7 @@
 //! canonical project/vendor sources. Publishers cannot replace this inventory.
 use super::{BlobDescriptor, failure, retain_input, verify_copy};
 use crate::{Ctx, ExecError};
-use gripsack_process::Sha256Digest;
+use gripsack_host::process::Sha256Digest;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
@@ -44,7 +44,7 @@ pub(super) fn descriptors() -> &'static BTreeMap<String, BlobDescriptor> {
 }
 
 fn object(home: &Path, digest: &str) -> PathBuf {
-    gripsack_store::content_path(home, NAMESPACE, digest)
+    gripsack_host::store::content_path(home, NAMESPACE, digest)
 }
 
 /// Export from compiled metadata, never incidental publisher files. Identical

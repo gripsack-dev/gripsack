@@ -45,10 +45,10 @@ fn tree(
 #[cfg(unix)]
 #[test]
 fn evaluated_file_aliases_use_captured_bytes_and_mode_for_identity_and_templates() {
+    use crate::source_bundle::{SourceBundle, SourceCapturePolicy};
+    use crate::trust::evaluation::EvaluationId;
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::sync::Arc;
-    use store::source_bundle::{SourceBundle, SourceCapturePolicy};
-    use store::trust::evaluation::EvaluationId;
 
     for absolute in [false, true] {
         let temporary = tempfile::tempdir().unwrap();

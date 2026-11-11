@@ -1,7 +1,7 @@
 //! Per-output target/ABI/minimum-OS requirements (0052 A1-02). These
 //! describe declared compatibility, never ambient host selection.
 
-use gripsack_policy::target::{BinaryAbi, OsRelease, TargetArch, TargetOs, TargetRequirement};
+use crate::target::{BinaryAbi, OsRelease, TargetArch, TargetOs, TargetRequirement};
 use serde::{Deserialize, Serialize};
 
 /// Per-output platform requirements — never inherited from the
@@ -95,7 +95,7 @@ pub struct OsVersion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gripsack_policy::target::supports_target;
+    use crate::target::supports_target;
 
     #[test]
     fn target_floor_and_abi_admit_only_compatible_consumers() {

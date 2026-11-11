@@ -18,16 +18,16 @@ pub fn verify_store(
 ) -> Result<Vec<(String, Tone, String)>, ExecError> {
     let mut out = Vec::new();
     let home = session.home();
-    let current = gripsack_store::current_generation(home)?;
+    let current = gripsack_host::store::current_generation(home)?;
     let mut native_roots: BTreeMap<PathBuf, RootAuthority> =
-        crate::workspace::roots::inventory(&gripsack_fs::open(home)?, home)?
+        crate::workspace::roots::inventory(&gripsack_host::fs::open(home)?, home)?
             .into_iter()
             .map(|root| (PathBuf::from(root), RootAuthority::Workspace))
             .collect();
     // enumeration errors are real (0027 §2) — verify must not read
     // "cannot list generations" as "nothing to verify"
-    for n in gripsack_store::list_generations(home)? {
-        let manifest = match gripsack_store::read_manifest(home, n) {
+    for n in gripsack_host::store::list_generations(home)? {
+        let manifest = match gripsack_host::store::read_manifest(home, n) {
             Ok(m) => m,
             Err(e) => {
                 // a corrupt generation must surface, not read as "ok" —
@@ -69,7 +69,8 @@ pub fn verify_store(
                     && let Some(expected) = entry.file_mode
                     && matches!(
                         entry.ownership.policy(),
-                        gripsack_store::Ownership::Template | gripsack_store::Ownership::Merge
+                        gripsack_host::store::Ownership::Template
+                            | gripsack_host::store::Ownership::Merge
                     )
                     && let Ok(Some(crate::deploy::Observation::File { mode, .. })) =
                         crate::deploy::observe_readonly(&entry.key())
@@ -107,7 +108,8 @@ pub fn verify_store(
                 };
                 let source_exec_changed = matches!(
                     entry.ownership.policy(),
-                    gripsack_store::Ownership::TrackedCopy | gripsack_store::Ownership::Template
+                    gripsack_host::store::Ownership::TrackedCopy
+                        | gripsack_host::store::Ownership::Template
                 ) && entry
                     .source_executable
                     .is_some_and(|expected| expected != source_exec);
@@ -116,7 +118,7 @@ pub fn verify_store(
                 // include permissions. Historical receipts retain their domain.
                 // owned links record the payload's store identity
                 let actual = match entry.ownership.policy() {
-                    gripsack_store::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
+                    gripsack_host::store::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
                         let text = String::from_utf8_lossy(&b);
                         // historical block domains: trailing newlines trimmed
                         // (pre-0.19), then trim + CRLF → LF (0.19–0.52, which
@@ -126,12 +128,12 @@ pub fn verify_store(
                         let older = text.trim_end_matches(['\r', '\n']).replace("\r\n", "\n");
                         [trimmed.as_bytes(), older.as_bytes()]
                             .into_iter()
-                            .map(gripsack_store::canonical_bytes_hash)
+                            .map(gripsack_host::store::canonical_bytes_hash)
                             .find(|hash| hash.as_str() == entry.hash.as_str())
                             .unwrap_or_else(|| crate::managed_blocks::content_hash(&text))
                             .to_string()
                     }),
-                    gripsack_store::Ownership::Template => std::fs::read(&src)
+                    gripsack_host::store::Ownership::Template => std::fs::read(&src)
                         .ok()
                         .and_then(|b| {
                             crate::template::render_template(
@@ -142,7 +144,7 @@ pub fn verify_store(
                             .ok()
                         })
                         .map(|rendered| {
-                            let legacy = gripsack_store::canonical_bytes_hash(&rendered);
+                            let legacy = gripsack_host::store::canonical_bytes_hash(&rendered);
                             if legacy.as_str() == entry.hash.as_str() {
                                 legacy.to_string()
                             } else {
@@ -151,14 +153,16 @@ pub fn verify_store(
                                 } else {
                                     0o644
                                 });
-                                gripsack_store::canonical_bytes_identity(&rendered, mode)
+                                gripsack_host::store::canonical_bytes_identity(&rendered, mode)
                                     .to_string()
                             }
                         }),
-                    gripsack_store::Ownership::Owned => gripsack_store::canonical_file_hash(&src)
-                        .ok()
-                        .map(|h| h.to_string()),
-                    gripsack_store::Ownership::TrackedCopy => {
+                    gripsack_host::store::Ownership::Owned => {
+                        gripsack_host::store::canonical_file_hash(&src)
+                            .ok()
+                            .map(|h| h.to_string())
+                    }
+                    gripsack_host::store::Ownership::TrackedCopy => {
                         std::fs::read(&src).ok().map(|bytes| {
                             // Pre-0041 copy receipts hashed the nominal source mode,
                             // even for private takeovers. The new source field marks
@@ -167,7 +171,7 @@ pub fn verify_store(
                                 .source_executable
                                 .and(entry.file_mode)
                                 .unwrap_or(if source_exec { 0o755 } else { 0o644 });
-                            gripsack_store::canonical_bytes_identity(&bytes, mode).to_string()
+                            gripsack_host::store::canonical_bytes_identity(&bytes, mode).to_string()
                         })
                     }
                 };
@@ -194,7 +198,7 @@ pub fn verify_store(
             }
             // Whole-tree expectations travel with the generation.
             if let Some(expected) = &state.tree256 {
-                let actual = gripsack_store::canonical_tree_hash(path)?;
+                let actual = gripsack_host::store::canonical_tree_hash(path)?;
                 if actual.as_str() != expected.as_str() {
                     return_corrupt(
                         &mut out,
@@ -262,21 +266,23 @@ fn return_corrupt(
     summary: &str,
 ) -> Result<(), ExecError> {
     if repair {
-        if gripsack_store::paths::validate_store_root(home, path).is_err() {
+        if gripsack_host::store::paths::validate_store_root(home, path).is_err() {
             out.push((
                 name.to_string(),
                 Tone::Warned,
                 format!(
                     "refusing to repair {}: outside {}",
                     path.display(),
-                    home.join(gripsack_store::STORE_DIR).display()
+                    home.join(gripsack_host::store::STORE_DIR).display()
                 ),
             ));
             return Ok(());
         }
-        let home = gripsack_fs::open(home)?;
-        let store =
-            gripsack_fs::open_dir_nofollow(&home, std::path::Path::new(gripsack_store::STORE_DIR))?;
+        let home = gripsack_host::fs::open(home)?;
+        let store = gripsack_host::fs::open_dir_nofollow(
+            &home,
+            std::path::Path::new(gripsack_host::store::STORE_DIR),
+        )?;
         let object = std::path::Path::new(path.file_name().expect("admitted direct store child"));
         if !store.symlink_metadata(object)?.is_dir() {
             out.push((

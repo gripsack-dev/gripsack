@@ -4,8 +4,8 @@ use super::{
     profile_checks, profile_launchers, realize,
 };
 use crate::ExecError;
+use gripsack_host::store;
 use gripsack_ir::workspace::WorkspaceDestination;
-use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -38,7 +38,7 @@ impl NativeProfiles {
             limits,
             realization,
             false,
-            std::time::Instant::now() + gripsack_process::Limits::default().timeout,
+            std::time::Instant::now() + gripsack_host::process::Limits::default().timeout,
             predecessor.as_ref(),
             None,
             crate::progress::Reporter::silent(),

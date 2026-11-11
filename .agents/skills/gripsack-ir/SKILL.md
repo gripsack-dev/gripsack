@@ -43,6 +43,6 @@ The IR is a three-party contract. Any change lands in **one PR** touching:
 - [ ] `schema/ir/` updated, version bumped if breaking
 - [ ] `gripsack-ir` types + validation + unit tests updated
 - [ ] `typescript/` emitter + tests updated
-- [ ] `gripsack-store` hashing inputs reviewed (identity change intended?)
+- [ ] `gripsack-host` store hashing inputs (`store::hash`) reviewed (identity change intended?)
 - [ ] compose gates green (`test`, `ts-test`, `e2e`)
 - [ ] golden corpus regenerated and the snapshot diff reviewed

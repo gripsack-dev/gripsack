@@ -115,7 +115,7 @@ pub(super) fn inventory(
 
 fn validate_native(bytes: &[u8]) -> Result<(), String> {
     if bytes.starts_with(b"\x7fELF") {
-        use gripsack_process::executable::{
+        use gripsack_host::process::executable::{
             self, Endianness, ExecutableArch, ObjectKind, WordClass,
         };
         let runtime = executable::classify(&mut Cursor::new(bytes))

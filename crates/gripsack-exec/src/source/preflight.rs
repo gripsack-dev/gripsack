@@ -53,7 +53,7 @@ pub fn inspect_known(
     crate::workspace::NativeProfiles::prepare_preview(
         ir,
         repository,
-        &gripsack_store::gripsack_home(),
+        &gripsack_host::store::gripsack_home(),
         &[],
         limits,
     )

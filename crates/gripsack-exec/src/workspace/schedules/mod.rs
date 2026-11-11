@@ -9,6 +9,6 @@ mod snapshot;
 pub mod systemd;
 
 pub use dispatch::dispatch;
-pub use gripsack_store::jobs::{JobId, JobRevision};
+pub use gripsack_host::store::jobs::{JobId, JobRevision};
 pub use lifecycle::{disable, inspect};
 pub(crate) use snapshot::inspect_capture;

@@ -8,7 +8,7 @@ use std::process::Command;
 #[derive(Default)]
 pub(crate) struct BuildProcessEnv {
     values: BTreeMap<String, String>,
-    operator: Option<gripsack_process::OperatorEnvironment>,
+    operator: Option<gripsack_host::process::OperatorEnvironment>,
 }
 
 impl BuildProcessEnv {
@@ -19,7 +19,7 @@ impl BuildProcessEnv {
         }
     }
 
-    pub(crate) fn from_operator(environment: &gripsack_process::OperatorEnvironment) -> Self {
+    pub(crate) fn from_operator(environment: &gripsack_host::process::OperatorEnvironment) -> Self {
         Self {
             values: BTreeMap::new(),
             operator: Some(environment.clone()),

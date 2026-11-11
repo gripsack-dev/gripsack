@@ -307,7 +307,7 @@ pub(crate) fn refusal_error(refusal: Refusal, output: &str, to: Option<&str>) ->
 
 /// The op the planner built installs exactly what the machine commanded.
 pub(crate) fn installs(op: &crate::ops::Op, install: &Intended) -> bool {
-    gripsack_store::journal::kernel_intended(op.intended()).is_ok_and(|intended| {
+    gripsack_host::store::journal::kernel_intended(op.intended()).is_ok_and(|intended| {
         match (intended, install) {
             (Intended::Removed, Intended::Removed) => true,
             (Intended::Obj(planned), Intended::Obj(commanded)) => planned == *commanded,
@@ -346,12 +346,13 @@ mod tests {
     //! against the kernel's own decision: for every case, the shipped planner
     //! builds exactly the op the apply machine's `decide_apply` commands.
     use super::*;
+    use crate::DeploymentEntry;
     use crate::deploy::Observation;
     use crate::ops::{DestView, ModeInput, PreviousRecord, WritePermissions};
+    use gripsack_host::store;
+    use gripsack_host::store::Ownership;
     use gripsack_kernel::apply::{OnDrift, Slot, Step, Want, decide_apply};
     use gripsack_kernel::recover::Route;
-    use gripsack_store as store;
-    use gripsack_store::{DeploymentEntry, Ownership};
     use std::path::Path;
 
     fn declared(mode: Ownership, to: &Path) -> DeploymentEntry {

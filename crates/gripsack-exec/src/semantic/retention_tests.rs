@@ -3,7 +3,7 @@ use crate::semantic::{
     capture_generation,
     normalize::{known, provenance},
 };
-use gripsack_store::{Generation, GenerationId};
+use gripsack_host::store::{Generation, GenerationId};
 use std::os::unix::fs::{PermissionsExt, symlink};
 
 fn snapshot(profile: &str, value: &[u8]) -> SemanticSnapshot {
@@ -57,8 +57,8 @@ fn generation(
     deployments: BTreeMap<String, DeploymentState>,
 ) -> GenerationId {
     let id = GenerationId::new(number);
-    gripsack_store::generations::write_manifest(
-        &gripsack_fs::open(home).unwrap(),
+    gripsack_host::store::generations::write_manifest(
+        &gripsack_host::fs::open(home).unwrap(),
         &Generation {
             number: id,
             deployments,
@@ -86,7 +86,7 @@ fn publication_deduplicates_exact_private_tree_and_profile_binding() {
         root,
         root_path(
             home.path(),
-            &gripsack_store::canonical_tree_hash(&root).unwrap()
+            &gripsack_host::store::canonical_tree_hash(&root).unwrap()
         )
     );
     assert_eq!(

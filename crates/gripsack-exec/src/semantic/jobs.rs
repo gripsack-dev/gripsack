@@ -4,7 +4,7 @@ use super::{
     model::*,
     normalize::{facts, unknown},
 };
-use gripsack_store::jobs::{JobId, JobRevision};
+use gripsack_host::store::jobs::{JobId, JobRevision};
 use std::path::Path;
 
 pub(super) fn capture(

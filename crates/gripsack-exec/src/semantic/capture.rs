@@ -1,12 +1,12 @@
 use super::{model::*, normalize::*};
+use gripsack_host::store::{GenerationId, generations};
+use gripsack_ir::workspace_model::graph::role::GraphRole;
 use gripsack_ir::{
     Ir,
     workspace_model::{
         AcquisitionSource, WorkspaceOutput, WorkspaceProducer, graph, lock::WorkspaceLock,
     },
 };
-use gripsack_policy::graph::GraphRole;
-use gripsack_store::{GenerationId, generations};
 use serde_json::Value;
 use std::{collections::BTreeSet, path::Path};
 
@@ -639,7 +639,7 @@ pub fn capture_generation(
             ));
         }
         for intent in &deployment.intents {
-            if let gripsack_store::activation::ActivationAction::ScheduledJob {
+            if let gripsack_host::store::activation::ActivationAction::ScheduledJob {
                 job,
                 revision,
                 capture,

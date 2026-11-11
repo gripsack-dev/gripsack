@@ -1,5 +1,5 @@
 use crate::sandbox::Sandbox;
-use gripsack_store::journal::{Entry, IntendedSerde, PriorSerde};
+use gripsack_host::store::journal::{Entry, IntendedSerde, PriorSerde};
 
 /// An optional NUL separates arbitrary marker bytes from arbitrary Entry JSON.
 /// No marker representation is declared here: only reconcile parses run.json.
@@ -16,7 +16,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         let encoded = serde_json::to_vec(entry).unwrap();
         assert_eq!(&Entry::from_wire(&encoded).unwrap(), entry);
     }
-    let blob = gripsack_store::prior::store_blob(s.cap(), b"bounded prior\n").unwrap();
+    let blob = gripsack_host::store::prior::store_blob(s.cap(), b"bounded prior\n").unwrap();
     s.write("objects/prior-target", b"fixed target\n");
     let target = s.fixed("objects/prior-target").to_str().unwrap().to_owned();
     let dest = s.fixed("objects/destination").to_str().unwrap().to_owned();
@@ -25,7 +25,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
             String::new(),
             PriorSerde::File {
                 hash: blob.clone(),
-                mode: gripsack_store::prior::FileMode::try_from(0o600).unwrap(),
+                mode: gripsack_host::store::prior::FileMode::try_from(0o600).unwrap(),
             },
             IntendedSerde::Removed,
         )
@@ -46,10 +46,10 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
     // Fixed histories only. Numeric values inside marker bytes never select paths
     // in harness code, including negative, overflowing and fractional values.
     for n in [1, 2, 3] {
-        gripsack_store::write_manifest(
+        gripsack_host::store::write_manifest(
             s.cap(),
-            &gripsack_store::Generation {
-                number: gripsack_store::GenerationId::new(n),
+            &gripsack_host::store::Generation {
+                number: gripsack_host::store::GenerationId::new(n),
                 deployments: Default::default(),
                 directory_transitions: Vec::new(),
                 migration: None,
@@ -63,7 +63,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         2 => std::os::unix::fs::symlink("generations/2", s.home().join("current")).unwrap(),
         _ => std::os::unix::fs::symlink("generations/3", s.home().join("current")).unwrap(),
     }
-    let _ = gripsack_store::reconcile(s.cap(), s.home());
+    let _ = gripsack_host::store::reconcile(s.cap(), s.home());
     // The symlink referent is never a deployment destination.
     assert_eq!(
         std::fs::read(s.fixed("objects/prior-target")).unwrap(),

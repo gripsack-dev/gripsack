@@ -14,9 +14,9 @@ mod wheel_validation;
 
 use super::archive::{CondaArchive, MAX_ENTRY_BYTES};
 use crate::ExecError;
+use gripsack_host::process::executable;
+use gripsack_host::store;
 use gripsack_ir::workspace_model::lock::{LockedCondaEnvironment, LockedCondaPackage};
-use gripsack_process::executable;
-use gripsack_store as store;
 use inventory::{Content, ExpectedFile, PythonLayout};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Seek, Write};
@@ -423,7 +423,7 @@ pub(super) fn validate_admitted_tree(
             )
         })
         .collect();
-    let root = gripsack_fs::open(tree_root)?;
+    let root = gripsack_host::fs::open(tree_root)?;
     let mut seen = BTreeSet::new();
     let mut receipts = BTreeSet::new();
     let mut sonames_needed = BTreeSet::new();
@@ -484,13 +484,13 @@ pub(super) fn validate_admitted_tree(
                     check_mode(output, &relative, &metadata, 0o755)?;
                 }
                 stack.push((
-                    gripsack_fs::open_dir_nofollow(&directory, Path::new(&name))?,
+                    gripsack_host::fs::open_dir_nofollow(&directory, Path::new(&name))?,
                     relative,
                 ));
                 continue;
             }
             if let Some(record) = expected_receipts.get(&relative) {
-                let file = gripsack_fs::open_file_nofollow(&directory, Path::new(&name))?;
+                let file = gripsack_host::fs::open_file_nofollow(&directory, Path::new(&name))?;
                 let metadata = file.metadata()?;
                 check_private_file(output, &relative, &metadata)?;
                 check_mode(
@@ -524,7 +524,7 @@ pub(super) fn validate_admitted_tree(
                 }
                 continue;
             }
-            let file = gripsack_fs::open_file_nofollow(&directory, Path::new(&name))?;
+            let file = gripsack_host::fs::open_file_nofollow(&directory, Path::new(&name))?;
             let metadata = file.metadata()?;
             check_private_file(output, &relative, &metadata)?;
             check_mode(
@@ -723,10 +723,10 @@ fn merge_inventory(
 fn check_mode(
     output: &str,
     path: &str,
-    metadata: &gripsack_fs::cap_std::fs::Metadata,
+    metadata: &gripsack_host::fs::cap_std::fs::Metadata,
     mode: u32,
 ) -> Result<(), ExecError> {
-    use gripsack_fs::cap_std::fs::PermissionsExt;
+    use gripsack_host::fs::cap_std::fs::PermissionsExt;
     if metadata.permissions().mode() & 0o7777 != mode {
         return Err(failure(
             output,
@@ -738,9 +738,9 @@ fn check_mode(
 fn check_private_file(
     output: &str,
     path: &str,
-    metadata: &gripsack_fs::cap_std::fs::Metadata,
+    metadata: &gripsack_host::fs::cap_std::fs::Metadata,
 ) -> Result<(), ExecError> {
-    use gripsack_fs::cap_std::fs::MetadataExt;
+    use gripsack_host::fs::cap_std::fs::MetadataExt;
     if !metadata.is_file() || metadata.nlink() != 1 {
         return Err(failure(
             output,

@@ -5,7 +5,7 @@ use crate::{
     Ctx, ExecError,
     ops::{ContentSource, OpKind},
 };
-use gripsack_store as store;
+use gripsack_host::store;
 use serde::{Deserialize, Serialize};
 use std::{
     io::{self, Read},

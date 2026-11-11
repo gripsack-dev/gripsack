@@ -1,7 +1,7 @@
 //! Harmless fixture receiver: token and effect are one atomically replaced
 //! private record, committed before HTTP success. This is not a generic service.
 use super::{FixtureRoot, invalid};
-use gripsack_process::Sha256Digest;
+use gripsack_host::process::Sha256Digest;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
@@ -38,7 +38,7 @@ impl Receiver {
         let port = listener.local_addr()?.port();
         let stop = Arc::new(AtomicBool::new(false));
         let stopping = stop.clone();
-        let directory = gripsack_fs::open(&root.path)?;
+        let directory = gripsack_host::fs::open(&root.path)?;
         let thread = std::thread::spawn(move || {
             let mut state = read_state(&directory)?;
             while !stopping.load(Ordering::Acquire) {
@@ -74,7 +74,7 @@ impl Receiver {
                         .checked_add(1)
                         .ok_or_else(|| invalid("fixture effect counter overflow"))?;
                     let bytes = serde_json::to_vec(&state).map_err(io::Error::other)?;
-                    gripsack_fs::atomic_write_with_mode(
+                    gripsack_host::fs::atomic_write_with_mode(
                         &directory,
                         Path::new("receiver.json"),
                         &bytes,
@@ -139,14 +139,15 @@ pub(super) fn effects(root: &FixtureRoot) -> io::Result<u64> {
     Ok(read_state(&root.directory)?.effects)
 }
 
-fn read_state(directory: &gripsack_fs::Dir) -> io::Result<ReceiverState> {
-    let mut file = match gripsack_fs::open_file_nofollow(directory, Path::new("receiver.json")) {
-        Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(ReceiverState::default());
-        }
-        Err(error) => return Err(error),
-    };
+fn read_state(directory: &gripsack_host::fs::Dir) -> io::Result<ReceiverState> {
+    let mut file =
+        match gripsack_host::fs::open_file_nofollow(directory, Path::new("receiver.json")) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(ReceiverState::default());
+            }
+            Err(error) => return Err(error),
+        };
     let mut bytes = Vec::new();
     (&mut file).take(4097).read_to_end(&mut bytes)?;
     if bytes.len() > 4096 {
@@ -162,11 +163,11 @@ fn read_state(directory: &gripsack_fs::Dir) -> io::Result<ReceiverState> {
     {
         return Err(invalid("fixture token/effect atomicity was lost"));
     }
-    gripsack_fs::fault::operation(
-        gripsack_fs::fault::Boundary::FileSync,
+    gripsack_host::fs::fault::operation(
+        gripsack_host::fs::fault::Boundary::FileSync,
         Path::new("receiver.json"),
         || file.sync_all(),
     )?;
-    gripsack_fs::fsync_dir(directory, Path::new("."))?;
+    gripsack_host::fs::fsync_dir(directory, Path::new("."))?;
     Ok(state)
 }

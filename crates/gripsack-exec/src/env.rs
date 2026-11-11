@@ -9,8 +9,8 @@
 //! `env/profile.sh` had two asymmetric windows — new profile before
 //! the flip on apply, stale profile after the flip on rollback.)
 
-use gripsack_store as store;
-use gripsack_store::EnvironmentOperation;
+use gripsack_host::store;
+use gripsack_host::store::EnvironmentOperation;
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -174,8 +174,8 @@ impl std::fmt::Display for ShellLiteral<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gripsack_store::Ownership;
-    use gripsack_store::RetainedEnvironment;
+    use gripsack_host::store::Ownership;
+    use gripsack_host::store::RetainedEnvironment;
 
     fn state(store: &str, env: Vec<RetainedEnvironment>) -> store::DeploymentState {
         store::DeploymentState {
@@ -189,7 +189,7 @@ mod tests {
                 key: None,
                 ownership: store::StoredOwnership::Legacy(Ownership::Owned),
                 vars: Default::default(),
-                hash: gripsack_store::hash::ManifestHash::from_raw("h".into()),
+                hash: gripsack_host::store::hash::ManifestHash::from_raw("h".into()),
                 file_mode: None,
                 source_executable: None,
                 prior: None,

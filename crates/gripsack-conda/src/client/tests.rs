@@ -2,7 +2,7 @@
 //! exchange. A correct echo is still only advisory, never a validated tree.
 use super::*;
 use crate::protocol::{self, ImportedResponse, MaterializedResponse, ResolvedResponse};
-use gripsack_process::ProcessDisposition;
+use gripsack_host::process::ProcessDisposition;
 use std::{fs, os::unix::fs::PermissionsExt, time::Duration};
 
 fn closure(platform: &str) -> LockedCondaEnvironment {

@@ -134,7 +134,7 @@ pub(super) fn failure(detail: impl Into<String>) -> ExecError {
     }
 }
 pub(super) fn digest(value: &str) -> Result<(), ExecError> {
-    gripsack_process::Sha256Digest::parse(value)
+    gripsack_host::process::Sha256Digest::parse(value)
         .map(|_| ())
         .map_err(Into::into)
 }
@@ -180,7 +180,7 @@ impl PortableManifest {
         Ok(bytes)
     }
     pub fn digest(&self) -> Result<String, ExecError> {
-        Ok(gripsack_store::hash::hex_sha256(&self.encode()?))
+        Ok(gripsack_host::store::hash::hex_sha256(&self.encode()?))
     }
     pub fn validate(&self) -> Result<(), ExecError> {
         if self.version != FORMAT_VERSION {

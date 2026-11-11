@@ -3,6 +3,7 @@
 //! A shared repository lock plus snapshot comparison prevents two homes from
 //! silently replacing each other's platform resolutions.
 use crate::{Ctx, ExecError, LifecycleSession, Repository};
+use gripsack_host::process::Sha256Digest;
 use gripsack_ir::{
     workspace::WorkspacePlatform,
     workspace_model::{
@@ -10,7 +11,6 @@ use gripsack_ir::{
         lock::{DefinitionPins, LockedPin, WORKSPACE_LOCK_VERSION, WorkspaceLock, platform_key},
     },
 };
-use gripsack_process::Sha256Digest;
 use std::{collections::BTreeMap, io::Read, path::Path};
 
 const WORKSPACE_LOCK: &str = "gripsack.lock";
@@ -22,7 +22,7 @@ pub(crate) struct WorkspacePins {
 }
 impl WorkspacePins {
     pub fn read(repository: &Repository) -> Result<Self, ExecError> {
-        let directory = gripsack_fs::open(repository.contents())?;
+        let directory = gripsack_host::fs::open(repository.contents())?;
         let Some(bytes) = read_bytes(&directory)? else {
             return Ok(Self {
                 lock: None,
@@ -120,10 +120,10 @@ impl WorkspacePins {
                 "updated lock exceeds its metadata byte bound",
             ));
         }
-        let repository = gripsack_fs::open(ctx.repository.identity())?;
-        gripsack_fs::create_dir_all(&repository, Path::new("locks"))?;
-        let locks = gripsack_fs::open_dir_nofollow(&repository, Path::new("locks"))?;
-        let _guard = gripsack_fs::FlockGuard::try_acquire_in(&locks, "workspace-write")?
+        let repository = gripsack_host::fs::open(ctx.repository.identity())?;
+        gripsack_host::fs::create_dir_all(&repository, Path::new("locks"))?;
+        let locks = gripsack_host::fs::open_dir_nofollow(&repository, Path::new("locks"))?;
+        let _guard = gripsack_host::fs::FlockGuard::try_acquire_in(&locks, "workspace-write")?
             .ok_or_else(|| {
                 failure(
                     "workspace",
@@ -137,7 +137,7 @@ impl WorkspacePins {
                 "lock changed after source capture; refusing to overwrite another update",
             ));
         }
-        gripsack_fs::atomic_write(&repository, Path::new(WORKSPACE_LOCK), &bytes)?;
+        gripsack_host::fs::atomic_write(&repository, Path::new(WORKSPACE_LOCK), &bytes)?;
         Ok(())
     }
 }
@@ -156,8 +156,8 @@ fn same_source_declaration(locked: &LockedSource, declared: &LockedSource) -> bo
     }
 }
 
-fn read_bytes(directory: &gripsack_fs::Dir) -> Result<Option<Vec<u8>>, ExecError> {
-    let file = match gripsack_fs::open_file_nofollow(directory, Path::new(WORKSPACE_LOCK)) {
+fn read_bytes(directory: &gripsack_host::fs::Dir) -> Result<Option<Vec<u8>>, ExecError> {
+    let file = match gripsack_host::fs::open_file_nofollow(directory, Path::new(WORKSPACE_LOCK)) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),

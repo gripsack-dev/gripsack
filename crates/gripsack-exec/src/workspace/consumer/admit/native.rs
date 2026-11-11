@@ -15,7 +15,7 @@ pub(in crate::workspace) struct NativeContext<'a> {
     admitted: RefCell<BTreeSet<PackageDigest>>,
     imports: RefCell<crate::workspace::sharing::ReadmissionScope>,
     deadline: Instant,
-    gnu_loader: RefCell<Option<Arc<gripsack_process::SelectedGnuLoader>>>,
+    gnu_loader: RefCell<Option<Arc<gripsack_host::process::SelectedGnuLoader>>>,
 }
 impl<'a> NativeContext<'a> {
     pub fn new(facts: &HostFacts, home: &'a Path, deadline: Instant) -> Result<Self, ExecError> {
@@ -55,7 +55,7 @@ impl<'a> NativeContext<'a> {
         &self,
         path: &'static str,
         span: &Span,
-    ) -> Result<Arc<gripsack_process::SelectedGnuLoader>, ExecError> {
+    ) -> Result<Arc<gripsack_host::process::SelectedGnuLoader>, ExecError> {
         let mut selected = self.gnu_loader.borrow_mut();
         if let Some(loader) = selected.as_ref() {
             if loader.path() != Path::new(path) {
@@ -66,13 +66,14 @@ impl<'a> NativeContext<'a> {
             }
             return Ok(Arc::clone(loader));
         }
-        let loader = gripsack_process::SelectedGnuLoader::select(Path::new(path), self.deadline)
-            .map_err(|error| match error.kind() {
-                std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidData => {
-                    gate(span, error.to_string())
-                }
-                _ => super::operational(error),
-            })?;
+        let loader =
+            gripsack_host::process::SelectedGnuLoader::select(Path::new(path), self.deadline)
+                .map_err(|error| match error.kind() {
+                    std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidData => {
+                        gate(span, error.to_string())
+                    }
+                    _ => super::operational(error),
+                })?;
         let loader = Arc::new(loader);
         *selected = Some(Arc::clone(&loader));
         Ok(loader)
@@ -110,7 +111,7 @@ impl<'a> NativeContext<'a> {
             if package.host_runtime.is_some()
                 && (package.target.os != gripsack_ir::workspace::PlatformOs::Linux
                     || package.target.abi != Some(gripsack_ir::workspace::PlatformAbi::Gnu)
-                    || self.target.os != gripsack_policy::target::TargetOs::Linux
+                    || self.target.os != gripsack_ir::target::TargetOs::Linux
                     || self.target.abi != Some(super::BinaryAbi::Gnu))
             {
                 return Err(gate(

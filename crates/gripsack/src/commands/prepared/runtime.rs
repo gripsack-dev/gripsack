@@ -1,6 +1,6 @@
 //! Runtime authority is exact files, not the operator's executable directories.
-use gripsack_process::{OperatorEnvironment, RuntimeAccess};
-use gripsack_store::source_bundle::SourceBundle;
+use gripsack_exec::source_bundle::SourceBundle;
+use gripsack_host::process::{OperatorEnvironment, RuntimeAccess};
 use std::{io, path::Path};
 
 pub(super) fn access(

@@ -14,7 +14,7 @@ const RECEIPT: &str = "conda-image.json";
 #[serde(deny_unknown_fields)]
 struct Receipt {
     version: u32,
-    tree: gripsack_store::hash::PayloadHash,
+    tree: gripsack_host::store::hash::PayloadHash,
     runtime: CondaRuntimeReceipt,
 }
 

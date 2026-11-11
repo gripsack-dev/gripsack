@@ -5,7 +5,7 @@ use std::process::ExitCode;
 /// generations beyond keep_generations (user config) — never current.
 /// --dry-run previews without deleting (plan-before-apply, N6).
 pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
-    let home = gripsack_store::gripsack_home();
+    let home = gripsack_host::store::gripsack_home();
     let keep = match retention_policy() {
         Ok(keep) => keep,
         Err(diagnostics) => {

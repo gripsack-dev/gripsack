@@ -113,9 +113,9 @@ fn evidence(artifact: &Artifact, conda: Option<CondaRuntimeReceipt>) -> MemberRe
 fn publish_tree(
     ctx: &Ctx,
     source: &Path,
-    tree: gripsack_store::hash::PayloadHash,
+    tree: gripsack_host::store::hash::PayloadHash,
 ) -> Result<Artifact, ExecError> {
-    let payload = gripsack_store::content_path(&ctx.home, "package-payload", tree.as_str());
+    let payload = gripsack_host::store::content_path(&ctx.home, "package-payload", tree.as_str());
     if artifact::retained_directory(&ctx.home, &payload)?.is_some() {
         if validate_output_tree(
             &payload,
@@ -254,7 +254,11 @@ pub(super) fn import(
                     runtime::check_payload(manifest, closure, &destination, ctx.fetch.limits())?;
                 if let RuntimeLayout::Fixed { prefix, .. } = &manifest.layout
                     && Path::new(prefix)
-                        != gripsack_store::content_path(&ctx.home, "package-payload", tree.as_str())
+                        != gripsack_host::store::content_path(
+                            &ctx.home,
+                            "package-payload",
+                            tree.as_str(),
+                        )
                 {
                     return Err(failure(
                         "fixed environment member differs from declared exact destination",
@@ -282,7 +286,8 @@ pub(super) fn import(
     )?
     .tree_hash()
     .clone();
-    let payload = gripsack_store::content_path(&ctx.home, "package-environment", tree.as_str());
+    let payload =
+        gripsack_host::store::content_path(&ctx.home, "package-environment", tree.as_str());
     if artifact::retained_directory(&ctx.home, &payload)?.is_none() {
         crate::source::publish(ctx, "portable environment", &metadata, &payload)?;
     }
@@ -334,7 +339,7 @@ fn inspect_member(
             return Err(failure("native member has unexpected Conda receipt"));
         }
         format::digest(&record.tree)?;
-        let payload = gripsack_store::content_path(home, "package-payload", &record.tree);
+        let payload = gripsack_host::store::content_path(home, "package-payload", &record.tree);
         if let MemberAuthority::Independent(PortableManifest {
             layout: RuntimeLayout::Fixed { prefix, .. },
             ..
@@ -455,7 +460,7 @@ pub(super) fn inspect(
     // Receipt paths are never placement authority. Check the canonical store
     // destination and its complete contents against independently checked data.
     format::digest(realized_tree)?;
-    let payload = gripsack_store::content_path(home, "package-environment", realized_tree);
+    let payload = gripsack_host::store::content_path(home, "package-environment", realized_tree);
     let directory = artifact::retained_directory(home, &payload)?
         .ok_or_else(|| failure("environment metadata missing"))?;
     if receipt::read(

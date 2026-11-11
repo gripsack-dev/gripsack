@@ -115,7 +115,7 @@ pub(super) fn extract(
                         use std::os::unix::fs::PermissionsExt;
                         root.set_permissions(
                             &path,
-                            gripsack_fs::cap_std::fs::Permissions::from_std(
+                            gripsack_host::fs::cap_std::fs::Permissions::from_std(
                                 std::fs::Permissions::from_mode(0o755),
                             ),
                         )?;
@@ -133,9 +133,11 @@ pub(super) fn extract(
                     #[cfg(unix)]
                     {
                         use std::os::unix::fs::PermissionsExt;
-                        output.set_permissions(gripsack_fs::cap_std::fs::Permissions::from_std(
-                            std::fs::Permissions::from_mode(entry.header().mode()? & 0o777),
-                        ))?;
+                        output.set_permissions(
+                            gripsack_host::fs::cap_std::fs::Permissions::from_std(
+                                std::fs::Permissions::from_mode(entry.header().mode()? & 0o777),
+                            ),
+                        )?;
                     }
                 }
                 (Pass::HardLinks, b'1') => {

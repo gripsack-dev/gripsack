@@ -7,15 +7,15 @@ pub(super) mod snapshot;
 use super::{consumer, realize::Realization};
 use crate::ExecError;
 use crate::progress::{VerificationKind, VerificationLabel};
+use gripsack_host::process::{
+    ActivationEnvironment, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessRole,
+    Sha256Digest,
+};
+use gripsack_host::store::{self as store, ActivationTrigger, activation::ActivationAction};
 use gripsack_ir::{
     Span,
     workspace_model::{HookTrigger, WorkspaceOutput},
 };
-use gripsack_process::{
-    ActivationEnvironment, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessRole,
-    Sha256Digest,
-};
-use gripsack_store::{self as store, ActivationTrigger, activation::ActivationAction};
 use std::{collections::BTreeMap, ffi::OsString, io, path::Path, time::Instant};
 
 pub(super) struct PreparedHook {
@@ -112,8 +112,8 @@ pub(crate) fn run(
     home: &Path,
     activation: &ActivationEnvironment,
     environment: &OperatorEnvironment,
-    stdout: impl FnMut(&[u8]) -> gripsack_process::Control,
-) -> io::Result<gripsack_process::NativeOutcome> {
+    stdout: impl FnMut(&[u8]) -> gripsack_host::process::Control,
+) -> io::Result<gripsack_host::process::NativeOutcome> {
     let context = snapshot::read(home, path, digest).map_err(io::Error::other)?;
     let root = path
         .parent()
@@ -138,9 +138,9 @@ pub(super) fn run_context(
     activation: Option<&ActivationEnvironment>,
     environment: &OperatorEnvironment,
     deadline: Instant,
-    leases: Option<gripsack_process::ProcessLeases>,
-    stdout: impl FnMut(&[u8]) -> gripsack_process::Control,
-) -> io::Result<gripsack_process::NativeOutcome> {
+    leases: Option<gripsack_host::process::ProcessLeases>,
+    stdout: impl FnMut(&[u8]) -> gripsack_host::process::Control,
+) -> io::Result<gripsack_host::process::NativeOutcome> {
     let options = super::BuildOptions {
         environment,
         deadline,
@@ -170,7 +170,8 @@ pub(super) fn run_context(
     let host = consumer::admit::NativeContext::new(&facts, home, options.deadline)
         .map_err(io::Error::other)?;
     let realization = context.realization(home).map_err(io::Error::other)?;
-    let base = gripsack_process::EnvironmentOverlay::admit(Vec::new(), Vec::new(), Vec::new())?;
+    let base =
+        gripsack_host::process::EnvironmentOverlay::admit(Vec::new(), Vec::new(), Vec::new())?;
     let mut command = context.command.decode(subject).map_err(io::Error::other)?;
     if let Some(inputs) = &context.file_check {
         match &mut command {

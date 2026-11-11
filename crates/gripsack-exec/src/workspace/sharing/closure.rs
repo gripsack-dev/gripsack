@@ -35,7 +35,7 @@ pub(super) struct Closure {
     pub blobs: BTreeMap<String, BlobDescriptor>,
 }
 
-fn records(directory: &gripsack_fs::Dir) -> Result<ExternalManifest, ExecError> {
+fn records(directory: &gripsack_host::fs::Dir) -> Result<ExternalManifest, ExecError> {
     Ok(ExternalManifest {
         manifest: receipt::read(
             directory,
@@ -65,14 +65,16 @@ fn account_metadata(total: &mut usize, object: &ExternalManifest) -> Result<(), 
 }
 
 impl Closure {
-    pub fn read(directory: &gripsack_fs::Dir, limits: FetchLimits) -> Result<Self, ExecError> {
+    pub fn read(
+        directory: &gripsack_host::fs::Dir,
+        limits: FetchLimits,
+    ) -> Result<Self, ExecError> {
         let root = records(directory)?;
         Self::resolve(root, limits, |identity| {
             let path = format!("manifests/{identity}");
-            let child =
-                gripsack_fs::open_dir_nofollow(directory, Path::new(&path)).map_err(|error| {
-                    failure(format!("missing external manifest {identity}: {error}"))
-                })?;
+            let child = gripsack_host::fs::open_dir_nofollow(directory, Path::new(&path)).map_err(
+                |error| failure(format!("missing external manifest {identity}: {error}")),
+            )?;
             records(&child)
                 .map_err(|error| failure(format!("external manifest {identity}: {error}")))
         })
@@ -358,7 +360,7 @@ impl ClosureBundle {
                 .get(identity)
                 .ok_or_else(|| failure(format!("missing closure blob {identity}")))?;
             if bytes.len() as u64 != descriptor.size
-                || gripsack_store::hash::hex_sha256(bytes) != *identity
+                || gripsack_host::store::hash::hex_sha256(bytes) != *identity
             {
                 return Err(failure("closure blob differs from signed descriptor"));
             }
@@ -367,14 +369,14 @@ impl ClosureBundle {
     }
 
     pub fn read(path: &Path, limits: FetchLimits) -> Result<Self, ExecError> {
-        let directory = gripsack_fs::open(path)?;
+        let directory = gripsack_host::fs::open(path)?;
         let mut graph = Closure::read(&directory, limits)?;
-        let source = gripsack_fs::open_dir_nofollow(&directory, Path::new("blobs"))?;
+        let source = gripsack_host::fs::open_dir_nofollow(&directory, Path::new("blobs"))?;
         let mut blobs = BTreeMap::new();
         for (identity, descriptor) in &graph.blobs {
             let bytes = receipt::read(&source, Path::new(identity), descriptor.size)?;
             if bytes.len() as u64 != descriptor.size
-                || gripsack_store::hash::hex_sha256(&bytes) != *identity
+                || gripsack_host::store::hash::hex_sha256(&bytes) != *identity
             {
                 return Err(failure("closure blob differs from signed descriptor"));
             }
@@ -407,9 +409,9 @@ impl ClosureBundle {
 /// Structural offline validation with streaming blob integrity checks; no trust
 /// decision and no materialization or exposure effects.
 pub fn validate_directory(path: &Path) -> Result<(), ExecError> {
-    let directory = gripsack_fs::open(path)?;
+    let directory = gripsack_host::fs::open(path)?;
     let graph = Closure::read(&directory, FetchLimits::default())?;
-    let blobs = gripsack_fs::open_dir_nofollow(&directory, Path::new("blobs"))?;
+    let blobs = gripsack_host::fs::open_dir_nofollow(&directory, Path::new("blobs"))?;
     for descriptor in graph.blobs.values() {
         receipt::blob(&blobs, descriptor, None)?;
     }

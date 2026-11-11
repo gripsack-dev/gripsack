@@ -4,7 +4,7 @@ use super::config_view::{
     ConfigFormat, ConfigScope, ConfigView, ConfigViewOptions, MAX_INPUT_BYTES, compare_config,
 };
 use crate::ops::{Authority, ContentSource, Op, OpKind};
-use gripsack_store::journal::ObjectIdentity;
+use gripsack_host::store::journal::ObjectIdentity;
 use serde::Serialize;
 use std::{
     fs::OpenOptions,
@@ -56,7 +56,7 @@ pub struct OperationExplanation {
     pub destination: String,
     pub kind: OperationKind,
     pub authority: OperationAuthority,
-    pub ownership: gripsack_store::Ownership,
+    pub ownership: gripsack_host::store::Ownership,
     pub intended_mode: Option<u32>,
     pub observed_mode: Option<u32>,
     pub content: ContentKnowledge,
@@ -206,7 +206,7 @@ fn configuration_format(op: &Op) -> ConfigFormat {
 
 fn explain_block(
     op: &Op,
-    block_id: Option<&gripsack_store::ManagedBlockId>,
+    block_id: Option<&gripsack_host::store::ManagedBlockId>,
     payload: &[u8],
     marker: Option<&str>,
     mode: u32,
@@ -220,7 +220,7 @@ fn explain_block(
     row.observed_mode = observed_mode;
     let before =
         std::str::from_utf8(&before).map_err(|_| ConfigurationUnknown::ManagedBlockBoundary)?;
-    let owner = block_id.map_or(op.output(), gripsack_store::ManagedBlockId::as_str);
+    let owner = block_id.map_or(op.output(), gripsack_host::store::ManagedBlockId::as_str);
     let blocks = ManagedBlockSet::parse(before, owner)
         .map_err(|_| ConfigurationUnknown::ManagedBlockBoundary)?;
     row.managed_blocks_observed = Some(blocks.blocks().len());
@@ -286,7 +286,8 @@ fn before_bytes(op: &Op) -> Result<(Vec<u8>, Option<u32>), ConfigurationUnknown>
     if bytes.len() > MAX_INPUT_BYTES {
         return Err(ConfigurationUnknown::ObservationOversized);
     }
-    let observed = ObjectIdentity::File(gripsack_store::canonical_bytes_identity(&bytes, mode));
+    let observed =
+        ObjectIdentity::File(gripsack_host::store::canonical_bytes_identity(&bytes, mode));
     if op.observed() != Some(&observed) {
         return Err(ConfigurationUnknown::ObservationChanged);
     }

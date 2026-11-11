@@ -1,9 +1,0 @@
-[package]
-name = "gripsack-policy"
-description = "gripsack policy functions — pure admission rules and resource budgets, plain Rust with unit tests"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-
-[dependencies]

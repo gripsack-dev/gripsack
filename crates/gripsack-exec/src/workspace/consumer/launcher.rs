@@ -1,10 +1,10 @@
 //! Retained launchers re-admit native packages on every invocation.
 use super::{ConsumerOutcome, admit, bind_admitted_program};
 use crate::{ExecError, workspace::artifact};
-use gripsack_ir::{Span, workspace_model::identity::PackageDigest};
-use gripsack_process::{
+use gripsack_host::process::{
     EnvironmentOverlay, Invocation, Limits, OperatorEnvironment, ProcessRole, Sha256Digest,
 };
+use gripsack_ir::{Span, workspace_model::identity::PackageDigest};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::{OsStr, OsString},
@@ -54,9 +54,9 @@ pub(super) fn encode_projection(overlay: &EnvironmentOverlay) -> Result<String, 
 }
 
 fn encode(projection: &Projection) -> Result<String, ExecError> {
-    let mut encoded = gripsack_process::InputBuffer::new(gripsack_process::InputByteLimit::new(
-        MAX_PROJECTION_BYTES,
-    ));
+    let mut encoded = gripsack_host::process::InputBuffer::new(
+        gripsack_host::process::InputByteLimit::new(MAX_PROJECTION_BYTES),
+    );
     serde_json::to_writer(&mut encoded, projection).map_err(|error| {
         if error.io_error_kind() == Some(std::io::ErrorKind::InvalidInput) {
             super::failure("projected environment exceeds its 32 MiB byte budget")
@@ -78,9 +78,9 @@ fn read_projection(
     };
     // The generated wrapper supplies a quoted here-document on fd3. This
     // carries no stdin or argument-size obligation and needs no sidecar path.
-    let bytes = gripsack_process::InputBuffer::read_inherited(
+    let bytes = gripsack_host::process::InputBuffer::read_inherited(
         3,
-        gripsack_process::InputByteLimit::new(MAX_PROJECTION_BYTES),
+        gripsack_host::process::InputByteLimit::new(MAX_PROJECTION_BYTES),
         deadline,
     )?
     .into_bytes();
@@ -535,7 +535,7 @@ pub fn run_package_command(
         },
     )?
     .with_overlay(overlay)
-    .retain_leases(gripsack_process::ProcessLeases {
+    .retain_leases(gripsack_host::process::ProcessLeases {
         worker: None,
         retention: Some(handle),
     })?

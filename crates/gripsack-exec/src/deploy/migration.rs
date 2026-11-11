@@ -5,8 +5,8 @@
 //! to the native journal path: the ordinary removal planner must admit the leaf
 //! before the journal publishes its new directory shape.
 use crate::ExecError;
-use gripsack_store as store;
-use gripsack_store::Ownership;
+use gripsack_host::store;
+use gripsack_host::store::Ownership;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 

@@ -4,7 +4,7 @@ use crate::render::Palette;
 use std::process::ExitCode;
 
 pub fn store_verify(repair: bool, palette: Palette) -> ExitCode {
-    let home = gripsack_store::gripsack_home();
+    let home = gripsack_host::store::gripsack_home();
     // repair deletes store paths — the session IS the lifecycle-lock
     // contract (0045 F4), so an in-flight apply's just-published path
     // can't vanish between its manifest write and the flip.

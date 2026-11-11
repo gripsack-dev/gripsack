@@ -1,4 +1,4 @@
-//! The shipped `gripsack-fs` primitives, restated as `Storage` operations in
+//! The shipped `gripsack_host::fs` primitives, restated as `Storage` operations in
 //! the order the real code issues them, so `MemFs` can explore them. Each
 //! helper names the function it mirrors; the `*Order` enums add the
 //! calibration mutants (orders a past release shipped or a review feared).
@@ -39,7 +39,7 @@ pub enum ExistingDirs {
     Trust,
 }
 
-/// `gripsack_fs::create_dir_all`: every component durable before return.
+/// `gripsack_host::fs::create_dir_all`: every component durable before return.
 pub fn create_dir_all<S: Storage>(
     fs: &S,
     components: &[&str],
@@ -128,7 +128,7 @@ pub fn atomic_write<S: Storage>(
     fs.sync_dir(dir)
 }
 
-/// `gripsack_fs::symlink_replace`: temp link, rename over, fsync parent.
+/// `gripsack_host::fs::symlink_replace`: temp link, rename over, fsync parent.
 pub fn symlink_replace<S: Storage>(fs: &S, dir: &S::Dir, at: &str, target: &str) -> io::Result<()> {
     let temporary = name(&format!(".tmp-link-{at}"));
     match fs.unlink(dir, &temporary) {

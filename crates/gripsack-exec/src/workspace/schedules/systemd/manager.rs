@@ -2,11 +2,11 @@
 //! changes linger. Effects are private to the activation lifecycle adapter.
 use super::{failure, unit_names};
 use crate::ExecError;
-use gripsack_process::{
+use gripsack_host::process::{
     Control, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessReceipt, ProcessRole,
     RetainedStderrLimit, SelectedProgram, StderrByteLimit, StdoutByteLimit,
 };
-use gripsack_store::jobs::{JobId, REGISTER_PROCESS_COUNT, REMOVE_PROCESS_COUNT};
+use gripsack_host::store::jobs::{JobId, REGISTER_PROCESS_COUNT, REMOVE_PROCESS_COUNT};
 use serde::Serialize;
 use std::{
     ffi::OsStr,
@@ -160,7 +160,7 @@ impl Manager<'_> {
             output.extend_from_slice(bytes);
             Control::Continue
         })?;
-        if outcome.receipt.disposition != gripsack_process::ProcessDisposition::Exited {
+        if outcome.receipt.disposition != gripsack_host::process::ProcessDisposition::Exited {
             return Err(failure(format!(
                 "bounded user-manager operation ended with {:?}; registration state may be unknown",
                 outcome.receipt.disposition

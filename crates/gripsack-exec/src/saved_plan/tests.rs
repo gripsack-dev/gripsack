@@ -99,7 +99,7 @@ fn digest_admission_rejects_tampered_source_lock_base_scope_and_trust() {
 
 #[test]
 fn logical_locations_round_trip_quoted_roots_without_rewriting_literal_content() {
-    use store::source_bundle::{SourceBundle, SourceCapturePolicy};
+    use crate::source_bundle::{SourceBundle, SourceCapturePolicy};
     for name in ["quoted\"repository", "backslash\\repository"] {
         let temporary = tempfile::tempdir().unwrap();
         let repo = temporary.path().join(name);

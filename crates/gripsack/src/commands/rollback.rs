@@ -1,5 +1,5 @@
 use crate::render::Palette;
-use gripsack_store as store;
+use gripsack_host::store;
 use std::process::ExitCode;
 use tracing::info;
 

@@ -2,7 +2,7 @@
 //! authority. Replay verifies their exact evidence and payload before admission.
 use super::*;
 use crate::workspace::sharing::RetainedInputSnapshot;
-use gripsack_process::Sha256Digest;
+use gripsack_host::process::Sha256Digest;
 
 pub(in crate::workspace) fn capture(
     home: &Path,

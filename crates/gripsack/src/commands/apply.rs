@@ -2,7 +2,7 @@ use super::eval::{EvalOutcome, eval_repo};
 use crate::live::{Detail, LiveRenderer};
 use crate::render::Palette;
 use gripsack_exec::{Ctx, Outcome};
-use gripsack_store as store;
+use gripsack_host::store;
 use std::path::Path;
 use std::process::ExitCode;
 

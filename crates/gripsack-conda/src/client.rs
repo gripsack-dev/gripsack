@@ -2,11 +2,12 @@
 //! Selected executable bytes, operator environment, deadlines and output bounds
 //! belong to the common process boundary. Helper success remains advisory.
 
+mod conda_admission;
 mod exchange;
 #[cfg(test)]
 mod tests;
 
-use gripsack_process::{OperatorEnvironment, ProcessReceipt, SelectedProgram, Sha256Digest};
+use gripsack_host::process::{OperatorEnvironment, ProcessReceipt, SelectedProgram, Sha256Digest};
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};

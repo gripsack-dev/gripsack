@@ -1,8 +1,8 @@
 //! Definition identities bind captured code, not today's files or cache umask.
 //! Original permissions remain in source approval; capture preserves executability.
+use crate::source_bundle::{SourceEntry, SourceFileBytes, SourceObject};
 use crate::{ExecError, Repository};
 use gripsack_ir::workspace_model::{identity::DefinitionDigest, lock::DefinitionPins};
-use gripsack_store::source_bundle::{SourceEntry, SourceFileBytes, SourceObject};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -75,7 +75,7 @@ enum CapturedDefinitionObject<'a> {
     Directory,
     File {
         bytes: &'a SourceFileBytes,
-        sha256: &'a gripsack_process::Sha256Digest,
+        sha256: &'a gripsack_host::process::Sha256Digest,
         executable: bool,
     },
     Alias {
@@ -158,14 +158,14 @@ fn subtree(entries: &[SourceEntry], root: &str) -> Result<DefinitionDigest, Exec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gripsack_store::prior::FileMode;
+    use gripsack_host::store::prior::FileMode;
 
     fn file(path: &str, content: &[u8]) -> SourceEntry {
         SourceEntry {
             path: path.into(),
             object: SourceObject::File {
                 bytes: SourceFileBytes::try_from(content.len() as u64).unwrap(),
-                sha256: gripsack_process::Sha256Digest::of(content),
+                sha256: gripsack_host::process::Sha256Digest::of(content),
                 mode: FileMode::try_from(0o644).unwrap(),
             },
         }

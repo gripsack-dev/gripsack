@@ -24,7 +24,7 @@ pub(super) fn prepare_into(
     else {
         unreachable!("tree dispatch");
     };
-    let root_cap = gripsack_fs::open(root)?;
+    let root_cap = gripsack_host::fs::open(root)?;
     let mut pending = vec![(root_cap, PathBuf::new())];
     let mut selected = BTreeMap::new();
     let mut entries = 0usize;
@@ -52,7 +52,7 @@ pub(super) fn prepare_into(
             if kind.is_dir() {
                 // Includes may name a deeper child; never prune its ancestors.
                 pending.push((
-                    gripsack_fs::open_dir_nofollow(&directory, Path::new(&name))?,
+                    gripsack_host::fs::open_dir_nofollow(&directory, Path::new(&name))?,
                     path,
                 ));
                 continue;

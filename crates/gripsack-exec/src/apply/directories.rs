@@ -15,8 +15,8 @@
 //! machine commanded ([`Machine::directory_step`]).
 use super::{Machine, Purpose, remove_unit};
 use crate::ctx::ExecError;
+use gripsack_host::store;
 use gripsack_kernel::directory::Action;
-use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 

@@ -13,7 +13,7 @@ use super::{
 };
 use crate::{ExecError, workspace::artifact};
 use gripsack_fetch::FetchLimits;
-use gripsack_fs::{
+use gripsack_host::fs::{
     Dir,
     cap_std::fs::{Metadata, MetadataExt},
 };
@@ -97,7 +97,7 @@ impl Snapshot {
             let parent = if relative.as_os_str().is_empty() {
                 directory.try_clone()?
             } else {
-                gripsack_fs::open_dir_nofollow(&directory, &relative)?
+                gripsack_host::fs::open_dir_nofollow(&directory, &relative)?
             };
             for entry in parent.entries()? {
                 let name = entry?.file_name();

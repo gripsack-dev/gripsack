@@ -42,7 +42,7 @@ impl RootKind {
 pub struct RootId(String);
 impl RootId {
     pub fn from_identity(bytes: &[u8]) -> Self {
-        Self(gripsack_store::hash::hex_sha256(bytes))
+        Self(gripsack_host::store::hash::hex_sha256(bytes))
     }
     pub fn as_str(&self) -> &str {
         &self.0
@@ -51,7 +51,7 @@ impl RootId {
 impl TryFrom<String> for RootId {
     type Error = std::io::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        gripsack_process::Sha256Digest::parse(&value)?;
+        gripsack_host::process::Sha256Digest::parse(&value)?;
         Ok(Self(value))
     }
 }
@@ -63,18 +63,22 @@ impl From<RootId> for String {
 
 /// Retire a private native invocation projection only after its caller has
 /// established that no supervised process still needs these inputs.
-pub(super) fn remove_native_staging(home: &gripsack_fs::Dir, id: &RootId) -> Result<(), ExecError> {
-    let parent = match gripsack_fs::open_dir_nofollow(home, Path::new(BUILD_STAGING_DIRECTORY)) {
-        Ok(parent) => parent,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.into()),
-    };
+pub(super) fn remove_native_staging(
+    home: &gripsack_host::fs::Dir,
+    id: &RootId,
+) -> Result<(), ExecError> {
+    let parent =
+        match gripsack_host::fs::open_dir_nofollow(home, Path::new(BUILD_STAGING_DIRECTORY)) {
+            Ok(parent) => parent,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
+        };
     match parent.remove_dir_all(id.as_str()) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
-    gripsack_fs::fsync_pinned_dir(&parent, Path::new("."))?;
+    gripsack_host::fs::fsync_pinned_dir(&parent, Path::new("."))?;
     Ok(())
 }
 
@@ -83,14 +87,14 @@ pub(super) fn remove_native_staging(home: &gripsack_fs::Dir, id: &RootId) -> Res
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RetainedWorkerScope {
-    home: gripsack_process::Sha256Digest,
-    owner: gripsack_process::Sha256Digest,
+    home: gripsack_host::process::Sha256Digest,
+    owner: gripsack_host::process::Sha256Digest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RetainedWorkerBinding {
-    instance: gripsack_process::Sha256Digest,
+    instance: gripsack_host::process::Sha256Digest,
     epoch: std::num::NonZeroU64,
 }
 
@@ -176,29 +180,29 @@ fn error(detail: impl Into<String>) -> ExecError {
     }
 }
 fn admit_store_path(home: &Path, path: &Path) -> Result<(), ExecError> {
-    gripsack_store::paths::validate_store_root(home, path)?;
+    gripsack_host::store::paths::validate_store_root(home, path)?;
     if path.to_str().is_none() {
         return Err(error("root object must name a UTF-8 store child"));
     }
     Ok(())
 }
 fn directory(
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
     kind: RootKind,
     create: bool,
-) -> Result<Option<gripsack_fs::Dir>, ExecError> {
+) -> Result<Option<gripsack_host::fs::Dir>, ExecError> {
     if create {
-        gripsack_fs::create_dir_all(home, Path::new(ROOT_DIRECTORY))?;
+        gripsack_host::fs::create_dir_all(home, Path::new(ROOT_DIRECTORY))?;
     }
-    let root = match gripsack_fs::open_dir_nofollow(home, Path::new(ROOT_DIRECTORY)) {
+    let root = match gripsack_host::fs::open_dir_nofollow(home, Path::new(ROOT_DIRECTORY)) {
         Ok(root) => root,
         Err(error) if !create && error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };
     if create {
-        gripsack_fs::create_dir_all(&root, Path::new(kind.directory()))?;
+        gripsack_host::fs::create_dir_all(&root, Path::new(kind.directory()))?;
     }
-    match gripsack_fs::open_dir_nofollow(&root, Path::new(kind.directory())) {
+    match gripsack_host::fs::open_dir_nofollow(&root, Path::new(kind.directory())) {
         Ok(directory) => Ok(Some(directory)),
         Err(error) if !create && error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
@@ -214,7 +218,7 @@ fn write_root(
     if closure.home != session.home() {
         return Err(error("retention authority belongs to another home"));
     }
-    let home = gripsack_fs::open_or_create(session.home())?;
+    let home = gripsack_host::fs::open_or_create(session.home())?;
     let dir =
         directory(&home, kind, true)?.ok_or_else(|| error("created root directory is absent"))?;
     let record = RootFile {
@@ -228,7 +232,7 @@ fn write_root(
     if bytes.len() as u64 > MAX_ROOT_BYTES {
         return Err(error("root record exceeds its byte bound"));
     }
-    gripsack_fs::atomic_write(&dir, Path::new(&format!("{}.json", id.as_str())), &bytes)?;
+    gripsack_host::fs::atomic_write(&dir, Path::new(&format!("{}.json", id.as_str())), &bytes)?;
     Ok(())
 }
 pub fn project_id(project: &Path) -> Result<RootId, ExecError> {
@@ -252,14 +256,14 @@ pub fn register_output_root(
     write_root(session, RootKind::Output, id, closure, None)
 }
 fn remove_root(session: &LifecycleSession, kind: RootKind, id: &RootId) -> Result<(), ExecError> {
-    let home = gripsack_fs::open_or_create(session.home())?;
+    let home = gripsack_host::fs::open_or_create(session.home())?;
     if let Some(directory) = directory(&home, kind, false)? {
         for suffix in if kind == RootKind::Process {
             &["json", "flock"][..]
         } else {
             &["json"][..]
         } {
-            match gripsack_fs::remove_file(
+            match gripsack_host::fs::remove_file(
                 &directory,
                 Path::new(&format!("{}.{suffix}", id.as_str())),
             ) {
@@ -268,7 +272,7 @@ fn remove_root(session: &LifecycleSession, kind: RootKind, id: &RootId) -> Resul
                 Err(error) => return Err(error.into()),
             }
         }
-        gripsack_fs::fsync_pinned_dir(&directory, Path::new(kind.directory()))?;
+        gripsack_host::fs::fsync_pinned_dir(&directory, Path::new(kind.directory()))?;
     }
     Ok(())
 }
@@ -276,17 +280,17 @@ fn remove_root(session: &LifecycleSession, kind: RootKind, id: &RootId) -> Resul
 pub struct ProcessLease {
     home: PathBuf,
     id: RootId,
-    lock: gripsack_fs::FlockGuard,
+    lock: gripsack_host::fs::FlockGuard,
 }
 impl ProcessLease {
     pub fn register(session: &LifecycleSession, closure: &RetentionSet) -> Result<Self, ExecError> {
         let mut nonce = [0; 32];
         getrandom::fill(&mut nonce).map_err(std::io::Error::other)?;
         let id = RootId::from_identity(&nonce);
-        let home = gripsack_fs::open_or_create(session.home())?;
+        let home = gripsack_host::fs::open_or_create(session.home())?;
         let directory = directory(&home, RootKind::Process, true)?
             .ok_or_else(|| error("created process root directory is absent"))?;
-        let lock = gripsack_fs::FlockGuard::try_acquire_in(&directory, id.as_str())?
+        let lock = gripsack_host::fs::FlockGuard::try_acquire_in(&directory, id.as_str())?
             .ok_or_else(|| error("new process root identity is already leased"))?;
         write_root(session, RootKind::Process, &id, closure, None)?;
         Ok(Self {
@@ -317,12 +321,12 @@ impl ProcessLease {
     pub fn release(
         self,
         session: &LifecycleSession,
-        receipt: &gripsack_process::ProcessReceipt,
+        receipt: &gripsack_host::process::ProcessReceipt,
     ) -> Result<(), ExecError> {
         if self.home != session.home() {
             return Err(error("process root belongs to another home"));
         }
-        if receipt.disposition == gripsack_process::ProcessDisposition::CleanupFailure {
+        if receipt.disposition == gripsack_host::process::ProcessDisposition::CleanupFailure {
             return Err(error(
                 "native cleanup is unconfirmed; process retention remains",
             ));
@@ -333,11 +337,11 @@ impl ProcessLease {
 
 /// Called by GC using its already pinned home capability before any mutation.
 pub(crate) fn inventory(
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
     home_path: &Path,
 ) -> Result<BTreeSet<String>, ExecError> {
     let mut paths = BTreeSet::new();
-    let roots = match gripsack_fs::open_dir_nofollow(home, Path::new(ROOT_DIRECTORY)) {
+    let roots = match gripsack_host::fs::open_dir_nofollow(home, Path::new(ROOT_DIRECTORY)) {
         Ok(roots) => roots,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(paths),
         Err(error) => return Err(error.into()),
@@ -358,7 +362,7 @@ pub(crate) fn inventory(
         RootKind::Output,
         RootKind::Job,
     ] {
-        let dir = match gripsack_fs::open_dir_nofollow(&roots, Path::new(kind.directory())) {
+        let dir = match gripsack_host::fs::open_dir_nofollow(&roots, Path::new(kind.directory())) {
             Ok(dir) => dir,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => return Err(error.into()),
@@ -380,7 +384,7 @@ pub(crate) fn inventory(
             };
             for path in record.store_paths {
                 let normalized = home_path
-                    .join(gripsack_store::STORE_DIR)
+                    .join(gripsack_host::store::STORE_DIR)
                     .join(path.file_name().expect("admitted direct store child"));
                 paths.insert(
                     normalized
@@ -398,21 +402,21 @@ pub(crate) fn inventory(
 }
 
 fn read_record(
-    directory: &gripsack_fs::Dir,
+    directory: &gripsack_host::fs::Dir,
     name: &str,
     kind: RootKind,
     home: &Path,
 ) -> Result<Option<RootFile>, ExecError> {
     if let Some(id) = name.strip_suffix(".flock") {
         RootId::try_from(id.to_owned())?;
-        gripsack_fs::open_file_nofollow(directory, Path::new(name))?;
+        gripsack_host::fs::open_file_nofollow(directory, Path::new(name))?;
         return Ok(None);
     }
     let id = name
         .strip_suffix(".json")
         .ok_or_else(|| error("unknown entry in authoritative root directory"))?;
     let expected = RootId::try_from(id.to_owned())?;
-    let file = gripsack_fs::open_file_nofollow(directory, Path::new(name))?;
+    let file = gripsack_host::fs::open_file_nofollow(directory, Path::new(name))?;
     if file.metadata()?.len() > MAX_ROOT_BYTES {
         return Err(error("root record exceeds its byte bound"));
     }

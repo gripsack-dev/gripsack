@@ -283,7 +283,7 @@ pub(super) fn extract(
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            output.set_permissions(gripsack_fs::cap_std::fs::Permissions::from_std(
+            output.set_permissions(gripsack_host::fs::cap_std::fs::Permissions::from_std(
                 std::fs::Permissions::from_mode(mode & 0o777),
             ))?;
         }

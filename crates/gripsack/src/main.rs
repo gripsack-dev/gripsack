@@ -117,7 +117,7 @@ enum Command {
     /// Flip `current` back to a previous generation
     Rollback {
         /// Generation number (default: the previous one)
-        generation: Option<gripsack_store::GenerationId>,
+        generation: Option<gripsack_host::store::GenerationId>,
     },
     /// Run one command inside a named project environment (no generation)
     Run(commands::RunArgs),
@@ -271,7 +271,7 @@ fn main() -> ExitCode {
     // unrelated ambient HOME must not redirect their diagnostic state.
     let run = match &command {
         Command::RetainedPackage(args) => gripsack_trace::init(&args.home),
-        _ => gripsack_trace::init(&gripsack_store::gripsack_home()),
+        _ => gripsack_trace::init(&gripsack_host::store::gripsack_home()),
     }
     .ok();
     let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());

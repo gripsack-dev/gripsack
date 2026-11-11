@@ -239,8 +239,8 @@ fn retained_source(
                     }
                     digest.update(&bytes[..count]);
                 }
-                if gripsack_process::Sha256Digest::from_bytes(digest.finalize().into())
-                    != gripsack_process::Sha256Digest::parse(expected)?
+                if gripsack_host::process::Sha256Digest::from_bytes(digest.finalize().into())
+                    != gripsack_host::process::Sha256Digest::parse(expected)?
                 {
                     return Err(std::io::Error::other(
                         "captured source differs from its frozen download identity",
@@ -256,7 +256,7 @@ fn retained_source(
     let Some(tree) = &resolved.tree256 else {
         return Ok(None);
     };
-    let root = gripsack_store::content_path(home, "workspace-source", tree);
+    let root = gripsack_host::store::content_path(home, "workspace-source", tree);
     let Some(_directory) = artifact::retained_directory(home, &root)? else {
         return Ok(None);
     };

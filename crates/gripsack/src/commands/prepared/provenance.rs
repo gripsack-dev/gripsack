@@ -1,9 +1,9 @@
 //! Bounded informational Git reads belong to CLI preparation, not store IO.
-use gripsack_process::{
+use gripsack_exec::trust::GitProvenance;
+use gripsack_host::process::{
     Control, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessRole,
     RetainedStderrLimit, SelectedProgram, StderrByteLimit, StdoutByteLimit,
 };
-use gripsack_store::trust::GitProvenance;
 use std::{
     ffi::OsStr,
     path::Path,

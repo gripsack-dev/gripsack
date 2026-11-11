@@ -18,6 +18,6 @@ pub(crate) fn publish(
                 destination.display()
             ),
         })?;
-    gripsack_fs::publish_dir(ctx.home_dir()?, stage, relative)?;
+    gripsack_host::fs::publish_dir(ctx.home_dir()?, stage, relative)?;
     Ok(())
 }

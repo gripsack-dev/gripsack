@@ -5,8 +5,9 @@ pub(crate) use destinations::{DestinationDeclaration, check_destinations_with};
 
 /// Ownership lineage follows destinations across profile renames.
 pub(crate) fn previous_ownership(
-    previous: &std::collections::BTreeMap<String, gripsack_store::DeploymentState>,
-) -> std::collections::BTreeMap<gripsack_store::OwnershipKey, crate::ops::PreviousRecord<'_>> {
+    previous: &std::collections::BTreeMap<String, gripsack_host::store::DeploymentState>,
+) -> std::collections::BTreeMap<gripsack_host::store::OwnershipKey, crate::ops::PreviousRecord<'_>>
+{
     previous
         .iter()
         .flat_map(|(name, state)| {
@@ -33,9 +34,9 @@ pub(crate) mod restore;
 pub use remove::removal;
 
 #[cfg(test)]
-use gripsack_store as store;
+use gripsack_host::store;
 #[cfg(test)]
-use gripsack_store::Ownership;
+use gripsack_host::store::Ownership;
 use std::path::Path;
 
 /// no second observation can silently rebase the precondition.
@@ -45,7 +46,7 @@ pub enum Observation {
 }
 
 pub(crate) fn observe(
-    dest_dir: &gripsack_fs::Dir,
+    dest_dir: &gripsack_host::fs::Dir,
     dest_name: &Path,
 ) -> std::io::Result<Option<Observation>> {
     let meta = match dest_dir.symlink_metadata(dest_name) {
@@ -60,7 +61,7 @@ pub(crate) fn observe(
         }))
     } else if meta.is_file() {
         let mode = {
-            use gripsack_fs::cap_std::fs::MetadataExt;
+            use gripsack_host::fs::cap_std::fs::MetadataExt;
             meta.mode() & 0o7777
         };
         let bytes = dest_dir.read(dest_name)?;
@@ -113,10 +114,10 @@ pub fn observe_readonly(dest: &Path) -> std::io::Result<Option<Observation>> {
 /// phase 2).
 pub(crate) fn dest_capability(
     dest: &Path,
-) -> std::io::Result<(gripsack_fs::Dir, std::path::PathBuf)> {
+) -> std::io::Result<(gripsack_host::fs::Dir, std::path::PathBuf)> {
     let parent = dest.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(parent)?;
-    let dir = gripsack_fs::open(parent)?;
+    let dir = gripsack_host::fs::open(parent)?;
     Ok((
         dir,
         std::path::PathBuf::from(dest.file_name().unwrap_or_default()),
@@ -154,7 +155,7 @@ mod tests {
         // intended state fails the run here — the flip never commits
         // an unverified destination
         let dir = tempfile::tempdir().unwrap();
-        let home = gripsack_fs::open_or_create(dir.path()).unwrap();
+        let home = gripsack_host::fs::open_or_create(dir.path()).unwrap();
         let run = store::journal::begin_run(
             &home,
             dir.path(),
@@ -212,7 +213,7 @@ mod tests {
             vars: Default::default(),
             file_mode: None,
             source_executable: None,
-            hash: gripsack_store::hash::ManifestHash::from_raw("x".repeat(64)),
+            hash: gripsack_host::store::hash::ManifestHash::from_raw("x".repeat(64)),
             prior: None,
             preserved_drift: false,
         };

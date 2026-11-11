@@ -3,8 +3,8 @@ use gripsack_exec::{
     LifecycleSession,
     schedules::{self, JobId, JobRevision},
 };
-use gripsack_process::terminal::{display, write_output};
-use gripsack_store::{self as store, activation::ActivationAction};
+use gripsack_host::process::terminal::{display, write_output};
+use gripsack_host::store::{self as store, activation::ActivationAction};
 use std::{
     path::{Path, PathBuf},
     process::ExitCode,
@@ -133,13 +133,13 @@ fn status(
     let mut activation = Vec::new();
     let mut invocations = Vec::new();
     if home.exists() {
-        let directory = gripsack_fs::open(home)?;
+        let directory = gripsack_host::fs::open(home)?;
         store::activation::inspect(&directory, |entry| {
             let value = serde_json::to_value(entry).map_err(std::io::Error::other)?;
             activation.push(value);
             Ok(())
         })?;
-        match gripsack_fs::open_dir_nofollow(&directory, Path::new("task-invocations")) {
+        match gripsack_host::fs::open_dir_nofollow(&directory, Path::new("task-invocations")) {
             Ok(history) => {
                 for (count, entry) in history.entries()?.enumerate() {
                     if count >= 10000 {
@@ -169,6 +169,6 @@ fn status(
         .filter(|entry| selected.is_none_or(|selected| selected == &entry.job))
         .collect();
     Ok(
-        serde_json::json!({"generation":generation.map(gripsack_store::GenerationId::value),"jobs":jobs,"registration":registration,"activation":activation,"invocations":invocations}),
+        serde_json::json!({"generation":generation.map(gripsack_host::store::GenerationId::value),"jobs":jobs,"registration":registration,"activation":activation,"invocations":invocations}),
     )
 }

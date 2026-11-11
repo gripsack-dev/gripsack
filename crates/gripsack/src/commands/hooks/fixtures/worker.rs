@@ -1,6 +1,6 @@
 use super::{FixtureCase, FixtureRoot, SimulationMode, invalid, store};
-use gripsack_process::{ByteBinding, Enforcement, Sha256Digest};
-use gripsack_store::activation::IntentState;
+use gripsack_host::process::{ByteBinding, Enforcement, Sha256Digest};
+use gripsack_host::store::activation::IntentState;
 use serde::Serialize;
 use std::io;
 
@@ -29,7 +29,7 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
     }
     let home_path = root.home(case);
     let session = gripsack_exec::LifecycleSession::acquire(&home_path)?;
-    let home = gripsack_fs::open(&home_path)?;
+    let home = gripsack_host::fs::open(&home_path)?;
     if store::journal::pending_recovery(&home)?.is_some() {
         return Err(invalid(
             "fixture workers never reconcile arbitrary destination journals",
@@ -67,7 +67,7 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
                 vec![store::activation::PendingIntent {
                     output: "fixture".into(),
                     action,
-                    trigger: gripsack_store::ActivationTrigger::PostActivate,
+                    trigger: gripsack_host::store::ActivationTrigger::PostActivate,
                 }],
             )?;
             let committed = store::flip(pending)?;
@@ -82,7 +82,7 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
         if row.action_sha256 != expected
             || row.contributors.len() != 1
             || row.contributors[0].output != "fixture"
-            || row.contributors[0].trigger != gripsack_store::ActivationTrigger::PostActivate
+            || row.contributors[0].trigger != gripsack_host::store::ActivationTrigger::PostActivate
         {
             return Err(invalid("fixture worker refuses a non-fixture action"));
         }
@@ -112,7 +112,7 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
 }
 
 pub(super) fn observe(root: &FixtureRoot, case: FixtureCase) -> io::Result<ObservedIntent> {
-    let home = gripsack_fs::open(&root.home(case))?;
+    let home = gripsack_host::fs::open(&root.home(case))?;
     let mut observed = None;
     store::activation::inspect(&home, |row| {
         if observed.is_some() {

@@ -246,8 +246,9 @@ fn encode_frame(value: &impl Serialize, max: u64) -> Result<Vec<u8>, FrameError>
         .ok()
         .and_then(|limit| limit.checked_add(FRAME_HEADER_BYTES))
         .ok_or(FrameError::EncodingLimit { limit: max })?;
-    let mut frame =
-        gripsack_process::InputBuffer::new(gripsack_process::InputByteLimit::new(limit));
+    let mut frame = gripsack_host::process::InputBuffer::new(
+        gripsack_host::process::InputByteLimit::new(limit),
+    );
     frame.write_all(&[0; FRAME_HEADER_BYTES])?;
     serde_json::to_writer(&mut frame, value).map_err(|error| {
         if error.io_error_kind() == Some(io::ErrorKind::InvalidInput) {

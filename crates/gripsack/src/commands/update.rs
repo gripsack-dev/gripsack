@@ -1,7 +1,7 @@
 use crate::commands::{check_ir, eval_repo};
 use crate::render::Palette;
 use gripsack_exec::{Ctx, UpdateCheckOutcome, UpdateMode, UpdateStatus};
-use gripsack_store as store;
+use gripsack_host::store;
 use owo_colors::OwoColorize;
 use std::path::Path;
 use std::process::ExitCode;

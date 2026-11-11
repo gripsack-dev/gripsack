@@ -1,5 +1,5 @@
 //! Native Linux kernel capability, measured once without shell or repo overrides.
-use gripsack_policy::target::OsRelease;
+use gripsack_ir::target::OsRelease;
 use std::{ffi::CStr, io, sync::LazyLock};
 
 pub(crate) struct PlatformRelease {

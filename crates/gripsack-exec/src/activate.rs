@@ -9,12 +9,14 @@ use crate::progress::{
     Reporter, Verification, VerificationKind, VerificationLabel, VerificationLabels, process_status,
 };
 use crate::report::{StepReport, Tone};
+use gripsack_host::store;
+use gripsack_host::store::activation::{
+    ActivationAction as Action, EffectiveIntent, IntentFailure,
+};
 use gripsack_kernel::activation::{
     ActivationState, Command, Event, HookResult, IntentState, Refusal, activation_step,
 };
 use gripsack_kernel::recover::Failure;
-use gripsack_store as store;
-use gripsack_store::activation::{ActivationAction as Action, EffectiveIntent, IntentFailure};
 use std::{io, path::Path, time::Instant};
 
 /// Rollback uses retained actions, never today's repository source. Removal
@@ -25,7 +27,7 @@ pub(crate) fn collect_from_manifest(
     let mut declarations = Vec::new();
     for (name, state) in &generation.deployments {
         for record in &state.intents {
-            if record.trigger != gripsack_store::ActivationTrigger::OnRemove {
+            if record.trigger != gripsack_host::store::ActivationTrigger::OnRemove {
                 declarations.push(store::activation::PendingIntent {
                     output: name.clone(),
                     action: record.action.clone(),
@@ -42,7 +44,7 @@ pub(crate) fn collect_from_manifest(
 /// launch's `expect` immediately before the hook runs, and reports.
 pub(crate) fn run(
     batch: store::activation::ActivationBatch,
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
     home_path: &Path,
     reporter: Reporter<'_>,
     labels: &VerificationLabels,
@@ -115,7 +117,7 @@ pub(crate) fn run(
                         );
                     }
                     let environment = environment
-                        .get_or_insert_with(gripsack_process::OperatorEnvironment::capture);
+                        .get_or_insert_with(gripsack_host::process::OperatorEnvironment::capture);
                     let started = Instant::now();
                     let effect = effect::run(intent, &permit, environment, &directory, home_path);
                     let duration = started.elapsed();
@@ -175,7 +177,7 @@ struct Returned {
 }
 
 fn current(
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
     home_path: &Path,
 ) -> io::Result<Option<gripsack_kernel::selection::SelectionIdentity>> {
     store::generations::current_selection_in(home_path, home)
@@ -297,7 +299,7 @@ pub fn resume_activation(
     reporter: Reporter<'_>,
 ) -> io::Result<Vec<StepReport>> {
     let home_path = session.home();
-    let home = gripsack_fs::open(home_path)?;
+    let home = gripsack_host::fs::open(home_path)?;
     if store::journal::pending_recovery(&home)?.is_some() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,

@@ -15,9 +15,9 @@ pub(super) enum LockConflict {
     Unknown,
 }
 struct ClaimedKey {
-    directory: gripsack_fs::Dir,
+    directory: gripsack_host::fs::Dir,
     name: String,
-    _guard: gripsack_fs::FlockGuard,
+    _guard: gripsack_host::fs::FlockGuard,
 }
 pub(super) struct MutationClaims {
     keys: Vec<ClaimedKey>,
@@ -64,17 +64,17 @@ impl MutationClaims {
             };
             let name = format!(
                 "{scope}-{}",
-                gripsack_store::hash::hex_sha256(key.as_bytes())
+                gripsack_host::store::hash::hex_sha256(key.as_bytes())
             );
-            let directory = gripsack_fs::open_or_create(&path)?;
-            let guard = gripsack_fs::FlockGuard::try_acquire_in(&directory, &name)?;
+            let directory = gripsack_host::fs::open_or_create(&path)?;
+            let guard = gripsack_host::fs::FlockGuard::try_acquire_in(&directory, &name)?;
             let held = guard.is_none();
             let unknown = match directory.symlink_metadata(format!("{name}.json")) {
                 Ok(_) => true,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
                 Err(error) => return Err(error.into()),
             };
-            if !gripsack_policy::task::admit_conflict(held, unknown) {
+            if !super::task_policy::admit_conflict(held, unknown) {
                 return Ok(Err(if held {
                     LockConflict::Held
                 } else {
@@ -95,7 +95,7 @@ impl MutationClaims {
             "process_root": process_root,
         }))?;
         for (published, key) in keys.iter().enumerate() {
-            if let Err(error) = gripsack_fs::atomic_write_with_mode(
+            if let Err(error) = gripsack_host::fs::atomic_write_with_mode(
                 &key.directory,
                 Path::new(&format!("{}.json", key.name)),
                 &bytes,
@@ -104,7 +104,7 @@ impl MutationClaims {
                 // Publication may have happened before a failed directory
                 // fsync. We own every key and observed no previous record.
                 for previous in &keys[..=published] {
-                    match gripsack_fs::remove_file(
+                    match gripsack_host::fs::remove_file(
                         &previous.directory,
                         Path::new(&format!("{}.json", previous.name)),
                     ) {
@@ -112,7 +112,7 @@ impl MutationClaims {
                         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                         Err(error) => return Err(error.into()),
                     }
-                    gripsack_fs::fsync_pinned_dir(&previous.directory, Path::new("."))?;
+                    gripsack_host::fs::fsync_pinned_dir(&previous.directory, Path::new("."))?;
                 }
                 return Err(error.into());
             }
@@ -129,8 +129,8 @@ impl MutationClaims {
     }
 }
 fn remove_claim(key: &ClaimedKey) -> Result<(), ExecError> {
-    gripsack_fs::remove_file(&key.directory, Path::new(&format!("{}.json", key.name)))?;
-    gripsack_fs::fsync_pinned_dir(&key.directory, Path::new("."))?;
+    gripsack_host::fs::remove_file(&key.directory, Path::new(&format!("{}.json", key.name)))?;
+    gripsack_host::fs::fsync_pinned_dir(&key.directory, Path::new("."))?;
     Ok(())
 }
 fn user_directory() -> Result<PathBuf, ExecError> {

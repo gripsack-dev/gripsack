@@ -1,6 +1,6 @@
 //! Explicit sharing effects require no repository evaluation or activation.
 use gripsack_exec::{Ctx, ExecError, LifecycleSession, Repository, sharing};
-use gripsack_process::terminal::tame;
+use gripsack_host::process::terminal::tame;
 use sharing::registry::{Registry, RegistryAuth, RegistryBundle};
 use std::{
     io::Read,
@@ -111,8 +111,8 @@ pub fn package(args: PackageArgs) -> ExitCode {
     }
 }
 fn execute(args: PackageArgs) -> Result<serde_json::Value, ExecError> {
-    let home = gripsack_store::gripsack_home();
-    let environment = gripsack_process::OperatorEnvironment::capture()?;
+    let home = gripsack_host::store::gripsack_home();
+    let environment = gripsack_host::process::OperatorEnvironment::capture()?;
     let ctx = Ctx {
         home: home.clone(),
         home_dir: Default::default(),

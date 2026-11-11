@@ -10,6 +10,7 @@ pub(in crate::workspace) mod launcher;
 pub use launcher::run_package_command;
 mod task_graph;
 mod task_locks;
+mod task_policy;
 mod task_report;
 mod tasks;
 pub use task_graph::{TaskPlan, TaskRevision, plan_task};
@@ -28,13 +29,13 @@ use super::{
     roots::{self, ProcessLease, RetentionSet, RootId},
 };
 use crate::{Ctx, ExecError, LifecycleSession};
+use gripsack_host::process::{
+    EnvironmentOverlay, Invocation, Limits, ProcessLeases, ProcessReceipt, ProcessRole,
+    SelectedProgram,
+};
 use gripsack_ir::{
     Ir, Span,
     workspace_model::{WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspacePath},
-};
-use gripsack_process::{
-    EnvironmentOverlay, Invocation, Limits, ProcessLeases, ProcessReceipt, ProcessRole,
-    SelectedProgram,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -255,7 +256,7 @@ fn resolve_program<'p>(
     Ok((selected, None))
 }
 
-fn single_outcome(outcome: gripsack_process::NativeOutcome) -> ConsumerOutcome {
+fn single_outcome(outcome: gripsack_host::process::NativeOutcome) -> ConsumerOutcome {
     ConsumerOutcome {
         receipt: outcome.receipt,
         root_retained: false,
@@ -276,12 +277,12 @@ fn with_process_root(
     let retention = RetentionSet::admit(&session, closure)?;
     let lease = ProcessLease::register(&session, &retention)?;
     let parent_path = Path::new(roots::BUILD_STAGING_DIRECTORY);
-    gripsack_fs::create_dir_all(ctx.home_dir()?, parent_path)?;
-    let parent = gripsack_fs::open_dir_nofollow(ctx.home_dir()?, parent_path)?;
+    gripsack_host::fs::create_dir_all(ctx.home_dir()?, parent_path)?;
+    let parent = gripsack_host::fs::open_dir_nofollow(ctx.home_dir()?, parent_path)?;
     parent.create_dir(lease.id().as_str())?;
-    let staging = gripsack_fs::open_dir_nofollow(&parent, Path::new(lease.id().as_str()))?;
+    let staging = gripsack_host::fs::open_dir_nofollow(&parent, Path::new(lease.id().as_str()))?;
     staging.create_dir("bin")?;
-    gripsack_fs::fsync_pinned_dir(&parent, parent_path)?;
+    gripsack_host::fs::fsync_pinned_dir(&parent, parent_path)?;
     let bin = ctx
         .home
         .join(roots::BUILD_STAGING_DIRECTORY)
@@ -302,9 +303,9 @@ fn with_process_root(
     let lease_id = lease.id().as_str().to_owned();
     match lease.release(&session, &outcome.receipt) {
         Ok(()) => {
-            if let Ok(parent) = gripsack_fs::open_dir_nofollow(ctx.home_dir()?, parent_path) {
+            if let Ok(parent) = gripsack_host::fs::open_dir_nofollow(ctx.home_dir()?, parent_path) {
                 let _ = parent.remove_dir_all(Path::new(&lease_id));
-                let _ = gripsack_fs::fsync_pinned_dir(&parent, parent_path);
+                let _ = gripsack_host::fs::fsync_pinned_dir(&parent, parent_path);
             }
         }
         Err(error) => {

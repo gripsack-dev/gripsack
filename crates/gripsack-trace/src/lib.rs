@@ -45,7 +45,7 @@ pub fn new_run_id() -> String {
 /// Returns the run handle; `runs/latest` points at it. Level comes from
 /// `GRIPSACK_LOG` (default `info`).
 pub fn init(home: &Path) -> io::Result<RunLog> {
-    let _home = gripsack_fs::open_or_create(home)?;
+    let _home = gripsack_host::fs::open_or_create(home)?;
     let id = new_run_id();
     let run = RunLog {
         path: home.join("runs").join(format!("{id}.jsonl")),
@@ -78,7 +78,7 @@ pub fn init(home: &Path) -> io::Result<RunLog> {
         .with(json)
         .try_init();
 
-    gripsack_fs::symlink_replace_at(&home.join("runs").join("latest"), &run.path)?;
+    gripsack_host::fs::symlink_replace_at(&home.join("runs").join("latest"), &run.path)?;
     Ok(run)
 }
 

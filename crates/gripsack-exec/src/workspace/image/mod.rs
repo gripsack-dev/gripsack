@@ -4,7 +4,7 @@ pub(super) mod materialize;
 
 use super::artifact;
 use crate::ExecError;
-use gripsack_process::Sha256Digest;
+use gripsack_host::process::Sha256Digest;
 use serde::Deserialize;
 use std::path::Path;
 const RECEIPT: &str = "image.json";
@@ -13,7 +13,7 @@ const RECEIPT: &str = "image.json";
 struct ImageReceipt {
     version: u32,
     identity: Sha256Digest,
-    archive_tree: gripsack_store::hash::PayloadHash,
+    archive_tree: gripsack_host::store::hash::PayloadHash,
     #[serde(rename = "manifest", deserialize_with = "manifest_digest")]
     _manifest: Sha256Digest,
     #[serde(rename = "external_runtime_requirements")]

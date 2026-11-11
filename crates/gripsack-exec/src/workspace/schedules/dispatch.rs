@@ -23,10 +23,10 @@ pub fn dispatch(home: &Path, job: &JobId, revision: &JobRevision) -> Result<Task
     crate::workspace::sharing::readmit_roots(home, closure.iter().map(|path| path.as_path()))?;
     let realization = snapshot.realization(home)?;
     let ctx = capture::context(home, &snapshot.checkout, &snapshot.task)?;
-    let environment = gripsack_process::OperatorEnvironment::capture()?;
+    let environment = gripsack_host::process::OperatorEnvironment::capture()?;
     let options = BuildOptions {
         environment: &environment,
-        deadline: Instant::now() + gripsack_process::Limits::default().timeout,
+        deadline: Instant::now() + gripsack_host::process::Limits::default().timeout,
     };
     // run_captured writes its own invocation receipt and registers its process
     // lease before dropping this exact session. Update/disable can then retire
