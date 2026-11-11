@@ -173,34 +173,52 @@ def test_throttle_user_override_beats_plugin_budget(sandbox, monkeypatch):
     """env.toml [throttle] outranks the fetcher's own declaration.
     Self-relative: the budget-limited run (1/s across two fetches)
     sets this machine's baseline; the overridden run must beat it by
-    the budget delay — wall-clock absolutes flake on slow runners."""
+    the budget delay. Both are measured between the two fetches, not
+    over the whole command, so a loaded runner cannot flip them."""
     bindir = sandbox / "bin"
     bindir.mkdir()
     fetcher = bindir / "gripfetch-demo"
     fetcher.write_text(FETCH_FIXTURE)
     fetcher.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
-    import time
-
     # baseline: the plugin's own 1/s budget delays the second fetch
     repo = make_workspace_repo(sandbox / "budgeted", PLUGIN_OUTPUTS)
-    start = time.monotonic()
-    out = grip("update", cwd=repo)
-    budgeted = time.monotonic() - start
+    out, budgeted = _update_fetch_gap(sandbox, repo)
     assert out.returncode == 0, out.stderr
 
     # override: 100/s in env.toml outranks the declaration
     repo = make_workspace_repo(sandbox / "overridden", PLUGIN_OUTPUTS)
     with open(repo / "env.toml", "a") as f:
         f.write('\n[throttle]\n"demo.local" = "100/s"\n')
-    start = time.monotonic()
-    out = grip("update", cwd=repo)
-    overridden = time.monotonic() - start
+    out, overridden = _update_fetch_gap(sandbox, repo)
     assert out.returncode == 0, out.stderr
+    assert budgeted >= 0.8, f"budget not enforced: fetches {budgeted:.2f}s apart"
     assert overridden < budgeted - 0.5, (
-        f"override not applied: budgeted {budgeted:.2f}s, "
-        f"overridden {overridden:.2f}s"
+        f"override not applied: budgeted fetches {budgeted:.2f}s apart, "
+        f"overridden {overridden:.2f}s apart"
     )
+
+
+def _update_fetch_gap(sandbox, repo):
+    """Run `grip update` and return (result, seconds between its two
+    `fetched` events) read from the run log. Measuring the gap the
+    bucket controls, not the whole command, keeps evaluation and
+    startup time on a loaded runner out of the comparison."""
+    import json
+    from datetime import datetime
+
+    runs = sandbox / ".local/share/gripsack/runs"
+    before = set(runs.glob("*.jsonl")) if runs.is_dir() else set()
+    out = grip("update", cwd=repo)
+    stamps = []
+    for log in set(runs.glob("*.jsonl")) - before:
+        for line in log.read_text().splitlines():
+            event = json.loads(line)
+            if event.get("fields", {}).get("message") == "fetched":
+                stamps.append(datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")))
+    assert len(stamps) == 2, f"expected two fetches in the new run logs, saw {len(stamps)}"
+    stamps.sort()
+    return out, (stamps[1] - stamps[0]).total_seconds()
 
 
 @pytest.mark.parametrize("budget", ["NaN/s", "0.5/s"])
