@@ -1,6 +1,6 @@
 //! Exact-credit persistence with explicit migration from legacy floating tokens.
 use super::Bucket;
-use gripsack_policy::rate_limit::{BinaryTokenRate, CREDIT_WORDS, RatePeriod, TokenBucket};
+use crate::throttle::rate_limit::{BinaryTokenRate, CREDIT_WORDS, RatePeriod, TokenBucket};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use std::collections::BTreeMap;
@@ -78,7 +78,7 @@ pub(super) fn restore(text: &str, buckets: &mut BTreeMap<String, Bucket>) {
             }
             None => tracing::warn!(
                 "ignoring invalid persisted throttle state for {}",
-                gripsack_process::terminal::tame(domain),
+                gripsack_host::process::terminal::tame(domain),
             ),
         }
     }
@@ -117,8 +117,8 @@ pub(super) fn encode(buckets: &BTreeMap<String, Bucket>) -> serde_json::Result<V
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::throttle::rate_limit::TokenAdmission;
     use crate::throttle::{Throttle, ThrottleAdmission};
-    use gripsack_policy::rate_limit::TokenAdmission;
     use std::time::Instant;
 
     #[test]

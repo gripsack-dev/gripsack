@@ -3,7 +3,7 @@ use super::*;
 use gripsack_exec::{
     BusyPolicy, InvocationId, TaskOutputMode, TaskRunPolicy, TaskStatus, TaskStdin,
 };
-use gripsack_process::terminal::{display, write_output};
+use gripsack_host::process::terminal::{display, write_output};
 
 #[derive(Debug, clap::Args)]
 pub struct TaskArgs {
@@ -93,7 +93,7 @@ pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
             args.timeout_seconds,
         ),
         TaskCommand::Status { invocation } | TaskCommand::Log { invocation } => {
-            let home = gripsack_store::gripsack_home();
+            let home = gripsack_host::store::gripsack_home();
             let id = match InvocationId::parse(invocation) {
                 Ok(id) => id,
                 Err(error) => {
@@ -214,7 +214,7 @@ pub(super) fn finish(report: gripsack_exec::TaskReport, json: bool) -> ExitCode 
     print_report(&report, json);
     if matches!(report.status, TaskStatus::Failed | TaskStatus::Cancelled)
         && let Some(receipt) = report.last_receipt()
-        && receipt.disposition == gripsack_process::ProcessDisposition::Exited
+        && receipt.disposition == gripsack_host::process::ProcessDisposition::Exited
     {
         // A task is a graph invocation, not an exec-style process replacement.
         // Report a child's signal numerically; never crash the CLI itself.

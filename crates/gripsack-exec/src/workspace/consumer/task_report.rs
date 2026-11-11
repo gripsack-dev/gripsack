@@ -2,7 +2,7 @@
 //! promoted to success by observing a vanished PID or an elapsed deadline.
 use super::{failure, task_graph::TaskRevision};
 use crate::ExecError;
-use gripsack_process::{ProcessDisposition, ProcessReceipt, Sha256Digest};
+use gripsack_host::process::{ProcessDisposition, ProcessReceipt, Sha256Digest};
 use serde::{Deserialize, Serialize};
 use std::{
     io::Read,
@@ -59,8 +59,8 @@ pub enum TaskStatus {
     Indeterminate,
 }
 impl TaskStatus {
-    pub(super) fn state(self) -> gripsack_policy::task::TaskState {
-        use gripsack_policy::task::TaskState;
+    pub(super) fn state(self) -> super::task_policy::TaskState {
+        use super::task_policy::TaskState;
         match self {
             Self::Succeeded => TaskState::Succeeded,
             Self::Failed => TaskState::Failed,
@@ -119,8 +119,8 @@ pub struct TaskNodeReport {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScheduledInvocation {
-    pub job: gripsack_store::jobs::JobId,
-    pub revision: gripsack_store::jobs::JobRevision,
+    pub job: gripsack_host::store::jobs::JobId,
+    pub revision: gripsack_host::store::jobs::JobRevision,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -191,7 +191,7 @@ impl TaskReport {
         if bytes.len() as u64 > MAX_REPORT_BYTES {
             return Err(failure("task receipt exceeds byte budget"));
         }
-        gripsack_fs::atomic_write_with_mode(
+        gripsack_host::fs::atomic_write_with_mode(
             &dir,
             Path::new(&format!("{}.json", self.invocation)),
             &bytes,
@@ -200,16 +200,16 @@ impl TaskReport {
         Ok(())
     }
 }
-fn directory(home: &Path, create: bool) -> Result<gripsack_fs::Dir, ExecError> {
+fn directory(home: &Path, create: bool) -> Result<gripsack_host::fs::Dir, ExecError> {
     let home = if create {
-        gripsack_fs::open_or_create(home)?
+        gripsack_host::fs::open_or_create(home)?
     } else {
-        gripsack_fs::open(home)?
+        gripsack_host::fs::open(home)?
     };
     if create {
-        gripsack_fs::create_dir_all(&home, Path::new(REPORT_DIRECTORY))?;
+        gripsack_host::fs::create_dir_all(&home, Path::new(REPORT_DIRECTORY))?;
     }
-    let dir = gripsack_fs::open_dir_nofollow(&home, Path::new(REPORT_DIRECTORY))?;
+    let dir = gripsack_host::fs::open_dir_nofollow(&home, Path::new(REPORT_DIRECTORY))?;
     Ok(dir)
 }
 pub fn read_task_report(home: &Path, invocation: &InvocationId) -> Result<TaskReport, ExecError> {
@@ -276,8 +276,12 @@ pub fn read_task_log(home: &Path, invocation: &InvocationId) -> Result<Vec<u8>, 
         MAX_LOG_BYTES as u64,
     )
 }
-fn read_bounded(dir: &gripsack_fs::Dir, name: &str, limit: u64) -> Result<Vec<u8>, ExecError> {
-    let file = gripsack_fs::open_file_nofollow(dir, Path::new(name))?;
+fn read_bounded(
+    dir: &gripsack_host::fs::Dir,
+    name: &str,
+    limit: u64,
+) -> Result<Vec<u8>, ExecError> {
+    let file = gripsack_host::fs::open_file_nofollow(dir, Path::new(name))?;
     let mut bytes = Vec::new();
     file.take(limit + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > limit {
@@ -289,7 +293,7 @@ pub(super) fn persist_log(home: &Path, report: &TaskReport, bytes: &[u8]) -> Res
     if bytes.len() > MAX_LOG_BYTES {
         return Err(failure("task log exceeds byte budget"));
     }
-    gripsack_fs::atomic_write_with_mode(
+    gripsack_host::fs::atomic_write_with_mode(
         &directory(home, true)?,
         Path::new(&format!("{}.log", report.invocation)),
         bytes,
@@ -303,7 +307,7 @@ mod tests {
     use super::*;
     #[test]
     fn observed_zero_exit_cannot_override_failed_or_unknown_supervision() {
-        use gripsack_process::{ByteBinding, Enforcement};
+        use gripsack_host::process::{ByteBinding, Enforcement};
         for disposition in [
             ProcessDisposition::Exited,
             ProcessDisposition::Deadline,
@@ -334,7 +338,7 @@ mod tests {
             };
             let status = TaskStatus::from_receipt(&receipt);
             assert_eq!(
-                gripsack_policy::task::prerequisite_succeeded(status.state()),
+                super::super::task_policy::prerequisite_succeeded(status.state()),
                 disposition == ProcessDisposition::Exited
             );
             if disposition == ProcessDisposition::CleanupFailure {
@@ -344,7 +348,7 @@ mod tests {
     }
     #[test]
     fn signal_outcomes_preserve_supervision_authority() {
-        use gripsack_process::{ByteBinding, Enforcement};
+        use gripsack_host::process::{ByteBinding, Enforcement};
         for signal in [
             libc::SIGHUP,
             libc::SIGINT,

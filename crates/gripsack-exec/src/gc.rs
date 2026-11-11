@@ -16,12 +16,12 @@ mod inventory;
 mod root_model;
 
 use crate::ctx::ExecError;
+use gripsack_host::store;
 use gripsack_kernel::gc::{
     Command, Event, GcState, InventoryFacts, Mode, Refusal as GcRefusal, gc_step,
 };
 use gripsack_kernel::recover::Failure;
 use gripsack_kernel::retention::{ManifestFacts, Scope};
-use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -117,7 +117,7 @@ pub fn gc(
 /// retirement needs them), and the collectable entries.
 struct Host {
     home_path: PathBuf,
-    home: gripsack_fs::Dir,
+    home: gripsack_host::fs::Dir,
     dry_run: bool,
     generations: store::generations::GenerationDirectory,
     journal_pending: bool,
@@ -136,9 +136,9 @@ impl Host {
         // never read as "nothing referenced". An unreadable journal fails
         // the same way (pending_recovery errors).
         let home = if dry_run {
-            gripsack_fs::open(home_path)?
+            gripsack_host::fs::open(home_path)?
         } else {
-            gripsack_fs::open_or_create(home_path)?
+            gripsack_host::fs::open_or_create(home_path)?
         };
         let journal_pending = store::journal::pending_recovery(&home)?.is_some();
         let activation_pending = store::activation::has_pending(&home)?;
@@ -333,7 +333,7 @@ pub fn why_owns(home: &Path, path: &str) -> Result<Vec<PathOwner>, ExecError> {
     let Some(n) = store::current_generation(home)? else {
         return Ok(Vec::new());
     };
-    let query = gripsack_store::canonical_dest(path)
+    let query = gripsack_host::store::canonical_dest(path)
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_else(|_| path.to_owned());
     let manifest = store::read_manifest(home, n)?;
@@ -354,7 +354,7 @@ pub fn why_owns(home: &Path, path: &str) -> Result<Vec<PathOwner>, ExecError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gripsack_store::Ownership;
+    use gripsack_host::store::Ownership;
     use std::fs;
     use store::GenerationId;
 
@@ -373,7 +373,7 @@ mod tests {
                     key: None,
                     ownership: store::StoredOwnership::Legacy(Ownership::TrackedCopy),
                     vars: Default::default(),
-                    hash: gripsack_store::hash::ManifestHash::from_raw("a".repeat(64)),
+                    hash: gripsack_host::store::hash::ManifestHash::from_raw("a".repeat(64)),
                     file_mode: None,
                     source_executable: None,
                     prior: None,
@@ -399,8 +399,11 @@ mod tests {
             let sp = home.join("store").join(format!("{tag}-m"));
             fs::create_dir_all(&sp).unwrap();
             fs::write(sp.join("payload"), format!("gen {n}")).unwrap();
-            store::write_manifest(&gripsack_fs::open_or_create(home).unwrap(), &mk_gen(n, sp))
-                .unwrap();
+            store::write_manifest(
+                &gripsack_host::fs::open_or_create(home).unwrap(),
+                &mk_gen(n, sp),
+            )
+            .unwrap();
         }
         // an orphan path no manifest references
         let orphan = home.join("store").join("zzz-orphan");
@@ -485,7 +488,7 @@ mod tests {
     fn setup_crash_window() -> (tempfile::TempDir, PathBuf) {
         let dir = setup();
         let home = dir.path();
-        let cap = gripsack_fs::open_or_create(home).unwrap();
+        let cap = gripsack_host::fs::open_or_create(home).unwrap();
         // a run declared its target and journaled one destination
         let run = store::journal::begin_run(
             &cap,
@@ -497,7 +500,7 @@ mod tests {
         .unwrap();
         let dest = home.join("dest.txt");
         fs::write(&dest, b"user bytes\n").unwrap();
-        let directory = gripsack_fs::open(home).unwrap();
+        let directory = gripsack_host::fs::open(home).unwrap();
         let observed = store::journal::live_identity(&directory, Path::new("dest.txt")).unwrap();
         // the process dies after the entry is durable, before the removal
         let crash = |_: &[u8], _: Option<gripsack_host::storage::Permissions>| {
@@ -553,7 +556,7 @@ mod tests {
         // the crash is reconciled (as the next apply would): the
         // destination did not exist before the run, so the
         // journaled state is consumed and the journal drains
-        store::journal::reconcile(&gripsack_fs::open_or_create(home).unwrap(), home).unwrap();
+        store::journal::reconcile(&gripsack_host::fs::open_or_create(home).unwrap(), home).unwrap();
         let session = crate::LifecycleSession::acquire(home).unwrap();
         gc(&session, Some(1), false).unwrap();
         // the blob's generation pins lapsed WITH the journal — safe
@@ -567,7 +570,7 @@ mod tests {
         // reconcile refuses the (fabricated, tag-valid but
         // blob-missing) entry? No: fabricate a MALFORMED entry so
         // reconcile quarantines it, then gc must still refuse.
-        let cap = gripsack_fs::open_or_create(home).unwrap();
+        let cap = gripsack_host::fs::open_or_create(home).unwrap();
         fs::write(home.join("journal").join("garbage.json"), b"not json").unwrap();
         assert!(store::journal::reconcile(&cap, home).is_err());
         let session = crate::LifecycleSession::acquire(home).unwrap();
@@ -607,7 +610,7 @@ mod tests {
             owners[0].entries[0].ownership.policy(),
             Ownership::TrackedCopy
         );
-        let absolute = gripsack_store::expand_home("~/.config/m/a");
+        let absolute = gripsack_host::store::expand_home("~/.config/m/a");
         assert_eq!(
             why_owns(home, &absolute.to_string_lossy()).unwrap()[0].name,
             "m"

@@ -1,0 +1,59 @@
+//! Everything gripsack owns on disk: store paths, generations, and the
+//! atomic primitives every write goes through.
+//!
+//! ```text
+//! $GRIPSACK_HOME                  (~/.local/share/gripsack by default)
+//! ├── store/<content-hash>-<name>/ immutable, content-addressed payloads
+//! ├── generations/<N>/            one complete profile tree per apply
+//! ├── current -> generations/<N>  THE symlink — flipping it is activation
+//! ├── locks/                      flock files for named resources (0007 §4)
+//! └── trust.toml                  repo trust list — the gate before eval
+//!                                 (0013 D7; its codec is `gripsack_exec::trust`)
+//! ```
+//!
+//! The modules divide the concerns:
+//!
+//! - [`paths`] — where things live (layout, `$GRIPSACK_HOME` resolution)
+//! - [`hash`] — canonical content identity: type + exec-bit + contents
+//!   (0008 §2); what makes two payloads "the same"
+//! - how bytes land is [`crate::fs`] (plan/0021):
+//!   capability-based atomic writes, atomic symlink flips,
+//!   publish-once directories (0001 §9.2)
+//!
+//! `store` is concerned with content correctness; [`crate::fs`]
+//! guarantees the mechanics — a reader never sees a partial write, and
+//! activation is a single indivisible rename.
+
+pub mod activation;
+mod deployment;
+pub use deployment::{ActivationTrigger, EnvironmentOperation, Ownership};
+mod generation_wire;
+pub mod generations;
+pub use gripsack_kernel::{GenerationId, GenerationList};
+pub mod hash;
+pub mod jobs;
+pub mod journal;
+pub mod ownership;
+pub mod paths;
+pub mod prior;
+pub mod private_state;
+mod selection_wire;
+mod verification;
+pub use verification::RetainedVerify;
+
+pub use generations::{
+    CommittedSelection, DeployedEntry, DeploymentState, EnvironmentContribution, Generation,
+    IntentRecord, RetainedEnvironment, StructuredEnvironment, current as current_generation, flip,
+    list as list_generations, read_manifest, write_manifest,
+};
+pub use hash::{
+    canonical_bytes_hash, canonical_bytes_identity, canonical_file_hash, canonical_file_hash_in,
+    canonical_tree_hash,
+};
+pub use journal::{Entry as JournalEntry, Prior as JournalPrior, reconcile};
+pub use ownership::{ManagedBlockId, OwnershipKey, StoredOwnership};
+pub use paths::{
+    GENERATIONS_DIR, HASH_LEN, STORE_DIR, canonical_dest, content_path, current_link, expand_home,
+    generation_dir, gripsack_home,
+};
+pub use prior::Prior;

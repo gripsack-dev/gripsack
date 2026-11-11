@@ -3,11 +3,11 @@ use super::{
     AdmittedCommand, BinaryAbi, EXECUTABLE_BYTES, ExecError, NativeContext, Package,
     PinnedInterpreter, Span, elf, gate, operational,
 };
-use gripsack_ir::workspace_model::identity::ExecutableDigest;
-use gripsack_process::{
+use gripsack_host::process::{
     Sha256Digest,
     executable::{ExecutableFormat, Interpreter, classify},
 };
+use gripsack_ir::workspace_model::identity::ExecutableDigest;
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeSet,
@@ -143,7 +143,7 @@ struct CommandRuntime {
 }
 
 fn admit_script(
-    metadata: &gripsack_process::executable::ExecutableMetadata,
+    metadata: &gripsack_host::process::executable::ExecutableMetadata,
     package: &Package,
     scope: &super::RuntimeScope<'_>,
     context: &NativeContext<'_>,
@@ -235,7 +235,7 @@ fn read_executable(
 ) -> Result<
     (
         Sha256Digest,
-        gripsack_process::executable::ExecutableMetadata,
+        gripsack_host::process::executable::ExecutableMetadata,
     ),
     ExecError,
 > {

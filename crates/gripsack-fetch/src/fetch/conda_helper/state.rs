@@ -1,6 +1,6 @@
 use crate::FetchError;
-use gripsack_fs::cap_std::fs::{MetadataExt, PermissionsExt};
-use gripsack_fs::{Dir, FlockGuard};
+use gripsack_host::fs::cap_std::fs::{MetadataExt, PermissionsExt};
+use gripsack_host::fs::{Dir, FlockGuard};
 use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -23,7 +23,7 @@ impl ToolSlot {
             )
             .into());
         }
-        let root = gripsack_fs::open_or_create(home)?;
+        let root = gripsack_host::fs::open_or_create(home)?;
         owned_directory(&root)?;
         let home = home.canonicalize()?;
         let locks = child(&root, "locks")?;
@@ -53,8 +53,8 @@ impl ToolSlot {
     }
 }
 fn child(parent: &Dir, name: &str) -> Result<Dir, FetchError> {
-    gripsack_fs::create_dir_all(parent, Path::new(name))?;
-    let child = gripsack_fs::open_dir_nofollow(parent, Path::new(name))?;
+    gripsack_host::fs::create_dir_all(parent, Path::new(name))?;
+    let child = gripsack_host::fs::open_dir_nofollow(parent, Path::new(name))?;
     owned_directory(&child)?;
     Ok(child)
 }

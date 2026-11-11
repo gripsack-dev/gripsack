@@ -8,7 +8,7 @@
 
 use crate::render::Palette;
 use gripsack_exec::{Progress, StepReport, Tone, Verification};
-use gripsack_process::terminal;
+use gripsack_host::process::terminal;
 use std::fmt::Write as _;
 use std::io::{IsTerminal, Write};
 

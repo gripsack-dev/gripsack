@@ -1,10 +1,10 @@
 //! [`Storage`] over the `*at` syscalls (rustix), one directory descriptor
 //! per pinned directory. Every effect passes the shared fault boundary
-//! (`gripsack_fs::fault`), so the debug-build trace/cut controls
+//! (`crate::fs::fault`), so the debug-build trace/cut controls
 //! (`GRIPSACK_FS_TRACE`, `GRIPSACK_FS_CUT`) see these calls exactly like
 //! the legacy primitives.
 use super::{Metadata, Name, ObjectId, ObjectKind, Permissions, Storage};
-use gripsack_fs::fault::{Boundary, operation};
+use crate::fs::fault::{Boundary, operation};
 use rustix::fd::OwnedFd;
 use rustix::fs::{AtFlags, FileType, Mode, OFlags, RenameFlags};
 use rustix::io::Errno;
@@ -132,7 +132,7 @@ impl Storage for RealFs {
     fn open_file(&self, parent: &RealDir, name: &Name) -> io::Result<RealFile> {
         operation(Boundary::Read, label(name), || {
             // O_NONBLOCK: a FIFO at `name` is refused below instead of
-            // blocking the open until a writer appears (as `gripsack-fs`
+            // blocking the open until a writer appears (as `crate::fs`
             // does for special-file admission). It is inert on regular files.
             let fd = rustix::fs::openat(
                 &parent.0,

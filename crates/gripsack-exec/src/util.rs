@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 /// An exclusive flock on `$GRIPSACK_HOME/locks/<name>.flock` — held
 /// for one step's duration (0007 §4), dropped on scope exit. Two
 /// concurrent `grip` runs serialize on the same file. The primitive
-/// lives in gripsack-store (fs::FlockGuard) — one implementation for
+/// lives in gripsack-host (fs::FlockGuard) — one implementation for
 /// apply, trust, and tool provisioning.
-pub use gripsack_fs::FlockGuard;
+pub use gripsack_host::fs::FlockGuard;
 
 /// One serialized mutation lifecycle (0045 F4): owns the
 /// `$GRIPSACK_HOME/locks/apply.flock` guard AND the home it locks.
@@ -27,7 +27,7 @@ impl LifecycleSession {
     /// Take the lifecycle lock for `home`; blocks while another
     /// gripsack process holds it.
     pub fn acquire(home: &Path) -> io::Result<Self> {
-        let guard = gripsack_fs::FlockGuard::acquire(&home.join("locks"), "apply")?;
+        let guard = gripsack_host::fs::FlockGuard::acquire(&home.join("locks"), "apply")?;
         Ok(Self {
             _guard: guard,
             home: home.to_path_buf(),

@@ -1,8 +1,8 @@
 //! Removal of deployed destinations (prune-on-undeclare, 0006) with
 //! exact-target guards (0030 §15).
 
-use gripsack_store as store;
-use gripsack_store::Ownership;
+use gripsack_host::store;
+use gripsack_host::store::Ownership;
 use store::journal::Install;
 
 /// What pruning or rolling back a deployed destination installs (0015 §4):
@@ -15,7 +15,7 @@ use store::journal::Install;
 pub fn removal<'a>(
     entry: &'a store::DeployedEntry,
     output: &'a str,
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
 ) -> std::io::Result<Install<'a>> {
     use gripsack_host::storage::Permissions;
     if let Some(prior) = &entry.prior {

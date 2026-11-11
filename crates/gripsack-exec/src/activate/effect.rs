@@ -2,12 +2,14 @@
 //! supervision. Diagnostics retain identities/status, never script/argv bytes.
 use super::output::CapturedOutput;
 use crate::report::{StepReport, Tone};
-use gripsack_process::{
+use gripsack_host::process::{
     ActivationEnvironment, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessReceipt,
     ProcessRole, SelectedProgram,
 };
-use gripsack_store::activation::ActivationAction as Action;
-use gripsack_store::activation::{AdmissionStage, EffectiveIntent, IntentFailure, LaunchPermit};
+use gripsack_host::store::activation::ActivationAction as Action;
+use gripsack_host::store::activation::{
+    AdmissionStage, EffectiveIntent, IntentFailure, LaunchPermit,
+};
 use std::{
     ffi::OsStr,
     io,
@@ -259,6 +261,6 @@ fn desktop_applications_dir() -> PathBuf {
 fn admission(stage: AdmissionStage, error: &io::Error) -> IntentFailure {
     IntentFailure::Admission {
         stage,
-        error: gripsack_process::NativeIoError::capture(error),
+        error: gripsack_host::process::NativeIoError::capture(error),
     }
 }

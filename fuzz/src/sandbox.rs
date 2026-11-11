@@ -4,7 +4,7 @@ use std::sync::Mutex;
 pub static SERIAL: Mutex<()> = Mutex::new(());
 
 pub(crate) struct Sandbox {
-    cap: gripsack_fs::Dir,
+    cap: gripsack_host::fs::Dir,
     temp: tempfile::TempDir,
     old: Vec<(&'static str, Option<std::ffi::OsString>)>,
 }
@@ -15,7 +15,7 @@ impl Sandbox {
             .prefix("gripsack-case-")
             .tempdir_in("/tmp")
             .unwrap();
-        let cap = gripsack_fs::open_or_create(temp.path()).unwrap();
+        let cap = gripsack_host::fs::open_or_create(temp.path()).unwrap();
         let mut old = Vec::new();
         for key in [
             "HOME",
@@ -35,7 +35,7 @@ impl Sandbox {
     pub fn home(&self) -> &Path {
         self.temp.path()
     }
-    pub fn cap(&self) -> &gripsack_fs::Dir {
+    pub fn cap(&self) -> &gripsack_host::fs::Dir {
         &self.cap
     }
     pub fn fixed(&self, relative: &'static str) -> PathBuf {
@@ -43,7 +43,7 @@ impl Sandbox {
     }
 
     pub fn write(&self, relative: &'static str, bytes: &[u8]) {
-        gripsack_fs::atomic_write(&self.cap, Path::new(relative), bytes).unwrap();
+        gripsack_host::fs::atomic_write(&self.cap, Path::new(relative), bytes).unwrap();
     }
 }
 

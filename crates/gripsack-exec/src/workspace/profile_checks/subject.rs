@@ -1,10 +1,10 @@
 //! Retained subject evidence is relative to its immutable profile, never staging.
 use crate::{ExecError, workspace::file_failure};
+use gripsack_host::store::{self as store, hash::PayloadHash};
 use gripsack_ir::{
     Span,
     workspace_model::{FileCheckStage, FileCheckSubject},
 };
-use gripsack_store::{self as store, hash::PayloadHash};
 use serde::{Deserialize, Serialize};
 use std::{
     io,

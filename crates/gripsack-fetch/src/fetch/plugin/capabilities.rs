@@ -1,7 +1,7 @@
 //! Optional, cached capability negotiation. Failed probes declare no budgets.
 
 use super::protocol::PluginMessage;
-use gripsack_process::{Control, Limits, StopReason};
+use gripsack_host::process::{Control, Limits, StopReason};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -48,21 +48,22 @@ pub(super) fn get(
 
 pub(super) fn exchange(command: &mut Command, limits: Limits) -> Option<Capabilities> {
     let mut caps = None;
-    let outcome = gripsack_process::run(command, b"{\"op\":\"capabilities\"}\n", limits, |line| {
-        let line = String::from_utf8_lossy(line);
-        let Ok(message) = serde_json::from_str::<PluginMessage>(&line) else {
-            return Control::Continue;
-        };
-        if message.kind != "response" {
-            return Control::Continue;
-        }
-        caps = message
-            .result
-            .and_then(|r| r.capabilities)
-            .and_then(|value| serde_json::from_value(value).ok());
-        Control::Response
-    })
-    .ok()?;
+    let outcome =
+        gripsack_host::process::run(command, b"{\"op\":\"capabilities\"}\n", limits, |line| {
+            let line = String::from_utf8_lossy(line);
+            let Ok(message) = serde_json::from_str::<PluginMessage>(&line) else {
+                return Control::Continue;
+            };
+            if message.kind != "response" {
+                return Control::Continue;
+            }
+            caps = message
+                .result
+                .and_then(|r| r.capabilities)
+                .and_then(|value| serde_json::from_value(value).ok());
+            Control::Response
+        })
+        .ok()?;
     if matches!(outcome.reason, StopReason::Exited)
         && outcome.status.as_ref().is_some_and(|s| s.success())
     {

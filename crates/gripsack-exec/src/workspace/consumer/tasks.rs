@@ -12,11 +12,11 @@ use crate::workspace::{
     roots::{self, ProcessLease, RetentionSet},
 };
 use crate::{Ctx, ExecError, LifecycleSession};
+use gripsack_host::process::{Invocation, ProcessLeases, ProcessRole};
 use gripsack_ir::{
     Ir,
     workspace_model::{WorkspaceOutput, WorkspaceStep},
 };
-use gripsack_process::{Invocation, ProcessLeases, ProcessRole};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsString,
@@ -121,7 +121,7 @@ pub(in crate::workspace) fn run_captured(
     session: LifecycleSession,
     realization: &realize::Realization<'_>,
     closure: BTreeSet<PathBuf>,
-    expected: &[Vec<gripsack_process::ProgramIdentity>],
+    expected: &[Vec<gripsack_host::process::ProgramIdentity>],
     schedule: task_report::ScheduledInvocation,
 ) -> Result<TaskReport, ExecError> {
     let task = ctx
@@ -163,7 +163,7 @@ fn run_realized(
     session: LifecycleSession,
     realization: &realize::Realization<'_>,
     closure: BTreeSet<PathBuf>,
-    expected: Option<&[Vec<gripsack_process::ProgramIdentity>]>,
+    expected: Option<&[Vec<gripsack_host::process::ProgramIdentity>]>,
 ) -> Result<TaskReport, ExecError> {
     let services: BTreeSet<_> = graph
         .nodes
@@ -182,7 +182,7 @@ fn run_realized(
         return Ok(report);
     }
     report.execution_binding = Some(task_report::TaskExecutionBinding(
-        gripsack_process::Sha256Digest::of(&serde_json::to_vec(&(
+        gripsack_host::process::Sha256Digest::of(&serde_json::to_vec(&(
             &report.revision,
             ctx.repository.identity(),
             &closure,
@@ -292,7 +292,7 @@ pub(in crate::workspace) fn capture_programs(
     options: &BuildOptions<'_>,
     realization: &realize::Realization<'_>,
     staging: &Path,
-) -> Result<Vec<Vec<gripsack_process::ProgramIdentity>>, ExecError> {
+) -> Result<Vec<Vec<gripsack_host::process::ProgramIdentity>>, ExecError> {
     let task = ctx
         .only
         .first()
@@ -302,7 +302,7 @@ pub(in crate::workspace) fn capture_programs(
     Ok(identities(&nodes))
 }
 
-fn identities(nodes: &[PreparedNode]) -> Vec<Vec<gripsack_process::ProgramIdentity>> {
+fn identities(nodes: &[PreparedNode]) -> Vec<Vec<gripsack_host::process::ProgramIdentity>> {
     nodes
         .iter()
         .map(|node| {
@@ -316,22 +316,26 @@ fn identities(nodes: &[PreparedNode]) -> Vec<Vec<gripsack_process::ProgramIdenti
 }
 
 fn create_staging(ctx: &Ctx, id: &str) -> Result<PathBuf, ExecError> {
-    gripsack_fs::create_dir_all(ctx.home_dir()?, Path::new(roots::BUILD_STAGING_DIRECTORY))?;
-    let parent =
-        gripsack_fs::open_dir_nofollow(ctx.home_dir()?, Path::new(roots::BUILD_STAGING_DIRECTORY))?;
+    gripsack_host::fs::create_dir_all(ctx.home_dir()?, Path::new(roots::BUILD_STAGING_DIRECTORY))?;
+    let parent = gripsack_host::fs::open_dir_nofollow(
+        ctx.home_dir()?,
+        Path::new(roots::BUILD_STAGING_DIRECTORY),
+    )?;
     parent.create_dir(id)?;
-    gripsack_fs::fsync_pinned_dir(&parent, Path::new("."))?;
+    gripsack_host::fs::fsync_pinned_dir(&parent, Path::new("."))?;
     Ok(ctx.home.join(roots::BUILD_STAGING_DIRECTORY).join(id))
 }
 fn remove_staging(ctx: &Ctx, staging: &Path) -> Result<(), ExecError> {
-    let parent =
-        gripsack_fs::open_dir_nofollow(ctx.home_dir()?, Path::new(roots::BUILD_STAGING_DIRECTORY))?;
+    let parent = gripsack_host::fs::open_dir_nofollow(
+        ctx.home_dir()?,
+        Path::new(roots::BUILD_STAGING_DIRECTORY),
+    )?;
     parent.remove_dir_all(
         staging
             .file_name()
             .ok_or_else(|| failure("missing task staging basename"))?,
     )?;
-    gripsack_fs::fsync_pinned_dir(&parent, Path::new("."))?;
+    gripsack_host::fs::fsync_pinned_dir(&parent, Path::new("."))?;
     Ok(())
 }
 fn prepare(
@@ -344,7 +348,7 @@ fn prepare(
 ) -> Result<Vec<PreparedNode>, ExecError> {
     let host = admit::NativeContext::new(facts, &ctx.home, options.deadline)?;
     let checkout = live_checkout(ctx)?;
-    let directory = gripsack_fs::open(staging)?;
+    let directory = gripsack_host::fs::open(staging)?;
     let mut prepared = Vec::with_capacity(graph.nodes.len());
     for (index, task) in graph.nodes.iter().enumerate() {
         let plan = match task.environment.as_deref() {
@@ -429,7 +433,7 @@ fn execute(
                 states
                     .get(name.as_str())
                     .copied()
-                    .is_some_and(gripsack_policy::task::prerequisite_succeeded)
+                    .is_some_and(super::task_policy::prerequisite_succeeded)
             });
         let index = report.nodes.len();
         report.nodes.push(TaskNodeReport {
@@ -493,7 +497,7 @@ fn execute(
                             if matches!(policy.output, TaskOutputMode::Stream) {
                                 let _ = std::io::stdout().write_all(bytes);
                             }
-                            gripsack_process::Control::Continue
+                            gripsack_host::process::Control::Continue
                         },
                     )?;
                     let available = task_report::MAX_LOG_BYTES.saturating_sub(logs.len());

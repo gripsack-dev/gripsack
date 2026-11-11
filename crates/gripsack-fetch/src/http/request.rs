@@ -203,7 +203,7 @@ impl Client {
         let insecure_tool = matches!(kind, RequestKind::Tool { .. })
             && !url::Url::parse(selected).is_ok_and(|url| url.scheme() == "https");
         if matches!(credential, CredentialRoute::Insecure) || insecure_tool {
-            budget.stop(gripsack_policy::retry_budget::RetryRefusal::NonRetryable);
+            budget.stop(super::retry_budget::RetryRefusal::NonRetryable);
             return Err(failure(
                 HttpFailureKind::InsecureCredential,
                 &budget,
@@ -216,12 +216,12 @@ impl Client {
                 .cooldowns
                 .try_lock_until(budget.deadline())
                 .ok_or_else(|| {
-                    let stop = budget.stop(gripsack_policy::retry_budget::RetryRefusal::Deadline);
+                    let stop = budget.stop(super::retry_budget::RetryRefusal::Deadline);
                     admission_failure(&budget, stop)
                 })?;
             if let Some(cooldown) = cooldowns.get(host).copied() {
                 if cooldown.until.is_none_or(|until| until > Instant::now()) {
-                    budget.stop(gripsack_policy::retry_budget::RetryRefusal::ServerCooldown);
+                    budget.stop(super::retry_budget::RetryRefusal::ServerCooldown);
                     let mut error =
                         failure(cooldown.kind, &budget, RetryStopReason::ServerCooldown);
                     error.server_wait = cooldown
@@ -239,7 +239,7 @@ impl Client {
             if crate::throttle::acquire_url_until(selected, budget.deadline())
                 == crate::throttle::ThrottleAdmission::DeadlineExpired
             {
-                budget.stop(gripsack_policy::retry_budget::RetryRefusal::Deadline);
+                budget.stop(super::retry_budget::RetryRefusal::Deadline);
                 return Err(
                     failure(HttpFailureKind::Timeout, &budget, RetryStopReason::Deadline).into(),
                 );
@@ -314,7 +314,8 @@ impl Client {
                                 match classified {
                                     Some(kind) => (kind, Some(effective), ServerDelay::None),
                                     None => {
-                                        budget.stop(gripsack_policy::retry_budget::RetryRefusal::NonRetryable);
+                                        budget
+                                            .stop(super::retry_budget::RetryRefusal::NonRetryable);
                                         tracing::warn!(
                                             attempts = budget.attempts(),
                                             stop = "permanent resource or local I/O failure",
@@ -392,8 +393,7 @@ impl Client {
                         .cooldowns
                         .try_lock_until(budget.deadline())
                         .ok_or_else(|| {
-                            let stop =
-                                budget.stop(gripsack_policy::retry_budget::RetryRefusal::Deadline);
+                            let stop = budget.stop(super::retry_budget::RetryRefusal::Deadline);
                             admission_failure(&budget, stop)
                         })?;
                     cooldowns.insert(
@@ -411,7 +411,7 @@ impl Client {
             };
             let decision = if matches!(server_delay, ServerDelay::Unknown) {
                 RetryDecision::Stop(
-                    budget.stop(gripsack_policy::retry_budget::RetryRefusal::UnknownServerDelay),
+                    budget.stop(super::retry_budget::RetryRefusal::UnknownServerDelay),
                 )
             } else {
                 budget.decide(Instant::now(), failure_kind, server_wait)
@@ -422,7 +422,7 @@ impl Client {
                     std::thread::sleep(wait);
                 }
                 RetryDecision::RetryAfter(_) => {
-                    budget.stop(gripsack_policy::retry_budget::RetryRefusal::NonRetryable);
+                    budget.stop(super::retry_budget::RetryRefusal::NonRetryable);
                     return Err(FetchError::PayloadTooLarge {
                         what: "HTTP transfer across attempts".into(),
                         limit,

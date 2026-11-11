@@ -12,8 +12,7 @@ cargo-fuzz = true
 fuzzing = ["dep:libfuzzer-sys"]
 
 [dependencies]
-gripsack-store.workspace = true
-gripsack-fs.workspace = true
+gripsack-host.workspace = true
 gripsack-fetch.workspace = true
 gripsack-ir.workspace = true
 serde_json.workspace = true

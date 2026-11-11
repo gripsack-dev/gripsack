@@ -110,8 +110,8 @@ pub enum WorkspaceArg {
 }
 
 impl WorkspaceArg {
-    pub(crate) fn policy_origin(&self) -> gripsack_policy::workspace_command::ArgumentOrigin {
-        use gripsack_policy::workspace_command::ArgumentOrigin;
+    pub(crate) fn policy_origin(&self) -> crate::workspace_command::ArgumentOrigin {
+        use crate::workspace_command::ArgumentOrigin;
         match self {
             Self::Literal { .. } => ArgumentOrigin::Literal,
             Self::Artifact { .. } => ArgumentOrigin::Artifact,

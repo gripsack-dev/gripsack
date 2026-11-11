@@ -2,8 +2,8 @@ use super::fail;
 use crate::sema::workspace::span_value::{
     admissible_destination, admissible_repo_file, valid_local_time,
 };
+use crate::workspace_command::{ArgumentPosition, admit_argument, admit_bash_options};
 use crate::{Diagnostic, Span, codes, workspace::PlatformOs, workspace_model::*};
-use gripsack_policy::workspace_command::{ArgumentPosition, admit_argument, admit_bash_options};
 
 pub(super) fn selector(value: &str) -> bool {
     value == "." || admissible_repo_file(value)

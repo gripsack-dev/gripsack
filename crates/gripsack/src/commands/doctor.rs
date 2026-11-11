@@ -17,7 +17,7 @@ pub fn doctor(palette: Palette) -> ExitCode {
         }
     };
 
-    let home = gripsack_store::gripsack_home();
+    let home = gripsack_host::store::gripsack_home();
 
     // deno is the eval runtime — required, no fallback exists.
     match gripsack_exec::ensure_deno(&home, &gripsack_fetch::FetchContext::default()) {
@@ -115,16 +115,19 @@ pub fn doctor(palette: Palette) -> ExitCode {
     }
     let editor_only = if repo.join("env.toml").is_file() {
         match gripsack_config::load_env(&repo.join("env.toml")) {
-            Ok(config) => match gripsack_store::source_bundle::SourceCapturePolicy::new(
-                config.capture.exclude,
-            ) {
-                Ok(policy) => policy.excludes(std::path::Path::new("node_modules/@gripsack/core")),
-                Err(error) => {
-                    println!("{}  capture policy: {error}", mark(false));
-                    ok = false;
-                    false
+            Ok(config) => {
+                match gripsack_exec::source_bundle::SourceCapturePolicy::new(config.capture.exclude)
+                {
+                    Ok(policy) => {
+                        policy.excludes(std::path::Path::new("node_modules/@gripsack/core"))
+                    }
+                    Err(error) => {
+                        println!("{}  capture policy: {error}", mark(false));
+                        ok = false;
+                        false
+                    }
                 }
-            },
+            }
             Err(diagnostics) => {
                 eprintln!(
                     "{}",
@@ -201,8 +204,8 @@ pub fn doctor(palette: Palette) -> ExitCode {
 /// refuses one, which entry, what it expected and found, and the repair.
 /// `false` when recovery cannot proceed on its own.
 fn journal(palette: Palette, home: &std::path::Path) -> bool {
-    use gripsack_store::journal::{Decision, EntryOutlook, RunVerdict};
-    let capability = match gripsack_fs::open(home) {
+    use gripsack_host::store::journal::{Decision, EntryOutlook, RunVerdict};
+    let capability = match gripsack_host::fs::open(home) {
         Ok(capability) => capability,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return true,
         Err(error) => {
@@ -213,7 +216,7 @@ fn journal(palette: Palette, home: &std::path::Path) -> bool {
             return false;
         }
     };
-    let view = match gripsack_store::journal::inspect(&capability, home) {
+    let view = match gripsack_host::store::journal::inspect(&capability, home) {
         Ok(None) => {
             println!("{}  journal: nothing pending", palette.good("ok  "));
             return true;

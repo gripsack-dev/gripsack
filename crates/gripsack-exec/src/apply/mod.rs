@@ -17,11 +17,11 @@ use crate::ctx::Outcome;
 use crate::ctx::{Ctx, ExecError};
 use crate::progress::Phase;
 use crate::report::{ApplyResult, StepReport};
+use gripsack_host::store;
 use gripsack_ir::Ir;
 use gripsack_kernel::apply::{CommitInputs, OnDrift, Refusal, Slot, UnitFacts, Want};
 use gripsack_kernel::ownership::Recorded;
 use gripsack_kernel::recover::{Failure, Intended, Live, Route};
-use gripsack_store as store;
 use std::collections::BTreeMap;
 use tracing::{info, info_span};
 
@@ -251,7 +251,7 @@ fn apply_prepared(
                 continue;
             }
             for record in &state.intents {
-                if record.trigger == gripsack_store::ActivationTrigger::OnRemove {
+                if record.trigger == gripsack_host::store::ActivationTrigger::OnRemove {
                     intents.push(store::activation::PendingIntent {
                         output: name.clone(),
                         action: record.action.clone(),
@@ -521,17 +521,18 @@ fn prune_undeclared(
             state
                 .entries
                 .iter()
-                .filter(|entry| entry.ownership.policy() == gripsack_store::Ownership::Merge)
+                .filter(|entry| entry.ownership.policy() == gripsack_host::store::Ownership::Merge)
                 .map(move |entry| entry.ownership_key(name))
         })
         .collect();
     for (name, state) in &prev.deployments {
         for entry in &state.entries {
-            let still_recorded = if entry.ownership.policy() == gripsack_store::Ownership::Merge {
-                recorded_blocks.contains(&entry.ownership_key(name))
-            } else {
-                recorded.contains(&entry.key())
-            };
+            let still_recorded =
+                if entry.ownership.policy() == gripsack_host::store::Ownership::Merge {
+                    recorded_blocks.contains(&entry.ownership_key(name))
+                } else {
+                    recorded.contains(&entry.key())
+                };
             if still_recorded {
                 continue;
             }
@@ -613,7 +614,7 @@ pub(crate) fn remove_unit(
         Purpose::Prune => (Want::Release, OnDrift::Keep),
         Purpose::Clear => (Want::Clear, OnDrift::Stop),
     };
-    if entry.ownership.policy() == gripsack_store::Ownership::Merge {
+    if entry.ownership.policy() == gripsack_host::store::Ownership::Merge {
         // a managed block (K5): only an intact block is removed, by the
         // host's block decision; the machine decides whether a deploy of
         // this run still claims the block
@@ -743,7 +744,7 @@ pub(crate) fn remove_unit(
 /// parent is gone.
 fn observe_existing(dest: &std::path::Path) -> std::io::Result<Option<crate::deploy::Observation>> {
     let parent = dest.parent().unwrap_or(std::path::Path::new("."));
-    let directory = match gripsack_fs::open(parent) {
+    let directory = match gripsack_host::fs::open(parent) {
         Ok(directory) => directory,
         Err(error)
             if matches!(

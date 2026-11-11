@@ -20,10 +20,8 @@ dialoguer.workspace = true
 sha2.workspace = true
 indicatif = "0.18"
 gripsack-config.workspace = true
-gripsack-fs.workspace = true
 gripsack-ir.workspace = true
-gripsack-store.workspace = true
-gripsack-policy.workspace = true
+gripsack-host.workspace = true
 gripsack-trace.workspace = true
 tracing = "0.1"
 gripsack-exec.workspace = true
@@ -38,7 +36,6 @@ rustls-native-certs = "0.8"
 url = "2"
 serde.workspace = true
 serde_json.workspace = true
-gripsack-process.workspace = true
 libc = "0.2"
 rustix = { version = "1", features = ["process"] }
 

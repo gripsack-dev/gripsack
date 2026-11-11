@@ -26,17 +26,17 @@ pub fn resolve_head(context: &crate::FetchContext, url: &str) -> Result<String, 
 
 fn run(command: &mut std::process::Command, url: &str) -> Result<Vec<u8>, FetchError> {
     let mut stdout = Vec::new();
-    let limits = gripsack_process::Limits {
-        stdout_bytes: gripsack_process::StdoutByteLimit::new(16 * 1024),
-        line_bytes: gripsack_process::FrameByteLimit::new(16 * 1024),
+    let limits = gripsack_host::process::Limits {
+        stdout_bytes: gripsack_host::process::StdoutByteLimit::new(16 * 1024),
+        line_bytes: gripsack_host::process::FrameByteLimit::new(16 * 1024),
         ..Default::default()
     };
-    let outcome = gripsack_process::run(command, &[], limits, |line| {
+    let outcome = gripsack_host::process::run(command, &[], limits, |line| {
         stdout.extend_from_slice(line);
         stdout.push(b'\n');
-        gripsack_process::Control::Continue
+        gripsack_host::process::Control::Continue
     })?;
-    if !matches!(outcome.reason, gripsack_process::StopReason::Exited)
+    if !matches!(outcome.reason, gripsack_host::process::StopReason::Exited)
         || !outcome.status.is_some_and(|status| status.success())
     {
         return Err(FetchError::Source {
@@ -102,7 +102,7 @@ pub(crate) fn fetch(
     // the rev is the pin; the tree hash is the payload identity
     super::archive::validate_tree(dest, context.limits())?;
     Ok(crate::FetchOutcome {
-        identity: crate::FetchIdentity::Tree(gripsack_store::canonical_tree_hash(dest)?),
+        identity: crate::FetchIdentity::Tree(gripsack_host::store::canonical_tree_hash(dest)?),
         url: None,
         version: Some(commit),
     })

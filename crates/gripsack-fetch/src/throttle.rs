@@ -7,7 +7,6 @@
 //! $GRIPSACK_HOME/throttle.json, so back-to-back applies share one
 //! budget — that is the GitHub-403 failure mode this exists for.
 
-use gripsack_policy::rate_limit;
 use parking_lot::{Mutex, MutexGuard};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -15,6 +14,7 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime};
 
 mod persistence;
+pub mod rate_limit;
 
 #[derive(Debug)]
 struct DeadlineExpired;
@@ -115,7 +115,7 @@ impl Throttle {
         budget: &str,
         deadline: Option<Instant>,
     ) -> Result<(), DeadlineExpired> {
-        let mut deadline = deadline.map(gripsack_process::OperationDeadline::at);
+        let mut deadline = deadline.map(gripsack_host::process::OperationDeadline::at);
         if deadline
             .as_mut()
             .is_some_and(|deadline| deadline.remaining().is_none())
@@ -139,7 +139,7 @@ impl Throttle {
 
     fn lock_before(
         &self,
-        deadline: &mut Option<gripsack_process::OperationDeadline>,
+        deadline: &mut Option<gripsack_host::process::OperationDeadline>,
     ) -> Result<MutexGuard<'_, BTreeMap<String, Bucket>>, DeadlineExpired> {
         let Some(deadline) = deadline else {
             return Ok(self.buckets.lock());
@@ -160,7 +160,7 @@ impl Throttle {
     }
 
     fn acquire_before(&self, domain: &str, deadline: Option<Instant>) -> ThrottleAdmission {
-        let mut deadline = deadline.map(gripsack_process::OperationDeadline::at);
+        let mut deadline = deadline.map(gripsack_host::process::OperationDeadline::at);
         loop {
             if deadline
                 .as_mut()
@@ -222,7 +222,7 @@ impl Throttle {
         // the store's atomic write (temp + fsync + rename): a hand-
         // rolled tmp+rename could persist a torn file on crash
         if let Ok(json) = json {
-            let _ = gripsack_fs::atomic_write_at(path, &json);
+            let _ = gripsack_host::fs::atomic_write_at(path, &json);
         }
     }
 }
@@ -258,7 +258,7 @@ pub fn acquire_url(url: &str) {
 }
 
 pub(crate) fn acquire_url_until(url: &str, deadline: Instant) -> ThrottleAdmission {
-    if gripsack_process::OperationDeadline::at(deadline)
+    if gripsack_host::process::OperationDeadline::at(deadline)
         .remaining()
         .is_none()
     {
@@ -284,7 +284,7 @@ pub(crate) fn acquire_declared_until(
     budget: &str,
     deadline: Instant,
 ) -> ThrottleAdmission {
-    if gripsack_process::OperationDeadline::at(deadline)
+    if gripsack_host::process::OperationDeadline::at(deadline)
         .remaining()
         .is_none()
     {

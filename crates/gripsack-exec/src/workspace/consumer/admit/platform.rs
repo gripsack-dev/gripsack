@@ -2,8 +2,8 @@
 //! explicit GNU host-runtime policy; never ld.so.cache, PATH or host packages.
 use super::{BinaryAbi, ExecError, HostTarget, Span, elf, gate, operational, platform_loader};
 use crate::workspace::conda::SystemRuntime;
+use gripsack_ir::target::{TargetArch, TargetOs};
 use gripsack_ir::workspace_model::PlatformLibraries;
-use gripsack_policy::target::{TargetArch, TargetOs};
 use std::path::{Path, PathBuf};
 
 /// Sonames conda-forge leaves to the host system rather than shipping in the
@@ -96,7 +96,8 @@ pub(super) fn admit(
                 "platform runtime library is not a bounded regular file",
             ));
         }
-        let metadata = gripsack_process::executable::classify(&mut file).map_err(operational)?;
+        let metadata =
+            gripsack_host::process::executable::classify(&mut file).map_err(operational)?;
         elf::header(&metadata, host, false, span)?;
     }
     Ok(())

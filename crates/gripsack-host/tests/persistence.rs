@@ -1,4 +1,4 @@
-//! `gripsack-fs/src/persistence_model.rs`, ported onto `MemFs`.
+//! `src/fs/persistence_model.rs`, ported onto `MemFs`.
 //!
 //! The original checks traces with a dirty-set rule ("no publish before the
 //! file barrier, no return before the namespace barrier"). Here the same

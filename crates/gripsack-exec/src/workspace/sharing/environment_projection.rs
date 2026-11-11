@@ -40,7 +40,7 @@ struct ProjectionReceipt {
     manifest: String,
     home: PathBuf,
     core: PathBuf,
-    tree: gripsack_store::hash::PayloadHash,
+    tree: gripsack_host::store::hash::PayloadHash,
     retention: BTreeSet<PathBuf>,
     #[serde(skip)]
     activation: String,
@@ -105,10 +105,10 @@ fn destination(
     identity: &str,
     core: &Path,
 ) -> Result<PathBuf, ExecError> {
-    let key = gripsack_store::hash::hex_sha256(&serde_json::to_vec(&(
+    let key = gripsack_host::store::hash::hex_sha256(&serde_json::to_vec(&(
         VERSION, authority, identity, home, core,
     ))?);
-    Ok(gripsack_store::content_path(
+    Ok(gripsack_host::store::content_path(
         home,
         "package-environment-projection",
         &key,
@@ -182,7 +182,7 @@ fn admit_captured_source(
     let context = NativeContext::new(
         &facts,
         home,
-        Instant::now() + gripsack_process::Limits::default().timeout,
+        Instant::now() + gripsack_host::process::Limits::default().timeout,
     )?;
     let span = Span {
         file: format!("<package:{identity}>"),
@@ -243,7 +243,7 @@ fn retained(
     Ok(Some(source(root, record)))
 }
 
-fn read_record(directory: &gripsack_fs::Dir) -> Result<ProjectionReceipt, ExecError> {
+fn read_record(directory: &gripsack_host::fs::Dir) -> Result<ProjectionReceipt, ExecError> {
     let mut record: ProjectionReceipt = serde_json::from_slice(&receipt::read(
         directory,
         Path::new(RECEIPT),
@@ -454,7 +454,7 @@ fn project_uncached(
         // the explicit internal publication context rather than weakening
         // retention or replacing another parent's receipt. The provider remains
         // the actual signed identity, which also binds its original graph.
-        let context = gripsack_store::hash::hex_sha256(&serde_json::to_vec(&(
+        let context = gripsack_host::store::hash::hex_sha256(&serde_json::to_vec(&(
             VERSION,
             authority,
             &environment.identity,
@@ -631,7 +631,7 @@ fn project_uncached(
     let context = NativeContext::new(
         &facts,
         &ctx.home,
-        Instant::now() + gripsack_process::Limits::default().timeout,
+        Instant::now() + gripsack_host::process::Limits::default().timeout,
     )?;
     let export_owners = environment
         .manifest
@@ -683,7 +683,7 @@ fn project_uncached(
     let activation =
         plan.write_managed_commands_with_arguments(&ctx.home, &bin, &names, &arguments)?;
     std::fs::write(payload.join("activation.json"), &activation)?;
-    let tree = gripsack_store::canonical_tree_hash(&payload)?;
+    let tree = gripsack_host::store::canonical_tree_hash(&payload)?;
     let record = ProjectionReceipt {
         version: VERSION,
         authority: authority.into(),
@@ -850,7 +850,7 @@ mod tests {
         let artifact = Arc::new(Artifact {
             root: directory.path().into(),
             payload: directory.path().into(),
-            tree: gripsack_store::canonical_tree_hash(directory.path()).unwrap(),
+            tree: gripsack_host::store::canonical_tree_hash(directory.path()).unwrap(),
             retention: BTreeSet::new(),
         });
         let mut child: Option<Arc<AdmittedEnvironment>> = None;
@@ -893,7 +893,7 @@ mod tests {
                 }
             }
             let identity =
-                gripsack_store::hash::hex_sha256(&serde_json::to_vec(&manifest).unwrap());
+                gripsack_host::store::hash::hex_sha256(&serde_json::to_vec(&manifest).unwrap());
             if depth == 0 {
                 leaf_identity = identity.clone();
             }

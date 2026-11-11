@@ -1,6 +1,6 @@
 //! Diagnostic capture is bounded and distinct from mandatory hook receipts.
 //! Rendering occurs after the result is durable, outside child supervision.
-use gripsack_process::{Control, NativeOutcome, ProcessDisposition, ProcessReceipt};
+use gripsack_host::process::{Control, NativeOutcome, ProcessDisposition, ProcessReceipt};
 use std::io::{self, Write};
 
 const STDOUT_BYTES: usize = 16 * 1024 * 1024;
@@ -66,7 +66,7 @@ impl CapturedOutput {
     /// Raw passthrough for callers without a live renderer.
     pub(super) fn emit(self) -> io::Result<()> {
         let mut stdout = io::stdout().lock();
-        gripsack_process::terminal::write_output(&mut stdout, &self.stdout)?;
+        gripsack_host::process::terminal::write_output(&mut stdout, &self.stdout)?;
         if self.stdout_truncated {
             stdout.write_all(b"\n[hook stdout truncated]\n")?;
         }
@@ -74,6 +74,6 @@ impl CapturedOutput {
         if self.stderr_truncated {
             stderr.write_all(b"[hook stderr truncated; retained tail follows]\n")?;
         }
-        gripsack_process::terminal::write_output(&mut stderr, &self.stderr)
+        gripsack_host::process::terminal::write_output(&mut stderr, &self.stderr)
     }
 }

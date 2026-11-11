@@ -77,7 +77,7 @@ pub(super) fn failure(detail: impl Into<String>) -> ExecError {
 }
 pub(super) fn imported_root(home: &Path, manifest: &str) -> Result<PathBuf, ExecError> {
     format::digest(manifest)?;
-    Ok(gripsack_store::content_path(
+    Ok(gripsack_host::store::content_path(
         home,
         "package-import",
         manifest,
@@ -187,7 +187,7 @@ pub(super) fn check_payload(
     closure: &Closure,
     payload: &Path,
     limits: FetchLimits,
-) -> Result<gripsack_store::hash::PayloadHash, ExecError> {
+) -> Result<gripsack_host::store::hash::PayloadHash, ExecError> {
     let checked =
         validate_output_tree(payload, RecipeOutputKind::Tree, "portable package", limits)?;
     check_payload_contents(manifest, closure, payload)?;
@@ -234,7 +234,7 @@ fn check_payload_contents(
                 continue;
             }
             receipt::inventory(&root, component)?;
-            if gripsack_store::canonical_tree_hash(&root)?.as_str()
+            if gripsack_host::store::canonical_tree_hash(&root)?.as_str()
                 != component
                     .tree
                     .as_deref()
@@ -290,10 +290,10 @@ pub(super) fn restore_directory_modes(
     root: &Path,
     component: &format::Component,
 ) -> Result<(), ExecError> {
-    let directory = gripsack_fs::open(root)?;
+    let directory = gripsack_host::fs::open(root)?;
     for entry in component.inventory.iter().rev() {
         if matches!(entry.kind, format::EntryKind::Directory) {
-            let child = gripsack_fs::open_dir_nofollow(&directory, Path::new(&entry.path))?;
+            let child = gripsack_host::fs::open_dir_nofollow(&directory, Path::new(&entry.path))?;
             child
                 .into_std_file()
                 .set_permissions(std::fs::Permissions::from_mode(entry.mode))?;
@@ -356,7 +356,7 @@ pub fn import_bundle(
     bundle: &Path,
 ) -> Result<PackageFacts, ExecError> {
     artifact::authority(ctx, session)?;
-    let source = gripsack_fs::open(bundle)?;
+    let source = gripsack_host::fs::open(bundle)?;
     let closure = Closure::read(&source, ctx.fetch.limits())?;
     let (verified, external) = admit_closure(&ctx.home, &closure)?;
     let identity = closure.root.clone();
@@ -364,7 +364,7 @@ pub fn import_bundle(
     let destination = imported_root(&ctx.home, &identity)?;
     if artifact::retained_directory(&ctx.home, &destination)?.is_some() {
         // Even a warm receipt cannot hide a corrupt incoming closure object.
-        let incoming = gripsack_fs::open_dir_nofollow(&source, Path::new("blobs"))?;
+        let incoming = gripsack_host::fs::open_dir_nofollow(&source, Path::new("blobs"))?;
         for descriptor in closure.blobs.values() {
             receipt::blob(&incoming, descriptor, None)?;
         }
@@ -384,7 +384,7 @@ pub fn import_bundle(
     let retained = stage.path().join("receipt");
     std::fs::create_dir(&retained)?;
     std::fs::create_dir(retained.join("blobs"))?;
-    let source_blobs = gripsack_fs::open_dir_nofollow(&source, Path::new("blobs"))?;
+    let source_blobs = gripsack_host::fs::open_dir_nofollow(&source, Path::new("blobs"))?;
     for descriptor in closure.blobs.values() {
         receipt::blob(
             &source_blobs,
@@ -430,7 +430,8 @@ pub fn import_bundle(
             let aggregate = stage.path().join("payload");
             materialize_tree(ctx, &closure, manifest, &retained.join("blobs"), &aggregate)?;
             let tree = check_payload(manifest, &closure, &aggregate, ctx.fetch.limits())?;
-            let payload = gripsack_store::content_path(&ctx.home, "package-payload", tree.as_str());
+            let payload =
+                gripsack_host::store::content_path(&ctx.home, "package-payload", tree.as_str());
             if let RuntimeLayout::Fixed { prefix, .. } = &manifest.layout
                 && Path::new(prefix) != payload
             {
@@ -511,7 +512,7 @@ pub(super) fn load(
         ));
     }
     let blobs = &closure.blobs;
-    let blob_directory = gripsack_fs::open_dir_nofollow(&directory, Path::new("blobs"))?;
+    let blob_directory = gripsack_host::fs::open_dir_nofollow(&directory, Path::new("blobs"))?;
     for blob in blobs.values() {
         receipt::blob(&blob_directory, blob, None)?;
     }
@@ -561,7 +562,7 @@ pub(super) fn load(
         }
         format::digest(&record.realized_tree)?;
         (
-            gripsack_store::content_path(home, "package-payload", &record.realized_tree),
+            gripsack_host::store::content_path(home, "package-payload", &record.realized_tree),
             None,
         )
     };
@@ -692,7 +693,7 @@ pub(super) fn export_in_session(
         .prefix(".package-export-")
         .tempdir_in(parent)?;
     std::fs::create_dir(stage.path().join("blobs"))?;
-    let blobs = gripsack_fs::open_dir_nofollow(&directory, Path::new("blobs"))?;
+    let blobs = gripsack_host::fs::open_dir_nofollow(&directory, Path::new("blobs"))?;
     for descriptor in closure.blobs.values() {
         receipt::blob(
             &blobs,
@@ -701,7 +702,7 @@ pub(super) fn export_in_session(
         )?;
     }
     closure.write_records(stage.path())?;
-    gripsack_fs::publish_dir_at(stage.path(), output)?;
+    gripsack_host::fs::publish_dir_at(stage.path(), output)?;
     Ok(loaded.facts)
 }
 

@@ -1,12 +1,13 @@
 //! Captured input materialization uses the same segment-prefix selection as
 //! treeFiles: include named paths/subtrees, then apply exclusion precedence.
 //! No wildcard engine or mutable-checkout fallback is introduced here.
+use crate::source_bundle::SourceObject;
 use crate::{Ctx, ExecError, LifecycleSession, Repository};
+use gripsack_host::store;
 use gripsack_ir::{
     Diagnostic, codes,
     workspace_model::{InputOrigin, WorkspaceInput, identity::ArtifactDigest},
 };
-use gripsack_store::{self as store, source_bundle::SourceObject};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeSet,

@@ -3,10 +3,10 @@
 mod receiver;
 mod worker;
 
-use gripsack_process::{
+use gripsack_host::process::{
     Control, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessRole, Sha256Digest,
 };
-use gripsack_store as store;
+use gripsack_host::store;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -65,12 +65,12 @@ struct FixtureMeta {
 
 pub(super) struct FixtureRoot {
     path: PathBuf,
-    directory: gripsack_fs::Dir,
+    directory: gripsack_host::fs::Dir,
     meta: FixtureMeta,
 }
 impl FixtureRoot {
     fn create(path: PathBuf) -> io::Result<Self> {
-        let directory = gripsack_fs::open(&path)?;
+        let directory = gripsack_host::fs::open(&path)?;
         let mut source = current_image()?;
         let mut output = OpenOptions::new()
             .write(true)
@@ -92,7 +92,7 @@ impl FixtureRoot {
         })
     }
     fn save(&self) -> io::Result<()> {
-        gripsack_fs::atomic_write_with_mode(
+        gripsack_host::fs::atomic_write_with_mode(
             &self.directory,
             Path::new(META),
             &serde_json::to_vec(&self.meta).map_err(io::Error::other)?,
@@ -120,9 +120,9 @@ impl FixtureRoot {
                 "hook fixture root ownership or permissions changed",
             ));
         }
-        let directory = gripsack_fs::open(path)?;
+        let directory = gripsack_host::fs::open(path)?;
         let mut bytes = Vec::new();
-        gripsack_fs::open_file_nofollow(&directory, Path::new(META))?
+        gripsack_host::fs::open_file_nofollow(&directory, Path::new(META))?
             .take(4097)
             .read_to_end(&mut bytes)?;
         if bytes.len() > 4096 {
@@ -151,15 +151,17 @@ impl FixtureRoot {
     fn action(
         &self,
         case: FixtureCase,
-    ) -> io::Result<gripsack_store::activation::ActivationAction> {
-        Ok(gripsack_store::activation::ActivationAction::CustomShell {
-            script: format!(
-                "{} hooks fixture-effect --root {} --case {}",
-                quote(&self.helper())?,
-                quote(&self.path)?,
-                case.name()
-            ),
-        })
+    ) -> io::Result<gripsack_host::store::activation::ActivationAction> {
+        Ok(
+            gripsack_host::store::activation::ActivationAction::CustomShell {
+                script: format!(
+                    "{} hooks fixture-effect --root {} --case {}",
+                    quote(&self.helper())?,
+                    quote(&self.path)?,
+                    case.name()
+                ),
+            },
+        )
     }
     fn environment(&self, case: FixtureCase) -> io::Result<OperatorEnvironment> {
         let home = self.path.join(case.name());
@@ -230,7 +232,7 @@ pub fn simulate(mode: SimulationMode) -> io::Result<SimulationReport> {
         observed.push(after);
     }
     receiver.finish()?;
-    let append = gripsack_fs::open_file_nofollow(&root.directory, Path::new("append.log"))?;
+    let append = gripsack_host::fs::open_file_nofollow(&root.directory, Path::new("append.log"))?;
     let mut bytes = Vec::new();
     append.take(4097).read_to_end(&mut bytes)?;
     if bytes.len() > 4096 {
@@ -271,7 +273,7 @@ fn run_worker(
 ) -> io::Result<()> {
     let timeout = Duration::from_secs(30);
     let deadline = std::time::Instant::now() + timeout;
-    let selected = gripsack_process::SelectedProgram::select(
+    let selected = gripsack_host::process::SelectedProgram::select(
         environment,
         &root.helper(),
         Some(root.meta.helper_sha256),
@@ -305,7 +307,7 @@ fn run_worker(
     )?;
     let detail = || {
         let retained = &outcome.stderr[..outcome.stderr.len().min(4096)];
-        gripsack_process::terminal::tame(String::from_utf8_lossy(retained).into_owned())
+        gripsack_host::process::terminal::tame(String::from_utf8_lossy(retained).into_owned())
     };
     if mode == SimulationMode::Clean {
         if !outcome.success {
@@ -351,7 +353,7 @@ pub fn effect(root: &Path, case: FixtureCase) -> io::Result<()> {
             }
             writeln!(file, "{intent}")?;
             file.sync_all()?;
-            gripsack_fs::fsync_dir(&root.directory, Path::new("."))
+            gripsack_host::fs::fsync_dir(&root.directory, Path::new("."))
         }
         FixtureCase::Receiver => receiver::notify(root.meta.receiver_port, intent),
     }

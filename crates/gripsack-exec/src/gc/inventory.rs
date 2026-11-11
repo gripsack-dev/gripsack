@@ -4,10 +4,10 @@
 //! never ambient deletion authority.
 use super::utf8_path;
 use crate::ExecError;
-use gripsack_fs::cap_std::fs::{Metadata, MetadataExt as _};
-use gripsack_fs::{Dir, open_dir_nofollow};
+use gripsack_host::fs::cap_std::fs::{Metadata, MetadataExt as _};
+use gripsack_host::fs::{Dir, open_dir_nofollow};
+use gripsack_host::store;
 use gripsack_kernel::retention::{Candidate, Scope, Stamp};
-use gripsack_store as store;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -102,7 +102,7 @@ impl Collectable {
             directory.remove_dir_all(&entry.name)?;
         } else {
             // Includes symlinks: unlink the entry, never its target.
-            gripsack_fs::remove_file(directory, Path::new(&entry.name))?;
+            gripsack_host::fs::remove_file(directory, Path::new(&entry.name))?;
         }
         Ok(true)
     }

@@ -1,8 +1,8 @@
 //! Controlled real ELF regression: no network, private binary or solver fixtures.
 use super::*;
 use crate::workspace::artifact::{Artifact, ProvidedCommand};
+use gripsack_host::process::{Control, Invocation, Limits, NativeInput, ProcessRole, Sha256Digest};
 use gripsack_ir::workspace::{PlatformAbi, PlatformArch, PlatformOs};
-use gripsack_process::{Control, Invocation, Limits, NativeInput, ProcessRole, Sha256Digest};
 use std::{ffi::OsStr, sync::Arc, time::Instant};
 
 fn compile(root: &Path, name: &str, source: &str, arguments: &[&str], output: &Path) {
@@ -27,7 +27,7 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().canonicalize().unwrap();
     std::fs::create_dir(root.join("store")).unwrap();
-    let payload = gripsack_store::content_path(&root, "workspace-recipe", &"1".repeat(64));
+    let payload = gripsack_host::store::content_path(&root, "workspace-recipe", &"1".repeat(64));
     let libraries = root.join("host-libraries");
     let wrong = root.join("wrong");
     for path in [&payload, &libraries, &wrong] {
@@ -59,12 +59,12 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
         archive_root: None,
         selected_root: None,
         identity: serde_json::from_str(&format!("\"{}\"", "0".repeat(64))).unwrap(),
-        root: gripsack_store::content_path(&root, "workspace-package", &"0".repeat(64)),
+        root: gripsack_host::store::content_path(&root, "workspace-package", &"0".repeat(64)),
         selected_payload: None,
         producer: Arc::new(Artifact {
             root: payload.clone(),
             payload: payload.clone(),
-            tree: gripsack_store::canonical_tree_hash(&payload).unwrap(),
+            tree: gripsack_host::store::canonical_tree_hash(&payload).unwrap(),
             retention: BTreeSet::new(),
         }),
         commands: BTreeMap::from([(
@@ -154,9 +154,11 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
     );
     std::fs::write(&receipt_path, serde_json::to_vec(&receipt).unwrap()).unwrap();
     let admitted = admit(&package).unwrap();
-    let environment =
-        gripsack_process::OperatorEnvironment::admit([("PATH".into(), "/usr/bin:/bin".into())])
-            .unwrap();
+    let environment = gripsack_host::process::OperatorEnvironment::admit([(
+        "PATH".into(),
+        "/usr/bin:/bin".into(),
+    )])
+    .unwrap();
     let options = crate::workspace::BuildOptions {
         environment: &environment,
         deadline,
@@ -351,7 +353,8 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
 
     // A policy-free executable may explicitly retain a runtime package whose
     // real ELF library needs that package's reviewed host runtime directories.
-    let runtime_payload = gripsack_store::content_path(&root, "workspace-recipe", &"3".repeat(64));
+    let runtime_payload =
+        gripsack_host::store::content_path(&root, "workspace-recipe", &"3".repeat(64));
     std::fs::create_dir_all(runtime_payload.join("lib")).unwrap();
     let bridge = runtime_payload.join("lib/libbridge.so");
     compile(
@@ -380,12 +383,12 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
         archive_root: None,
         selected_root: None,
         identity: serde_json::from_str(&format!("\"{}\"", "2".repeat(64))).unwrap(),
-        root: gripsack_store::content_path(&root, "workspace-package", &"2".repeat(64)),
+        root: gripsack_host::store::content_path(&root, "workspace-package", &"2".repeat(64)),
         selected_payload: None,
         producer: Arc::new(Artifact {
             root: runtime_payload.clone(),
             payload: runtime_payload.clone(),
-            tree: gripsack_store::canonical_tree_hash(&runtime_payload).unwrap(),
+            tree: gripsack_host::store::canonical_tree_hash(&runtime_payload).unwrap(),
             retention: BTreeSet::new(),
         }),
         commands: BTreeMap::new(),
@@ -395,7 +398,8 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
         conda: None,
         host_runtime: Some(policy(&libraries)),
     }));
-    let shadow_payload = gripsack_store::content_path(&root, "workspace-recipe", &"5".repeat(64));
+    let shadow_payload =
+        gripsack_host::store::content_path(&root, "workspace-recipe", &"5".repeat(64));
     std::fs::create_dir_all(shadow_payload.join("lib")).unwrap();
     compile(
         &root,
@@ -408,12 +412,12 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
         archive_root: None,
         selected_root: None,
         identity: serde_json::from_str(&format!("\"{}\"", "4".repeat(64))).unwrap(),
-        root: gripsack_store::content_path(&root, "workspace-package", &"4".repeat(64)),
+        root: gripsack_host::store::content_path(&root, "workspace-package", &"4".repeat(64)),
         selected_payload: None,
         producer: Arc::new(Artifact {
             root: shadow_payload.clone(),
             payload: shadow_payload.clone(),
-            tree: gripsack_store::canonical_tree_hash(&shadow_payload).unwrap(),
+            tree: gripsack_host::store::canonical_tree_hash(&shadow_payload).unwrap(),
             retention: BTreeSet::new(),
         }),
         commands: BTreeMap::new(),

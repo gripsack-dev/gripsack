@@ -2,8 +2,8 @@ use super::frontend::Frontend;
 use super::prepared::{PreparedEvaluation, operational};
 use super::probe::InputsFile;
 use crate::render::DiagnosticSink;
+use gripsack_exec::trust::evaluation::{EvaluationId, EvaluationOutcome, EvaluationSession};
 use gripsack_ir::{HostName, Ir};
-use gripsack_store::trust::evaluation::{EvaluationId, EvaluationOutcome, EvaluationSession};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::ExitCode;
@@ -56,7 +56,7 @@ pub struct EvalOutcome {
     /// This never selects a source entrypoint.
     pub host: HostName,
     /// Keeps every captured source alive through downstream materialization.
-    pub sources: std::sync::Arc<gripsack_store::source_bundle::SourceBundle>,
+    pub sources: std::sync::Arc<gripsack_exec::source_bundle::SourceBundle>,
     pub receipt: EvaluationId,
 }
 
@@ -250,7 +250,7 @@ pub(super) fn provision_plugins(
     fetchers: &BTreeMap<String, gripsack_config::FetcherSectionView>,
     fetch: &gripsack_fetch::FetchContext,
 ) -> Result<(), ExitCode> {
-    let store = gripsack_fetch::plugins::PluginStore::new(&gripsack_store::gripsack_home());
+    let store = gripsack_fetch::plugins::PluginStore::new(&gripsack_host::store::gripsack_home());
     for (name, section) in fetchers {
         // an explicit executable path (path = the registry-symmetric
         // name; plugin = its original alias) registers directly —

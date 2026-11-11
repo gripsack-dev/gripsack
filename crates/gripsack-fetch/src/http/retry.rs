@@ -1,6 +1,6 @@
 //! HTTP clock/classification adapter for the shipped retry transition kernel.
 use super::failure::HttpFailureKind;
-use gripsack_policy::retry_budget as policy;
+use super::retry_budget as policy;
 use std::io;
 use std::time::{Duration, Instant};
 

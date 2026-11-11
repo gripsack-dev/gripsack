@@ -1,8 +1,8 @@
 use super::*;
-use gripsack_ir::workspace::{OsVersion, PlatformAbi, PlatformArch, PlatformOs};
-use gripsack_process::executable::{
+use gripsack_host::process::executable::{
     Endianness, ExecutableArch, ExecutableFormat, Interpreter, ObjectKind, WordClass,
 };
+use gripsack_ir::workspace::{OsVersion, PlatformAbi, PlatformArch, PlatformOs};
 
 #[test]
 fn native_host_admission_is_linux_x86_64_only() {
@@ -65,7 +65,7 @@ fn declared_abi_cannot_hide_an_unproven_minimum_os_floor() {
 #[test]
 fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
     use crate::workspace::artifact::Artifact;
-    use gripsack_process::executable::ExecutableMetadata;
+    use gripsack_host::process::executable::ExecutableMetadata;
     use std::sync::Arc;
 
     let directory = tempfile::tempdir().unwrap();
@@ -176,7 +176,7 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
     ] {
         assert!(admit_static(&incompatible).is_err());
     }
-    use gripsack_process::executable::ElfLoaderExtension;
+    use gripsack_host::process::executable::ElfLoaderExtension;
     for extension in [
         ElfLoaderExtension::Audit("outside.so".into()),
         ElfLoaderExtension::DependencyAudit("outside.so".into()),
@@ -221,9 +221,7 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
     );
     metadata
         .elf_loader_extensions
-        .push(gripsack_process::executable::ElfLoaderExtension::Audit(
-            "outside.so".into(),
-        ));
+        .push(gripsack_host::process::executable::ElfLoaderExtension::Audit("outside.so".into()));
     assert!(
         admit(&metadata).is_err(),
         "main-image auditing escapes DT_NEEDED"
@@ -425,7 +423,7 @@ fn declared_abi_is_not_a_host_libc_gate() {
 #[test]
 fn elf_admission_infers_the_abi_from_the_loader() {
     use crate::workspace::artifact::Artifact;
-    use gripsack_process::executable::ExecutableMetadata;
+    use gripsack_host::process::executable::ExecutableMetadata;
     use std::sync::Arc;
 
     let directory = tempfile::tempdir().unwrap();

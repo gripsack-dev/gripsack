@@ -10,12 +10,13 @@
 //! Conda package/channel selectors likewise do not name workspace outputs.
 use super::*;
 use crate::Span;
-use gripsack_policy::graph::GraphRole;
+use crate::workspace_model::graph::role::GraphRole;
 use std::collections::BTreeMap;
 mod kinds;
 use kinds::*;
 pub mod binding;
 pub mod input;
+pub mod role;
 pub use binding::{bind_reference, output_name};
 #[derive(Debug, Clone, Copy)]
 pub struct Reference<'a> {

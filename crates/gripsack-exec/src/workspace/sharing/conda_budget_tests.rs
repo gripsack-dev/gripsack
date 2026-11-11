@@ -127,7 +127,11 @@ fn closure(root: &Path, manifest: &PortableManifest) -> Closure {
     // Closure decoding precedes signature admission; these tests exercise only
     // resource admission, never claim publisher authorization from this record.
     std::fs::write(root.join("envelope.json"), b"{}").unwrap();
-    Closure::read(&gripsack_fs::open(root).unwrap(), FetchLimits::default()).unwrap()
+    Closure::read(
+        &gripsack_host::fs::open(root).unwrap(),
+        FetchLimits::default(),
+    )
+    .unwrap()
 }
 
 fn limits(bytes: u64, entries: usize) -> FetchLimits {

@@ -1,7 +1,7 @@
 use super::{fail, values};
+use crate::target::supports_target;
 use crate::workspace_model::graph::{bind_reference, references};
 use crate::{Diagnostic, Span, codes, workspace_model::*};
-use gripsack_policy::target::supports_target;
 use std::collections::BTreeMap;
 
 pub(super) fn check<'a>(
@@ -148,12 +148,12 @@ fn check_inputs_and_context(
     attached: &std::collections::BTreeSet<&str>,
     out: &mut Vec<Diagnostic>,
 ) {
-    use crate::workspace_model::graph::input::{
-        argument_input_reference, output_source_input_references,
-    };
-    use gripsack_policy::workspace_command::{
+    use crate::workspace_command::{
         ArgumentOrigin, CommandOwner, DirectoryOrigin, ExecutionContext, admit_directory,
         admit_production_binding,
+    };
+    use crate::workspace_model::graph::input::{
+        argument_input_reference, output_source_input_references,
     };
     fn arg(
         value: &WorkspaceArg,

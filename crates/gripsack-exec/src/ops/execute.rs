@@ -12,7 +12,7 @@ use store::journal::Install;
 fn dest_capability(
     run: &store::journal::JournalRun<'_>,
     dest: &Path,
-) -> std::io::Result<(gripsack_fs::Dir, PathBuf)> {
+) -> std::io::Result<(gripsack_host::fs::Dir, PathBuf)> {
     match store::journal::directory::destination_capability(run, dest)? {
         Some(bound) => Ok(bound),
         None => crate::deploy::dest_capability(dest),
@@ -53,7 +53,7 @@ pub(crate) fn execute_op(
                 // the mode's voice (0.21.1): a satisfied merge block
                 // is not an unchanged file
                 summary: match op.mode {
-                    gripsack_store::Ownership::Merge => {
+                    gripsack_host::store::Ownership::Merge => {
                         format!("{} block unchanged", op.declared_to())
                     }
                     _ => format!("{} unchanged", op.declared_to()),

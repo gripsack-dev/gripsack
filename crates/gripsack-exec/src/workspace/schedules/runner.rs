@@ -2,7 +2,7 @@
 //! Release runners are static ELF; dynamically linked development executables
 //! cannot promise retained loader/library closure and are refused explicitly.
 use crate::{Ctx, ExecError};
-use gripsack_process::executable::{self, ExecutableArch, ExecutableFormat};
+use gripsack_host::process::executable::{self, ExecutableArch, ExecutableFormat};
 use std::{io, path::PathBuf};
 
 pub(super) fn retain(ctx: &Ctx) -> Result<(PathBuf, PathBuf), ExecError> {
@@ -22,11 +22,11 @@ pub(super) fn retain(ctx: &Ctx) -> Result<(PathBuf, PathBuf), ExecError> {
     std::fs::copy(&executable, &runner)?;
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&runner, std::fs::Permissions::from_mode(0o500))?;
-    let tree = gripsack_store::canonical_tree_hash(temporary.path())?;
-    let root = gripsack_store::content_path(&ctx.home, "job-runner", tree.as_str());
+    let tree = gripsack_host::store::canonical_tree_hash(temporary.path())?;
+    let root = gripsack_host::store::content_path(&ctx.home, "job-runner", tree.as_str());
     match std::fs::symlink_metadata(&root) {
         Ok(metadata) if metadata.is_dir() => {
-            if gripsack_store::canonical_tree_hash(&root)? != tree {
+            if gripsack_host::store::canonical_tree_hash(&root)? != tree {
                 return Err(io::Error::other("retained scheduler runner identity differs").into());
             }
         }

@@ -1,7 +1,7 @@
 //! Mutable repository publication and immutable evaluated contents are distinct.
 //! Direct IR callers choose live inputs explicitly; CLI evaluation retains its
 //! captured bundle and receipt for the entire downstream operation.
-use gripsack_store::{source_bundle::SourceBundle, trust::evaluation::EvaluationId};
+use crate::{source_bundle::SourceBundle, trust::evaluation::EvaluationId};
 use std::{
     collections::BTreeMap,
     io,

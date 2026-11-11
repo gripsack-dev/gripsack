@@ -23,9 +23,9 @@ pub(super) const RECORD_FILE: &str = "receipt.json";
 /// Bound allocation while serializing, before any published receipt can name
 /// bytes its reader cannot admit. This also bounds environment.json evidence.
 pub(super) fn encode_record(record: &impl Serialize) -> Result<Vec<u8>, ExecError> {
-    let mut buffer = gripsack_process::InputBuffer::new(gripsack_process::InputByteLimit::new(
-        MAX_MATERIALIZATION_RECORD_BYTES,
-    ));
+    let mut buffer = gripsack_host::process::InputBuffer::new(
+        gripsack_host::process::InputByteLimit::new(MAX_MATERIALIZATION_RECORD_BYTES),
+    );
     serde_json::to_writer(&mut buffer, record).map_err(|error| {
         if error.io_error_kind() == Some(std::io::ErrorKind::InvalidInput) {
             failure("generated materialization record exceeds the 32 MiB byte bound")
@@ -42,7 +42,7 @@ pub(super) fn write_record(directory: &Path, record: &Receipt) -> Result<(), Exe
     Ok(())
 }
 
-pub(super) fn read_record(directory: &gripsack_fs::Dir) -> Result<Receipt, ExecError> {
+pub(super) fn read_record(directory: &gripsack_host::fs::Dir) -> Result<Receipt, ExecError> {
     Ok(serde_json::from_slice(&read(
         directory,
         Path::new(RECORD_FILE),
@@ -73,11 +73,11 @@ pub(super) struct ExternalReceipt {
 }
 
 pub(super) fn read(
-    directory: &gripsack_fs::Dir,
+    directory: &gripsack_host::fs::Dir,
     path: &Path,
     limit: u64,
 ) -> Result<Vec<u8>, ExecError> {
-    let file = gripsack_fs::open_file_nofollow(directory, path)?;
+    let file = gripsack_host::fs::open_file_nofollow(directory, path)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() || metadata.len() > limit {
         return Err(failure("portable record is not a bounded regular file"));
@@ -91,11 +91,12 @@ pub(super) fn read(
 }
 
 pub(super) fn blob(
-    directory: &gripsack_fs::Dir,
+    directory: &gripsack_host::fs::Dir,
     descriptor: &BlobDescriptor,
     destination: Option<&Path>,
 ) -> Result<(), ExecError> {
-    let mut source = gripsack_fs::open_file_nofollow(directory, Path::new(&descriptor.sha256))?;
+    let mut source =
+        gripsack_host::fs::open_file_nofollow(directory, Path::new(&descriptor.sha256))?;
     let metadata = source.metadata()?;
     if !metadata.is_file() || metadata.len() != descriptor.size {
         return Err(failure(
@@ -123,8 +124,8 @@ pub(super) fn blob(
         }
     }
     if total != descriptor.size
-        || gripsack_process::Sha256Digest::from_bytes(digest.finalize().into())
-            != gripsack_process::Sha256Digest::parse(&descriptor.sha256)?
+        || gripsack_host::process::Sha256Digest::from_bytes(digest.finalize().into())
+            != gripsack_host::process::Sha256Digest::parse(&descriptor.sha256)?
     {
         return Err(failure(
             "portable blob digest differs from signed descriptor",
@@ -134,7 +135,7 @@ pub(super) fn blob(
 }
 
 pub(super) fn inventory(root: &Path, component: &Component) -> Result<(), ExecError> {
-    let directory = gripsack_fs::open(root)?;
+    let directory = gripsack_host::fs::open(root)?;
     let expected: BTreeSet<_> = component
         .inventory
         .iter()
@@ -179,7 +180,8 @@ pub(super) fn inventory(root: &Path, component: &Component) -> Result<(), ExecEr
                 }
             }
             EntryKind::File { sha256, size } if metadata.is_file() => {
-                let mut file = gripsack_fs::open_file_nofollow(&directory, Path::new(&entry.path))?;
+                let mut file =
+                    gripsack_host::fs::open_file_nofollow(&directory, Path::new(&entry.path))?;
                 if file.metadata()?.len() != *size {
                     return Err(failure("inventory file size mismatch"));
                 }
@@ -200,8 +202,8 @@ pub(super) fn inventory(root: &Path, component: &Component) -> Result<(), ExecEr
                     digest.update(&buffer[..count]);
                 }
                 if copied != *size
-                    || gripsack_process::Sha256Digest::from_bytes(digest.finalize().into())
-                        != gripsack_process::Sha256Digest::parse(sha256)?
+                    || gripsack_host::process::Sha256Digest::from_bytes(digest.finalize().into())
+                        != gripsack_host::process::Sha256Digest::parse(sha256)?
                 {
                     return Err(failure("inventory file digest mismatch"));
                 }

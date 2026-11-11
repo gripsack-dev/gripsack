@@ -1,11 +1,11 @@
 //! Real captured-workspace updates: complete surveys and publication authority.
 use super::*;
 use crate::Repository;
-use gripsack_ir::{HostName, workspace_model::lock::WorkspaceLock};
-use gripsack_store::{
+use crate::{
     source_bundle::{SourceBundle, SourceCapturePolicy},
     trust::evaluation::EvaluationId,
 };
+use gripsack_ir::{HostName, workspace_model::lock::WorkspaceLock};
 use std::{collections::BTreeSet, fs, path::PathBuf, sync::Arc};
 
 struct Fixture {

@@ -1,5 +1,5 @@
 use crate::FetchError;
-use gripsack_fs::cap_std::fs::{Dir, File, OpenOptions};
+use gripsack_host::fs::cap_std::fs::{Dir, File, OpenOptions};
 use std::path::{Component, Path, PathBuf};
 
 pub(super) fn violation(path: &Path, reason: &'static str) -> FetchError {
@@ -93,9 +93,9 @@ fn open_root_impl(dest: &Path, create: bool) -> Result<Dir, FetchError> {
         .file_name()
         .ok_or_else(|| violation(dest, "payload destination has no directory name"))?;
     let parent = if create {
-        gripsack_fs::open_or_create(parent)?
+        gripsack_host::fs::open_or_create(parent)?
     } else {
-        gripsack_fs::open(parent)?
+        gripsack_host::fs::open(parent)?
     };
     match parent.symlink_metadata(name) {
         Ok(meta) if meta.is_dir() && !meta.is_symlink() => {}
@@ -114,7 +114,7 @@ fn open_root_impl(dest: &Path, create: bool) -> Result<Dir, FetchError> {
     options.read(true);
     #[cfg(unix)]
     {
-        use gripsack_fs::cap_std::fs::OpenOptionsExt;
+        use gripsack_host::fs::cap_std::fs::OpenOptionsExt;
         options.custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW);
     }
     let file = parent.open_with(name, &options)?;

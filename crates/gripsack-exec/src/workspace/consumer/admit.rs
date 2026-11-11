@@ -17,6 +17,8 @@ mod host_runtime_tests;
 mod tests;
 use super::super::{artifact::Package, realize::Realization};
 use crate::ExecError;
+use gripsack_host::process::{EnvironmentOverlay, Sha256Digest};
+use gripsack_ir::target::{BinaryAbi, TargetArch, TargetOs, TargetRequirement, supports_target};
 use gripsack_ir::{
     Diagnostic, Span, codes,
     workspace::WorkspacePlatform,
@@ -25,10 +27,6 @@ use gripsack_ir::{
         identity::ExecutableDigest, lock::BytecodePolicy,
     },
 };
-use gripsack_policy::target::{
-    BinaryAbi, TargetArch, TargetOs, TargetRequirement, supports_target,
-};
-use gripsack_process::{EnvironmentOverlay, Sha256Digest};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsString,
@@ -194,7 +192,7 @@ pub(in crate::workspace) struct AdmittedCommand {
     /// Checked per-command lookup plan, including translated main-image origin
     /// paths. A changed dependency selection during translation is refused.
     pub library_dirs: Vec<PathBuf>,
-    pub gnu_loader: Option<std::sync::Arc<gripsack_process::SelectedGnuLoader>>,
+    pub gnu_loader: Option<std::sync::Arc<gripsack_host::process::SelectedGnuLoader>>,
     pub interpreter: Option<PinnedInterpreter>,
     pub bytecode: Option<BytecodePolicy>,
     /// Imported contributions are defaults; recipient environment/task values win.
@@ -335,7 +333,7 @@ impl EnvironmentPlan<CapturedCommand> {
                         let root = path
                             .ancestors()
                             .find(|path| {
-                                gripsack_store::paths::validate_store_root(context.home, path)
+                                gripsack_host::store::paths::validate_store_root(context.home, path)
                                     .is_ok()
                             })
                             .ok_or_else(|| {
@@ -431,8 +429,10 @@ impl EnvironmentPlan {
 
     /// Persist literal contributions and an explicit reference to the profile's
     /// command projection. User values never acquire legacy shell expansion.
-    pub fn profile_env(&self) -> Result<Vec<gripsack_store::EnvironmentContribution>, ExecError> {
-        use gripsack_store::{EnvironmentContribution, StructuredEnvironment};
+    pub fn profile_env(
+        &self,
+    ) -> Result<Vec<gripsack_host::store::EnvironmentContribution>, ExecError> {
+        use gripsack_host::store::{EnvironmentContribution, StructuredEnvironment};
         let mut variables = Vec::new();
         for (name, paths) in [
             ("PATH", &self.declared_path),
@@ -448,7 +448,7 @@ impl EnvironmentPlan {
             variables.push(EnvironmentContribution::Structured(
                 StructuredEnvironment::Literal {
                     name: name.into(),
-                    op: gripsack_store::EnvironmentOperation::Prepend,
+                    op: gripsack_host::store::EnvironmentOperation::Prepend,
                     value,
                 },
             ));
@@ -457,7 +457,7 @@ impl EnvironmentPlan {
             variables.push(EnvironmentContribution::Structured(
                 StructuredEnvironment::StorePath {
                     name: "PATH".into(),
-                    op: gripsack_store::EnvironmentOperation::Prepend,
+                    op: gripsack_host::store::EnvironmentOperation::Prepend,
                     path: "commands".into(),
                 },
             ));
@@ -472,7 +472,7 @@ impl EnvironmentPlan {
             variables.push(EnvironmentContribution::Structured(
                 StructuredEnvironment::Literal {
                     name: name.to_owned(),
-                    op: gripsack_store::EnvironmentOperation::Set,
+                    op: gripsack_host::store::EnvironmentOperation::Set,
                     value: value
                         .to_str()
                         .ok_or_else(|| failure("profile variable value is not UTF-8"))?

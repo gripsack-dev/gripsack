@@ -2,7 +2,7 @@
 //! come from fixture history, never the collector's projection/deletion kernel.
 use super::gc;
 use crate::LifecycleSession;
-use gripsack_store::{self as store, GenerationId};
+use gripsack_host::store::{self as store, GenerationId};
 use std::{
     collections::BTreeMap,
     fs,
@@ -22,7 +22,7 @@ const OBJECTS: [&str; 7] = [
 fn history() -> (tempfile::TempDir, PathBuf) {
     let temporary = tempfile::tempdir().unwrap();
     let home = temporary.path();
-    let cap = gripsack_fs::open_or_create(home).unwrap();
+    let cap = gripsack_host::fs::open_or_create(home).unwrap();
     for name in OBJECTS {
         let path = home.join("store").join(name);
         fs::create_dir_all(&path).unwrap();
@@ -42,7 +42,7 @@ fn history() -> (tempfile::TempDir, PathBuf) {
                         to: home.join("deployed").to_str().unwrap().into(),
                         key: None,
                         ownership: store::StoredOwnership::Legacy(
-                            gripsack_store::Ownership::TrackedCopy,
+                            gripsack_host::store::Ownership::TrackedCopy,
                         ),
                         vars: Default::default(),
                         hash: store::hash::ManifestHash::from_raw("a".repeat(64)),
@@ -200,7 +200,7 @@ fn unfinished_recovery_preserves_every_history_object() {
     for state in ["marker", "entry", "quarantine", "malformed"] {
         let (temporary, prior) = history();
         let home = temporary.path();
-        let cap = gripsack_fs::open(home).unwrap();
+        let cap = gripsack_host::fs::open(home).unwrap();
         std::os::unix::fs::symlink("generations/3", home.join("current")).unwrap();
         let journal_blob = store::prior::store_blob(&cap, b"journal-only bytes")
             .unwrap()
@@ -259,7 +259,7 @@ fn pinned_collection_survives_root_replacement() {
     use super::inventory::Collectable;
     let temporary = tempfile::tempdir().unwrap();
     let home = temporary.path().join("home");
-    let cap = gripsack_fs::open_or_create(&home).unwrap();
+    let cap = gripsack_host::fs::open_or_create(&home).unwrap();
     fs::create_dir_all(home.join("store/orphan")).unwrap();
     fs::write(home.join("store/orphan/payload"), b"owned").unwrap();
     let inventory = Collectable::open(&cap, &home).unwrap();

@@ -1,7 +1,7 @@
 //! Directory rollback receipts retain the exact predecessor generation and its
 //! lineage, independently of the ordinary history window.
 use crate::ExecError;
-use gripsack_store as store;
+use gripsack_host::store;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
@@ -9,7 +9,7 @@ use std::{
 
 pub(super) fn pending(
     directory: &store::generations::GenerationDirectory,
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
     home_path: &Path,
     dry_run: bool,
 ) -> Result<BTreeMap<store::GenerationId, store::Generation>, ExecError> {
@@ -54,7 +54,7 @@ pub(super) fn retire(
                 .and_then(|()| {
                     // A previous unlink may have succeeded but failed its sync.
                     // Seal observed absence even when discard was a no-op.
-                    gripsack_fs::fsync_pinned_dir(&receipt.parent()?, Path::new("."))
+                    gripsack_host::fs::fsync_pinned_dir(&receipt.parent()?, Path::new("."))
                 })
                 .map_err(|error| {
                     retirement_error(generation.number, Some(&receipt.destination), error)
@@ -88,7 +88,7 @@ fn retirement_error(
 mod tests {
     use super::*;
 
-    fn publish(home: &gripsack_fs::Dir, number: u64, predecessor: Option<u64>) {
+    fn publish(home: &gripsack_host::fs::Dir, number: u64, predecessor: Option<u64>) {
         store::write_manifest(
             home,
             &store::Generation {
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn migration_recovery_roots_close_transitively_outside_the_keep_window() {
         let temporary = tempfile::tempdir().unwrap();
-        let home = gripsack_fs::open_or_create(temporary.path()).unwrap();
+        let home = gripsack_host::fs::open_or_create(temporary.path()).unwrap();
         publish(&home, 0, None);
         publish(&home, 1, Some(0));
         publish(&home, 2, Some(1));
@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn missing_migration_predecessor_blocks_collection_before_effects() {
         let temporary = tempfile::tempdir().unwrap();
-        let home = gripsack_fs::open_or_create(temporary.path()).unwrap();
+        let home = gripsack_host::fs::open_or_create(temporary.path()).unwrap();
         publish(&home, 1, Some(0));
         std::os::unix::fs::symlink("generations/1", temporary.path().join("current")).unwrap();
         let session = crate::LifecycleSession::acquire(temporary.path()).unwrap();
@@ -161,11 +161,11 @@ mod tests {
 
     fn retirement_fixture() -> (
         tempfile::TempDir,
-        gripsack_fs::Dir,
+        gripsack_host::fs::Dir,
         store::journal::directory::DirectoryTransition,
     ) {
         let temporary = tempfile::tempdir().unwrap();
-        let home = gripsack_fs::open_or_create(temporary.path()).unwrap();
+        let home = gripsack_host::fs::open_or_create(temporary.path()).unwrap();
         let target = temporary.path().join("store/predecessor");
         let destination = temporary.path().join("managed");
         std::os::unix::fs::symlink(&target, &destination).unwrap();
@@ -213,8 +213,8 @@ mod tests {
                 // The visible rename survived, but the process stopped before
                 // acknowledging its parent barrier. Retry must seal it first.
                 let generations =
-                    gripsack_fs::open_dir_nofollow(&home, Path::new("generations")).unwrap();
-                gripsack_fs::rename_noreplace(
+                    gripsack_host::fs::open_dir_nofollow(&home, Path::new("generations")).unwrap();
+                gripsack_host::fs::rename_noreplace(
                     &generations,
                     Path::new("1"),
                     Path::new(".retiring-1"),
@@ -363,14 +363,15 @@ mod tests {
             .unwrap();
         prune(&directory, &[store::GenerationId::new(1)]).unwrap();
         store::journal::retire_directory_staging(&receipt, &[]).unwrap();
-        let generations = gripsack_fs::open_dir_nofollow(&home, Path::new("generations")).unwrap();
-        gripsack_fs::rename_noreplace(
+        let generations =
+            gripsack_host::fs::open_dir_nofollow(&home, Path::new("generations")).unwrap();
+        gripsack_host::fs::rename_noreplace(
             &generations,
             Path::new(".retiring-1"),
             Path::new(".retired-1"),
         )
         .unwrap();
-        gripsack_fs::fsync_pinned_dir(&generations, Path::new("generations")).unwrap();
+        gripsack_host::fs::fsync_pinned_dir(&generations, Path::new("generations")).unwrap();
         std::fs::remove_file(
             temporary
                 .path()
@@ -430,7 +431,7 @@ mod tests {
     #[test]
     fn partial_batch_removes_descendants_before_their_retained_predecessors() {
         let temporary = tempfile::tempdir().unwrap();
-        let home = gripsack_fs::open_or_create(temporary.path()).unwrap();
+        let home = gripsack_host::fs::open_or_create(temporary.path()).unwrap();
         publish(&home, 0, None);
         publish(&home, 1, Some(0));
         publish(&home, 2, Some(1));

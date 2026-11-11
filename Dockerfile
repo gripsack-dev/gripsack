@@ -98,7 +98,7 @@ COPY scripts ./scripts
 COPY typescript/src ./typescript/src
 COPY typescript/deno.json typescript/package.json ./typescript/
 RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
-    python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
+    python3 scripts/check_architecture.py --self-check --resolved-manifest tools/conda-helper/Cargo.toml
 # Fast generated-source freshness checks.
 RUN --mount=type=cache,id=gripsack-cargo-registry,target=/usr/local/cargo/registry \
     cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \

@@ -3,7 +3,7 @@ use super::{
     paths,
 };
 use crate::{FetchError, FetchLimits};
-use gripsack_fs::cap_std::fs::{Dir, OpenOptions};
+use gripsack_host::fs::cap_std::fs::{Dir, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -177,7 +177,7 @@ fn materialize_tree(
                 options.read(true);
                 #[cfg(unix)]
                 {
-                    use gripsack_fs::cap_std::fs::OpenOptionsExt;
+                    use gripsack_host::fs::cap_std::fs::OpenOptionsExt;
                     options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
                 }
                 let mut input = source.open_with(relative, &options)?;

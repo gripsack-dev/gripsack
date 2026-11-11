@@ -36,7 +36,7 @@ fn exchange(
 fn round_trip_and_reported_hash_verification() {
     let dest = tempfile::tempdir().unwrap();
     std::fs::write(dest.path().join("payload"), b"hello").unwrap();
-    let expected = gripsack_store::canonical_tree_hash(dest.path()).unwrap();
+    let expected = gripsack_host::store::canonical_tree_hash(dest.path()).unwrap();
     let response = serde_json::json!({"type":"response","result":{
         "url":"https://example/tarball", "version":"1.2.3", "sha256":expected.as_str()
     }});

@@ -2,18 +2,23 @@ use crate::sandbox::Sandbox;
 
 pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
     s.write("generations/1/manifest.json", input);
-    let first = gripsack_store::read_manifest(s.home(), gripsack_store::GenerationId::new(1));
-    let second = gripsack_store::read_manifest(s.home(), gripsack_store::GenerationId::new(1));
+    let first =
+        gripsack_host::store::read_manifest(s.home(), gripsack_host::store::GenerationId::new(1));
+    let second =
+        gripsack_host::store::read_manifest(s.home(), gripsack_host::store::GenerationId::new(1));
     match (first, second) {
         (Ok(a), Ok(b)) => {
             assert_eq!(a, b);
-            assert_eq!(a.number, gripsack_store::GenerationId::new(1));
+            assert_eq!(a.number, gripsack_host::store::GenerationId::new(1));
             for state in a.deployments.values() {
                 assert!(
-                    gripsack_store::paths::validate_store_root(s.home(), &state.store_path).is_ok()
+                    gripsack_host::store::paths::validate_store_root(s.home(), &state.store_path)
+                        .is_ok()
                 );
                 for path in &state.build_closure {
-                    assert!(gripsack_store::paths::validate_store_root(s.home(), path).is_ok());
+                    assert!(
+                        gripsack_host::store::paths::validate_store_root(s.home(), path).is_ok()
+                    );
                 }
             }
         }

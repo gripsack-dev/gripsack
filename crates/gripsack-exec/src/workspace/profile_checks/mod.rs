@@ -9,14 +9,14 @@ mod tests;
 use super::{consumer, content::PreparedFile, hooks, realize::Realization};
 use crate::ExecError;
 use crate::progress::{Reporter, VerificationKind, VerificationLabel};
+use gripsack_host::process::{OperatorEnvironment, Sha256Digest};
+use gripsack_host::store::ActivationTrigger;
 use gripsack_ir::{
     Span,
     workspace_model::{
         FileCheckStage, FileCheckSubject, ProfileOutput, WorkspaceFileCheck, WorkspaceOutput,
     },
 };
-use gripsack_process::{OperatorEnvironment, Sha256Digest};
-use gripsack_store::ActivationTrigger;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -151,7 +151,7 @@ pub(super) fn prepare(
                 file_span: retained_span(file.entry.span.as_ref().unwrap_or(&check.span)),
                 command_span: retained_span(declaration.run.span()),
                 captured,
-                captured_digest: gripsack_store::canonical_file_hash(&path)
+                captured_digest: gripsack_host::store::canonical_file_hash(&path)
                     .map_err(|error| super::file_failure(&check.span, error))?,
                 destination: resolve_destination(&file.entry.to)?,
             };

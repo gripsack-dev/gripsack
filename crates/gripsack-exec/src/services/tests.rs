@@ -2,11 +2,11 @@ use super::{
     plan,
     state::{ServiceRecord, ServiceState},
 };
+use gripsack_host::process::Sha256Digest;
 use gripsack_ir::{
     Span,
     workspace_model::{ServiceHealth, ServiceOutput},
 };
-use gripsack_process::Sha256Digest;
 use serde_json::json;
 
 fn service() -> ServiceOutput {

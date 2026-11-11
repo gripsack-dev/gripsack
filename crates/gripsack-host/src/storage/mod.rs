@@ -19,11 +19,12 @@
 //!
 //! Errors are `io::Error`s carrying the platform errno, so callers match on
 //! `kind()` (or `raw_os_error()`) the same way for both implementations.
+#![forbid(unsafe_code)]
 
 mod mem;
 mod real;
 
-pub use gripsack_fs::fault::Boundary;
+pub use crate::fs::fault::Boundary;
 pub use mem::{
     Crash, CrashKinds, CrashPoint, Exploration, ExploreError, ExternalWrite, MemDir, MemFile,
     MemFs, Operation, PendingBound, TraceEvent, Violation, explore,

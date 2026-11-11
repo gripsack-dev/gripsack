@@ -2,7 +2,7 @@
 
 use cap_std::fs::MetadataExt as _;
 use cap_std::fs::OpenOptionsExt as _;
-use gripsack_fs::{Dir, cap_std};
+use gripsack_host::fs::{Dir, cap_std};
 use std::io::{self, Read};
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
@@ -69,7 +69,7 @@ impl Installation {
             exe.file_name()
                 .ok_or_else(|| io::Error::other("executable has no name"))?,
         );
-        let dir = gripsack_fs::open(&parent)?;
+        let dir = gripsack_host::fs::open(&parent)?;
         let meta = dir.metadata(".")?;
         let result = Self {
             parent,
@@ -95,7 +95,7 @@ impl Installation {
 
     pub(super) fn lock(&self) -> io::Result<Lock> {
         self.validate_parent()?;
-        let digest = gripsack_store::hash::hex_sha256(self.name.as_os_str().as_bytes());
+        let digest = gripsack_host::store::hash::hex_sha256(self.name.as_os_str().as_bytes());
         let name = format!(".grip-self-update-{digest}.flock");
         let mut options = cap_std::fs::OpenOptions::new();
         options.write(true).create(true).truncate(false);
@@ -159,7 +159,7 @@ impl Installation {
 
     pub(super) fn publish(&self, source: &mut impl Read) -> io::Result<()> {
         self.validate_parent()?;
-        gripsack_fs::atomic_copy_with_mode(&self.dir, &self.name, source, 0o755)
+        gripsack_host::fs::atomic_copy_with_mode(&self.dir, &self.name, source, 0o755)
     }
 }
 

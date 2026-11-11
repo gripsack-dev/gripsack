@@ -3,12 +3,12 @@
 use super::{capture, systemd};
 use crate::workspace::{content::PreparedFile, file_failure, realize};
 use crate::{ExecError, LifecycleSession};
-use gripsack_ir::{Ir, workspace_model::ProfileOutput};
-use gripsack_store::{
+use gripsack_host::store::{
     self as store,
     activation::{ActivationAction, PendingIntent},
     jobs::{JobId, JobRevision},
 };
+use gripsack_ir::{Ir, workspace_model::ProfileOutput};
 use std::{
     collections::BTreeMap,
     io,
@@ -29,7 +29,7 @@ pub fn active_job(
     job: &JobId,
     revision: &JobRevision,
 ) -> Result<ActiveJob, ExecError> {
-    let home = gripsack_fs::open(session.home())?;
+    let home = gripsack_host::fs::open(session.home())?;
     if store::journal::pending_recovery(&home)?.is_some() {
         return Err(failure(
             "scheduled dispatch requires transaction reconciliation",
@@ -52,7 +52,7 @@ pub fn active_job(
                 && active == job
                 && expected == revision
             {
-                let digest = gripsack_process::Sha256Digest::of(
+                let digest = gripsack_host::process::Sha256Digest::of(
                     &serde_json::to_vec(&intent.action).map_err(io::Error::other)?,
                 );
                 let mut registered = false;
@@ -254,15 +254,15 @@ fn review_observation(
                     if metadata.is_file() && metadata.len() <= systemd::MAX_UNIT_BYTES as u64 =>
                 {
                     use std::io::Read;
-                    let parent = gripsack_fs::open(directory)?;
-                    let file = gripsack_fs::open_file_nofollow(&parent, Path::new(&name))?;
+                    let parent = gripsack_host::fs::open(directory)?;
+                    let file = gripsack_host::fs::open_file_nofollow(&parent, Path::new(&name))?;
                     let mut bytes = Vec::new();
                     file.take(systemd::MAX_UNIT_BYTES as u64 + 1)
                         .read_to_end(&mut bytes)?;
                     if bytes.len() > systemd::MAX_UNIT_BYTES {
                         return Err(failure("saved schedule unit exceeds its byte budget"));
                     }
-                    Some(gripsack_process::Sha256Digest::of(&bytes))
+                    Some(gripsack_host::process::Sha256Digest::of(&bytes))
                 }
                 Ok(_) => return Err(failure("saved schedule unit is not a bounded regular file")),
             };
@@ -315,7 +315,7 @@ pub(in crate::workspace) fn prepare(
         for (name, bytes) in [(service, units.service), (timer, units.timer)] {
             std::fs::write(stage.join(&name), bytes.as_bytes())?;
             files.push(PreparedFile {
-                entry: store::DeploymentEntry {
+                entry: crate::DeploymentEntry {
                     from: name.clone(),
                     to: directory
                         .join(name)
@@ -442,7 +442,7 @@ pub(crate) fn effect(
     action: &ActivationAction,
     home: &Path,
     _permit: &store::activation::LaunchPermit,
-) -> Result<Vec<gripsack_process::ProcessReceipt>, ExecError> {
+) -> Result<Vec<gripsack_host::process::ProcessReceipt>, ExecError> {
     let ActivationAction::ScheduledJob {
         job,
         capture,
@@ -527,7 +527,7 @@ pub fn disable(
     session: &LifecycleSession,
     job: &JobId,
 ) -> Result<Vec<store::journal::RecoveryNote>, ExecError> {
-    let home = gripsack_fs::open(session.home())?;
+    let home = gripsack_host::fs::open(session.home())?;
     store::journal::reconcile(&home, session.home())?;
     crate::activate::resume_activation(session, crate::progress::Reporter::silent())?;
     let previous = current(session)?;
@@ -577,7 +577,7 @@ pub fn inspect(home: &Path) -> Result<Vec<JobInspection>, ExecError> {
     let Some(number) = store::current_generation(home)? else {
         return Ok(Vec::new());
     };
-    let directory = gripsack_fs::open(home)?;
+    let directory = gripsack_host::fs::open(home)?;
     let generation = store::generations::admit_manifest(home, number)?;
     let selection = store::generations::current_selection_in(home, &directory)?
         .ok_or_else(|| failure("current selection disappeared during inspection"))?;
@@ -593,7 +593,7 @@ pub fn inspect(home: &Path) -> Result<Vec<JobInspection>, ExecError> {
             else {
                 continue;
             };
-            let digest = gripsack_process::Sha256Digest::of(
+            let digest = gripsack_host::process::Sha256Digest::of(
                 &serde_json::to_vec(&record.action).map_err(io::Error::other)?,
             );
             jobs.push((
@@ -760,7 +760,7 @@ mod admission_integration_tests {
         let temporary = tempfile::tempdir().unwrap();
         let home = temporary.path();
         let session = LifecycleSession::acquire(home).unwrap();
-        let directory = gripsack_fs::open(home).unwrap();
+        let directory = gripsack_host::fs::open(home).unwrap();
         let job = JobId::parse(&"a".repeat(64)).unwrap();
         let revision = JobRevision::parse(&"b".repeat(64)).unwrap();
         let payload = home.join("store/profile");

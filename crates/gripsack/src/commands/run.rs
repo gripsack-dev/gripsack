@@ -6,8 +6,8 @@
 use super::{eval_repo, validated_ir};
 use crate::render::{DiagnosticSink, Palette};
 use gripsack_exec::{BuildOptions, ConsumerRequest, Ctx, ExecError, Repository, consume};
+use gripsack_host::process::{OperatorEnvironment, Sha256Digest, terminal::tame};
 use gripsack_ir::workspace_model::identity::PackageDigest;
-use gripsack_process::{OperatorEnvironment, Sha256Digest, terminal::tame};
 use std::{
     ffi::OsString,
     num::NonZeroU64,
@@ -163,7 +163,7 @@ fn inner(
         NativeRequest::Task { name, .. } => (*name).to_owned(),
     }];
     let ctx = Ctx {
-        home: gripsack_store::gripsack_home(),
+        home: gripsack_host::store::gripsack_home(),
         home_dir: Default::default(),
         repository: Repository::evaluated(Arc::clone(&outcome.sources), outcome.receipt),
         only,
@@ -207,7 +207,7 @@ fn report_execution_error(error: ExecError, mut sink: DiagnosticSink) -> ExitCod
 
 /// Exit with the child's exact status: its exit code, or the same signal
 /// re-raised so a waiting shell observes a signal death, not a number.
-fn propagate(receipt: &gripsack_process::ProcessReceipt, root_retained: bool) -> ExitCode {
+fn propagate(receipt: &gripsack_host::process::ProcessReceipt, root_retained: bool) -> ExitCode {
     if root_retained {
         eprintln!("grip: process cleanup was unconfirmed; the process root stays registered");
     }
@@ -223,7 +223,7 @@ fn propagate(receipt: &gripsack_process::ProcessReceipt, root_retained: bool) ->
         }
         return ExitCode::from(128 + signal as u8);
     }
-    if receipt.disposition == gripsack_process::ProcessDisposition::SpawnFailure {
+    if receipt.disposition == gripsack_host::process::ProcessDisposition::SpawnFailure {
         eprintln!(
             "grip: command failed to launch{}",
             receipt

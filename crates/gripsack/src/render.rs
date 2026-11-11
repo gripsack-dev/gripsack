@@ -77,13 +77,13 @@ impl Palette {
 /// the IR and omitted when a path is outside this pinned directory.
 struct SourceRoot {
     path: PathBuf,
-    dir: gripsack_fs::Dir,
+    dir: gripsack_host::fs::Dir,
 }
 
 impl SourceRoot {
     fn open(path: &Path) -> Option<Self> {
         let path = path.canonicalize().ok()?;
-        let dir = gripsack_fs::open(&path).ok()?;
+        let dir = gripsack_host::fs::open(&path).ok()?;
         Some(Self { path, dir })
     }
 
@@ -228,7 +228,7 @@ pub struct DiagnosticSink {
     palette: Palette,
     /// Pinned evaluated repo; absent for JSON (no source reads).
     source: Option<SourceRoot>,
-    captured: Option<std::sync::Arc<gripsack_store::source_bundle::SourceBundle>>,
+    captured: Option<std::sync::Arc<gripsack_exec::source_bundle::SourceBundle>>,
     /// Some(collected) under --json; None prints as raised.
     json: Option<Vec<Diagnostic>>,
 }
@@ -259,10 +259,10 @@ impl DiagnosticSink {
     /// produced the diagnostic, never a later edit in the original worktree.
     pub fn bind_captured_source(
         &mut self,
-        sources: std::sync::Arc<gripsack_store::source_bundle::SourceBundle>,
+        sources: std::sync::Arc<gripsack_exec::source_bundle::SourceBundle>,
     ) {
         if self.json.is_none() {
-            self.source = gripsack_fs::open(sources.repository())
+            self.source = gripsack_host::fs::open(sources.repository())
                 .ok()
                 .map(|dir| SourceRoot {
                     path: sources.repository_identity().to_path_buf(),
@@ -324,7 +324,7 @@ impl DiagnosticSink {
 }
 
 fn logical_diagnostic<'a>(
-    sources: &gripsack_store::source_bundle::SourceBundle,
+    sources: &gripsack_exec::source_bundle::SourceBundle,
     diagnostic: &'a Diagnostic,
 ) -> std::borrow::Cow<'a, Diagnostic> {
     use std::borrow::Cow;
@@ -419,9 +419,9 @@ pub fn diff_section(
     selected: &[String],
     limits: gripsack_fetch::FetchLimits,
 ) -> Result<String, gripsack_exec::ExecError> {
-    let home = gripsack_store::gripsack_home();
-    let current = gripsack_store::current_generation(&home)?
-        .map(|number| gripsack_store::read_manifest(&home, number))
+    let home = gripsack_host::store::gripsack_home();
+    let current = gripsack_host::store::current_generation(&home)?
+        .map(|number| gripsack_host::store::read_manifest(&home, number))
         .transpose()?;
     let c = |s: &str| {
         if palette.enabled {

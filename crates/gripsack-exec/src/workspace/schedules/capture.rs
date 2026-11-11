@@ -11,6 +11,7 @@ use crate::{
         selection::Selection,
     },
 };
+use gripsack_host::process::OperatorEnvironment;
 use gripsack_ir::{
     Ir,
     workspace_model::{
@@ -18,7 +19,6 @@ use gripsack_ir::{
         WorkspaceStep,
     },
 };
-use gripsack_process::OperatorEnvironment;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
@@ -99,7 +99,7 @@ pub(super) fn prepare(
                 .next()
                 .ok_or_else(|| invalid("captured input has no store root"))?;
             let root = home.join("store").join(component);
-            gripsack_store::paths::validate_store_root(home, &root)?;
+            gripsack_host::store::paths::validate_store_root(home, &root)?;
             roots.insert(root);
         }
         let scratch = tempfile::tempdir()?;
@@ -122,15 +122,15 @@ pub(super) fn prepare(
             roots: roots
                 .iter()
                 .map(|root| {
-                    gripsack_store::canonical_tree_hash(root).map(|hash| (root.clone(), hash))
+                    gripsack_host::store::canonical_tree_hash(root).map(|hash| (root.clone(), hash))
                 })
                 .collect::<std::io::Result<_>>()?,
         };
         let bytes = snapshot.encode()?;
-        let revision = JobRevision::parse(&gripsack_store::hash::hex_sha256(&bytes))?;
+        let revision = JobRevision::parse(&gripsack_host::store::hash::hex_sha256(&bytes))?;
         let file = PathBuf::from(format!("job-{}.json", job.as_str()));
-        let directory = gripsack_fs::open(stage)?;
-        gripsack_fs::atomic_write_with_mode(&directory, &file, &bytes, 0o600)?;
+        let directory = gripsack_host::fs::open(stage)?;
+        gripsack_host::fs::atomic_write_with_mode(&directory, &file, &bytes, 0o600)?;
         prepared.push(PreparedJob {
             file,
             job,
@@ -148,7 +148,7 @@ pub(in crate::workspace) fn stable_job_id(
     profile: &str,
     schedule: &str,
 ) -> Result<JobId, ExecError> {
-    Ok(JobId::parse(&gripsack_store::hash::hex_sha256(
+    Ok(JobId::parse(&gripsack_host::store::hash::hex_sha256(
         &serde_json::to_vec(&(home, profile, schedule))?,
     ))?)
 }

@@ -48,7 +48,7 @@ pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> Exi
 /// The admitted catalog as report rows, without changing versioned semantics.
 fn workspace_outputs(
     ir: &Ir,
-    sources: &gripsack_store::source_bundle::SourceBundle,
+    sources: &gripsack_exec::source_bundle::SourceBundle,
 ) -> Vec<CheckOutputReport> {
     ir.workspace_outputs()
         .map(|output| CheckOutputReport {

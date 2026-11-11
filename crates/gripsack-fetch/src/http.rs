@@ -6,6 +6,7 @@ mod body;
 mod failure;
 mod request;
 mod retry;
+mod retry_budget;
 mod roots;
 mod tls;
 pub(crate) use failure::safe_location;

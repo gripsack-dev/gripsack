@@ -5,11 +5,11 @@ use super::{
     BinaryAbi, EXECUTABLE_BYTES, ExecError, HostTarget, Package, Span, gate, loader_abi,
     operational,
 };
-use gripsack_policy::target::{TargetArch, TargetOs};
-use gripsack_process::executable::{
+use gripsack_host::process::executable::{
     Endianness, ExecutableArch, ExecutableFormat, ExecutableMetadata, Interpreter, ObjectKind,
     WordClass, classify,
 };
+use gripsack_ir::target::{TargetArch, TargetOs};
 use std::{
     borrow::Cow,
     collections::BTreeSet,

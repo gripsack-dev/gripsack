@@ -142,7 +142,7 @@ impl Fixture {
             ));
         }
         let bytes = encode(&info, &payload, conda);
-        let digest = gripsack_process::Sha256Digest::of(&bytes).to_string();
+        let digest = gripsack_host::process::Sha256Digest::of(&bytes).to_string();
         let filename = if conda {
             "fixture-1.0-0.conda"
         } else {
@@ -312,7 +312,7 @@ fn tar_declared_member_and_extension_bounds_refuse_before_payload_allocation() {
         let mut encoder = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::fast());
         encoder.write_all(header.as_bytes()).unwrap();
         let bytes = encoder.finish().unwrap();
-        let digest = gripsack_process::Sha256Digest::of(&bytes).to_string();
+        let digest = gripsack_host::process::Sha256Digest::of(&bytes).to_string();
         let path = temporary.path().join("archive");
         fs::write(&path, bytes).unwrap();
         let error = match CondaArchive::open(&path, &digest) {
@@ -348,7 +348,7 @@ fn published_modes_follow_shared_sealing_and_never_admit_restored_write_bits() {
     )
     .unwrap();
     let published = fixture._temporary.path().join("published");
-    gripsack_fs::publish_dir_at(&fixture.tree, &published).unwrap();
+    gripsack_host::fs::publish_dir_at(&fixture.tree, &published).unwrap();
     let verify_published = || {
         validate_tree(
             "fixture",
@@ -524,7 +524,7 @@ fn lifecycle_preflight_reuses_hash_path_and_container_admission() {
         (b"BZh malformed".to_vec(), "package fixture"),
     ];
     for (bytes, required) in cases {
-        record.sha256 = gripsack_process::Sha256Digest::of(&bytes).to_string();
+        record.sha256 = gripsack_host::process::Sha256Digest::of(&bytes).to_string();
         fs::write(path, bytes).unwrap();
         let error = match admit_archive("fixture", &record, path) {
             Err(error) => error.to_string(),
@@ -633,7 +633,7 @@ fn recipe_policy_does_not_reject_unrelated_recipe_sources() {
             Member::file("info/recipe/nested/post-link.sh", b"nested source"),
         ];
         let bytes = encode(&info, &[], conda);
-        record.sha256 = gripsack_process::Sha256Digest::of(&bytes).to_string();
+        record.sha256 = gripsack_host::process::Sha256Digest::of(&bytes).to_string();
         fs::write(path, bytes).unwrap();
         admit_archive("fixture", &record, path).unwrap();
     }

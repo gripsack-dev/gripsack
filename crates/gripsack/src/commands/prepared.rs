@@ -4,12 +4,12 @@ mod provenance;
 mod runtime;
 
 use crate::render::DiagnosticSink;
-use gripsack_ir::HostName;
-use gripsack_process::{Limits, OperatorEnvironment, SelectedProgram};
-use gripsack_store::{
+use gripsack_exec::{
     source_bundle::{SourceBundle, SourceCapturePolicy},
     trust::{self, ApprovalStatus, EvaluationPolicy, GitProvenance},
 };
+use gripsack_host::process::{Limits, OperatorEnvironment, SelectedProgram};
+use gripsack_ir::HostName;
 use std::{
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
@@ -29,7 +29,7 @@ pub(super) struct PreparedEvaluation {
     pub(super) config: gripsack_config::Config,
     pub(super) host: HostName,
     pub(super) provisioning: Arc<gripsack_fetch::FetchContext>,
-    runtime_access: gripsack_process::RuntimeAccess,
+    runtime_access: gripsack_host::process::RuntimeAccess,
     evaluator_cache: PathBuf,
     evaluator_tmp: PathBuf,
 }
@@ -88,7 +88,8 @@ impl PreparedEvaluation {
             SourceCapturePolicy::new(std::mem::take(&mut initial.env.capture.exclude))
                 .map_err(operational)?;
         let environment = OperatorEnvironment::capture().map_err(operational)?;
-        let home = std::path::absolute(gripsack_store::gripsack_home()).map_err(operational)?;
+        let home =
+            std::path::absolute(gripsack_host::store::gripsack_home()).map_err(operational)?;
         let frontend = if existing_only {
             let path = home
                 .join("frontend")
@@ -242,7 +243,7 @@ impl PreparedEvaluation {
     pub(super) fn policy(&self) -> &EvaluationPolicy {
         &self.policy
     }
-    pub(super) fn runtime_access(&self) -> &gripsack_process::RuntimeAccess {
+    pub(super) fn runtime_access(&self) -> &gripsack_host::process::RuntimeAccess {
         &self.runtime_access
     }
     pub(super) fn provenance(&self) -> &GitProvenance {
@@ -270,7 +271,7 @@ impl PreparedEvaluation {
             };
             eprintln!(
                 "grip: {migration} for {}",
-                gripsack_process::terminal::tame(
+                gripsack_host::process::terminal::tame(
                     self.sources.repository_identity().display().to_string()
                 )
             );
@@ -285,7 +286,7 @@ impl PreparedEvaluation {
         let prompt = match focus {
             Some(focus) => format!(
                 "approve these captured bytes and this policy? focus `{}` is display only; the whole bundle is approved [y/N] ",
-                gripsack_process::terminal::tame(focus.to_string())
+                gripsack_host::process::terminal::tame(focus.to_string())
             ),
             None => "approve these captured bytes and this policy? [y/N] ".to_string(),
         };
@@ -314,7 +315,7 @@ impl PreparedEvaluation {
             trust::inspect(&self.home, &self.sources, &self.policy).map_err(operational)?;
         println!(
             "repository: {}",
-            gripsack_process::terminal::tame(
+            gripsack_host::process::terminal::tame(
                 self.sources.repository_identity().display().to_string()
             )
         );
@@ -327,13 +328,13 @@ impl PreparedEvaluation {
         for file in self.runtime_access.files() {
             println!(
                 "runtime read file: {}",
-                gripsack_process::terminal::tame(file.display().to_string())
+                gripsack_host::process::terminal::tame(file.display().to_string())
             );
         }
         for directory in self.runtime_access.directories() {
             println!(
                 "interpreter/platform data root: {}",
-                gripsack_process::terminal::tame(directory.display().to_string())
+                gripsack_host::process::terminal::tame(directory.display().to_string())
             );
         }
         println!(
@@ -347,7 +348,7 @@ impl PreparedEvaluation {
         for excluded in self.sources.capture_policy().exclusions() {
             println!(
                 "capture exclude: {}",
-                gripsack_process::terminal::tame(excluded.clone())
+                gripsack_host::process::terminal::tame(excluded.clone())
             );
         }
         println!(
@@ -371,7 +372,7 @@ impl PreparedEvaluation {
                     println!(
                         "  {:?} {}",
                         change.change,
-                        gripsack_process::terminal::tame(change.path.clone())
+                        gripsack_host::process::terminal::tame(change.path.clone())
                     );
                 }
                 if inspection.changes.len() > 20 {
@@ -385,7 +386,7 @@ impl PreparedEvaluation {
                 // binds the exact whole bundle and policy digests printed here.
                 println!(
                     "focus: {} (display only; approval binds the whole bundle and policy)",
-                    gripsack_process::terminal::tame(focus.to_string())
+                    gripsack_host::process::terminal::tame(focus.to_string())
                 );
                 let (within, without) = self.partition_changes(&inspection.changes, focus);
                 if within.is_empty() {
@@ -395,7 +396,7 @@ impl PreparedEvaluation {
                     println!(
                         "  {:?} {}",
                         change.change,
-                        gripsack_process::terminal::tame(change.path.clone())
+                        gripsack_host::process::terminal::tame(change.path.clone())
                     );
                 }
                 if within.len() > 20 {
@@ -413,7 +414,7 @@ impl PreparedEvaluation {
         for excluded in self.sources.inventory().exclusions() {
             println!(
                 "  unavailable: {}",
-                gripsack_process::terminal::tame(excluded.clone())
+                gripsack_host::process::terminal::tame(excluded.clone())
             );
         }
         Ok(())
@@ -448,12 +449,14 @@ impl PreparedEvaluation {
 
 /// Deterministic digest of the elided listing so a focused review can still
 /// record what it did not read line by line.
-fn out_of_focus_digest(changes: &[&trust::InventoryChange]) -> gripsack_process::Sha256Digest {
+fn out_of_focus_digest(
+    changes: &[&trust::InventoryChange],
+) -> gripsack_host::process::Sha256Digest {
     let mut input = String::new();
     for change in changes {
         input.push_str(&format!("{:?} {}\n", change.change, change.path));
     }
-    gripsack_process::Sha256Digest::of(input.as_bytes())
+    gripsack_host::process::Sha256Digest::of(input.as_bytes())
 }
 
 impl ApprovedEvaluation<'_> {
@@ -469,7 +472,7 @@ impl ApprovedEvaluation<'_> {
     pub(super) fn policy(&self) -> &EvaluationPolicy {
         &self.prepared.policy
     }
-    pub(super) fn runtime_access(&self) -> &gripsack_process::RuntimeAccess {
+    pub(super) fn runtime_access(&self) -> &gripsack_host::process::RuntimeAccess {
         &self.prepared.runtime_access
     }
     pub(super) fn evaluator_cache(&self) -> &Path {
@@ -517,7 +520,7 @@ pub(super) fn reject_blanket_bypass() -> Result<(), ExitCode> {
 pub(super) fn operational(error: impl std::fmt::Display) -> ExitCode {
     eprintln!(
         "grip: {}",
-        gripsack_process::terminal::tame(error.to_string())
+        gripsack_host::process::terminal::tame(error.to_string())
     );
     ExitCode::FAILURE
 }

@@ -3,7 +3,7 @@
 //! run as the apply machine's directory sub-protocol (`apply::directories`).
 use super::NativeProfiles;
 use crate::ctx::ExecError;
-use gripsack_store as store;
+use gripsack_host::store;
 use std::{collections::BTreeMap, path::Path};
 
 impl NativeProfiles {
@@ -59,7 +59,7 @@ pub(super) fn preview_observation(
                 }
                 store::journal::directory::ParentInspection::Missing => return Ok(None),
                 store::journal::directory::ParentInspection::Blocked(blocker) => {
-                    let cap = gripsack_fs::open(home)?;
+                    let cap = gripsack_host::fs::open(home)?;
                     for (owner, state) in &previous.deployments {
                         if let Some(entry) =
                             state.entries.iter().find(|entry| entry.key() == blocker)
@@ -113,14 +113,14 @@ fn admit_directory_replacement(
     let scope = destination
         .strip_prefix(&receipt.destination)
         .map_err(|_| failure("directory replacement escaped its receipt"))?;
-    let home = gripsack_fs::open(home)?;
+    let home = gripsack_host::fs::open(home)?;
     for (relative, identity) in &receipt.directories {
         if !relative.starts_with(scope) {
             continue;
         }
         let (parent, name) = receipt.leaf_parent(&receipt.destination.join(relative))?;
         identity.verify(&parent, &name)?;
-        let directory = gripsack_fs::open_dir_nofollow(&parent, &name)?;
+        let directory = gripsack_host::fs::open_dir_nofollow(&parent, &name)?;
         for child in directory.read_dir(".")? {
             let child = relative.join(child?.file_name());
             if receipt.directories.contains_key(&child) {

@@ -9,14 +9,10 @@ repository.workspace = true
 [dependencies]
 gripsack-conda.workspace = true
 gripsack-config.workspace = true
-gripsack-fs.workspace = true
 gripsack-fetch.workspace = true
 gripsack-ir.workspace = true
-gripsack-store.workspace = true
-gripsack-policy.workspace = true
 gripsack-host.workspace = true
 gripsack-kernel.workspace = true
-gripsack-process.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -37,4 +33,11 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 base64 = "0.22"
 ed25519-dalek = { version = "2.2", features = ["zeroize"] }
 zeroize = "1"
+# Credential-free URI parsing for the trust audit and source-bundle file URLs
+# (moved from gripsack-store, plan/0056 §24).
+url = "2"
 
+[dev-dependencies]
+# Schema↔producer parity tests for the trust/evaluation/source-bundle wire
+# contracts (moved from gripsack-store with those codecs).
+jsonschema = { version = "0.55", default-features = false }

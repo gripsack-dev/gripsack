@@ -1,11 +1,11 @@
 use super::*;
 use crate::facts::HostFacts;
 use crate::semantic::{Difference, capture_evaluated, capture_ir, capture_profile, compare};
-use gripsack_ir::workspace_model::lock::{WORKSPACE_LOCK_VERSION, WorkspaceLock};
-use gripsack_store::{
+use crate::{
     source_bundle::{SourceBundle, SourceCapturePolicy},
     trust::evaluation::EvaluationId,
 };
+use gripsack_ir::workspace_model::lock::{WORKSPACE_LOCK_VERSION, WorkspaceLock};
 use serde_json::json;
 use std::{collections::BTreeMap, fs, path::PathBuf, sync::Arc};
 
@@ -120,7 +120,7 @@ fn trusted_observations_and_immutable_inputs_replace_only_available_unknowns() {
         fact(&captured, "input/selected", "/captured_bytes").knowledge,
         KnowledgeState::Known {
             digest: DefinitionDigest::parse(
-                &gripsack_process::Sha256Digest::of(b"selected input bytes").to_string()
+                &gripsack_host::process::Sha256Digest::of(b"selected input bytes").to_string()
             )
             .unwrap()
         }
@@ -289,7 +289,7 @@ fn source_and_span_changes_are_provenance_not_attempt_or_config_identity() {
     for forbidden in [
         "\"1234\"".to_owned(),
         digest(b"\"1234\"").to_string(),
-        gripsack_process::Sha256Digest::of(b"1234").to_string(),
+        gripsack_host::process::Sha256Digest::of(b"1234").to_string(),
         fixture.repo.to_string_lossy().into_owned(),
         "a".repeat(64),
     ] {

@@ -5,7 +5,6 @@ mod observations;
 mod tests;
 
 use crate::{Ctx, ExecError, LifecycleSession};
-use gripsack_store as store;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -31,7 +30,7 @@ struct Binding {
     home: PathBuf,
     source: String,
     policy: String,
-    evaluation: store::trust::evaluation::EvaluationId,
+    evaluation: crate::trust::evaluation::EvaluationId,
     host: String,
     selected: Vec<String>,
     frontend: PathBuf,
@@ -53,7 +52,7 @@ fn invalid(message: impl Into<String>) -> ExecError {
     io::Error::new(io::ErrorKind::InvalidData, message.into()).into()
 }
 fn digest(bytes: &[u8]) -> String {
-    gripsack_process::Sha256Digest::of(bytes).to_string()
+    gripsack_host::process::Sha256Digest::of(bytes).to_string()
 }
 fn require_equal<T: PartialEq>(before: &T, after: &T, subject: &str) -> Result<(), ExecError> {
     if before != after {
@@ -79,7 +78,7 @@ impl SavedPlan {
                 "saving requires explicit live planning with approved captured source",
             ));
         };
-        let receipt_record = store::trust::evaluation::read(&ctx.home, *receipt)?;
+        let receipt_record = crate::trust::evaluation::read(&ctx.home, *receipt)?;
         let mut ir = admit_ir(ir_json)?;
         crate::rebind_captured_ir(&mut ir, sources)?;
         let ir_json = serde_json::to_string(&ir)?;
@@ -97,11 +96,11 @@ impl SavedPlan {
             evaluation: *receipt,
             host: ctx.host.to_string(),
             frontend: sources
-                .original_root(store::source_bundle::SourceRootKind::Frontend)
+                .original_root(crate::source_bundle::SourceRootKind::Frontend)
                 .ok_or_else(|| invalid("captured frontend identity is missing"))?
                 .to_path_buf(),
             pinned_frontend: sources
-                .original_root(store::source_bundle::SourceRootKind::PinnedFrontend)
+                .original_root(crate::source_bundle::SourceRootKind::PinnedFrontend)
                 .map(Path::to_path_buf),
             exclusions: sources.capture_policy().exclusions().to_vec(),
             selected: ctx.only.clone(),
@@ -134,7 +133,7 @@ impl SavedPlan {
             return Err(invalid("saved plan exceeds byte limit"));
         }
         let plan = Self::decode(&bytes)?;
-        let directory = gripsack_fs::open(&plan.binding.home.join("saved-plans"))?;
+        let directory = gripsack_host::fs::open(&plan.binding.home.join("saved-plans"))?;
         let name = digest(&serde_json::to_vec(&plan.binding)?);
         let mut retained = Vec::new();
         directory
@@ -188,16 +187,19 @@ impl SavedPlan {
             .open(path)?;
         file.write_all(&bytes)?;
         file.sync_all()?;
-        let home = gripsack_fs::open_or_create(&self.binding.home)?;
+        let home = gripsack_host::fs::open_or_create(&self.binding.home)?;
         match home.create_dir("saved-plans") {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error.into()),
         }
-        let directory = gripsack_fs::open_dir_nofollow(&home, Path::new("saved-plans"))?;
-        use gripsack_fs::cap_std::fs::PermissionsExt;
-        directory.set_permissions(".", gripsack_fs::cap_std::fs::Permissions::from_mode(0o700))?;
-        gripsack_fs::atomic_write_with_mode(
+        let directory = gripsack_host::fs::open_dir_nofollow(&home, Path::new("saved-plans"))?;
+        use gripsack_host::fs::cap_std::fs::PermissionsExt;
+        directory.set_permissions(
+            ".",
+            gripsack_host::fs::cap_std::fs::Permissions::from_mode(0o700),
+        )?;
+        gripsack_host::fs::atomic_write_with_mode(
             &directory,
             Path::new(&digest(&binding_bytes)),
             &bytes,
@@ -218,7 +220,7 @@ impl SavedPlan {
     pub fn probes(&self) -> &BTreeMap<String, bool> {
         &self.binding.probes
     }
-    pub fn evaluation(&self) -> store::trust::evaluation::EvaluationId {
+    pub fn evaluation(&self) -> crate::trust::evaluation::EvaluationId {
         self.binding.evaluation
     }
     pub fn existing_runtime(home: &Path) -> io::Result<PathBuf> {
@@ -238,8 +240,8 @@ impl SavedPlan {
             "runtime home",
         )?;
         let policy =
-            store::source_bundle::SourceCapturePolicy::new(self.binding.exclusions.clone())?;
-        let sources = store::source_bundle::SourceBundle::capture(
+            crate::source_bundle::SourceCapturePolicy::new(self.binding.exclusions.clone())?;
+        let sources = crate::source_bundle::SourceBundle::capture(
             repo,
             &self.binding.frontend,
             self.binding.pinned_frontend.as_deref(),
@@ -290,9 +292,9 @@ impl SavedPlan {
             return Err(invalid("saved execution has no take-over grant"));
         }
         let ir = admit_ir(&self.binding.ir)?;
-        let receipt = store::trust::evaluation::read(&ctx.home, self.binding.evaluation)?;
-        if store::trust::status(&ctx.home, sources, &receipt.policy)?
-            != store::trust::ApprovalStatus::Approved
+        let receipt = crate::trust::evaluation::read(&ctx.home, self.binding.evaluation)?;
+        if crate::trust::status(&ctx.home, sources, &receipt.policy)?
+            != crate::trust::ApprovalStatus::Approved
         {
             return Err(invalid(
                 "stale saved plan: source approval is no longer current",

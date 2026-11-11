@@ -11,7 +11,7 @@ pub(crate) fn plan_remove_op(
     output: &str,
     entry: &store::DeployedEntry,
     store_path: &Path,
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
 ) -> Result<Option<Op>, ExecError> {
     let fail = |detail: String| ExecError::Step {
         output: output.to_string(),
@@ -19,7 +19,7 @@ pub(crate) fn plan_remove_op(
         detail,
     };
     let dest = entry.key();
-    let dest_dir = match gripsack_fs::open(dest.parent().unwrap_or(Path::new("."))) {
+    let dest_dir = match gripsack_host::fs::open(dest.parent().unwrap_or(Path::new("."))) {
         Ok(directory) => directory,
         Err(error)
             if matches!(

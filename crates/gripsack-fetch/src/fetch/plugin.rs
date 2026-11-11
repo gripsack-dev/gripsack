@@ -1,5 +1,5 @@
 //! The gripfetch NDJSON adapter. Process ownership, bounded framing and final
-//! cleanup belong to gripsack_process; payload identity belongs to the core.
+//! cleanup belong to gripsack_host::process; payload identity belongs to the core.
 
 mod capabilities;
 mod protocol;
@@ -7,8 +7,8 @@ mod protocol;
 mod tests;
 
 use crate::{FetchContext, FetchError, FetchLimits};
-use gripsack_process::{Control, Limits, StopReason};
-use gripsack_store::hash::PayloadHash;
+use gripsack_host::process::{Control, Limits, StopReason};
+use gripsack_host::store::hash::PayloadHash;
 use protocol::PluginMessage;
 use std::path::Path;
 use std::process::Command;
@@ -94,10 +94,10 @@ fn fetch_exchange(
     let mut diagnostics = Vec::new();
     let mut diagnostic_count = 0usize;
     let mut too_many_diagnostics = false;
-    let mut input = gripsack_process::InputBuffer::new(process_limits.input_bytes);
+    let mut input = gripsack_host::process::InputBuffer::new(process_limits.input_bytes);
     serde_json::to_writer(&mut input, request).map_err(|error| failure(name, error.to_string()))?;
     std::io::Write::write_all(&mut input, b"\n")?;
-    let outcome = gripsack_process::run(command, input.as_bytes(), process_limits, |line| {
+    let outcome = gripsack_host::process::run(command, input.as_bytes(), process_limits, |line| {
         let line = String::from_utf8_lossy(line);
         let Ok(message) = serde_json::from_str::<PluginMessage>(&line) else {
             return Control::Continue;
@@ -182,7 +182,7 @@ fn fetch_exchange(
         ));
     }
     crate::fetch::archive::validate_tree(dest, limits)?;
-    let tree = gripsack_store::canonical_tree_hash(dest)?;
+    let tree = gripsack_host::store::canonical_tree_hash(dest)?;
     let result = result.unwrap_or_default();
     if let Some(reported) = result.sha256
         && reported != tree.as_str()

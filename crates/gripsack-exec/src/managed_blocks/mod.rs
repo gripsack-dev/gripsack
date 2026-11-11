@@ -3,12 +3,12 @@
 //! decides when gripsack may touch it; this module supplies what the kernel
 //! cannot compute — the SHA-256 of the normalized content, the comment style
 //! of a destination — and turns kernel offsets into `&str` views for reports.
+use gripsack_host::store;
 use gripsack_kernel::Digest;
 use gripsack_kernel::block::{
     self, BlockDecision, BlockIntent, BlockRecord, Host, LineKind, Malformation, ScanFailure, Seen,
     SpliceRefusal, Style,
 };
-use gripsack_store as store;
 use std::ops::Range;
 use std::path::Path;
 

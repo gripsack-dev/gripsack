@@ -36,7 +36,9 @@ fn clone_or_update(url: &str) -> Result<PathBuf, ExitCode> {
         .map(|b| format!("{b:02x}"))
         .take(8)
         .collect();
-    let dir = gripsack_store::gripsack_home().join("repos").join(hash);
+    let dir = gripsack_host::store::gripsack_home()
+        .join("repos")
+        .join(hash);
     let ok = if dir.exists() {
         git(&[
             "-C",

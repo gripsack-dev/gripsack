@@ -1,7 +1,7 @@
 //! Undeclaring a migrated directory ends the original ownership epoch, not
 //! merely the child-file epoch. Restore the retained predecessor's user origin.
 use crate::ExecError;
-use gripsack_store as store;
+use gripsack_host::store;
 
 pub(crate) fn retire(
     journal: &store::journal::JournalRun<'_>,
@@ -23,7 +23,7 @@ pub(crate) fn retire(
             std::io::Error::other("directory retirement lost original ownership lineage")
         })?;
     if entry.preserved_drift
-        || entry.ownership.policy() != gripsack_store::Ownership::Owned
+        || entry.ownership.policy() != gripsack_host::store::Ownership::Owned
         || state.store_path.join(&entry.from) != receipt.predecessor_target
     {
         return Err(

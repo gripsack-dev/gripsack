@@ -109,7 +109,7 @@ pub(super) fn bind_admitted_program(
     let selected = SelectedProgram::select(
         options.environment,
         &command.path,
-        Some(gripsack_process::Sha256Digest::from_bytes(
+        Some(gripsack_host::process::Sha256Digest::from_bytes(
             *command.executable.bytes(),
         )),
         options.deadline,

@@ -26,7 +26,7 @@ pub fn save(
             return Err(std::io::Error::other("save outside the captured repository (or in an explicitly excluded directory), otherwise saving changes the reviewed source").into());
         }
         let ctx = Ctx {
-            home: gripsack_store::gripsack_home(),
+            home: gripsack_host::store::gripsack_home(),
             home_dir: Default::default(),
             repository: Repository::evaluated_with_inputs(
                 Arc::clone(&outcome.sources),
@@ -63,7 +63,7 @@ pub fn apply(repo: &Path, path: &Path, palette: Palette) -> ExitCode {
     let mut sink = DiagnosticSink::terminal(palette, repo);
     // Capture and authorize current source/policy, but do not evaluate it. The
     // captured IR is the sole declaration input to execution.
-    if let Err(error) = plan.preflight(repo, &gripsack_store::gripsack_home()) {
+    if let Err(error) = plan.preflight(repo, &gripsack_host::store::gripsack_home()) {
         return failure(error);
     }
     let prepared = match super::prepared::PreparedEvaluation::capture_existing(

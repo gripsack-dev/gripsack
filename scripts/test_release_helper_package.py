@@ -35,20 +35,20 @@ class HelperReuseTests(unittest.TestCase):
             (embedded / name).write_bytes(source.read_bytes())
         (self.root / "Cargo.toml").write_text(
             '[workspace.package]\nversion = "0.51.0"\n'
-            '[workspace.dependencies]\ngripsack-policy = { path = "crates/gripsack-policy" }\n'
+            '[workspace.dependencies]\ngripsack-host = { path = "crates/gripsack-host" }\n'
             'unused-core = { path = "crates/gripsack" }\n'
         )
         (self.here / "Cargo.toml").write_text(
             '[package]\nname = "helper"\nversion = "0.51.0"\n'
             '[dependencies]\ngripsack-fetch = { path = "../../crates/gripsack-fetch" }\n'
         )
-        for name in ("gripsack-fetch", "gripsack-policy", "gripsack"):
+        for name in ("gripsack-fetch", "gripsack-host", "gripsack"):
             directory = self.root / "crates" / name
             (directory / "src").mkdir(parents=True)
             (directory / "src/lib.rs").write_text(f"// {name}\n")
             manifest = f'[package]\nname = "{name}"\nversion.workspace = true\n'
             if name == "gripsack-fetch":
-                manifest += '[dependencies]\ngripsack-policy.workspace = true\n'
+                manifest += '[dependencies]\ngripsack-host.workspace = true\n'
             (directory / "Cargo.toml").write_text(manifest)
         (self.root / "crates/gripsack-fetch/src/conda_pins.rs").write_text("// independent pin\n")
         self.version = "0.51.0"
@@ -120,8 +120,8 @@ class HelperReuseTests(unittest.TestCase):
                 self.assertFalse(self.dist.exists())
 
     def test_changed_transitive_crate_inputs_require_remeasurement(self):
-        for relative in ("crates/gripsack-fetch/src/lib.rs", "crates/gripsack-policy/src/lib.rs",
-                         "crates/gripsack-policy/Cargo.toml", "Cargo.toml"):
+        for relative in ("crates/gripsack-fetch/src/lib.rs", "crates/gripsack-host/src/lib.rs",
+                         "crates/gripsack-host/Cargo.toml", "Cargo.toml"):
             with self.subTest(relative=relative):
                 path = self.root / relative
                 original = path.read_bytes()

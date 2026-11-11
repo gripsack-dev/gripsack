@@ -2,7 +2,7 @@
 use super::{eval_repo, validated_ir};
 use crate::render::{DiagnosticSink, Palette};
 use gripsack_exec::{Ctx, Repository, services};
-use gripsack_process::terminal::tame;
+use gripsack_host::process::terminal::tame;
 use std::{
     num::NonZeroU64,
     path::{Path, PathBuf},
@@ -67,7 +67,7 @@ fn deadline(seconds: u64) -> Result<Instant, String> {
 }
 fn recorded_context(repo: &Path, only: Vec<String>) -> Result<Ctx, String> {
     Ok(Ctx {
-        home: gripsack_store::gripsack_home(),
+        home: gripsack_host::store::gripsack_home(),
         home_dir: Default::default(),
         repository: Repository::direct(
             std::path::absolute(repo).map_err(|error| error.to_string())?,
@@ -123,7 +123,7 @@ pub fn up(args: UpArgs, palette: Palette) -> ExitCode {
         Err(code) => return code,
     };
     let ctx = Ctx {
-        home: gripsack_store::gripsack_home(),
+        home: gripsack_host::store::gripsack_home(),
         home_dir: Default::default(),
         repository: Repository::evaluated(Arc::clone(&outcome.sources), outcome.receipt),
         only: args.services,

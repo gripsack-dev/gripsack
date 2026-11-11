@@ -4,12 +4,12 @@ use crate::{
     ExecError,
     workspace::{artifact, realize::Realization},
 };
+use gripsack_host::process::{ProgramIdentity, Sha256Digest};
+use gripsack_host::store;
 use gripsack_ir::{
     Ir,
     workspace_model::{WorkspaceCalendar, identity::PackageDigest},
 };
-use gripsack_process::{ProgramIdentity, Sha256Digest};
-use gripsack_store as store;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -132,7 +132,7 @@ fn read_metadata(
     let name = path
         .file_name()
         .ok_or_else(|| invalid("capture has no basename"))?;
-    let mut file = gripsack_fs::open_file_nofollow(&directory, Path::new(name))?;
+    let mut file = gripsack_host::fs::open_file_nofollow(&directory, Path::new(name))?;
     if file.metadata()?.len() > MAX_CAPTURE_BYTES {
         return Err(invalid("scheduled capture exceeds byte budget"));
     }

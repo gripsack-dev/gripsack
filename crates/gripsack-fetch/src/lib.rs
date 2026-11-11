@@ -77,7 +77,7 @@ pub(crate) fn find_fetcher_on_path(
     }
     // the managed plugin store wins (declared in env.toml, provisioned
     // at eval — 0012 §move-2); PATH is the unmanaged fallback
-    let store = plugins::PluginStore::new(&gripsack_store::gripsack_home());
+    let store = plugins::PluginStore::new(&gripsack_host::store::gripsack_home());
     if let Some(bin) = store.current_binary(&exe) {
         return Some(bin);
     }

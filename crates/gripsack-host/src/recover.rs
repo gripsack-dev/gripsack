@@ -17,6 +17,7 @@
 //!
 //! The journal's wire format, the destination resolution and the legacy
 //! directory domain stay with the caller, behind [`RecoverHost`].
+#![forbid(unsafe_code)]
 use crate::storage::{Name, ObjectKind, Permissions, Storage};
 use gripsack_kernel::recover::{
     Command, Delegated, Effect, EntryFacts, Event, Failure, Ident, JournalFacts, JournalName, Live,

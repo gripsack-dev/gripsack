@@ -9,9 +9,10 @@
 //! the mutation. One planner makes the DECISIONS identical — the
 //! world is allowed to move.
 
+use crate::DeploymentEntry;
 use crate::report::Tone;
-use gripsack_store as store;
-use gripsack_store::{DeploymentEntry, Ownership};
+use gripsack_host::store;
+use gripsack_host::store::Ownership;
 use std::path::{Path, PathBuf};
 use store::journal::{Intended, ObjectIdentity};
 

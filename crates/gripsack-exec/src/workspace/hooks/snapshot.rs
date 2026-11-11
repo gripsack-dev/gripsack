@@ -5,10 +5,10 @@ use crate::workspace::{
     consumer::{self, admit},
     realize::Realization,
 };
+use gripsack_host::process::ProgramIdentity;
 use gripsack_ir::workspace_model::{
     WorkspaceArg, WorkspaceCommand, WorkspacePath, identity::PackageDigest,
 };
-use gripsack_process::ProgramIdentity;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, io::Read, path::PathBuf};
 
@@ -35,7 +35,8 @@ pub(super) fn capture(
     host: &admit::NativeContext<'_>,
     options: &crate::workspace::BuildOptions<'_>,
 ) -> Result<Context, ExecError> {
-    let base = gripsack_process::EnvironmentOverlay::admit(Vec::new(), Vec::new(), Vec::new())?;
+    let base =
+        gripsack_host::process::EnvironmentOverlay::admit(Vec::new(), Vec::new(), Vec::new())?;
     let prepared = consumer::command::prepare(
         command,
         None,
@@ -201,7 +202,7 @@ pub(in crate::workspace) fn read(
     let name = path
         .file_name()
         .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?;
-    let mut file = gripsack_fs::open_file_nofollow(&directory, Path::new(name))?;
+    let mut file = gripsack_host::fs::open_file_nofollow(&directory, Path::new(name))?;
     if file.metadata()?.len() > MAX_CONTEXT_BYTES {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,

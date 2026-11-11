@@ -44,8 +44,8 @@ pub(crate) mod update;
 use crate::ctx::{Ctx, ExecError};
 use crate::deploy::{DeploymentInput, deploy_entry};
 use crate::report::{StepReport, Tone};
+use gripsack_host::store;
 use gripsack_ir::{Diagnostic, Span, codes};
-use gripsack_store as store;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -101,7 +101,7 @@ impl NativeProfiles {
         }
         let reporter = ctx.reporter();
         reporter.phase(crate::progress::Phase::Verify);
-        let environment = gripsack_process::OperatorEnvironment::capture()?;
+        let environment = gripsack_host::process::OperatorEnvironment::capture()?;
         for profile in self.profiles.values() {
             if profile.pre_flip_checks.is_empty() {
                 continue;
@@ -181,7 +181,9 @@ impl NativeProfiles {
                 profile
                     .intents
                     .iter()
-                    .filter(|intent| intent.trigger != gripsack_store::ActivationTrigger::OnRemove)
+                    .filter(|intent| {
+                        intent.trigger != gripsack_host::store::ActivationTrigger::OnRemove
+                    })
                     .map(move |intent| store::activation::PendingIntent {
                         output: name.clone(),
                         action: intent.action.clone(),

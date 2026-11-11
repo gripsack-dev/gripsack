@@ -3,7 +3,7 @@
 //! interpretation from a matching filename alone.
 use super::{artifact, image};
 use crate::ExecError;
-use gripsack_store as store;
+use gripsack_host::store;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -33,7 +33,7 @@ pub(super) struct Expectations<'a> {
     roots: &'a BTreeMap<PathBuf, RootAuthority>,
     native: BTreeSet<&'a Path>,
     trees: BTreeMap<(&'a Path, TreeLocation), store::hash::PayloadHash>,
-    archives: BTreeMap<&'a Path, gripsack_process::Sha256Digest>,
+    archives: BTreeMap<&'a Path, gripsack_host::process::Sha256Digest>,
 }
 
 impl<'a> Expectations<'a> {
@@ -55,7 +55,7 @@ impl<'a> Expectations<'a> {
     }
 
     pub fn archive(&mut self, digest: &str) -> Result<(), ExecError> {
-        let expected = gripsack_process::Sha256Digest::parse(digest)?;
+        let expected = gripsack_host::process::Sha256Digest::parse(digest)?;
         let path = store::content_path(self.home, "conda-archive", digest);
         let root = self.admit_reference(&path)?;
         if let Some(previous) = self.archives.get(root) {
@@ -326,19 +326,24 @@ fn observe_tree(
         .ok_or_else(|| failure("retained native store object is missing"))?;
     let directory = match location {
         TreeLocation::Root => directory,
-        TreeLocation::Payload => gripsack_fs::open_dir_nofollow(&directory, Path::new("payload"))?,
+        TreeLocation::Payload => {
+            gripsack_host::fs::open_dir_nofollow(&directory, Path::new("payload"))?
+        }
     };
     Ok(store::hash::canonical_tree_hash_in(&directory)?)
 }
 
-fn archive_digest(home: &Path, root: &Path) -> Result<gripsack_process::Sha256Digest, ExecError> {
+fn archive_digest(
+    home: &Path,
+    root: &Path,
+) -> Result<gripsack_host::process::Sha256Digest, ExecError> {
     let directory = artifact::retained_directory(home, root)?
         .ok_or_else(|| failure("retained Conda archive object is missing"))?;
     let name = Path::new("archive");
     if !directory.symlink_metadata(name)?.is_file() {
         return Err(failure("retained Conda archive is not a regular file"));
     }
-    let mut file = gripsack_fs::open_file_nofollow(&directory, name)?;
+    let mut file = gripsack_host::fs::open_file_nofollow(&directory, name)?;
     let mut digest = Sha256::new();
     let mut buffer = [0; 64 * 1024];
     loop {
@@ -349,7 +354,7 @@ fn archive_digest(home: &Path, root: &Path) -> Result<gripsack_process::Sha256Di
             Err(error) => return Err(error.into()),
         }
     }
-    Ok(gripsack_process::Sha256Digest::from_bytes(
+    Ok(gripsack_host::process::Sha256Digest::from_bytes(
         digest.finalize().into(),
     ))
 }

@@ -1,6 +1,6 @@
 //! Strict release selection and bounded executable version evidence.
 
-use gripsack_process::{Control, Limits, StopReason};
+use gripsack_host::process::{Control, Limits, StopReason};
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -49,14 +49,14 @@ pub(super) fn version(executable: &Path) -> Result<String, String> {
     let limits = Limits {
         timeout: Duration::from_secs(10),
         operation_deadline: None,
-        input_bytes: gripsack_process::InputByteLimit::new(0),
-        line_bytes: gripsack_process::FrameByteLimit::new(1024),
-        stdout_bytes: gripsack_process::StdoutByteLimit::new(4096),
-        stderr_bytes: gripsack_process::StderrByteLimit::new(4096),
-        retained_stderr_bytes: gripsack_process::RetainedStderrLimit::new(1024),
+        input_bytes: gripsack_host::process::InputByteLimit::new(0),
+        line_bytes: gripsack_host::process::FrameByteLimit::new(1024),
+        stdout_bytes: gripsack_host::process::StdoutByteLimit::new(4096),
+        stderr_bytes: gripsack_host::process::StderrByteLimit::new(4096),
+        retained_stderr_bytes: gripsack_host::process::RetainedStderrLimit::new(1024),
     };
     let mut lines = Vec::new();
-    let outcome = gripsack_process::run(&mut command, &[], limits, |line| {
+    let outcome = gripsack_host::process::run(&mut command, &[], limits, |line| {
         lines.push(line.to_vec());
         Control::Continue
     })

@@ -1,6 +1,6 @@
 //! Bind the collected typed owner/target without trusting a candidate map.
 use super::*;
-use gripsack_policy::graph::{BoundOutputIndex, bind_output_index};
+use crate::workspace_model::graph::role::{BoundOutputIndex, bind_output_index};
 
 pub fn output_kind(output: &WorkspaceOutput) -> &'static str {
     match output {

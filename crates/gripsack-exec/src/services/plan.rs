@@ -3,11 +3,11 @@ use super::{
     ServiceError, failure,
     state::{MAX_SERVICES, ServiceState},
 };
+use gripsack_host::process::Sha256Digest;
 use gripsack_ir::{
     Ir,
     workspace_model::{ServiceEnvValue, ServiceHealth, ServiceOutput, WorkspaceOutput},
 };
-use gripsack_process::Sha256Digest;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 

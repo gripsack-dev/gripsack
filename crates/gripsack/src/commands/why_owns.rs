@@ -4,7 +4,7 @@ use std::process::ExitCode;
 /// grip why-owns <path>: all retained ownership units in the
 /// current generation, including independent blocks sharing one file.
 pub fn why_owns(path: &str, palette: Palette) -> ExitCode {
-    let home = gripsack_store::gripsack_home();
+    let home = gripsack_host::store::gripsack_home();
     match gripsack_exec::why_owns(&home, path) {
         Ok(owners) if owners.is_empty() => {
             eprintln!("grip: no profile owns {path} in the current generation");

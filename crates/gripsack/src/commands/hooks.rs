@@ -1,7 +1,7 @@
 //! Inspect durable hook identity/outcomes without replay or repository eval.
 mod fixtures;
 use crate::render::Palette;
-use gripsack_store as store;
+use gripsack_host::store;
 use serde::{
     Serialize, Serializer,
     ser::{Error, SerializeSeq, SerializeStruct},
@@ -77,7 +77,7 @@ pub fn hooks(command: HooksCommand, palette: Palette) -> ExitCode {
         Err(error) => {
             eprintln!(
                 "{}",
-                palette.error(&gripsack_process::terminal::tame(format!(
+                palette.error(&gripsack_host::process::terminal::tame(format!(
                     "hook command failed: {error}"
                 )))
             );
@@ -87,7 +87,7 @@ pub fn hooks(command: HooksCommand, palette: Palette) -> ExitCode {
 }
 
 fn list(json: bool) -> io::Result<()> {
-    let home = match gripsack_fs::open(&store::gripsack_home()) {
+    let home = match gripsack_host::fs::open(&store::gripsack_home()) {
         Ok(home) => Some(home),
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => return Err(error),
@@ -117,7 +117,7 @@ fn list(json: bool) -> io::Result<()> {
     }
 }
 
-struct Snapshot<'a>(Option<&'a gripsack_fs::Dir>);
+struct Snapshot<'a>(Option<&'a gripsack_host::fs::Dir>);
 impl Serialize for Snapshot<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut snapshot = serializer.serialize_struct("Hooks", 4)?;
@@ -128,7 +128,7 @@ impl Serialize for Snapshot<'_> {
         snapshot.end()
     }
 }
-struct Rows<'a>(Option<&'a gripsack_fs::Dir>);
+struct Rows<'a>(Option<&'a gripsack_host::fs::Dir>);
 impl Serialize for Rows<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut rows = serializer.serialize_seq(None)?;

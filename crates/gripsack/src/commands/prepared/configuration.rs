@@ -1,8 +1,8 @@
 //! Bootstrap selection is data only, bounded and checked against copied bytes.
 use super::{map_diagnostics, operational};
 use crate::render::DiagnosticSink;
-use gripsack_process::Sha256Digest;
-use gripsack_store::source_bundle::SourceBundle;
+use gripsack_exec::source_bundle::SourceBundle;
+use gripsack_host::process::Sha256Digest;
 use std::{
     io::{self, Read},
     path::Path,
@@ -23,7 +23,7 @@ impl Configuration {
         sources: Option<&SourceBundle>,
         sink: &mut DiagnosticSink,
     ) -> Result<Self, ExitCode> {
-        let directory = gripsack_fs::open(repo).map_err(operational)?;
+        let directory = gripsack_host::fs::open(repo).map_err(operational)?;
         let metadata = match directory.symlink_metadata("env.toml") {
             Ok(metadata) => Some(metadata),
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
@@ -35,7 +35,7 @@ impl Configuration {
                     "env.toml must be a regular non-symlink file within its 1 MiB bootstrap budget",
                 )));
             }
-            let file = gripsack_fs::open_file_nofollow(&directory, Path::new("env.toml"))
+            let file = gripsack_host::fs::open_file_nofollow(&directory, Path::new("env.toml"))
                 .map_err(operational)?;
             let mut bytes = Vec::new();
             file.take(MAX_CONFIGURATION_BYTES + 1)
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn changed_bootstrap_configuration_cannot_authorize_the_captured_tree() {
-        use gripsack_store::source_bundle::SourceCapturePolicy;
+        use gripsack_exec::source_bundle::SourceCapturePolicy;
         let temporary = tempfile::tempdir().unwrap();
         let repo = temporary.path().join("repo");
         let frontend = temporary.path().join("frontend");

@@ -17,6 +17,7 @@ use super::{DestMap, by_destination, preflight};
 use crate::apply::Dests;
 use crate::ctx::ExecError;
 use crate::deploy::Observation;
+use gripsack_host::store;
 use gripsack_kernel::directory::{Action, DirectoryFacts};
 use gripsack_kernel::ownership::{Recorded, Refusal as UnitRefusal};
 use gripsack_kernel::recover::{Failure, Ident, Intended, Live, Route};
@@ -25,7 +26,6 @@ use gripsack_kernel::rollback::{
     UnitFacts, When, rollback_step,
 };
 use gripsack_kernel::selection::SelectionIdentity;
-use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use store::hash::kernel;
@@ -112,7 +112,7 @@ pub(super) fn until_flip(
             })?;
         if state.store_path.join(&entry.from) != transition.predecessor_target
             || entry.preserved_drift
-            || entry.ownership.policy() != gripsack_store::Ownership::Owned
+            || entry.ownership.policy() != gripsack_host::store::Ownership::Owned
         {
             return Err(std::io::Error::other(
                 "directory predecessor lineage no longer matches receipt",
@@ -366,7 +366,9 @@ fn plan_items<'m>(
 }
 
 fn is_merge(side: Option<Side<'_>>) -> bool {
-    side.is_some_and(|(_, entry, _)| entry.ownership.policy() == gripsack_store::Ownership::Merge)
+    side.is_some_and(|(_, entry, _)| {
+        entry.ownership.policy() == gripsack_host::store::Ownership::Merge
+    })
 }
 
 /// Every destination either generation deploys, deepest first, routed to
@@ -384,7 +386,7 @@ fn plan_units<'m>(current_by_dest: &DestMap<'m>, target_by_dest: &DestMap<'m>) -
         if let Some(alias) = current_by_dest
             .iter()
             .find_map(|(other, (name, current, _))| {
-                let block = (current.ownership.policy() == gripsack_store::Ownership::Merge)
+                let block = (current.ownership.policy() == gripsack_host::store::Ownership::Merge)
                     .then(|| current.merge_owner(name));
                 (!target_by_dest.contains_key(other)
                     && entry.ownership.policy() == current.ownership.policy()
@@ -447,7 +449,7 @@ fn observe(dest: &Path) -> Result<Option<Option<Observation>>, ExecError> {
 fn unit_facts(
     unit: &Unit<'_>,
     dests: &mut Dests,
-    home: &gripsack_fs::Dir,
+    home: &gripsack_host::fs::Dir,
     home_path: &Path,
 ) -> Result<(UnitFacts, Option<Option<Observation>>), ExecError> {
     let dest = unit.key.destination();
@@ -519,7 +521,7 @@ fn recorded_identity(
     store_path: &Path,
     seen: Option<&Observation>,
 ) -> Result<Ident, ExecError> {
-    if entry.ownership.policy() == gripsack_store::Ownership::Owned {
+    if entry.ownership.policy() == gripsack_host::store::Ownership::Owned {
         return Ok(kernel::link(
             store_path.join(&entry.from).as_os_str().as_encoded_bytes(),
         ));
@@ -541,7 +543,10 @@ fn recorded_identity(
 
 /// What releasing a destination brings back: the object the ownership epoch
 /// recorded before gripsack took it over, or nothing (apply's prune intent).
-fn release(current: Option<Side<'_>>, home: &gripsack_fs::Dir) -> Result<Intended, ExecError> {
+fn release(
+    current: Option<Side<'_>>,
+    home: &gripsack_host::fs::Dir,
+) -> Result<Intended, ExecError> {
     let Some((_, entry, _)) = current else {
         return Ok(Intended::Removed);
     };
@@ -711,7 +716,7 @@ fn settle_sides(
     let home_path = journal.home_path();
     let unrestorable = |entry: &store::DeployedEntry| {
         Delegation::Unrestorable(match entry.ownership.policy() {
-            gripsack_store::Ownership::Merge => format!(
+            gripsack_host::store::Ownership::Merge => format!(
                 "cannot restore the managed block in {}: the file is no longer text a block can \
                  be spliced into (or its block payload is gone)",
                 dest.destination().display()

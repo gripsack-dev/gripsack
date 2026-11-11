@@ -235,7 +235,7 @@ fn preauth(manifest: &[u8]) -> Vec<u8> {
     bytes
 }
 pub(crate) fn digest(bytes: &[u8]) -> String {
-    gripsack_process::Sha256Digest::of(bytes).to_string()
+    gripsack_host::process::Sha256Digest::of(bytes).to_string()
 }
 fn read_bounded(path: &Path, bound: usize, private: bool) -> Result<Vec<u8>, TrustError> {
     let file = OpenOptions::new()

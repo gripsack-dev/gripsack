@@ -99,20 +99,20 @@ pub fn pack(
         // Generic local acquisition creates directories with its safe defaults.
         // Preserve explicitly selected publisher directory modes in this
         // private snapshot before deriving the signed inventory/tree identity.
-        let source_directory = gripsack_fs::open(&input)?;
-        let captured_directory = gripsack_fs::open(&tree)?;
+        let source_directory = gripsack_host::fs::open(&input)?;
+        let captured_directory = gripsack_host::fs::open(&tree)?;
         for entry in inventory.iter_mut().rev() {
             if matches!(entry.kind, EntryKind::Directory) {
                 let relative = Path::new(&entry.path);
-                let original =
-                    gripsack_fs::open_dir_nofollow(&source_directory, relative)?.into_std_file();
+                let original = gripsack_host::fs::open_dir_nofollow(&source_directory, relative)?
+                    .into_std_file();
                 entry.mode = original.metadata()?.permissions().mode() & 0o7777;
                 if entry.mode & !0o777 != 0 || entry.mode & 0o022 != 0 {
                     return Err(format::failure(
                         "portable directories reject privileged or group/world-writable modes",
                     ));
                 }
-                gripsack_fs::open_dir_nofollow(&captured_directory, relative)?
+                gripsack_host::fs::open_dir_nofollow(&captured_directory, relative)?
                     .into_std_file()
                     .set_permissions(std::fs::Permissions::from_mode(entry.mode))?;
             }
@@ -172,7 +172,7 @@ pub fn pack(
             size,
             media_type: format::TREE_MEDIA_TYPE.into(),
         });
-        component.tree = Some(gripsack_store::canonical_tree_hash(&tree)?.to_string());
+        component.tree = Some(gripsack_host::store::canonical_tree_hash(&tree)?.to_string());
         component.inventory = inventory;
     }
     let bytes = manifest.encode()?;
@@ -192,7 +192,7 @@ pub fn pack(
     super::closure::validate_directory(staging.path())?;
     // Output is user-selected transfer material, not an admitted local receipt.
     // A subsequent import still performs all trust and runtime admission.
-    gripsack_fs::publish_dir_at(staging.path(), output)?;
+    gripsack_host::fs::publish_dir_at(staging.path(), output)?;
     manifest.digest()
 }
 pub(super) fn inventory_tree(
@@ -270,7 +270,7 @@ pub(super) fn hash_file(path: &Path) -> Result<(String, u64), ExecError> {
         digest.update(&buffer[..count]);
     }
     Ok((
-        gripsack_process::Sha256Digest::from_bytes(digest.finalize().into()).to_string(),
+        gripsack_host::process::Sha256Digest::from_bytes(digest.finalize().into()).to_string(),
         size,
     ))
 }
@@ -352,7 +352,7 @@ fn merge_manifest(
     staging: &Path,
     total: &mut usize,
 ) -> Result<(), ExecError> {
-    let directory = gripsack_fs::open(source)?;
+    let directory = gripsack_host::fs::open(source)?;
     let destination = staging.join("manifests").join(identity);
     let exists = destination.exists();
     if !exists {
@@ -371,7 +371,7 @@ fn merge_manifest(
     ] {
         let bytes = super::receipt::read(&directory, Path::new(name), limit as u64)?;
         if exists {
-            let prior = gripsack_fs::open(&destination)?;
+            let prior = gripsack_host::fs::open(&destination)?;
             if super::receipt::read(&prior, Path::new(name), limit as u64)? != bytes {
                 return Err(format::failure(
                     "conflicting exact metadata for one external manifest",

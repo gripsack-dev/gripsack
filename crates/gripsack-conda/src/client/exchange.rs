@@ -1,9 +1,9 @@
 //! One protocol transaction through the common native lifecycle. No inherited
 //! stderr, unbounded blocking pipe reads, detached child, or background reaper.
+use super::conda_admission::{self, NativeTerminal, OperationContext, ResponseBinding};
 use super::{CondaError, CondaHelper};
 use crate::protocol::{self, Request, Response};
-use gripsack_policy::conda_admission::{self, NativeTerminal, OperationContext, ResponseBinding};
-use gripsack_process::{
+use gripsack_host::process::{
     Control, InputByteLimit, Invocation, Limits, NativeInput, ProcessDisposition, ProcessRole,
     StdoutByteLimit,
 };

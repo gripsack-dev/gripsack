@@ -14,9 +14,9 @@ mod notices;
 use super::format::{BlobDescriptor, MAX_ENTRIES, MAX_PAYLOAD_BYTES};
 use crate::workspace::conda::{self, CondaMaterialization};
 use crate::{Ctx, ExecError, LifecycleSession};
+use gripsack_host::process::Sha256Digest;
 use gripsack_ir::workspace::{PlatformAbi, PlatformArch, PlatformOs, WorkspacePlatform};
 use gripsack_ir::workspace_model::lock::LockedCondaEnvironment;
-use gripsack_process::Sha256Digest;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -388,7 +388,7 @@ fn verify_inputs(
 }
 
 fn helper_object(home: &Path, digest: &str) -> PathBuf {
-    gripsack_store::content_path(home, HELPER_NAMESPACE, digest)
+    gripsack_host::store::content_path(home, HELPER_NAMESPACE, digest)
 }
 
 pub(super) type PreparedConda = BTreeMap<String, conda::AdmittedArchives>;
@@ -468,7 +468,7 @@ pub(super) fn import(
     )?;
     let notice_roots = notices::retain(ctx, output, &record.helper_notices, &verified.notices)?;
     let deadline = Instant::now()
-        .checked_add(gripsack_process::Limits::default().timeout)
+        .checked_add(gripsack_host::process::Limits::default().timeout)
         .ok_or_else(|| failure(output, "Conda helper deadline overflow"))?;
     let helper = gripsack_conda::CondaHelper::select(
         &object.join("gripsack-conda"),

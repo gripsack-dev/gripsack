@@ -2,6 +2,7 @@
 //! logical roots. Executable text, literal argv/env, templates and plugin data
 //! are opaque bytes and must never undergo diagnostic string substitution.
 use crate::ExecError;
+use crate::source_bundle::{SourceBundle, SourceRootKind};
 use gripsack_ir::{
     FetchSpec, Ir, Span,
     workspace::WorkspaceDestination,
@@ -10,7 +11,6 @@ use gripsack_ir::{
         WorkspacePath, WorkspaceProducer, WorkspaceSource, WorkspaceStep,
     },
 };
-use gripsack_store::source_bundle::{SourceBundle, SourceRootKind};
 use std::path::Path;
 
 pub fn rebind_captured_ir(ir: &mut Ir, sources: &SourceBundle) -> Result<(), ExecError> {

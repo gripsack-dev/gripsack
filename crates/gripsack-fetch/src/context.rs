@@ -33,7 +33,7 @@ impl FetchContext {
     /// Missing proxy/CA settings never fall back to a later ambient environment.
     pub fn from_operator(
         limits: FetchLimits,
-        environment: &gripsack_process::OperatorEnvironment,
+        environment: &gripsack_host::process::OperatorEnvironment,
     ) -> Self {
         Self::with_build_env(limits, BuildProcessEnv::from_operator(environment))
     }
@@ -327,7 +327,7 @@ mod tool_tests {
         (file, url)
     }
     fn context(limit: u64) -> FetchContext {
-        let operator = gripsack_process::OperatorEnvironment::admit([]).unwrap();
+        let operator = gripsack_host::process::OperatorEnvironment::admit([]).unwrap();
         FetchContext::from_operator(
             FetchLimits {
                 download_bytes: NonZeroU64::new(limit).unwrap(),

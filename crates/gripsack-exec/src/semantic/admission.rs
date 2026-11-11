@@ -139,7 +139,7 @@ pub(super) fn admit(mut document: SnapshotDocument) -> Result<SemanticSnapshot, 
     if document
         .generation
         .as_ref()
-        .is_some_and(|id| id.parse::<gripsack_store::GenerationId>().is_err())
+        .is_some_and(|id| id.parse::<gripsack_host::store::GenerationId>().is_err())
     {
         return Err(SnapshotError::Invalid("generation identity"));
     }

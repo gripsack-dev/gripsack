@@ -7,6 +7,7 @@ pub(super) mod integrity;
 #[cfg(test)]
 #[path = "artifact/runtime_tests.rs"]
 mod runtime_tests;
+use gripsack_host::store;
 use gripsack_ir::{
     workspace::{RecipeOutputKind, WorkspacePlatform},
     workspace_model::{
@@ -16,7 +17,6 @@ use gripsack_ir::{
         lock::ResolvedPinFields,
     },
 };
-use gripsack_store as store;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -161,7 +161,7 @@ struct PackageReceipt {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     host_runtime: Option<HostRuntimeRequirements>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    runtime_receipts: BTreeMap<PackageDigest, gripsack_process::Sha256Digest>,
+    runtime_receipts: BTreeMap<PackageDigest, gripsack_host::process::Sha256Digest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     archive_root: Option<ArchiveRootPolicy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -419,7 +419,7 @@ fn runtime_receipts(
     home: &Path,
     declaration: &PackageOutput,
     runtime: &[Arc<Package>],
-) -> Result<BTreeMap<PackageDigest, gripsack_process::Sha256Digest>, ExecError> {
+) -> Result<BTreeMap<PackageDigest, gripsack_host::process::Sha256Digest>, ExecError> {
     let mut receipts = BTreeMap::new();
     if declaration.host_runtime.is_some() || runtime.iter().any(|package| package.host_dependent())
     {
@@ -450,16 +450,16 @@ fn inspect_selected_commands(
     payload: &Path,
 ) -> Result<BTreeMap<String, ProvidedCommand>, ExecError> {
     let canonical_payload = payload.canonicalize()?;
-    let directory = gripsack_fs::open(&canonical_payload)?;
+    let directory = gripsack_host::fs::open(&canonical_payload)?;
     let mut commands = BTreeMap::new();
     for (name, selector) in &declaration.commands {
         let path = payload.join(selector).canonicalize()?;
         let relative = path
             .strip_prefix(&canonical_payload)
             .map_err(|_| failure("exported command escapes its admitted payload"))?;
-        let mut file = gripsack_fs::open_file_nofollow(&directory, relative)?;
+        let mut file = gripsack_host::fs::open_file_nofollow(&directory, relative)?;
         let metadata = file.metadata()?;
-        use gripsack_fs::cap_std::fs::PermissionsExt;
+        use gripsack_host::fs::cap_std::fs::PermissionsExt;
         if metadata.permissions().mode() & 0o111 == 0 {
             return Err(failure(format!(
                 "exported command {name:?} is not executable"
@@ -504,19 +504,19 @@ pub(super) fn read_receipt<T: serde::de::DeserializeOwned>(
 pub(super) fn retained_directory(
     home: &Path,
     root: &Path,
-) -> Result<Option<gripsack_fs::Dir>, ExecError> {
+) -> Result<Option<gripsack_host::fs::Dir>, ExecError> {
     store::paths::validate_store_root(home, root)?;
-    let home = match gripsack_fs::open(home) {
+    let home = match gripsack_host::fs::open(home) {
         Ok(home) => home,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };
-    let parent = match gripsack_fs::open_dir_nofollow(&home, Path::new(store::STORE_DIR)) {
+    let parent = match gripsack_host::fs::open_dir_nofollow(&home, Path::new(store::STORE_DIR)) {
         Ok(parent) => parent,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };
-    let directory = match gripsack_fs::open_dir_nofollow(
+    let directory = match gripsack_host::fs::open_dir_nofollow(
         &parent,
         Path::new(
             root.file_name()
@@ -538,7 +538,7 @@ pub(super) fn read_receipt_readonly<T: serde::de::DeserializeOwned>(
     let Some(directory) = retained_directory(home, root)? else {
         return Ok(None);
     };
-    let file = gripsack_fs::open_file_nofollow(&directory, Path::new(name))?;
+    let file = gripsack_host::fs::open_file_nofollow(&directory, Path::new(name))?;
     if file.metadata()?.len() > MAX_RECEIPT_BYTES {
         return Err(failure("artifact receipt exceeds its byte bound"));
     }
@@ -558,7 +558,11 @@ pub(super) fn write_receipt(
     if bytes.len() as u64 > MAX_RECEIPT_BYTES {
         return Err(failure("artifact receipt exceeds its byte bound"));
     }
-    gripsack_fs::atomic_write(&gripsack_fs::open(directory)?, Path::new(name), &bytes)?;
+    gripsack_host::fs::atomic_write(
+        &gripsack_host::fs::open(directory)?,
+        Path::new(name),
+        &bytes,
+    )?;
     Ok(())
 }
 fn failure(detail: impl Into<String>) -> ExecError {

@@ -17,8 +17,8 @@ fn fixture(root: &Path, executable: &Path) -> Ir {
 }
 fn schedule() -> task_report::ScheduledInvocation {
     task_report::ScheduledInvocation {
-        job: gripsack_store::jobs::JobId::parse(&"a".repeat(64)).unwrap(),
-        revision: gripsack_store::jobs::JobRevision::parse(&"b".repeat(64)).unwrap(),
+        job: gripsack_host::store::jobs::JobId::parse(&"a".repeat(64)).unwrap(),
+        revision: gripsack_host::store::jobs::JobRevision::parse(&"b".repeat(64)).unwrap(),
     }
 }
 
@@ -28,7 +28,7 @@ fn captured_task_executes_each_occasion_without_reading_checkout_source() {
     let home = temporary.path().join("home");
     let ctx = capture::context(&home, temporary.path(), "once").unwrap();
     let ir = fixture(temporary.path(), Path::new("/bin/echo"));
-    let environment = gripsack_process::OperatorEnvironment::capture().unwrap();
+    let environment = gripsack_host::process::OperatorEnvironment::capture().unwrap();
     let options = BuildOptions {
         environment: &environment,
         deadline: Instant::now() + std::time::Duration::from_secs(30),
@@ -78,7 +78,7 @@ fn changed_external_executable_blocks_before_effects_and_releases_unlaunched_roo
     let home = temporary.path().join("home");
     let ctx = capture::context(&home, temporary.path(), "once").unwrap();
     let ir = fixture(temporary.path(), &executable);
-    let environment = gripsack_process::OperatorEnvironment::capture().unwrap();
+    let environment = gripsack_host::process::OperatorEnvironment::capture().unwrap();
     let options = BuildOptions {
         environment: &environment,
         deadline: Instant::now() + std::time::Duration::from_secs(30),

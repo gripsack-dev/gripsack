@@ -1,7 +1,7 @@
 use super::{eval_repo, validated_ir};
 use crate::render::{DiagnosticSink, Palette};
 use gripsack_exec::{BuildOptions, Ctx, ExecError, Repository};
-use gripsack_process::{OperatorEnvironment, terminal::tame};
+use gripsack_host::process::{OperatorEnvironment, terminal::tame};
 use std::{
     num::NonZeroU64,
     path::Path,
@@ -50,7 +50,7 @@ fn build_inner(repo: &Path, args: BuildArgs, sink: &mut DiagnosticSink) -> Resul
     let ir = validated_ir(&outcome, sink)?;
     let progress_sources = Arc::clone(&outcome.sources);
     let ctx = Ctx {
-        home: gripsack_store::gripsack_home(),
+        home: gripsack_host::store::gripsack_home(),
         home_dir: Default::default(),
         repository: Repository::evaluated(Arc::clone(&outcome.sources), outcome.receipt),
         only: args.outputs,

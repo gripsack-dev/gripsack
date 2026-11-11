@@ -1,13 +1,14 @@
 //! One prepared file through the shared ownership planner and journal.
 use super::{dest_capability, dest_resolves_into, observe};
+use crate::DeploymentEntry;
 use crate::apply::{Machine, Verdict, agrees, refusal_error};
 use crate::ctx::{Ctx, ExecError};
 use crate::report::Tone;
+use gripsack_host::store;
+use gripsack_host::store::Ownership;
 use gripsack_kernel::apply::{OnDrift, Slot, UnitFacts, Want};
 use gripsack_kernel::ownership::Recorded;
 use gripsack_kernel::recover::{Failure, Ident, Route};
-use gripsack_store as store;
-use gripsack_store::{DeploymentEntry, Ownership};
 use std::path::Path;
 
 pub(crate) struct DeploymentInput<'a> {

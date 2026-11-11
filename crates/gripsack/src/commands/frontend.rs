@@ -1,10 +1,10 @@
 //! The only evaluator launcher borrows approved captured source and retained
 //! runtime bytes. It cannot rediscover a live worktree, pin or executable.
 use super::prepared::ApprovedEvaluation;
-use gripsack_ir::{Diagnostic, diagnostic::codes};
-use gripsack_process::{
+use gripsack_host::process::{
     Boundary, Control, Invocation, Limits, NativeInput, NativeOutcome, ProcessRole, Ruleset,
 };
+use gripsack_ir::{Diagnostic, diagnostic::codes};
 use std::{ffi::OsStr, io, path::Path};
 
 pub(super) struct Frontend<'a> {

@@ -15,7 +15,7 @@ pub(crate) fn fetch(
     let identity = if std::fs::metadata(path)?.is_dir() {
         archive::copy_tree_filtered(path, dest, &[], context.limits())?;
         archive::validate_tree(dest, context.limits())?;
-        crate::FetchIdentity::Tree(gripsack_store::canonical_tree_hash(dest)?)
+        crate::FetchIdentity::Tree(gripsack_host::store::canonical_tree_hash(dest)?)
     } else {
         let mut download = crate::spool::download(
             super::tarball::regular_file(path)?,
@@ -43,7 +43,7 @@ pub(crate) fn payload_hash(
     if std::fs::metadata(path)?.is_dir() {
         archive::validate_tree(path, context.limits())?;
         Ok(crate::FetchIdentity::Tree(
-            gripsack_store::canonical_tree_hash(path)?,
+            gripsack_host::store::canonical_tree_hash(path)?,
         ))
     } else {
         crate::spool::copy_hashed(

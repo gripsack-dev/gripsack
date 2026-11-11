@@ -11,8 +11,10 @@ pub mod placeholders;
 pub mod sema;
 pub mod span;
 mod tagged;
+pub mod target;
 pub mod workspace;
 mod workspace_catalog;
+pub mod workspace_command;
 pub mod workspace_model;
 
 pub use diagnostic::{Diagnostic, Label, Severity, codes};

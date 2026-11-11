@@ -13,7 +13,7 @@ mod prompt;
 use crate::commands::expand_home;
 use crate::render::{self, Palette};
 
-use gripsack_store as store;
+use gripsack_host::store;
 use std::io::IsTerminal as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -336,7 +336,7 @@ fn finish_adoption(
     // empty baseline first, or the adopt apply IS generation 1 and
     // there is nothing to roll back to
     let home = store::gripsack_home();
-    let baseline = gripsack_fs::open_or_create(&home);
+    let baseline = gripsack_host::fs::open_or_create(&home);
     let current = store::current_generation(&home);
     if matches!(current, Ok(None))
         && store::list_generations(&home).is_ok_and(|g| g.is_empty())

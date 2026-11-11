@@ -2,11 +2,11 @@
 //! evaluation attempts or raw configuration values become comparison authority.
 use super::{model::*, normalize::*};
 use crate::Repository;
+use crate::source_bundle::{SourceInventory, SourceObject};
 use gripsack_ir::{
     Ir,
     workspace_model::{InputOrigin, identity::DefinitionDigest},
 };
-use gripsack_store::source_bundle::{SourceInventory, SourceObject};
 use serde_json::Value;
 
 pub(crate) fn output_subject(name: &str) -> SubjectRef {
@@ -229,7 +229,7 @@ fn resolve<'a>(inventory: &'a SourceInventory, path: &str) -> Option<&'a SourceO
 fn resolve_entry<'a>(
     inventory: &'a SourceInventory,
     path: &str,
-) -> Option<&'a gripsack_store::source_bundle::SourceEntry> {
+) -> Option<&'a crate::source_bundle::SourceEntry> {
     let mut path = std::borrow::Cow::Borrowed(path);
     for _ in 0..MAX_DEPTH {
         if let Some(entry) = inventory.entry(&path) {
@@ -242,7 +242,7 @@ fn resolve_entry<'a>(
             // resolved root, not at every logical alias spelling.
             let mut replacement = None;
             for (index, _) in path.match_indices('/') {
-                if let Some(gripsack_store::source_bundle::SourceEntry {
+                if let Some(crate::source_bundle::SourceEntry {
                     object: SourceObject::Alias { target },
                     ..
                 }) = inventory.entry(&path[..index])

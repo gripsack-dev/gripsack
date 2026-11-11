@@ -3,7 +3,7 @@
 //! payload/document access never rescans a package or buffers compressed members.
 #[path = "archive_headers.rs"]
 mod headers;
-use gripsack_process::Sha256Digest;
+use gripsack_host::process::Sha256Digest;
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -81,8 +81,9 @@ impl CondaArchive {
         let name = path
             .file_name()
             .ok_or_else(|| invalid("retained archive has no file name"))?;
-        let directory = gripsack_fs::open(parent)?;
-        let mut file = gripsack_fs::open_file_nofollow(&directory, Path::new(name))?.into_std();
+        let directory = gripsack_host::fs::open(parent)?;
+        let mut file =
+            gripsack_host::fs::open_file_nofollow(&directory, Path::new(name))?.into_std();
         if !file.metadata()?.is_file() || file.metadata()?.len() > MAX_TAR_BYTES {
             return Err(invalid("retained archive exceeds its byte/type bound"));
         }

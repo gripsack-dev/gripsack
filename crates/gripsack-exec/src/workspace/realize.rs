@@ -6,11 +6,11 @@ use super::{
     roots::{self, RetentionSet, RootId},
 };
 use crate::{Ctx, ExecError, LifecycleSession};
+use gripsack_host::process::OperatorEnvironment;
 use gripsack_ir::{
     Ir,
     workspace_model::{WorkspaceOutput, WorkspaceProducer},
 };
-use gripsack_process::OperatorEnvironment;
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -194,7 +194,7 @@ pub(super) fn realize_in_session<'a>(
         retention.extend(input.artifact.retention.iter().cloned());
     }
     for identity in prepared.packages.values() {
-        retention.insert(gripsack_store::content_path(
+        retention.insert(gripsack_host::store::content_path(
             &ctx.home,
             "workspace-package",
             &identity.to_string(),
