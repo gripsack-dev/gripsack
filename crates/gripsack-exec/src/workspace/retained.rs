@@ -149,6 +149,7 @@ pub(super) fn inspect<'a>(
                     package,
                     producer,
                     runtime,
+                    prepared.sources[name].resolved.version.as_deref(),
                     conda,
                 )
                 .map_err(|error| super::file_failure(&package.span, error))?

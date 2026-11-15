@@ -52,6 +52,7 @@ struct PlanReport<'a> {
     comparison_scope: &'static str,
     changes: &'a semantic::ChangeSet,
     operations: &'a [semantic::operations::OperationExplanation],
+    resolved_paths: &'a [gripsack_exec::ResolvedPayloadPath<'a>],
 }
 
 /// Explicit live planning supplies already evaluated IR; this function itself
@@ -93,6 +94,8 @@ pub fn plan(
                         .as_ref()
                         .is_none_or(|view| view.complete)
             });
+        let paths = gripsack_exec::preview_payload_paths(ir, repository, selected)
+            .map_err(|error| error.to_string())?;
         let report = PlanReport {
             version: 1,
             selected_profiles: selected,
@@ -101,6 +104,7 @@ pub fn plan(
             comparison_scope: "workspace_declarations",
             changes: &changes,
             operations: &operations,
+            resolved_paths: &paths,
         };
         emit(
             &report,

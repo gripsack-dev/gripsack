@@ -28,6 +28,7 @@ fn package(identity: u8, runtime: Vec<Arc<Package>>, evidence: Evidence) -> Arc<
             tree: serde_json::from_value(serde_json::json!("0".repeat(64))).unwrap(),
             retention,
         }),
+        source_version: None,
         archive_root: None,
         selected_root: None,
         selected_payload: None,

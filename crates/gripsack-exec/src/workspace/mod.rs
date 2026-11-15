@@ -9,6 +9,8 @@ pub(crate) mod hooks;
 mod image;
 mod inputs;
 pub(crate) mod integrity;
+mod paths;
+pub use paths::{ResolvedPayloadPath, preview_payload_paths};
 mod prepare;
 mod realize;
 pub use consumer::{

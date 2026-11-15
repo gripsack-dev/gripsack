@@ -7,7 +7,8 @@ change as the plan. Long-form release/evidence narratives were removed by
 
 ## Now
 
-- **Latest release:** [core-v0.53.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.53.0) (2026-11-09), Linux/WSL x86_64 only.
+- **Latest release:** [core-v0.54.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.54.0) (2026-11-11), Linux/WSL x86_64 only.
+- **0.55.0 release target:** locked release/platform placeholders in package command values and artifact file/tree selectors, with concrete offline plan paths (0002 §9).
 - **Active plan:** [0056 — verified foundation](0056-verified-foundation.md), approved 2026-11-08.
   Its ledger (§9 phases, §13+ records) is the source of truth for the epic.
 - **Independent design review:** [2026-11](../docs/reviews/2026-11-design-review.md) — findings are leads; each is verified before it changes a plan.
@@ -22,7 +23,7 @@ change as the plan. Long-form release/evidence narratives were removed by
 | Plan | Title | Shipped |
 |---|---|---|
 | 0001 | Architecture: modules, store, generations, ownership, invariants | 0.x foundation |
-| 0002 | Sourcing: resolver/transport split, fetcher protocol | foundation |
+| 0002 | Sourcing: resolver/transport split, fetcher protocol; locked workspace payload templates (§9) | foundation; 0.55.0 |
 | 0003 | Repo, gates, releases | foundation |
 | 0004 | Rich IR + compiler passes + provenance | foundation |
 | 0005 | Frontends + configuration | foundation |

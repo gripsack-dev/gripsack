@@ -83,6 +83,7 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
             tree: serde_json::from_str(&format!("\"{}\"", "0".repeat(64))).unwrap(),
             retention: BTreeSet::new(),
         }),
+        source_version: None,
         commands: BTreeMap::new(),
         runtime: Vec::new(),
         target: WorkspacePlatform {
@@ -440,6 +441,7 @@ fn elf_admission_infers_the_abi_from_the_loader() {
             tree: serde_json::from_str(&format!("\"{}\"", "0".repeat(64))).unwrap(),
             retention: BTreeSet::new(),
         }),
+        source_version: None,
         commands: BTreeMap::new(),
         runtime: Vec::new(),
         target: platform(None),

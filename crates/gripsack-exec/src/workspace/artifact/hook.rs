@@ -173,6 +173,8 @@ impl<'a> ReceiptRestoration<'a> {
                 tree: receipt.tree,
                 retention,
             }),
+            // Retained hooks use the concrete command receipt, never live selectors.
+            source_version: None,
             archive_root: receipt.archive_root,
             selected_root,
             commands: receipt.commands,

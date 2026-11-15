@@ -1309,6 +1309,7 @@
               "minLength": 1
             },
             "selector": {
+              "description": "Payload-relative path. Core 0.55+: {version} is the referenced package's locked raw tag; {version.bare} removes one leading lowercase v. Supports {os}, {arch}, {arch.go}, {arch.x64}, {target}, {system}. Expanded paths must remain normalized and relative.",
               "type": "string",
               "minLength": 1
             }
@@ -1331,6 +1332,7 @@
               "minLength": 1
             },
             "include": {
+              "description": "Relative segment-prefix selectors, with release/platform placeholders bound to this output's locked source (core 0.55+). Not globs.",
               "type": "array",
               "items": {
                 "type": "string",
@@ -1339,6 +1341,7 @@
               "minItems": 1
             },
             "exclude": {
+              "description": "Excluded relative segment prefixes, expanded against the same locked source as include (core 0.55+). Exclusions take precedence.",
               "type": "array",
               "items": {
                 "type": "string",
@@ -1702,6 +1705,7 @@
           "$ref": "#/$defs/workspaceProducer"
         },
         "commands": {
+          "description": "Literal command names mapped to payload-relative paths. Core 0.55+ expands {version}, {version.bare}, {os}, {arch}, {arch.go}, {arch.x64}, {target}, {system} in values against this producer's locked source. Version spelling is exact, with no asset-search fallback.",
           "type": "object",
           "additionalProperties": {
             "type": "string",

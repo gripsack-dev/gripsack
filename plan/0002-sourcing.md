@@ -162,3 +162,28 @@ Rate behavior: honor `Retry-After` on 429 within the step's retry budget
 before failing; throttle domains are token buckets per host
 (`[throttle]` in `env.toml`), conservative built-in budget for
 `api.github.com`.
+
+## 9. Locked workspace payload templates (0.55.0)
+
+Package command values and profile `artifactFile` selectors plus `artifactTree`
+include/exclude segment prefixes use the shared release asset token vocabulary.
+Bind each path to its producing package's resolved pin, never another output,
+the live upstream release or a source-level version guess. `{version}` is the
+raw tag; `{version.bare}` removes one leading lowercase `v` (0044 §C).
+Platform tokens retain the asset resolver's spellings. Payload paths have one
+exact spelling, not the asset resolver's historical raw/bare fallback search.
+
+Expansion precedes filesystem selection and preserves normalized-relative-path
+and containment admission. Missing versions, unknown tokens and unsafe expanded
+paths are source-located errors. Tree selection remains segment-prefix matching;
+both include and exclude expand. Names, argv/scripts, destinations and repository
+origins stay literal. `single_directory` archive-root selection is unchanged.
+
+Read-only plan renders the same expansions from admitted lock evidence even when
+the artifact is absent; existence and tree membership remain deferred. Frozen
+consumers and retained package checks use the same pin; command receipts store
+concrete selectors, so retained generations and hooks never reinterpret templates.
+Identity continues to bind authored paths and resolved pins. This is additive
+core-0.55 path syntax in the existing IR10 string slots: no emitted shape,
+lock format, receipt format or historical generation migration.
+

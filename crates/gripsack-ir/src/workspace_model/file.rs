@@ -25,15 +25,15 @@ pub enum WorkspaceSource {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         exclude: Vec<String>,
     },
-    /// A file inside another output's artifact — the output must exist
-    /// in the catalog (sema E126).
+    /// A file inside another output's artifact (sema E126). Release/platform
+    /// placeholders bind to that output's locked source (core 0.55+).
     ArtifactFile {
         output: String,
         selector: String,
     },
-    /// A subtree of another output's artifact, selected by include
-    /// globs (min 1, sema E130) minus exclude globs. The output must
-    /// be an artifact kind (recipe|package; sema E126/E128).
+    /// Artifact subtree selected by normalized segment prefixes, not globs.
+    /// Includes (min 1, sema E130) and excludes bind release/platform placeholders
+    /// to the referenced output's locked source (core 0.55+).
     Tree {
         output: String,
         include: Vec<String>,

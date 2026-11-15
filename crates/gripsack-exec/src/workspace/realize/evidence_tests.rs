@@ -34,6 +34,7 @@ fn actual_native_receipt_projection_replaces_unknown_without_exposing_storage_pa
             tree: serde_json::from_value(json!("c".repeat(64))).unwrap(),
             retention: BTreeSet::new(),
         }),
+        source_version: None,
         archive_root: None,
         selected_root: None,
         selected_payload: None,
