@@ -11,7 +11,7 @@ use crate::workspace::{
     BuildOptions, realize,
     roots::{self, ProcessLease, RetentionSet},
 };
-use crate::{Ctx, ExecError, LifecycleSession};
+use crate::{Ctx, ExecError, LifecycleSession, StepReport, Tone};
 use gripsack_host::process::{Invocation, ProcessLeases, ProcessRole};
 use gripsack_ir::{
     Ir,
@@ -41,7 +41,10 @@ pub enum TaskStdin {
 }
 #[derive(Debug, Clone, Copy)]
 pub enum TaskOutputMode {
+    /// Flush stdout chunks immediately; bounded stderr is emitted at each
+    /// process's completion. Both retain the existing bounded invocation log.
     Stream,
+    /// Keep child output out of terminal streams (JSON and scheduled runs).
     Capture,
 }
 #[derive(Debug, Clone, Copy)]
@@ -425,6 +428,7 @@ fn execute(
     logs: &mut Vec<u8>,
     launched: &mut bool,
 ) -> Result<(), ExecError> {
+    let reporter = ctx.reporter();
     let mut states = BTreeMap::new();
     let mut stop = false;
     for (task, node) in graph.nodes.iter().zip(nodes) {
@@ -475,6 +479,39 @@ fn execute(
                         Some("task invocation deadline exhausted before next action".into());
                     break;
                 }
+                let progress = reporter.is_live().then(|| {
+                    let (label, declared) = match phase {
+                        ActionPhase::Step => {
+                            let ordinal = report.nodes[index].completed_steps;
+                            let label = format!("step {}/{}", ordinal + 1, task.steps.len());
+                            match &task.steps[ordinal] {
+                                WorkspaceStep::Command(command) => (label, Some(command)),
+                                WorkspaceStep::Action(
+                                    gripsack_ir::workspace_model::WorkspaceAction::EnsureArtifact {
+                                        output,
+                                        ..
+                                    },
+                                ) => (format!("{label} ensure artifact {output}"), None),
+                            }
+                        }
+                        ActionPhase::Postcondition => {
+                            let name = &task.checks[report.nodes[index].completed_checks];
+                            let WorkspaceOutput::Check(check) = graph.outputs[name.as_str()] else {
+                                unreachable!("admitted check")
+                            };
+                            (format!("check {name}"), Some(&check.run))
+                        }
+                    };
+                    let activity = match declared {
+                        Some(command) => format!(
+                            "running {label} $ {}",
+                            crate::progress::display_command(command)
+                        ),
+                        None => format!("running {label}"),
+                    };
+                    reporter.started(&task.name, &activity);
+                    (label, Instant::now())
+                });
                 if let Some(command) = command {
                     let invocation = Invocation::admit(
                         options.environment,
@@ -487,6 +524,7 @@ fn execute(
                     .retain_leases(clone_leases(leases)?)?;
                     let argv: Vec<_> = command.argv.iter().map(OsString::as_os_str).collect();
                     *launched = true;
+                    let mut stdout_line_open = false;
                     let result = invocation.run_task(
                         &argv,
                         matches!(policy.stdin, TaskStdin::Inherit),
@@ -494,8 +532,13 @@ fn execute(
                             let available = task_report::MAX_LOG_BYTES.saturating_sub(logs.len());
                             logs.extend_from_slice(&bytes[..bytes.len().min(available)]);
                             report.logs_truncated |= bytes.len() > available;
+                            if let Some(last) = bytes.last() {
+                                stdout_line_open = *last != b'\n';
+                            }
                             if matches!(policy.output, TaskOutputMode::Stream) {
-                                let _ = std::io::stdout().write_all(bytes);
+                                let mut stdout = std::io::stdout().lock();
+                                let _ = stdout.write_all(bytes);
+                                let _ = stdout.flush();
                             }
                             gripsack_host::process::Control::Continue
                         },
@@ -505,15 +548,47 @@ fn execute(
                     report.logs_truncated |=
                         result.stderr_truncated || result.stderr.len() > available;
                     if matches!(policy.output, TaskOutputMode::Stream) {
-                        let _ = std::io::stderr().write_all(&result.stderr);
+                        let mut stderr = std::io::stderr().lock();
+                        if reporter.is_live() && stdout_line_open {
+                            let _ = stderr.write_all(b"\n");
+                        }
+                        let _ = stderr.write_all(&result.stderr);
+                        if reporter.is_live()
+                            && !result.stderr.is_empty()
+                            && !result.stderr.ends_with(b"\n")
+                        {
+                            let _ = stderr.write_all(b"\n");
+                        }
+                        let _ = stderr.flush();
                     }
                     status = TaskStatus::from_receipt(&result.receipt);
                     report.nodes[index].processes.push(result.receipt);
                     task_report::persist_log(&ctx.home, report, logs)?;
                     report.persist(&ctx.home)?;
-                    if status != TaskStatus::Succeeded {
-                        break;
-                    }
+                }
+                if let Some((label, started)) = progress {
+                    let passed = status == TaskStatus::Succeeded;
+                    let summary = if passed {
+                        format!("{label} passed in {:.2}s", started.elapsed().as_secs_f32())
+                    } else {
+                        let receipt = report.nodes[index]
+                            .processes
+                            .last()
+                            .expect("failed action has a process receipt");
+                        format!(
+                            "{label} FAILED after {:.2}s ({})",
+                            started.elapsed().as_secs_f32(),
+                            crate::progress::process_status(receipt)
+                        )
+                    };
+                    reporter.step(&StepReport {
+                        output: task.name.clone(),
+                        summary,
+                        tone: if passed { Tone::Done } else { Tone::Warned },
+                    });
+                }
+                if status != TaskStatus::Succeeded {
+                    break;
                 }
                 match phase {
                     ActionPhase::Postcondition => report.nodes[index].completed_checks += 1,

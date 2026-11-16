@@ -6,20 +6,25 @@ not merely through catalog inspection.
 """
 from __future__ import annotations
 
+import io
 import itertools
 import json
 from pathlib import Path
 import platform
 import shutil
 import subprocess
+import tarfile
 
 import pytest
 
+from conftest import make_workspace_repo
+from test_package_conda_offline import remove_producer
 from test_package_environment import (
     LITERAL, authority, consumer_workspace, native_source, offline_environment,
     pack_environment, project, specification, trust_environment,
 )
 from test_package_sharing import canonical, checked, package, recipient
+from test_workspace_release_paths import releases
 
 pytestmark = pytest.mark.skipif(
     platform.system() != "Linux" or platform.machine() != "x86_64",
@@ -389,3 +394,122 @@ def test_runtime_scc_runs_with_member_and_outgoing_libraries_after_retention(san
     policy_path.write_bytes(canonical(policy))
     for command in commands:
         assert checked(profile_shell(state, command), env=env, text=True).stdout == command.removeprefix("probe-") + "=42\n"
+
+
+def test_versioned_environment_binding_exports_concrete_and_keeps_historical_braces(sandbox, releases):
+    producer = sandbox / "selector publisher"
+    producer_env = recipient(producer)
+    _, seed, public = authority(producer / "authority")
+    source = producer / "source"
+    component = source / "components/native"
+    binary = component / "bin/selector-probe"
+    binary.parent.mkdir(parents=True)
+    concrete = "share/v7/linux/7/value"
+    historical = "share/{version}/{os}/value"
+    for selector, contents in ((concrete, "locked release\n"), (historical, "literal braces\n")):
+        path = component / selector
+        path.parent.mkdir(parents=True)
+        path.write_text(contents)
+    compiler = shutil.which("cc")
+    assert compiler, "portable selector fixture requires cc and static libc development files"
+    program = producer / "selectors.c"
+    program.write_text(r'''
+#include <stdio.h>
+#include <stdlib.h>
+int main(void) {
+    const char *names[] = {"RELEASE_DATA", "HISTORICAL_DATA", "WHOLE_DATA"};
+    for (int i = 0; i < 3; ++i) {
+        const char *path = getenv(names[i]);
+        if (!path) {
+            if (i == 1) continue;
+            return 81;
+        }
+        printf("%s=%s\n", names[i], path);
+        if (i == 2) continue;
+        FILE *file = fopen(path, "r");
+        if (!file) return 82;
+        char line[80];
+        if (!fgets(line, sizeof(line), file)) return 83;
+        fclose(file);
+        fputs(line, stdout);
+    }
+    return 0;
+}
+''')
+    checked([compiler, "-static", program, "-o", binary])
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as output:
+        for path in sorted(component.rglob("*")):
+            if path.is_file():
+                output.add(path, arcname=str(path.relative_to(component)))
+    asset = "selectors-v7.tar.gz"
+    releases.tags["selectors"] = "v7"
+    releases.names["selectors", "v7"] = asset
+    releases.assets[asset] = archive.getvalue()
+    repo = make_workspace_repo(producer / "workspace", '''
+import {pkg, provider, githubRelease, environment, artifact, profile} from "@gripsack/core";
+const target = {os:"linux",arch:"x86_64",abi:"gnu"} as const;
+export default [
+  pkg("native", {
+    producer:provider(githubRelease({repo:"acme/selectors",asset:"selectors-{version}.tar.gz",base_url:BASE})),
+    commands:{"selector-probe":"bin/selector-probe"},target,layout:{kind:"relocatable"},
+  }),
+  environment("dev", {packages:["native"],target,env:{
+    RELEASE_DATA:artifact("native","share/{version}/{os}/{version.bare}/value"),
+    WHOLE_DATA:artifact("native","."),
+  }}),
+  profile("selected", {environment:"dev"}),
+];'''.replace("BASE", json.dumps(releases.base)))
+    project(producer_env, repo, "update")
+    before = project(producer_env, repo, "run", "--env", "dev", "--", "selector-probe").stdout
+    assert "locked release\n" in before and concrete in before
+    plan = json.loads(project(producer_env, repo, "plan", "--json").stdout)
+    selectors = {row["selector"] for row in plan["resolved_paths"]
+                 if row["kind"] == "artifact" and row["consumer"] == "dev" and row["output"] == "native"}
+    assert selectors == {concrete, "."}
+
+    # Packing is explicit passive metadata, not a workspace export API. Freeze
+    # the lock-resolved component-relative selector, never its producer path.
+    spec = specification()
+    spec["commands"] = {"selector-probe": {
+        "component": "native", "executable": "bin/selector-probe", "args": [],
+    }}
+    spec["environment"] = {
+        "RELEASE_DATA": {"kind": "artifact", "output": "native",
+                         "selector": next(selector for selector in selectors if selector != ".")},
+        "HISTORICAL_DATA": {"kind": "artifact", "output": "native", "selector": historical},
+        "WHOLE_DATA": {"kind": "artifact", "output": "native", "selector": "."},
+    }
+    bundle = sandbox / "selector transfer"
+    identity = pack_environment(producer_env, spec, source, bundle, seed)
+    signed = (bundle / "manifest.json").read_bytes()
+    assert str(producer).encode() not in signed
+    assert json.loads(signed)["environment"] == spec["environment"]
+    releases.close()
+    remove_producer(producer)
+
+    previous_home = producer
+    for index, name in enumerate(("selector recipient", "relocated recipient with longer home")):
+        env = offline_environment(sandbox / name, public)
+        home, state = Path(env["HOME"]), Path(env["GRIPSACK_HOME"])
+        package(env, "import", "--bundle", bundle)
+        repo = consumer_workspace(home, identity, ["selector-probe"])
+        project(env, repo, "update")
+        result = project(env, repo, "run", "--env", "dev", "--", "selector-probe").stdout
+        assert str(previous_home) not in result
+        lines = result.splitlines()
+        assert lines[1] == "locked release" and lines[3] == "literal braces"
+        values = dict(line.split("=", 1) for line in lines if "=" in line)
+        root = Path(values["WHOLE_DATA"])
+        assert root.is_relative_to(state)
+        assert Path(values["RELEASE_DATA"]) == root / concrete
+        assert Path(values["HISTORICAL_DATA"]) == root / historical
+        project(env, repo, "apply", "selected")
+        project(env, repo, "gc")
+        assert checked(profile_shell(state, "selector-probe"), env=env, text=True).stdout == result
+        exported = sandbox / ("selector reexport " + str(index))
+        package(env, "export", "--manifest", identity, "--output", exported)
+        assert (exported / "manifest.json").read_bytes() == signed
+        shutil.rmtree(bundle)
+        remove_producer(home)
+        bundle, previous_home = exported, home

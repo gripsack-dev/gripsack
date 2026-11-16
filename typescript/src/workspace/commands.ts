@@ -36,10 +36,11 @@ export function lit(value: string): WorkspaceLiteral {
   return freezeDeep({ kind: "literal", value });
 }
 
-/** A reference to `<selector>` inside the artifact of output
- *  `<output>` — valid as an argv/env argument or a cwd path. The
- *  selector is `.` (the whole artifact) or a normalized relative
- *  POSIX path; escapes are rejected at declaration. */
+/** A structured reference to `<selector>` inside `<output>`'s artifact,
+ * valid in argv, command/environment env values and cwd. Since core 0.56,
+ * release/platform placeholders use that output's lock, not the caller's.
+ * `.` selects the whole artifact; normalized relative selectors and their
+ * expansions must stay inside it. `lit()` values and shell bodies stay literal. */
 export function artifact(output: string, selector: string): WorkspaceArtifactRef {
   return freezeDeep({
     kind: "artifact",
@@ -48,7 +49,9 @@ export function artifact(output: string, selector: string): WorkspaceArtifactRef
   });
 }
 
-/** Select an immutable source path inside the enclosing producer. */
+/** Select the immutable check subject. For package-subject checks, core 0.56+
+ * binds release/platform placeholders to that package's lock. An attached file
+ * check still permits only `sourcePath(".")`; it has no child namespace. */
 export function sourcePath(selector = "."): WorkspaceProductionPath {
   return freezeDeep({ kind: "source", selector: asSelector(selector, "sourcePath(selector)") });
 }

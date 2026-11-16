@@ -7,6 +7,41 @@ User-visible changes per release. Design archaeology lives in
 ## [Unreleased]
 
 
+## [0.56.0] — Typed paths and live task output
+
+### Added
+
+- `artifact(output, selector)` now expands release/platform placeholders in
+  exec arguments, command env/cwd and environment output values. Each reference
+  uses its producing package's lock. Package-subject check `sourcePath` selectors
+  use that subject's lock; attached file checks still allow only `sourcePath(".")`.
+  This closes the 0.55 gap for checks naming versioned libraries with no commands.
+- `grip plan` and JSON `resolved_paths` include typed artifact bindings, with
+  the consumer, referenced output, concrete selector and source span, without
+  fetching or claiming that the path exists.
+
+### Fixed
+
+- Typed artifact cwd now passes the same canonical containment check as artifact
+  arguments and environment values. Unsafe expansions and escaping aliases are
+  rejected before a consumer starts.
+- `grip task run` flushes stdout chunks immediately, including writes without a
+  newline. Dependency steps and postcondition checks get start/completion labels
+  on stderr, with pass/fail status and elapsed time. Child stdout and saved log
+  bytes remain unchanged; `--json` stays capture-only. Child stderr remains
+  bounded per-process capture, printed on completion and separated from labels.
+
+`lit()` values, shell bodies, host/repository paths, names and writable staging
+selectors stay literal. Retained hooks/launchers and portable manifest selectors
+keep their concrete historical meaning. IR10 and persisted formats are unchanged.
+No kernel transition or formal premise changes; the existing Lean gate remains
+part of release qualification.
+
+Apply's live progress and separate per-check/hook blocks already shipped in
+0.54. Passing blocks are collapsed unless `--verbose`; failures show captured
+output. That per-verification capture is intentional, not run-wide buffering.
+
+
 ## [0.55.0] — Release paths follow the lock
 
 ### Added

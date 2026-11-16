@@ -92,23 +92,13 @@ pub struct PortableCommand {
     pub executable: String,
     pub args: Vec<String>,
 }
-/// The existing native environment argument subset, with component-local
-/// artifact authority rather than repository inputs or arbitrary host paths.
+/// Passive environment data with concrete, component-relative artifact selectors.
+/// Selectors are frozen paths, never authored workspace templates or host paths.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PortableEnvironmentValue {
     Literal { value: String },
     Artifact { output: String, selector: String },
-}
-impl From<PortableEnvironmentValue> for gripsack_ir::workspace_model::WorkspaceArg {
-    fn from(value: PortableEnvironmentValue) -> Self {
-        match value {
-            PortableEnvironmentValue::Literal { value } => Self::Literal { value },
-            PortableEnvironmentValue::Artifact { output, selector } => {
-                Self::Artifact { output, selector }
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

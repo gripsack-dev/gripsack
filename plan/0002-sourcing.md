@@ -187,3 +187,60 @@ Identity continues to bind authored paths and resolved pins. This is additive
 core-0.55 path syntax in the existing IR10 string slots: no emitted shape,
 lock format, receipt format or historical generation migration.
 
+## 10. Typed selector binding, not command interpolation (0.56.0)
+
+Decision recorded before implementation, in response to the 0.55 feedback:
+`artifact(output, selector)` is structured path data even when it occupies argv,
+an environment value or cwd. The 0.55 implementation expands only package exports
+and profile artifact origins; its native command/environment bindings still join
+the literal selector. Extend the existing exact expansion policy, not shell
+interpolation and not a new authoring API.
+
+| Path-bearing declaration | Version authority |
+|---|---|
+| Package command value | That package's resolved source pin |
+| `artifactFile` and `artifactTree` include/exclude | Referenced package's resolved source pin |
+| `artifact` in exec argv, command env, command cwd or environment env | Referenced package's resolved source pin |
+| `sourcePath` in a package-subject check's argv/env/cwd | The subject package's resolved source pin |
+
+Checks, tasks, hooks, profile checks and scheduled invocations use the same native
+binding path. Keep `.` as the whole-artifact selector. Attached file checks still
+allow only `sourcePath(".")`; no file acquires a child namespace. Literals,
+script bodies, command names, host/repository paths, input names and writable
+staging selectors do not acquire a release version. Never borrow the caller's,
+environment's or another package's version to satisfy a reference.
+
+Bind before filesystem selection, validate the expanded relative path, then
+check canonical containment for every artifact consumer, including cwd. Reuse
+one selector resolver rather than independent argv/env/cwd substitutions.
+Read-only plan uses the existing typed-reference projection and admitted lock
+evidence to list these selectors in text and `resolved_paths`, without fetching
+or claiming existence. Selected closures must include reference-only packages.
+
+Retained hooks, profile launchers and portable environment bindings contain
+concrete values, not templates to reinterpret against a future workspace.
+Preserve historical literal selectors in portable manifests; an import must
+not silently apply newly introduced template semantics to those retained bytes.
+No persisted format or IR10 shape change is authorized by this extension.
+
+Scheduled captures resolve selectors while source pins are available, before
+retaining their IR. Restored schedules and portable environments are explicitly
+concrete binding contexts, not authored templates. This also preserves literal
+brace filenames in old snapshots when an upgraded core dispatches them. The
+distinction is internal execution context, not a new persisted flag or format.
+
+### Formal boundary and evidence
+
+This is ring-3 typed input binding plus ring-4 explanation (0056 §3), not a
+kernel decision, lifecycle transition or storage-authority change. No new Lean
+theorem or changed kernel premise is needed. In particular, token expansion
+does not establish filesystem containment: that remains host-side admission
+after expansion and canonicalization. No new formal guarantee is claimed.
+The existing Lean proof gate remains required for the release.
+
+Acceptance exercises actual command/check execution, env and cwd bindings,
+independent release locks, lock-only upgrades, literal preservation, missing and
+unsafe expansions, archive roots, and retained/portable replay. A tooling-output
+review covers formatting, step boundaries and streaming separately; it cannot
+change process results or activation semantics merely to improve presentation.
+

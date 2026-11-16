@@ -15,8 +15,8 @@ export interface WorkspaceLiteral {
   kind: "literal";
   value: string;
 }
-/** Reference to a file/tree inside another output's artifact. Valid
- *  as both an argument and a path. */
+/** Structured file/tree reference, valid in argv, env and cwd. Core 0.56+
+ * binds selector placeholders to the referenced output's locked source. */
 export interface WorkspaceArtifactRef {
   kind: "artifact";
   output: string;
@@ -38,7 +38,8 @@ export interface WorkspacePackageCommand {
 }
 
 export interface WorkspaceInputRef { kind: "input"; input: string }
-/** Source/output paths belong to the enclosing production operation. */
+/** Source selectors in package-subject checks use that subject's locked source
+ * (core 0.56+). Attached file subjects allow only `.`; output selectors stay literal. */
 export interface WorkspaceProductionPath { kind: "source" | "output"; selector: string }
 export interface WorkspaceInput {
   name: string;

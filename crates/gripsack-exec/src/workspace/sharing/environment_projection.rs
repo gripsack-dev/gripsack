@@ -2,11 +2,13 @@
 //! Publication reuses package receipts, environment admission and managed launchers.
 use super::{
     environment::{AdmittedEnvironment, AdmittedMember, AdmittedPackage},
+    format::PortableEnvironmentValue,
     receipt, runtime,
 };
 use crate::workspace::{
     artifact::{self, Artifact, Package, ProducerIdentity},
     consumer::admit::{CapturedCommand, EnvironmentPlan, NativeContext},
+    paths,
     prepare::PreparedSource,
     realize::Realization,
     roots::{self, RetentionSet, RootId},
@@ -17,8 +19,8 @@ use gripsack_ir::{
     Span,
     workspace::{PlatformAbi, PlatformArch, PlatformOs, WorkspacePlatform},
     workspace_model::{
-        AcquisitionSource, CatalogPackageLayout, EnvironmentOutput, PackageOutput, WorkspaceOutput,
-        WorkspaceProducer, lock::ResolvedPinFields,
+        AcquisitionSource, CatalogPackageLayout, EnvironmentOutput, PackageOutput, WorkspaceArg,
+        WorkspaceOutput, WorkspaceProducer, lock::ResolvedPinFields,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -600,18 +602,33 @@ fn project_uncached(
             packages.insert(name, package);
         }
     }
+    // This private lowering retains typed component references. The realization
+    // below declares their concrete portable semantics explicitly; historical
+    // brace filenames must never become authored templates.
+    let bound_environment = environment
+        .manifest
+        .environment
+        .iter()
+        .map(|(name, value)| {
+            let value = match value {
+                PortableEnvironmentValue::Literal { value } => WorkspaceArg::Literal {
+                    value: value.clone(),
+                },
+                PortableEnvironmentValue::Artifact { output, selector } => WorkspaceArg::Artifact {
+                    output: output.clone(),
+                    selector: selector.clone(),
+                },
+            };
+            (name.clone(), value)
+        })
+        .collect();
     let declaration = EnvironmentOutput {
         name: environment.identity.clone(),
         span,
         packages: environment.manifest.roots.clone(),
         target,
         prefix: None,
-        env: environment
-            .manifest
-            .environment
-            .iter()
-            .map(|(name, value)| (name.clone(), value.clone().into()))
-            .collect(),
+        env: bound_environment,
     };
     let outputs = declarations
         .iter()
@@ -620,6 +637,7 @@ fn project_uncached(
     let realization = Realization {
         packages,
         inputs: BTreeMap::new(),
+        selector_binding: paths::SelectorBinding::Concrete,
     };
     let detected = crate::facts::detect();
     let facts = gripsack_ir::HostFacts {

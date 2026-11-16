@@ -110,7 +110,7 @@ pub fn process_status(receipt: &gripsack_host::process::ProcessReceipt) -> Strin
     }
 }
 
-fn display_command(command: &WorkspaceCommand) -> String {
+pub(crate) fn display_command(command: &WorkspaceCommand) -> String {
     let words: Vec<String> = match command {
         WorkspaceCommand::Exec { argv, .. } => argv.iter().map(display_argument).collect(),
         WorkspaceCommand::RunBash {

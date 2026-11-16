@@ -689,26 +689,15 @@ fn environment_value(
     let value = match argument {
         WorkspaceArg::Literal { value } => value.clone(),
         WorkspaceArg::Artifact { output, selector } => {
-            let payload = artifact_payload(output, realization).ok_or_else(|| {
-                gate(
-                    &declaration.span,
-                    format!("environment value names unrealized artifact {output:?}"),
-                )
-            })?;
-            let path = payload.join(selector);
-            let canonical = path.canonicalize().map_err(|_| {
-                gate(
-                    &declaration.span,
-                    format!("environment artifact {output:?}/{selector:?} does not resolve"),
-                )
-            })?;
-            if !canonical.starts_with(&payload) {
-                return Err(gate(
-                    &declaration.span,
-                    "environment artifact escapes its payload",
-                ));
-            }
-            utf8_path(&canonical, &declaration.span)?
+            let path = crate::workspace::paths::resolve_artifact(
+                output,
+                selector,
+                realization,
+                &declaration.span,
+            )?;
+            path.into_os_string()
+                .into_string()
+                .map_err(|_| gate(&declaration.span, "path is not UTF-8"))?
         }
         WorkspaceArg::Input { input } => {
             let path = realization.inputs.get(input.as_str()).ok_or_else(|| {
@@ -729,13 +718,6 @@ fn environment_value(
         }
     };
     Ok(value)
-}
-
-pub(super) fn artifact_payload(name: &str, realization: &Realization) -> Option<PathBuf> {
-    realization
-        .packages
-        .get(name)
-        .map(|package| package.payload().to_path_buf())
 }
 
 fn absolute_directories(value: &str, span: &Span, key: &str) -> Result<Vec<PathBuf>, ExecError> {

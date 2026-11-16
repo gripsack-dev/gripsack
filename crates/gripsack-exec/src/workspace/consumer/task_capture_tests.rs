@@ -36,6 +36,7 @@ fn captured_task_executes_each_occasion_without_reading_checkout_source() {
     let realization = realize::Realization {
         packages: BTreeMap::new(),
         inputs: BTreeMap::new(),
+        selector_binding: crate::workspace::paths::SelectorBinding::Concrete,
     };
     let staging = tempfile::tempdir().unwrap();
     let expected = capture_programs(&ir, &ctx, &options, &realization, staging.path()).unwrap();
@@ -86,6 +87,7 @@ fn changed_external_executable_blocks_before_effects_and_releases_unlaunched_roo
     let realization = realize::Realization {
         packages: BTreeMap::new(),
         inputs: BTreeMap::new(),
+        selector_binding: crate::workspace::paths::SelectorBinding::Concrete,
     };
     let staging = tempfile::tempdir().unwrap();
     let expected = capture_programs(&ir, &ctx, &options, &realization, staging.path()).unwrap();

@@ -1,12 +1,34 @@
 //! Payload templates bind only to their producing package's frozen release.
-use super::{definitions::captured_definitions, pins::WorkspacePins, selection::Selection};
+mod freeze;
+pub(super) use freeze::freeze_selectors;
+
+use super::{
+    artifact::Package, definitions::captured_definitions, pins::WorkspacePins,
+    realize::Realization, selection::Selection,
+};
 use crate::{ExecError, Repository};
 use gripsack_ir::{
     Diagnostic, Ir, Span, codes,
     workspace::WorkspaceDestination,
-    workspace_model::{WorkspaceOutput, WorkspaceProducer, WorkspaceSource},
+    workspace_model::{
+        WorkspaceArg, WorkspaceCatalog, WorkspaceOutput, WorkspacePath, WorkspaceProducer,
+        WorkspaceSource,
+        graph::{Reference, references},
+    },
 };
-use std::{borrow::Cow, collections::BTreeMap};
+use std::{
+    borrow::Cow,
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
+
+/// Authored declarations and retained selectors have different semantics even
+/// when their string bytes happen to contain the same braces.
+#[derive(Clone, Copy)]
+pub(super) enum SelectorBinding {
+    LockedSource,
+    Concrete,
+}
 
 pub(super) fn expand<'a>(
     pattern: &'a str,
@@ -37,6 +59,61 @@ pub(super) fn expand_patterns(
         .collect()
 }
 
+/// Authored selectors bind to the producing package, never the calling command.
+pub(super) fn resolve(
+    package: &Package,
+    selector: &str,
+    span: &Span,
+) -> Result<PathBuf, ExecError> {
+    let selector = expand(selector, package.source_version.as_deref(), span)?;
+    resolve_exact(package.payload(), selector.as_ref(), span)
+}
+
+pub(super) fn resolve_artifact(
+    output: &str,
+    selector: &str,
+    realization: &Realization<'_>,
+    span: &Span,
+) -> Result<PathBuf, ExecError> {
+    let package = realization
+        .packages
+        .get(output)
+        .ok_or_else(|| binding_error(span, format!("artifact {output:?} is not realized")))?;
+    match realization.selector_binding {
+        SelectorBinding::LockedSource => resolve(package, selector, span),
+        SelectorBinding::Concrete => resolve_exact(package.payload(), selector, span),
+    }
+}
+
+/// Concrete retained selectors have no template semantics. Canonical containment
+/// applies equally to files, directories and the whole-artifact selector `.`.
+pub(super) fn resolve_exact(
+    payload: &Path,
+    selector: &str,
+    span: &Span,
+) -> Result<PathBuf, ExecError> {
+    let root = payload
+        .canonicalize()
+        .map_err(|error| binding_error(span, format!("artifact root does not resolve: {error}")))?;
+    let selected = root.join(selector).canonicalize().map_err(|error| {
+        binding_error(
+            span,
+            format!("artifact selector {selector:?} does not resolve: {error}"),
+        )
+    })?;
+    if !selected.starts_with(&root) {
+        return Err(binding_error(span, "artifact selector escapes its payload"));
+    }
+    Ok(selected)
+}
+
+fn binding_error(span: &Span, detail: impl Into<String>) -> ExecError {
+    ExecError::Gate(
+        Diagnostic::error(codes::BAD_WORKSPACE_CONTEXT, detail)
+            .with_label(Some(span.clone()), "artifact reference declared here"),
+    )
+}
+
 /// Concrete payload-relative paths, independent of local artifact availability.
 #[derive(serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -59,13 +136,19 @@ pub enum ResolvedPayloadPath<'a> {
         exclude: Vec<String>,
         destination: &'a str,
     },
+    Artifact {
+        consumer: &'a str,
+        output: &'a str,
+        selector: Cow<'a, str>,
+        span: &'a Span,
+    },
 }
 
 fn templated(pattern: &str) -> bool {
     pattern.contains(['{', '}'])
 }
 
-fn has_templates(output: &WorkspaceOutput) -> bool {
+fn has_payload_paths(output: &WorkspaceOutput) -> bool {
     match output {
         WorkspaceOutput::Package(package) => package.commands.values().any(|path| templated(path)),
         WorkspaceOutput::Profile(profile) => profile.files.iter().any(|file| match &file.source {
@@ -75,8 +158,59 @@ fn has_templates(output: &WorkspaceOutput) -> bool {
             }) => include.iter().chain(exclude).any(|path| templated(path)),
             _ => false,
         }),
+        WorkspaceOutput::Check(check) => {
+            check
+                .run
+                .arguments()
+                .any(|arg| matches!(arg, WorkspaceArg::Source { .. }))
+                || matches!(
+                    check.run.working_directory(),
+                    Some(WorkspacePath::Source { .. })
+                )
+        }
         _ => false,
     }
+}
+
+struct SelectorReference<'a> {
+    consumer: &'a str,
+    output: &'a str,
+    selector: &'a str,
+    span: &'a Span,
+}
+
+/// The admitted graph already visits every explicit artifact position, including
+/// environment values and cwd. Do not maintain a second command-field walker.
+fn selector_references<'a>(
+    workspace: &'a WorkspaceCatalog,
+    selection: Option<&Selection<'a>>,
+) -> Vec<SelectorReference<'a>> {
+    let mut selectors = Vec::new();
+    let mut collect = |reference: &Reference<'a>| {
+        // Profile origins have their existing file/tree-specific report rows.
+        if !matches!(reference.from, WorkspaceOutput::Profile(_))
+            && let Some(selector) = reference.selector
+        {
+            selectors.push(SelectorReference {
+                consumer: reference.from.name(),
+                output: reference.to,
+                selector,
+                span: reference.at,
+            });
+        }
+    };
+    if let Some(selection) = selection {
+        for name in &selection.required {
+            for reference in selection.references(name) {
+                collect(reference);
+            }
+        }
+    } else {
+        for reference in references(workspace) {
+            collect(&reference);
+        }
+    }
+    selectors
 }
 
 /// Preview templates from approved lock evidence only. Never resolve, fetch,
@@ -98,7 +232,8 @@ pub fn preview_payload_paths<'a>(
                 .is_none_or(|selection| selection.required.contains(output.name()))
         })
     };
-    if !outputs().any(has_templates) {
+    let selectors = selector_references(&ir.workspace, selection.as_ref());
+    if selectors.is_empty() && !outputs().any(has_payload_paths) {
         return Ok(Vec::new());
     }
     let pins = WorkspacePins::read(repository)?;
@@ -166,8 +301,44 @@ pub fn preview_payload_paths<'a>(
                     }
                 }
             }
+            WorkspaceOutput::Check(check) => {
+                // An attached file subject is not a package namespace. Only a
+                // package-subject check can bind release selectors here.
+                if let Some(&version) = versions.get(check.subject.as_str()) {
+                    let mut collect = |selector: &'a str| -> Result<(), ExecError> {
+                        paths.push(ResolvedPayloadPath::Artifact {
+                            consumer: &check.name,
+                            output: &check.subject,
+                            selector: expand(selector, version, check.run.span())?,
+                            span: check.run.span(),
+                        });
+                        Ok(())
+                    };
+                    for argument in check.run.arguments() {
+                        if let WorkspaceArg::Source { selector } = argument {
+                            collect(selector)?;
+                        }
+                    }
+                    if let Some(WorkspacePath::Source { selector }) = check.run.working_directory()
+                    {
+                        collect(selector)?;
+                    }
+                }
+            }
             _ => {}
         }
     }
+    for reference in selectors {
+        let version = versions.get(reference.output).copied().flatten();
+        paths.push(ResolvedPayloadPath::Artifact {
+            consumer: reference.consumer,
+            output: reference.output,
+            selector: expand(reference.selector, version, reference.span)?,
+            span: reference.span,
+        });
+    }
     Ok(paths)
 }
+
+#[cfg(all(test, unix))]
+mod tests;

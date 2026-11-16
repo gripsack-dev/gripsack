@@ -123,7 +123,7 @@ release or another package's version. `artifactTree` expands both include and
 exclude segment prefixes; it does not add glob matching. `grip plan` displays
 concrete paths without fetching, even before realization. Missing versions,
 unsupported tokens and unsafe expanded paths are errors with source locations.
-Command names, argv/scripts, destinations and repository selectors remain literal.
+Command names, literal arguments, shell bodies, destinations and repository selectors remain literal.
 Wrapper directories still work best with `archiveRoot: { kind: "single_directory" }`.
 
 ## Profile files
@@ -150,6 +150,23 @@ silently overwrite foreign files.
 `exec` builds argv-based commands. `lit`, `hostPath`, `packageCommand` and artifact
 references distinguish literal text from resolved paths. Command declarations are
 immutable; constructing one does not execute it.
+
+Since core 0.56, `artifact("flyline", "libflyline.so.{version.bare}")` expands
+against **flyline's** lock in exec arguments, command environment values, command
+cwd and environment output values. This includes task, check, hook and scheduled
+invocations. `sourcePath("libflyline.so.{version.bare}")` in a package-subject
+check uses that subject's lock. Attached file checks still use only `sourcePath(".")`.
+`artifact("flyline", ".")` selects the whole artifact. Both `exec` and `runBash`
+use these rules for typed env/cwd values; Bash text itself is never interpolated.
+
+`grip plan --json` includes typed bindings as `kind: "artifact"` entries in
+`resolved_paths`, identifying the consumer, referenced output, concrete selector
+and source span. Planning does not fetch or establish that a file exists.
+Retained hooks/launchers keep concrete bindings; portable manifests keep their
+existing literal selectors rather than gaining new template semantics.
+Scheduled jobs freeze selectors before capturing their declarations; replay uses
+those concrete paths without consulting today's lock. Older captured literal
+selectors—including brace filenames—retain their original meaning.
 
 Use the `bash` tag for literal scripts, then bind an explicitly declared package
 interpreter. For example, with a package named `shell` exporting `bash`:

@@ -458,6 +458,9 @@ pub fn diff_section(
                 ResolvedPayloadPath::ArtifactTree { profile, output, include, exclude, destination } => {
                     format!("  {profile:?}: artifactTree({output:?}, include={include:?}, exclude={exclude:?}) → {destination:?}")
                 }
+                ResolvedPayloadPath::Artifact { consumer, output, selector, span } => {
+                    format!("  {consumer:?}: artifact({output:?}, {selector:?}) ({:?}:{})", span.file, span.line)
+                }
             });
         }
     }

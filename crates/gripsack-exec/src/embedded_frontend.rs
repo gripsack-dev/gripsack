@@ -1069,10 +1069,11 @@ export function lit(value: string): WorkspaceLiteral {
   return freezeDeep({ kind: "literal", value });
 }
 
-/** A reference to `<selector>` inside the artifact of output
- *  `<output>` — valid as an argv/env argument or a cwd path. The
- *  selector is `.` (the whole artifact) or a normalized relative
- *  POSIX path; escapes are rejected at declaration. */
+/** A structured reference to `<selector>` inside `<output>`'s artifact,
+ * valid in argv, command/environment env values and cwd. Since core 0.56,
+ * release/platform placeholders use that output's lock, not the caller's.
+ * `.` selects the whole artifact; normalized relative selectors and their
+ * expansions must stay inside it. `lit()` values and shell bodies stay literal. */
 export function artifact(output: string, selector: string): WorkspaceArtifactRef {
   return freezeDeep({
     kind: "artifact",
@@ -1081,7 +1082,9 @@ export function artifact(output: string, selector: string): WorkspaceArtifactRef
   });
 }
 
-/** Select an immutable source path inside the enclosing producer. */
+/** Select the immutable check subject. For package-subject checks, core 0.56+
+ * binds release/platform placeholders to that package's lock. An attached file
+ * check still permits only `sourcePath(".")`; it has no child namespace. */
 export function sourcePath(selector = "."): WorkspaceProductionPath {
   return freezeDeep({ kind: "source", selector: asSelector(selector, "sourcePath(selector)") });
 }
@@ -1929,8 +1932,8 @@ export interface WorkspaceLiteral {
   kind: "literal";
   value: string;
 }
-/** Reference to a file/tree inside another output's artifact. Valid
- *  as both an argument and a path. */
+/** Structured file/tree reference, valid in argv, env and cwd. Core 0.56+
+ * binds selector placeholders to the referenced output's locked source. */
 export interface WorkspaceArtifactRef {
   kind: "artifact";
   output: string;
@@ -1952,7 +1955,8 @@ export interface WorkspacePackageCommand {
 }
 
 export interface WorkspaceInputRef { kind: "input"; input: string }
-/** Source/output paths belong to the enclosing production operation. */
+/** Source selectors in package-subject checks use that subject's locked source
+ * (core 0.56+). Attached file subjects allow only `.`; output selectors stay literal. */
 export interface WorkspaceProductionPath { kind: "source" | "output"; selector: string }
 export interface WorkspaceInput {
   name: string;
@@ -3918,7 +3922,7 @@ export const source = { package: packageSource };
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.55.0",
+  "version": "0.56.0",
   "description": "gripsack TypeScript workspace SDK — typed declarations, emits IR10",
   "license": "MIT",
   "type": "module",

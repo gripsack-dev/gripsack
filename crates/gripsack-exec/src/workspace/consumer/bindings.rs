@@ -1,6 +1,7 @@
 //! Exact argument, working-directory and executable bindings shared by tasks,
 //! checks and retained native launchers. Admission remains the single native path.
 use super::*;
+use crate::workspace::paths;
 /// Resolve one argument value to exact bytes. Empty and spaced literals are
 /// preserved verbatim; artifact/package/input bindings become absolute
 /// store paths inside the realized closure.
@@ -13,14 +14,10 @@ pub(in crate::workspace) fn task_argument(
 ) -> Result<OsString, ExecError> {
     Ok(match argument {
         WorkspaceArg::Literal { value } => OsString::from(value),
-        WorkspaceArg::Artifact { output, selector } => {
-            let payload = admit::artifact_payload(output, realization)
-                .ok_or_else(|| gate(span, format!("artifact {output:?} is not realized")))?;
-            OsString::from(admit::utf8_path(
-                &inside_payload(&payload, selector, span)?,
-                span,
-            )?)
-        }
+        WorkspaceArg::Artifact { output, selector } => path_argument(
+            paths::resolve_artifact(output, selector, realization, span)?,
+            span,
+        )?,
         WorkspaceArg::PackageCommand {
             package,
             command,
@@ -45,12 +42,10 @@ pub(in crate::workspace) fn task_argument(
         }
         WorkspaceArg::Source { selector } => {
             let subject = subject.ok_or_else(|| gate(span, "task command has no check subject"))?;
-            let payload = admit::artifact_payload(subject, realization)
-                .ok_or_else(|| gate(span, format!("check subject {subject:?} has no artifact")))?;
-            OsString::from(admit::utf8_path(
-                &inside_payload(&payload, selector, span)?,
+            path_argument(
+                paths::resolve_artifact(subject, selector, realization, span)?,
                 span,
-            )?)
+            )?
         }
         WorkspaceArg::Output { .. } => {
             return Err(gate(
@@ -133,17 +128,11 @@ pub(super) fn bind_admitted_program(
     }
 }
 
-fn inside_payload(payload: &Path, selector: &str, span: &Span) -> Result<PathBuf, ExecError> {
-    let canonical = payload.join(selector).canonicalize().map_err(|_| {
-        gate(
-            span,
-            format!("artifact selector {selector:?} does not resolve"),
-        )
-    })?;
-    if !canonical.starts_with(payload) {
-        return Err(gate(span, "artifact selector escapes its payload"));
+fn path_argument(path: PathBuf, span: &Span) -> Result<OsString, ExecError> {
+    if path.to_str().is_none() {
+        return Err(gate(span, "path is not UTF-8"));
     }
-    Ok(canonical)
+    Ok(path.into_os_string())
 }
 
 pub(super) fn task_cwd(
@@ -173,15 +162,11 @@ pub(super) fn task_cwd(
             path
         }
         Some(WorkspacePath::Artifact { output, selector }) => {
-            let payload = admit::artifact_payload(output, realization)
-                .ok_or_else(|| gate(span, format!("artifact {output:?} is not realized")))?;
-            payload.join(selector)
+            paths::resolve_artifact(output, selector, realization, span)?
         }
         Some(WorkspacePath::Source { selector }) => {
             let subject = subject.ok_or_else(|| gate(span, "task command has no check subject"))?;
-            let payload = admit::artifact_payload(subject, realization)
-                .ok_or_else(|| gate(span, format!("check subject {subject:?} has no artifact")))?;
-            inside_payload(&payload, selector, span)?
+            paths::resolve_artifact(subject, selector, realization, span)?
         }
         Some(WorkspacePath::Output { .. }) => {
             return Err(gate(
