@@ -62,7 +62,7 @@ pub(super) struct Package {
     pub identity: PackageDigest,
     pub root: PathBuf,
     pub producer: Arc<Artifact>,
-    /// Frozen source tag for file selectors; command receipts are already concrete.
+    /// Frozen source tag for authored selectors; retained command receipts are concrete.
     pub source_version: Option<String>,
     pub archive_root: Option<ArchiveRootPolicy>,
     pub selected_root: Option<String>,

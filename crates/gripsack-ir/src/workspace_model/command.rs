@@ -77,8 +77,8 @@ pub enum WorkspaceArg {
     Literal {
         value: String,
     },
-    /// An artifact of another output (`output`, `selector`) — the output
-    /// must exist in the catalog (sema E126).
+    /// Typed artifact data in argv or env (sema E126). Core 0.56+ binds selector
+    /// placeholders to the referenced output's locked source, never literal argv.
     Artifact {
         output: String,
         selector: String,
@@ -99,7 +99,8 @@ pub enum WorkspaceArg {
     Input {
         input: String,
     },
-    /// The operation's immutable source: acquired source for a producer, subject for a check.
+    /// The immutable check subject. Package-subject selectors use that package's
+    /// locked release (core 0.56+); attached file subjects still permit only `.`.
     Source {
         selector: String,
     },
@@ -130,8 +131,8 @@ pub enum WorkspacePath {
     Literal {
         value: String,
     },
-    /// An artifact of another output — must exist in the catalog
-    /// (sema E126).
+    /// Typed artifact cwd (sema E126). Core 0.56+ binds selector placeholders
+    /// to the referenced output's lock and enforces canonical containment.
     Artifact {
         output: String,
         selector: String,

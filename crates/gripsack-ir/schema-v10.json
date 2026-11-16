@@ -848,6 +848,7 @@
           ]
         },
         "selector": {
+          "description": "Normalized relative selector or '.'. Core 0.56+ expands release/platform placeholders for source selectors in package-subject checks, using that subject's lock. Attached file checks permit only '.'. Writable output selectors remain literal.",
           "type": "string",
           "minLength": 1
         }
@@ -891,6 +892,7 @@
               "minLength": 1
             },
             "selector": {
+              "description": "Typed artifact cwd, not literal command text. Core 0.56+ expands release/platform placeholders against the referenced output's lock. '.' selects the whole artifact; expansion and canonical selection must stay inside it.",
               "type": "string",
               "minLength": 1
             }
@@ -953,6 +955,7 @@
               "minLength": 1
             },
             "selector": {
+              "description": "Typed artifact argv/env data, not literal command text. Core 0.56+ expands release/platform placeholders against the referenced output's lock, including command and environment-output values. '.' selects the whole artifact; expanded selectors must stay inside it.",
               "type": "string",
               "minLength": 1
             }

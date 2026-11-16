@@ -2,11 +2,13 @@
 //! Publication reuses package receipts, environment admission and managed launchers.
 use super::{
     environment::{AdmittedEnvironment, AdmittedMember, AdmittedPackage},
+    format::PortableEnvironmentValue,
     receipt, runtime,
 };
 use crate::workspace::{
     artifact::{self, Artifact, Package, ProducerIdentity},
     consumer::admit::{CapturedCommand, EnvironmentPlan, NativeContext},
+    paths,
     prepare::PreparedSource,
     realize::Realization,
     roots::{self, RetentionSet, RootId},
@@ -17,8 +19,8 @@ use gripsack_ir::{
     Span,
     workspace::{PlatformAbi, PlatformArch, PlatformOs, WorkspacePlatform},
     workspace_model::{
-        AcquisitionSource, CatalogPackageLayout, EnvironmentOutput, PackageOutput, WorkspaceOutput,
-        WorkspaceProducer, lock::ResolvedPinFields,
+        AcquisitionSource, CatalogPackageLayout, EnvironmentOutput, PackageOutput, WorkspaceArg,
+        WorkspaceOutput, WorkspaceProducer, lock::ResolvedPinFields,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -600,18 +602,37 @@ fn project_uncached(
             packages.insert(name, package);
         }
     }
+    // Signed portable selectors are already concrete. Bind them before lowering
+    // so historical brace filenames never become templates. Manifest validation
+    // requires every component to be reachable from its roots; capturing those
+    // roots below retains these bindings' complete package/runtime closures.
+    let bound_environment = environment
+        .manifest
+        .environment
+        .iter()
+        .map(|(name, value)| {
+            let value = match value {
+                PortableEnvironmentValue::Literal { value } => value.clone(),
+                PortableEnvironmentValue::Artifact { output, selector } => {
+                    let package = packages
+                        .get(output.as_str())
+                        .ok_or_else(|| runtime::failure("environment component missing"))?;
+                    paths::resolve_exact(package.payload(), selector, &span)?
+                        .into_os_string()
+                        .into_string()
+                        .map_err(|_| runtime::failure("environment path is not UTF-8"))?
+                }
+            };
+            Ok((name.clone(), WorkspaceArg::Literal { value }))
+        })
+        .collect::<Result<_, ExecError>>()?;
     let declaration = EnvironmentOutput {
         name: environment.identity.clone(),
         span,
         packages: environment.manifest.roots.clone(),
         target,
         prefix: None,
-        env: environment
-            .manifest
-            .environment
-            .iter()
-            .map(|(name, value)| (name.clone(), value.clone().into()))
-            .collect(),
+        env: bound_environment,
     };
     let outputs = declarations
         .iter()

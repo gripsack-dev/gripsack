@@ -48,6 +48,8 @@ EXAMPLES = [
     {"id": "file-check", "file": "tasks.md", "locator": {"fence": 2},
      "kind": "workspace", "expect_outputs": {"shell-syntax": "check", "dotfiles": "profile"},
      "fixtures": {"config/shell.sh": "export EDITOR=vi\n"}},
+    {"id": "shared-library-check", "file": "tasks.md", "locator": {"fence": 3},
+     "kind": "fragment", "reason": "Focused check declaration: requires artifact/check/exec/lit imports, a release-backed flyline package, output registration and a trusted /usr/bin/test. The same check executes in the real artifact-selector flow tests."},
     {"id": "postgres-service", "file": "services.md", "locator": {"fence": 0},
      "kind": "workspace", "expect_outputs": {"postgres": "service", "database-ready": "task"}},
     {"id": "schedule-declarations", "file": "schedules.md", "locator": {"fence": 0},
