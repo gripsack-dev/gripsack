@@ -174,7 +174,8 @@ pub struct PackageOutput {
     /// The producer: a recipe reference, or a direct provider
     /// acquisition (sema E126 checks the recipe variant's reference).
     pub producer: WorkspaceProducer,
-    /// Exported command name → wire spelling (opaque to the core).
+    /// Exported command name → payload-relative path template. Release/platform
+    /// placeholders bind to this producer's resolved pin (core 0.55+).
     pub commands: BTreeMap<String, String>,
     /// Explicit runtime closure — names of `package` outputs (sema E126).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

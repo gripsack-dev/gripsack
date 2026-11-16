@@ -59,6 +59,7 @@ pub use workspace::{
 };
 pub use workspace::{BuildOptions, BuildResult, BuiltOutput, build_workspace};
 pub use workspace::{ConsumerOutcome, ConsumerRequest, consume, run_package_command};
+pub use workspace::{ResolvedPayloadPath, preview_payload_paths};
 pub use workspace::{schedules, sharing};
 
 use gripsack_ir::Ir;

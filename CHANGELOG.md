@@ -7,6 +7,28 @@ User-visible changes per release. Design archaeology lives in
 ## [Unreleased]
 
 
+## [0.55.0] — Release paths follow the lock
+
+### Added
+
+- Package `commands` values and `artifactFile` / `artifactTree` selectors now
+  expand the release asset placeholders against the producing package's lock:
+  `{version}`, `{version.bare}`, `{os}`, `{arch}`, `{arch.go}`, `{arch.x64}`,
+  `{target}` and `{system}`. Bare versioned executables, libraries and selected
+  subtrees can follow `grip update` without editing workspace source.
+- `grip plan` displays the resolved payload paths before realization, without
+  fetching. `grip plan --json` includes them in `resolved_paths`. File existence
+  and tree membership still require the frozen artifact.
+
+`{version}` uses the raw locked tag; `{version.bare}` strips one leading lowercase
+`v`. Payload selection never retries another version spelling. Missing versions,
+unknown tokens and unsafe expanded paths fail with declaration provenance.
+Command names, argv/scripts, destinations and repository selectors remain literal.
+`archiveRoot: { kind: "single_directory" }` remains the stable wrapper-directory
+option. The emitted IR10 shape and persisted formats are unchanged; these path
+templates require core 0.55 or later.
+
+
 ## [0.54.0] — The whole apply, proved
 
 ### Fixed

@@ -1809,7 +1809,8 @@ export function repoTree(path: string, selection: RepoTreeSelection = {}): Works
   }, "repoTree(...)"));
 }
 
-/** A file inside another output's artifact. */
+/** A file inside another output's artifact. Since core 0.55, release/platform
+ * placeholders bind to that output's locked source, just like package commands. */
 export function artifactFile(output: string, selector: string): WorkspaceSource {
   return freezeDeep({
     kind: "artifact_file",
@@ -1818,7 +1819,8 @@ export function artifactFile(output: string, selector: string): WorkspaceSource 
   });
 }
 
-/** A declared artifact tree expanded into explicit owned files by the core. */
+/** Artifact tree selected by relative segment prefixes, not globs. Since core
+ * 0.55, include/exclude placeholders bind to this output's locked source. */
 export function artifactTree(output: string, selection: { include: readonly string[]; exclude?: readonly string[] }): WorkspaceSource {
   return freezeDeep({
     kind: "tree", output: asName(output, "artifactTree(output)"),
@@ -2297,7 +2299,10 @@ export interface PixiLockSpec {
 export interface PackageSpec {
   /** A direct `provider(...)` acquisition. */
   producer: WorkspaceProducer;
-  /** Command name → payload-relative path. */
+  /** Command name → payload-relative path. Since core 0.55, values support
+   * `{version}` (locked tag), `{version.bare}` (one leading `v` removed), and
+   * `{os}`, `{arch}`, `{arch.go}`, `{arch.x64}`, `{target}`, `{system}`.
+   * Names remain literal; expanded paths must stay inside the artifact. */
   commands: Record<string, string>;
   /** Explicit runtime closure — names of other `package` outputs. */
   runtime?: string[];
@@ -3913,7 +3918,7 @@ export const source = { package: packageSource };
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "description": "gripsack TypeScript workspace SDK — typed declarations, emits IR10",
   "license": "MIT",
   "type": "module",

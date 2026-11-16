@@ -385,7 +385,10 @@ export interface PixiLockSpec {
 export interface PackageSpec {
   /** A direct `provider(...)` acquisition. */
   producer: WorkspaceProducer;
-  /** Command name → payload-relative path. */
+  /** Command name → payload-relative path. Since core 0.55, values support
+   * `{version}` (locked tag), `{version.bare}` (one leading `v` removed), and
+   * `{os}`, `{arch}`, `{arch.go}`, `{arch.x64}`, `{target}`, `{system}`.
+   * Names remain literal; expanded paths must stay inside the artifact. */
   commands: Record<string, string>;
   /** Explicit runtime closure — names of other `package` outputs. */
   runtime?: string[];

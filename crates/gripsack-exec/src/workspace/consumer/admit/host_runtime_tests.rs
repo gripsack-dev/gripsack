@@ -67,6 +67,7 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
             tree: gripsack_host::store::canonical_tree_hash(&payload).unwrap(),
             retention: BTreeSet::new(),
         }),
+        source_version: None,
         commands: BTreeMap::from([(
             "review".into(),
             ProvidedCommand {
@@ -391,6 +392,7 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
             tree: gripsack_host::store::canonical_tree_hash(&runtime_payload).unwrap(),
             retention: BTreeSet::new(),
         }),
+        source_version: None,
         commands: BTreeMap::new(),
         runtime: Vec::new(),
         target: package.target.clone(),
@@ -420,6 +422,7 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
             tree: gripsack_host::store::canonical_tree_hash(&shadow_payload).unwrap(),
             retention: BTreeSet::new(),
         }),
+        source_version: None,
         commands: BTreeMap::new(),
         runtime: Vec::new(),
         target: package.target.clone(),

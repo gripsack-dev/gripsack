@@ -192,17 +192,17 @@ impl<'a> Prepared<'a> {
                                 let provided = artifact::inspect_commands(
                                     package,
                                     &sources[name].artifact.payload,
+                                    sources[name].resolved.version.as_deref(),
                                 )?;
                                 let mut tools = BTreeMap::new();
-                                for (command, selector) in &package.commands {
-                                    let executable =
-                                        ToolExecutable::Captured(provided[command].executable);
+                                for (command, provided) in provided {
+                                    let executable = ToolExecutable::Captured(provided.executable);
                                     tools.insert(
-                                        command.clone(),
+                                        command,
                                         ToolPin {
                                             executable,
                                             package: digest,
-                                            selector: selector.clone(),
+                                            selector: provided.selector,
                                         },
                                     );
                                 }

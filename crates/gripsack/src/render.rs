@@ -419,6 +419,7 @@ pub fn diff_section(
     selected: &[String],
     limits: gripsack_fetch::FetchLimits,
 ) -> Result<String, gripsack_exec::ExecError> {
+    let paths = gripsack_exec::preview_payload_paths(ir, repository, selected)?;
     let home = gripsack_host::store::gripsack_home();
     let current = gripsack_host::store::current_generation(&home)?
         .map(|number| gripsack_host::store::read_manifest(&home, number))
@@ -441,6 +442,25 @@ pub fn diff_section(
         Some(m) => format!("{} generation {}:", b("changes vs"), m.number),
         None => b("changes: no current generation (first apply)"),
     }];
+    if !paths.is_empty() {
+        out.push(b(
+            "locked payload paths (existence checked at realization):",
+        ));
+        for path in paths {
+            use gripsack_exec::ResolvedPayloadPath;
+            out.push(match path {
+                ResolvedPayloadPath::Command { output, command, path } => {
+                    format!("  {output:?}: command {command:?} → {path:?}")
+                }
+                ResolvedPayloadPath::ArtifactFile { profile, output, selector, destination } => {
+                    format!("  {profile:?}: artifactFile({output:?}, {selector:?}) → {destination:?}")
+                }
+                ResolvedPayloadPath::ArtifactTree { profile, output, include, exclude, destination } => {
+                    format!("  {profile:?}: artifactTree({output:?}, include={include:?}, exclude={exclude:?}) → {destination:?}")
+                }
+            });
+        }
+    }
 
     // Plan and apply use the same workspace operation planner.
     let ops = gripsack_exec::ops::preview_ops(

@@ -49,6 +49,7 @@ APPLY = {
 }
 # Run in full by test_release_archive_example_runs_on_glibc against a fixture.
 RELEASE = "06-release-archive"
+RELEASE_PATHS = "17-release-paths"
 # Examples whose realization needs something the offline gate does not have.
 # They evaluate, are approved, pass `check` and plan the listed profiles.
 NETWORK = {
@@ -75,7 +76,7 @@ def ok(result: subprocess.CompletedProcess) -> subprocess.CompletedProcess:
 
 def test_every_example_is_gated():
     names = {path.name for path in EXAMPLES.iterdir() if (path / "gripsack.ts").is_file()}
-    gated = set(APPLY) | {RELEASE} | set(NETWORK)
+    gated = set(APPLY) | {RELEASE, RELEASE_PATHS} | set(NETWORK)
     assert names == gated, f"ungated: {sorted(names - gated)}; missing: {sorted(gated - names)}"
 
 
@@ -236,5 +237,28 @@ def test_declared_abi_is_checked_against_the_loader(sandbox):
         refused = grip("run", "--env", "search", "--", "rg", "--version", cwd=repo)
         assert refused.returncode != 0
         assert "E128" in refused.stderr and "contradicts" in refused.stderr, refused.stderr
+    finally:
+        server.close()
+
+
+@native
+def test_bare_release_path_example_runs_and_deploys(sandbox):
+    binary = compiled(sandbox, "-static")
+    asset = "sops-v3.11.0.linux.amd64"
+    server = GithubRelease("getsops/sops", "v3.11.0", asset, binary)
+    repo = copy_example(sandbox, RELEASE_PATHS)
+    source = (repo / "gripsack.ts").read_text()
+    anchor = '    repo: "getsops/sops",\n'
+    (repo / "gripsack.ts").write_text(
+        source.replace(anchor, anchor + f"    base_url: {json.dumps(server.base)},\n")
+    )
+    try:
+        ok(grip("update", cwd=repo))
+        planned = ok(grip("plan", "tools", cwd=repo))
+        assert asset in planned.stdout
+        ran = ok(grip("run", "--env", "secrets", "--", "sops", "--version", cwd=repo))
+        assert ran.stdout == "ripgrep 15.2.0 (static fixture)\n"
+        ok(grip("apply", "tools", cwd=repo))
+        assert (sandbox / ".local/bin/sops").read_bytes() == binary
     finally:
         server.close()

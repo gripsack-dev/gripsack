@@ -62,6 +62,8 @@ pub(super) struct Package {
     pub identity: PackageDigest,
     pub root: PathBuf,
     pub producer: Arc<Artifact>,
+    /// Frozen source tag for file selectors; command receipts are already concrete.
+    pub source_version: Option<String>,
     pub archive_root: Option<ArchiveRootPolicy>,
     pub selected_root: Option<String>,
     pub selected_payload: Option<PathBuf>,
@@ -266,6 +268,7 @@ pub(super) fn publish_package_with_context(
     let commands = inspect_selected_commands(
         declaration,
         &archive_root::payload(&producer.payload, selected_root.as_deref()),
+        pin.version.as_deref(),
     )?;
     let root = store::content_path(&ctx.home, "workspace-package", &identity.to_string());
     let runtime_receipts = runtime_receipts(&ctx.home, declaration, &runtime)?;
@@ -323,6 +326,7 @@ pub(super) fn publish_package_with_context(
             .as_deref()
             .map(|name| producer.payload.join(name)),
         producer,
+        source_version: pin.version.clone(),
         archive_root: receipt.archive_root,
         selected_root: receipt.selected_root,
         commands: receipt.commands,
@@ -341,6 +345,7 @@ pub(super) fn retained_package(
     declaration: &PackageOutput,
     producer: Arc<Artifact>,
     runtime: Vec<Arc<Package>>,
+    version: Option<&str>,
     conda: Option<super::conda::CondaRuntimeReceipt>,
 ) -> Result<Option<Arc<Package>>, ExecError> {
     let root = store::content_path(home, "workspace-package", &identity.to_string());
@@ -357,6 +362,7 @@ pub(super) fn retained_package(
     let commands = inspect_selected_commands(
         declaration,
         &archive_root::payload(&producer.payload, selected_root.as_deref()),
+        version,
     )?;
     let expected_runtime = runtime
         .iter()
@@ -392,6 +398,7 @@ pub(super) fn retained_package(
             .as_deref()
             .map(|name| producer.payload.join(name)),
         producer,
+        source_version: version.map(str::to_owned),
         archive_root: receipt.archive_root,
         selected_root: receipt.selected_root,
         commands,
@@ -433,6 +440,7 @@ fn runtime_receipts(
 pub(super) fn inspect_commands(
     declaration: &PackageOutput,
     payload: &Path,
+    version: Option<&str>,
 ) -> Result<BTreeMap<String, ProvidedCommand>, ExecError> {
     let selected_root = archive_root::select(
         declaration.archive_root.as_ref(),
@@ -442,18 +450,21 @@ pub(super) fn inspect_commands(
     inspect_selected_commands(
         declaration,
         &archive_root::payload(payload, selected_root.as_deref()),
+        version,
     )
 }
 
 fn inspect_selected_commands(
     declaration: &PackageOutput,
     payload: &Path,
+    version: Option<&str>,
 ) -> Result<BTreeMap<String, ProvidedCommand>, ExecError> {
     let canonical_payload = payload.canonicalize()?;
     let directory = gripsack_host::fs::open(&canonical_payload)?;
     let mut commands = BTreeMap::new();
     for (name, selector) in &declaration.commands {
-        let path = payload.join(selector).canonicalize()?;
+        let selector = super::paths::expand(selector, version, &declaration.span)?;
+        let path = payload.join(selector.as_ref()).canonicalize()?;
         let relative = path
             .strip_prefix(&canonical_payload)
             .map_err(|_| failure("exported command escapes its admitted payload"))?;
@@ -477,7 +488,7 @@ fn inspect_selected_commands(
         commands.insert(
             name.clone(),
             ProvidedCommand {
-                selector: selector.clone(),
+                selector: selector.into_owned(),
                 executable: ExecutableDigest::from_bytes(digest.finalize().into()),
             },
         );

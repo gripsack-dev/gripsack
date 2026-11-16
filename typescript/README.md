@@ -109,6 +109,23 @@ Run `grip update` to record selections, then `grip build tools` or
 without re-solving. Review changed captured source and policy digests before
 approving them; lock updates do not bypass approval.
 
+Since core 0.55, package command paths and `artifactFile`/`artifactTree`
+selectors accept the release asset tokens: `{version}` is the exact locked tag,
+`{version.bare}` removes one leading lowercase `v`, and `{os}`, `{arch}`,
+`{arch.go}`, `{arch.x64}`, `{target}`, `{system}` have the asset-template meanings.
+For a bare executable, reuse one pattern for `githubRelease.asset`,
+the command value and `artifactFile`'s selector; omit the source `version` pin
+to follow new releases with `grip update`. A versioned library can use
+`artifactFile("flyline", "libflyline.so.{version.bare}")`.
+
+Each consumer uses its own producing package's lock, not the latest upstream
+release or another package's version. `artifactTree` expands both include and
+exclude segment prefixes; it does not add glob matching. `grip plan` displays
+concrete paths without fetching, even before realization. Missing versions,
+unsupported tokens and unsafe expanded paths are errors with source locations.
+Command names, argv/scripts, destinations and repository selectors remain literal.
+Wrapper directories still work best with `archiveRoot: { kind: "single_directory" }`.
+
 ## Profile files
 
 `file` combines independent origin, content and destination axes:

@@ -124,7 +124,9 @@ impl<'a> Files<'a> {
                     include,
                     exclude,
                 }) => {
-                    let Some((root, object)) = artifact_root(output, realization) else {
+                    let Some(package) =
+                        realization.and_then(|value| value.packages.get(output.as_str()))
+                    else {
                         if readonly {
                             return Ok(Captured::Deferred(file));
                         }
@@ -133,12 +135,16 @@ impl<'a> Files<'a> {
                             format!("artifact origin {output:?} is not in the realized closure"),
                         ));
                     };
-                    let identity = serde_json::to_string(&("tree", &object, include, exclude))
-                        .map_err(|error| super::file_failure(&file.span, error))?;
+                    let version = package.source_version.as_deref();
+                    let include = super::paths::expand_patterns(include, version, &file.span)?;
+                    let exclude = super::paths::expand_patterns(exclude, version, &file.span)?;
+                    let identity =
+                        serde_json::to_string(&("tree", package.identity, &include, &exclude))
+                            .map_err(|error| super::file_failure(&file.span, error))?;
                     Some(Source::Tree {
-                        root,
-                        include: include.clone(),
-                        exclude: exclude.clone(),
+                        root: package.payload().to_path_buf(),
+                        include,
+                        exclude,
                         identity,
                     })
                 }
@@ -233,39 +239,25 @@ pub(super) struct File<'a> {
     pub checks: &'a [catalog::WorkspaceFileCheck],
 }
 
-/// The realized payload path plus its stable object identity (recipe tree
-/// hash or package digest), never a host-dependent store path.
-fn artifact_root<'a>(
-    output: &str,
-    realization: Option<&super::realize::Realization<'a>>,
-) -> Option<(PathBuf, String)> {
-    let realization = realization?;
-    if let Some(package) = realization.packages.get(output) {
-        return Some((
-            package.payload().to_path_buf(),
-            package.identity.to_string(),
-        ));
-    }
-    None
-}
-
 fn artifact_file<'a>(
     output: &str,
     selector: &str,
     realization: Option<&super::realize::Realization<'a>>,
     span: &Span,
 ) -> Result<Option<(PathBuf, String)>, ExecError> {
-    let Some((root, object)) = artifact_root(output, realization) else {
+    let Some(package) = realization.and_then(|value| value.packages.get(output)) else {
         return Ok(None);
     };
-    let path = root.join(selector);
+    let selector = super::paths::expand(selector, package.source_version.as_deref(), span)?;
+    let path = package.payload().join(selector.as_ref());
     let canonical = path.canonicalize().map_err(|error| {
         super::file_failure(
             span,
             format!("artifact selector {selector:?} does not resolve: {error}"),
         )
     })?;
-    let root = root
+    let root = package
+        .payload()
         .canonicalize()
         .map_err(|error| super::file_failure(span, error))?;
     if !canonical.starts_with(&root) {
@@ -274,5 +266,8 @@ fn artifact_file<'a>(
             "artifact selector escapes its payload",
         ));
     }
-    Ok(Some((canonical, format!("{object}:{selector}"))))
+    Ok(Some((
+        canonical,
+        format!("{}:{selector}", package.identity),
+    )))
 }

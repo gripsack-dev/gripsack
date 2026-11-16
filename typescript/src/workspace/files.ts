@@ -44,7 +44,8 @@ export function repoTree(path: string, selection: RepoTreeSelection = {}): Works
   }, "repoTree(...)"));
 }
 
-/** A file inside another output's artifact. */
+/** A file inside another output's artifact. Since core 0.55, release/platform
+ * placeholders bind to that output's locked source, just like package commands. */
 export function artifactFile(output: string, selector: string): WorkspaceSource {
   return freezeDeep({
     kind: "artifact_file",
@@ -53,7 +54,8 @@ export function artifactFile(output: string, selector: string): WorkspaceSource 
   });
 }
 
-/** A declared artifact tree expanded into explicit owned files by the core. */
+/** Artifact tree selected by relative segment prefixes, not globs. Since core
+ * 0.55, include/exclude placeholders bind to this output's locked source. */
 export function artifactTree(output: string, selection: { include: readonly string[]; exclude?: readonly string[] }): WorkspaceSource {
   return freezeDeep({
     kind: "tree", output: asName(output, "artifactTree(output)"),
