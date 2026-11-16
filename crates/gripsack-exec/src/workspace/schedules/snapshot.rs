@@ -60,6 +60,7 @@ impl Snapshot {
             .collect::<Result<_, _>>()?;
         Ok(Realization {
             packages,
+            selector_binding: crate::workspace::paths::SelectorBinding::Concrete,
             inputs: self
                 .inputs
                 .iter()

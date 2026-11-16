@@ -602,30 +602,26 @@ fn project_uncached(
             packages.insert(name, package);
         }
     }
-    // Signed portable selectors are already concrete. Bind them before lowering
-    // so historical brace filenames never become templates. Manifest validation
-    // requires every component to be reachable from its roots; capturing those
-    // roots below retains these bindings' complete package/runtime closures.
+    // This private lowering retains typed component references. The realization
+    // below declares their concrete portable semantics explicitly; historical
+    // brace filenames must never become authored templates.
     let bound_environment = environment
         .manifest
         .environment
         .iter()
         .map(|(name, value)| {
             let value = match value {
-                PortableEnvironmentValue::Literal { value } => value.clone(),
-                PortableEnvironmentValue::Artifact { output, selector } => {
-                    let package = packages
-                        .get(output.as_str())
-                        .ok_or_else(|| runtime::failure("environment component missing"))?;
-                    paths::resolve_exact(package.payload(), selector, &span)?
-                        .into_os_string()
-                        .into_string()
-                        .map_err(|_| runtime::failure("environment path is not UTF-8"))?
-                }
+                PortableEnvironmentValue::Literal { value } => WorkspaceArg::Literal {
+                    value: value.clone(),
+                },
+                PortableEnvironmentValue::Artifact { output, selector } => WorkspaceArg::Artifact {
+                    output: output.clone(),
+                    selector: selector.clone(),
+                },
             };
-            Ok((name.clone(), WorkspaceArg::Literal { value }))
+            (name.clone(), value)
         })
-        .collect::<Result<_, ExecError>>()?;
+        .collect();
     let declaration = EnvironmentOutput {
         name: environment.identity.clone(),
         span,
@@ -641,6 +637,7 @@ fn project_uncached(
     let realization = Realization {
         packages,
         inputs: BTreeMap::new(),
+        selector_binding: paths::SelectorBinding::Concrete,
     };
     let detected = crate::facts::detect();
     let facts = gripsack_ir::HostFacts {

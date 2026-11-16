@@ -194,7 +194,7 @@ def test_artifact_tokens_fail_with_provenance_without_version_authority(sandbox,
     check = f'check("subject", {{subject:"data", run:exec({{argv:[lit("/bin/cat"), sourcePath({json.dumps(selector)})]}})}}),' if position == "subject" else ""
     checks = ', checks:["subject"]' if position == "subject" else ""
     repo = make_workspace_repo(sandbox / "invalid-artifact", {"invalid": f'''import {{
-  pkg, provider, fileFetch, environment, task, check, exec, lit, artifact, sourcePath,
+  pkg, provider, fileFetch, environment, profile, task, check, exec, lit, artifact, sourcePath,
 }} from "@gripsack/core";
 const target = {{os:"linux",arch:"x86_64"}} as const;
 export default [
@@ -202,6 +202,7 @@ export default [
   environment("tools", {{packages:[], target{env}}}),
   {check}
   task("probe", {{environment:"tools", steps:[exec({{argv:[{argv}]{fields}}})]{checks}}}),
+  profile("selected", {{environment:"tools"}}),
 ];'''})
     (repo / "payload").mkdir()
     (repo / "payload/value").write_text("no release version\n")
@@ -222,12 +223,13 @@ def test_unsafe_artifact_selector_never_executes_consumer(sandbox, position):
         f", cwd:{selector}" if position == "cwd" else ""
     )
     repo = make_workspace_repo(sandbox / "unsafe-artifact", {"unsafe": f'''import {{
-  pkg, provider, fileFetch, task, exec, lit, artifact,
+  pkg, provider, fileFetch, profile, task, exec, lit, artifact,
 }} from "@gripsack/core";
 export default [
   pkg("data", {{producer:provider(fileFetch("payload")), commands:{{}},
     target:{{os:"linux",arch:"x86_64"}}, layout:{{kind:"relocatable"}}}}),
   task("probe", {{steps:[exec({{argv:[{argv}]{field}}})]}}),
+  profile("selected", {{}}),
 ];'''})
     (repo / "payload").mkdir()
     (repo / "payload/value").write_text("contained\n")
@@ -236,4 +238,4 @@ export default [
         diagnostic = result.stdout + result.stderr
         assert result.returncode != 0, diagnostic
         assert "unsafe.ts" in diagnostic, diagnostic
-        assert any(word in diagnostic.lower() for word in ("relative", "parent", "escape", "segment", "..")), diagnostic
+        assert any(word in diagnostic.lower() for word in ("relative", "parent", "escape", "segment")), diagnostic

@@ -54,6 +54,7 @@ fn actual_native_receipt_projection_replaces_unknown_without_exposing_storage_pa
     let realized = Realization {
         packages: BTreeMap::from([("native", Arc::clone(&package)), ("not-selected", package)]),
         inputs: BTreeMap::new(),
+        selector_binding: crate::workspace::paths::SelectorBinding::LockedSource,
     };
     assert!(
         document

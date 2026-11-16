@@ -258,6 +258,7 @@ fn native_file_checks_preserve_operation_deadline() {
     let realization = Realization {
         packages: BTreeMap::new(),
         inputs: BTreeMap::new(),
+        selector_binding: crate::workspace::paths::SelectorBinding::LockedSource,
     };
     let options = super::super::BuildOptions {
         environment: &environment,

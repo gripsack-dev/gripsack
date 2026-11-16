@@ -122,7 +122,7 @@
     "repositories": {
       "site": {
         "url": "https://github.com/gripsack-dev/gripsack-dev.github.io.git",
-        "commit": "3f884525fda18a3125a52286282f8da8eeca9814"
+        "commit": "e32797d7a4c65f5cb5d36c9d5068dbeb3eb91d9b"
       }
     }
   }

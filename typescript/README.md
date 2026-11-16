@@ -164,6 +164,9 @@ use these rules for typed env/cwd values; Bash text itself is never interpolated
 and source span. Planning does not fetch or establish that a file exists.
 Retained hooks/launchers keep concrete bindings; portable manifests keep their
 existing literal selectors rather than gaining new template semantics.
+Scheduled jobs freeze selectors before capturing their declarations; replay uses
+those concrete paths without consulting today's lock. Older captured literal
+selectors—including brace filenames—retain their original meaning.
 
 Use the `bash` tag for literal scripts, then bind an explicitly declared package
 interpreter. For example, with a package named `shell` exporting `bash`:

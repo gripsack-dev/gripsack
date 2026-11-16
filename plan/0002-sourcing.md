@@ -223,6 +223,12 @@ Preserve historical literal selectors in portable manifests; an import must
 not silently apply newly introduced template semantics to those retained bytes.
 No persisted format or IR10 shape change is authorized by this extension.
 
+Scheduled captures resolve selectors while source pins are available, before
+retaining their IR. Restored schedules and portable environments are explicitly
+concrete binding contexts, not authored templates. This also preserves literal
+brace filenames in old snapshots when an upgraded core dispatches them. The
+distinction is internal execution context, not a new persisted flag or format.
+
 ### Formal boundary and evidence
 
 This is ring-3 typed input binding plus ring-4 explanation (0056 §3), not a

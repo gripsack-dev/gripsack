@@ -283,6 +283,7 @@ impl Context {
         Ok(Realization {
             inputs: BTreeMap::new(),
             packages,
+            selector_binding: crate::workspace::paths::SelectorBinding::Concrete,
         })
     }
 }

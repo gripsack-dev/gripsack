@@ -73,6 +73,7 @@ pub(super) fn prepare(
             .workspace
             .outputs
             .retain(|output| selection.required.contains(output.name()));
+        crate::workspace::paths::freeze_selectors(&mut captured_ir, realization)?;
         freeze_external_programs(&mut captured_ir, realization, &environment)?;
         let mut packages = BTreeMap::new();
         let mut receipts = BTreeMap::new();

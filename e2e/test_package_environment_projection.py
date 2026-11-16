@@ -447,7 +447,7 @@ int main(void) {
     releases.names["selectors", "v7"] = asset
     releases.assets[asset] = archive.getvalue()
     repo = make_workspace_repo(producer / "workspace", '''
-import {pkg, provider, githubRelease, environment, artifact} from "@gripsack/core";
+import {pkg, provider, githubRelease, environment, artifact, profile} from "@gripsack/core";
 const target = {os:"linux",arch:"x86_64",abi:"gnu"} as const;
 export default [
   pkg("native", {
@@ -458,6 +458,7 @@ export default [
     RELEASE_DATA:artifact("native","share/{version}/{os}/{version.bare}/value"),
     WHOLE_DATA:artifact("native","."),
   }}),
+  profile("selected", {environment:"dev"}),
 ];'''.replace("BASE", json.dumps(releases.base)))
     project(producer_env, repo, "update")
     before = project(producer_env, repo, "run", "--env", "dev", "--", "selector-probe").stdout

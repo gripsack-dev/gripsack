@@ -32,6 +32,7 @@ pub(super) fn inspect<'a>(
     let mut realized = Realization {
         packages: BTreeMap::new(),
         inputs: BTreeMap::new(),
+        selector_binding: super::paths::SelectorBinding::LockedSource,
     };
     let workspace = &ir.workspace;
     if origins.is_empty() {

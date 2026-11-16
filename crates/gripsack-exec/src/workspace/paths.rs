@@ -1,4 +1,7 @@
 //! Payload templates bind only to their producing package's frozen release.
+mod freeze;
+pub(super) use freeze::freeze_selectors;
+
 use super::{
     artifact::Package, definitions::captured_definitions, pins::WorkspacePins,
     realize::Realization, selection::Selection,
@@ -18,6 +21,14 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
+
+/// Authored declarations and retained selectors have different semantics even
+/// when their string bytes happen to contain the same braces.
+#[derive(Clone, Copy)]
+pub(super) enum SelectorBinding {
+    LockedSource,
+    Concrete,
+}
 
 pub(super) fn expand<'a>(
     pattern: &'a str,
@@ -68,7 +79,10 @@ pub(super) fn resolve_artifact(
         .packages
         .get(output)
         .ok_or_else(|| binding_error(span, format!("artifact {output:?} is not realized")))?;
-    resolve(package, selector, span)
+    match realization.selector_binding {
+        SelectorBinding::LockedSource => resolve(package, selector, span),
+        SelectorBinding::Concrete => resolve_exact(package.payload(), selector, span),
+    }
 }
 
 /// Concrete retained selectors have no template semantics. Canonical containment

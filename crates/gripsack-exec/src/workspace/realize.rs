@@ -40,6 +40,7 @@ pub(crate) struct Realization<'a> {
     /// Captured workspace input binding paths (file inputs carry their
     /// `value` member); empty when the selection declares no inputs.
     pub(super) inputs: BTreeMap<&'a str, PathBuf>,
+    pub(super) selector_binding: super::paths::SelectorBinding,
 }
 
 impl Realization<'_> {
@@ -222,6 +223,7 @@ pub(super) fn realize_in_session<'a>(
         realization: Realization {
             packages,
             inputs: input_paths(&prepared),
+            selector_binding: super::paths::SelectorBinding::LockedSource,
         },
         session,
         closures,
