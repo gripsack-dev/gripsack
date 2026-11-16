@@ -5,6 +5,8 @@ import fcntl
 import json
 import os
 import pty
+import re
+import select
 import shlex
 import signal
 import subprocess
@@ -382,3 +384,77 @@ def test_task_log_preserves_lines_without_replaying_terminal_controls(sandbox):
     assert "second\n" in log.stdout
     assert "\x1b" not in log.stdout
     assert "\\xff\n" in log.stdout
+
+
+def test_task_steps_and_checks_are_labelled_while_partial_stdout_streams(sandbox):
+    repo = sandbox / "graph"
+    workspace(repo, [
+        task("dep", "echo dependency"),
+        'check("verify", {subject:"root", run:' +
+        command('printf check-partial; read line; echo "$line"') + '})',
+        'task("root", {deps:["dep"], checks:["verify"], steps:[' +
+        command('printf partial; read line; echo "$line"') + ',' +
+        command('echo second; printf task-warning >&2') + ']})',
+    ])
+    process = start_grip([str(GRIP), "task", "run", "root"], cwd=repo,
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         env={**os.environ, "NO_COLOR": "1"})
+    seen = {"out": b"", "err": b""}
+    streams = {process.stdout.fileno(): "out", process.stderr.fileno(): "err"}
+
+    def await_output(stdout, stderr):
+        # The child waits for stdin. Release it only after observing its partial
+        # write and the owning step/check label, never after a timing threshold.
+        deadline = time.monotonic() + 60
+        while stdout not in seen["out"] or stderr not in seen["err"]:
+            assert process.poll() is None, seen
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, seen
+            ready, _, _ = select.select(list(streams), [], [], remaining)
+            for descriptor in ready:
+                data = os.read(descriptor, 65536)
+                if data:
+                    seen[streams[descriptor]] += data
+                else:
+                    del streams[descriptor]
+        assert process.poll() is None, "the stdin barrier must still hold the task open"
+
+    try:
+        await_output(b"dependency\npartial", b"root \xe2\x80\xa6 running step 1/2")
+        assert b"step 1/2 passed" not in seen["err"]
+        process.stdin.write(b"released\n")
+        process.stdin.flush()
+        await_output(b"check-partial", b"root \xe2\x80\xa6 running check verify")
+        assert b"root \xe2\x9c\x93 step 1/2 passed in" in seen["err"]
+        assert b"root \xe2\x9c\x93 step 2/2 passed in" in seen["err"]
+        assert b"task-warning\n" in seen["err"], "stderr cannot run into the status line"
+        assert b"check verify passed" not in seen["err"]
+        process.stdin.write(b"done\n")
+        process.stdin.flush()
+    finally:
+        rest_out, rest_err = process.communicate(input=b"cleanup\ncleanup\n", timeout=60)
+    out, err = seen["out"] + rest_out, seen["err"] + rest_err
+    assert process.returncode == 0, (out, err)
+    assert out == b"dependency\npartialreleased\nsecond\ncheck-partialdone\n"
+    assert b"dep \xe2\x80\xa6 running step 1/1" in err
+    assert b"root \xe2\x9c\x93 check verify passed in" in err
+    assert b"\x1b" not in out + err, "NO_COLOR and piped metadata must remain plain"
+    invocation = re.search(rb"invocation ([0-9a-f]+)", err).group(1).decode()
+    log = grip("task", "log", invocation, cwd=repo)
+    assert log.returncode == 0, log.stderr
+    assert log.stdout == "dependency\npartialreleased\nsecond\ntask-warningcheck-partialdone\n"
+
+
+def test_task_failure_labels_preserve_exit_status_and_json_output(sandbox):
+    repo = sandbox / "graph"
+    workspace(repo, [task("root", "printf failure-out; printf failure-err >&2; exit 7")])
+    result = grip("task", "run", "root", "--closed-stdin", cwd=repo)
+    assert result.returncode == 7, result.stderr
+    assert result.stdout == "failure-out"
+    assert "root … running step 1/1" in result.stderr
+    assert "failure-err\n" in result.stderr
+    assert "step 1/1 FAILED after" in result.stderr and "(exit 7)" in result.stderr
+    result, report = invoke(repo, "root", "--closed-stdin")
+    assert result.returncode == 7, result.stderr
+    assert report["status"] == "failed"
+    assert "running step" not in result.stderr and "failure-out" not in result.stdout

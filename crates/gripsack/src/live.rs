@@ -5,6 +5,8 @@
 //! assembled in full and written with one call, so checks never interleave.
 //! Captured tool output passes the untrusted-text boundary before it is
 //! written; renderer colour follows the palette (TTY, `NO_COLOR`).
+//! Task runs reuse these labels on stderr without a spinner; their stdout
+//! remains the child's live byte stream rather than a rendered report.
 
 use crate::render::Palette;
 use gripsack_exec::{Progress, StepReport, Tone, Verification};
@@ -27,7 +29,9 @@ pub enum Detail {
 pub struct LiveRenderer {
     palette: Palette,
     detail: Detail,
-    /// Width of the output-name column (the apply report convention).
+    /// Task output belongs to the child; all task presentation uses stderr.
+    task: bool,
+    /// Width of the output-name column (the shared report convention).
     width: usize,
     spinner: Option<indicatif::ProgressBar>,
     /// The spinner message of the current phase, restored once a unit ends.
@@ -45,7 +49,16 @@ impl LiveRenderer {
     }
 
     pub fn new(palette: Palette, detail: Detail, ir: &gripsack_ir::Ir) -> Self {
-        let spinner = std::io::stderr().is_terminal().then(|| {
+        Self::with_mode(palette, detail, ir, false)
+    }
+
+    /// Do not animate over a task's live child output or write into its stdout.
+    pub fn for_task(palette: Palette, ir: &gripsack_ir::Ir) -> Self {
+        Self::with_mode(palette, Detail::Full, ir, true)
+    }
+
+    fn with_mode(palette: Palette, detail: Detail, ir: &gripsack_ir::Ir, task: bool) -> Self {
+        let spinner = (!task && std::io::stderr().is_terminal()).then(|| {
             let template = if palette.colors_allowed() {
                 "{spinner:.green} {msg}"
             } else {
@@ -68,7 +81,10 @@ impl LiveRenderer {
             .workspace
             .outputs
             .iter()
-            .filter(|output| matches!(output, O::Profile(_) | O::Package(_)))
+            .filter(|output| {
+                matches!(output, O::Profile(_) | O::Package(_))
+                    || (task && matches!(output, O::Task(_)))
+            })
             .map(|output| output.name().chars().count())
             .max()
             .unwrap_or(0);
@@ -76,6 +92,7 @@ impl LiveRenderer {
             palette,
             detail,
             width,
+            task,
             spinner,
             phase: Default::default(),
         }
@@ -130,8 +147,14 @@ impl LiveRenderer {
         }
     }
 
-    /// One atomic stdout write, above the spinner when there is one.
+    /// One atomic report write, above the apply spinner when there is one.
     fn report(&self, text: &str) {
+        if self.task {
+            let mut stderr = std::io::stderr().lock();
+            let _ = stderr.write_all(text.as_bytes());
+            let _ = stderr.flush();
+            return;
+        }
         let write = || {
             let mut stdout = std::io::stdout().lock();
             let _ = stdout.write_all(text.as_bytes());
@@ -290,6 +313,7 @@ mod tests {
         LiveRenderer {
             palette: Palette::plain(),
             detail,
+            task: false,
             width: 8,
             spinner: None,
             phase: Default::default(),

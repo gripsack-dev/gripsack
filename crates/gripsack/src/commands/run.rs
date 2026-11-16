@@ -4,6 +4,7 @@
 //! consumer service. No personal generation is created and the live
 //! checkout stays the working directory.
 use super::{eval_repo, validated_ir};
+use crate::live::LiveRenderer;
 use crate::render::{DiagnosticSink, Palette};
 use gripsack_exec::{BuildOptions, ConsumerRequest, Ctx, ExecError, Repository, consume};
 use gripsack_host::process::{OperatorEnvironment, Sha256Digest, terminal::tame};
@@ -148,6 +149,10 @@ fn inner(
             return ExitCode::FAILURE;
         }
     };
+    let live_task = matches!(&request, NativeRequest::Task { json: false, .. });
+    if live_task {
+        LiveRenderer::announce_evaluation();
+    }
     let outcome = match eval_repo(repo, None, &mut sink) {
         Ok(outcome) => outcome,
         Err(code) => return code,
@@ -156,6 +161,7 @@ fn inner(
         Ok(ir) => ir,
         Err(code) => return code,
     };
+    let live = live_task.then(|| LiveRenderer::for_task(palette, &ir));
     let only = vec![match &request {
         NativeRequest::Consumer(
             ConsumerRequest::Run { environment, .. } | ConsumerRequest::Shell { environment, .. },
@@ -171,7 +177,9 @@ fn inner(
         take_over: false,
         take_over_entries: None,
         fetch: outcome.fetch,
-        on_progress: None,
+        on_progress: live.map(|live| -> gripsack_exec::ProgressCallback {
+            Box::new(move |event| live.render(event))
+        }),
     };
     let options = BuildOptions {
         environment: &environment,
