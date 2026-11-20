@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability privately
+    url: https://github.com/gripsack-dev/gripsack/blob/main/SECURITY.md
+    about: Follow the security policy. Do not disclose vulnerabilities in public issues.
+  - name: RFC process and registry
+    url: https://github.com/gripsack-dev/gripsack/blob/main/docs/rfcs/README.md
+    about: Check existing decisions and when a proposal needs an RFC.

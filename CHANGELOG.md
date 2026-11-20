@@ -1,7 +1,7 @@
 # Changelog
 
-User-visible changes per release. Design archaeology lives in
-`plan/`; this file is for "what's new for me".
+User-visible changes per release. Design decisions live in the
+[RFC registry](docs/rfcs/README.md); this file is for "what's new for me".
 
 
 ## [Unreleased]
@@ -2559,7 +2559,7 @@ The beautiful-errors sweep (0004 §3 pushed through the stack).
 ## [0.17.3] — 2026-08-30
 
 Platform facts, floating git, and a hardened store
-([plan 0016](plan/0016-platform-facts-floating-git-readonly-store.md)).
+([RFC 0016](docs/rfcs/2026-08-29-platform-facts-floating-git-readonly-store.md)).
 
 ### Added
 
@@ -2617,7 +2617,7 @@ real, full-sized dotfiles env.
 
 ## [0.17.1] — 2026-08-29
 
-The adopt audit ([plan 0015 §7](plan/0015-grip-adopt.md)): ask, don't
+The adopt audit ([RFC 0015 §7](docs/rfcs/2026-08-29-grip-adopt.md)): ask, don't
 guess; say exactly what you wrote.
 
 ### Changed
@@ -2655,7 +2655,7 @@ guess; say exactly what you wrote.
 
 ## [0.17.0] — 2026-08-28
 
-Constrained evaluation ([plan 0013](plan/0013-constrained-evaluation.md)).
+Constrained evaluation ([RFC 0013](docs/rfcs/2026-08-28-constrained-evaluation.md)).
 Breaking: the Python frontend, bun, and uv are removed.
 
 ### Added
@@ -2683,7 +2683,7 @@ Breaking: the Python frontend, bun, and uv are removed.
   registration is gone.
 - The dual-frontend parity corpus is replaced by a golden IR snapshot
   corpus (fixture envs → IR, byte-exact modulo spans).
-- **Content-addressed store identity** ([plan 0014](plan/0014-content-addressed-fetches.md)):
+- **Content-addressed store identity** ([RFC 0014](docs/rfcs/2026-08-28-content-addressed-fetches.md)):
   fetch-only and config-only modules name their store path by the
   canonical hash of their content; builds stay input-addressed (their
   output can't be named before it exists — plan-time naming is what
@@ -2697,7 +2697,7 @@ Breaking: the Python frontend, bun, and uv are removed.
   transport hash (could never match) under a hostname-keyed lock
   lookup (usually skipped) — the generation manifest now carries
   `tree256`, and a tampered fetched payload fails verify anywhere.
-- **`grip adopt <path>`** ([plan 0015](plan/0015-grip-adopt.md)) — the
+- **`grip adopt <path>`** ([RFC 0015](docs/rfcs/2026-08-29-grip-adopt.md)) — the
   adoption flow as a first-class command: inspects the path,
   recommends an ownership mode with the reason stated, generates the
   payload + module + host entry, shows the plan, and touches nothing

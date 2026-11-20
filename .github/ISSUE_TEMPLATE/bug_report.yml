@@ -1,0 +1,39 @@
+name: Bug report
+description: Report broken behaviour, incorrect documentation, or a regression.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Suspected vulnerability? Stop here and follow [SECURITY.md](https://github.com/gripsack-dev/gripsack/blob/main/SECURITY.md) instead."
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened?
+      description: Include the command, relevant output and exit code, or a link to the incorrect documentation. Remove private paths, credentials and personal data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can we reproduce it?
+      description: Give the smallest workspace or steps that show the problem. Use example data, not your home directory or a private environment dump.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Gripsack version
+      description: Paste `grip --version`, the source commit, or the documentation URL if no binary is involved.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Linux distribution or WSL, architecture, and any relevant tool versions.

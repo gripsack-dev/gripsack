@@ -1,7 +1,7 @@
 # Weekly freshness: each data pack's supported set vs the tool's latest
 # upstream release; an issue per laggard (idempotent by title).
 #
-# The second job is the pin-update proposer (plan/0042 F): every pinned
+# The second job is the pin-update proposer (RFC 0042 F): every pinned
 # toolchain/image digest/tool version vs official metadata — where a
 # bump has complete authoritative data it lands as a REAL pin-update PR
 # on a stable pins/<name> bot branch (never auto-merged); where data is
@@ -46,7 +46,7 @@ jobs:
       pull-requests: write   # open/reuse the pin-update PRs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Propose pin-update PRs (plan/0042 F)
+      - name: Propose pin-update PRs (RFC 0042 F)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

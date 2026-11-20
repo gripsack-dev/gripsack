@@ -5,9 +5,9 @@ described once in typed TypeScript, deployed by a Rust core into a
 hash-addressed store with generations and rollback. The frontend
 evaluates a workspace to IR (JSON) inside a sandboxed, provisioned Deno —
 facts are core-injected, effects are explicit probes — and the core
-only ever consumes IR (`plan/0001`, `plan/0013`). Sourcing splits into
+only ever consumes IR ([RFC 0001](docs/rfcs/2026-08-22-architecture.md), [RFC 0013](docs/rfcs/2026-08-28-constrained-evaluation.md)). Sourcing splits into
 core-side resolution and exec-time transports, with `gripfetch-*`
-plugins for bespoke transports (`plan/0002`).
+plugins for bespoke transports ([RFC 0002](docs/rfcs/2026-08-22-sourcing.md)).
 
 ## Build & test — docker first
 
@@ -19,7 +19,7 @@ docker compose run --build --rm test      # fmt + clippy -D warnings + cargo tes
 docker compose run --build --rm ts-test   # typescript frontend tests (deno)
 docker compose run --build --rm e2e       # offline flow tests (real binary + real frontend)
 docker compose run --build --rm audit     # cargo audit, core + helper locks
-docker compose run --build --rm proofs    # Lean proofs of the kernel (plan/0056 F1)
+docker compose run --build --rm proofs    # Lean proofs of the kernel (RFC 0056 F1)
 python3 scripts/release.py prepare        # release assets → ./dist/
 python3 scripts/release.py verify         # artifact checks + installed-consumer smoke
 docker compose run --build --rm diagram   # render docs/diagrams/*.d2
@@ -28,7 +28,7 @@ docker compose run --build --rm diagram   # render docs/diagrams/*.d2
 The required gates are `.ci/pilot.json` (test, ts-test, e2e, audit,
 package, smoke), run by the local Buildbot (see Workflow). Optional and only
 when asked: `model` (TLC), `tlaps`, `fuzz`,
-`scripts/check_reproducible.sh`. `tlaps` is being retired by plan/0056 as
+`scripts/check_reproducible.sh`. `tlaps` is being retired by RFC 0056 as
 the Lean proofs replace it; don't extend it. Never dispatch fuzz without an
 owner request.
 
@@ -84,8 +84,8 @@ permissions or preserved engine identity: verify both and run a retained image.
 
 | Path | Contents |
 |---|---|
-| `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the one-row-per-plan ledger — update it in the same PR |
-| `plan/0056-verified-foundation.md` | **the active epic**: rings, Lean-proved kernel, target crate layout, trim register, phase ledger |
+| [RFC registry](docs/rfcs/README.md) | Design contracts, historical IDs and tracking issues. New work starts in [GitHub issues](https://github.com/gripsack-dev/gripsack/issues), not a numbered plan. |
+| [Verified foundation](docs/rfcs/2026-11-08-verified-foundation.md) | **the active epic**: rings, Lean-proved kernel, target crate layout, trim register, phase ledger |
 | `docs/diagrams/` | d2 sources + rendered SVGs (end-state architecture) |
 | `docs/operations/` | workstation operator runbooks (storage) |
 | `schema/ir/v10.json` | Current native workspace, service and portable-package authoring contract. Strict historical readers exist only for retained data; current execution admits IR10 |
@@ -99,7 +99,7 @@ permissions or preserved engine identity: verify both and run a retained image.
 | `crates/gripsack` | the `grip` CLI |
 | `typescript/` | The typed workspace SDK (`@gripsack/core`); also embedded in the binary |
 | `e2e/` | pytest flow tests against the real binary + golden IR corpus |
-| `specs/` | TLA+ models: TLC cfgs are bug-finders; TLAPS proofs retire under plan/0056 F3 |
+| `specs/` | TLA+ models: TLC cfgs are bug-finders; TLAPS proofs retire under RFC 0056 F3 |
 | `.agents/skills/` | maintainer skills: IR evolution, e2e, release, PR |
 | `skills/` | public skills: `gripsack-debug` (reading run logs), `gripsack-adopt` |
 | `crates/gripsack-trace` | run tracing: JSONL logs with causal spans |
@@ -149,19 +149,19 @@ stored data needed for rollback and integrity retains its original meaning.
 
 ## Contracts to read before changing behavior
 
-- `plan/0056-verified-foundation.md` — the active direction. It supersedes
+- [Verified foundation](docs/rfcs/2026-11-08-verified-foundation.md) — the active direction. It supersedes
   0047's tooling decisions and 0048's verification/evidence/release contract.
 
-- `plan/0055-workspace-only-product.md` — current workspace-only API and
+- [One workspace surface](docs/rfcs/2026-10-27-workspace-only-product.md) — current workspace-only API and
   clean alpha cutover; supersedes historical module and old-reader contracts.
 
-- `plan/0001-architecture.md` — modules, store, generations, ownership
+- [Architecture](docs/rfcs/2026-08-22-architecture.md) — modules, store, generations, ownership
   modes, activation, invariants (§9 holds or nothing does).
-- `plan/0002-sourcing.md` — resolver/transport split, fetcher protocol,
+- [Sourcing](docs/rfcs/2026-08-22-sourcing.md) — resolver/transport split, fetcher protocol,
   hash verification rules.
-- `plan/0013-constrained-evaluation.md` — the eval boundary: one
+- [Constrained evaluation](docs/rfcs/2026-08-28-constrained-evaluation.md) — the eval boundary: one
   frontend, sandboxed Deno, injected facts, probes, trust gate.
-- `plan/0003-repo-and-tooling.md` — this file's details: gates, releases,
+- [Repository and tooling](docs/rfcs/2026-08-22-repo-and-tooling.md) — this file's details: gates, releases,
   versioning, IR compatibility policy.
 - `.agents/skills/gripsack-ir/` — how to evolve the IR safely.
 
@@ -184,7 +184,7 @@ stored data needed for rollback and integrity retains its original meaning.
   lockfile is the sole source of pinning.
 - Never auto-rollback on post-activation hook failure (0001 §3.8).
 
-## Foundation rules (plan/0056)
+## Foundation rules (RFC 0056)
 
 - **Rings.** Ring 0 kernel (pure decisions) and ring 1 protocol machines
   (sans-IO) are proved in Lean over the Aeneas translation of the shipped
@@ -197,7 +197,7 @@ stored data needed for rollback and integrity retains its original meaning.
 - **Kernel code** (`gripsack-kernel`, once it exists): no IO, no floats, no
   `dyn`, no dependencies. Change it together with its Lean proofs; the
   `proofs` gate checks the committed translation has not drifted.
-- **One proof language.** Verus is gone (plan/0056 F2 step 10a). Don't add
+- **One proof language.** Verus is gone (RFC 0056 F2 step 10a). Don't add
   TLAPS proofs or hand-mirrored Rust "model" explorers. Never close a theorem with `sorry`
   or an axiom that assumes the claim; the axiom audit rejects it.
 - **The survival rule.** An artifact stays only if it is a machine-checked
@@ -208,6 +208,11 @@ stored data needed for rollback and integrity retains its original meaning.
   source. Nothing hand-assembled.
 
 ## Workflow
+
+- Follow [CONTRIBUTING.md](CONTRIBUTING.md) and [GOVERNANCE.md](GOVERNANCE.md):
+  use an issue for work and a dated [RFC](docs/rfcs/README.md) for design.
+  Only the owner accepts or rejects proposals. Keep the issue, RFC and registry
+  in sync; name the tracking issue in implementation PRs.
 
 - `main` is protected and requires the `local-practical-qualification`
   status. Qualify the exact source on the owner's local Buildbot

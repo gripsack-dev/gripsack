@@ -11,7 +11,7 @@ registry, a distro package mirror, anything with an mTLS or credentialed
 dance. The contract is small and every rule below is load-bearing. The
 conformance suite proves you got it right.
 
-Study the request flow first (plan/0002 §4, 0009 §2): the core spawns you,
+Study the request flow first ([RFC 0002](../../../docs/rfcs/2026-08-22-sourcing.md) §4, 0009 §2): the core spawns you,
 sends ONE JSON line on stdin, reads NDJSON messages on stdout, and
 hash-verifies every byte you staged before it enters the store.
 

@@ -1,0 +1,91 @@
+# Final numbered-plan ledger (historical snapshot)
+
+This is the [last ledger before the migration](https://github.com/gripsack-dev/gripsack/blob/7924bc2b844d109dbb520040f5954ad237007ff3/plan/STATUS.md). The “Now” section, release targets and statuses below describe that snapshot, **not the current backlog**. Use the [RFC registry](README.md) for decisions and [GitHub issues](https://github.com/gripsack-dev/gripsack/issues) for work. The [earlier, detailed ledger](https://github.com/gripsack-dev/gripsack/blob/187d741f0c1995131d3d7da14d3b48f2307a806e/plan/STATUS.md) retains the landed, deferred and rejected columns and the execution chronology removed during the foundation reset.
+
+## Now
+
+- **Latest release:** [core-v0.55.0](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.55.0) (2026-11-16), Linux/WSL x86_64 only.
+- **0.56.0 release target:** generalized typed artifact/source selector binding and offline plan paths (0002 §10), plus verification-output formatting/streaming review.
+- **Active plan:** [0056 — verified foundation](2026-11-08-verified-foundation.md), approved 2026-11-08.
+  Its ledger (§9 phases, §13+ records) is the source of truth for the epic.
+- **Independent design review:** [2026-11](../reviews/2026-11-design-review.md) — findings are leads; each is verified before it changes a plan.
+- **Superseded by 0056:** 0047 tooling decisions; 0048 §6 (M-V1–M-V8), §9–§10 as
+  release gates and its evidence/receipt contract; the formal and evidence
+  parts of 0049–0055. Runtime safety contracts are kept and become theorems.
+- **Open product work** from 0048–0055 (the original handover) is re-homed by
+  0056's handover reconciliation, not tracked here.
+
+## Plans
+
+| Plan | Title | Shipped |
+|---|---|---|
+| 0001 | Architecture: modules, store, generations, ownership, invariants | 0.x foundation |
+| 0002 | Sourcing: resolver/transport split, fetcher protocol; locked payload templates (§9), typed selector binding (§10) | foundation; 0.55.0; 0.56.0 planned |
+| 0003 | Repo, gates, releases | foundation |
+| 0004 | Rich IR + compiler passes + provenance | foundation |
+| 0005 | Frontends + configuration | foundation |
+| 0006 | Gradual migration | foundation |
+| 0007 | Steps, resources, scheduling | foundation |
+| 0008 | Canonicalization + satisfaction | foundation |
+| 0009 | Diagnostics across boundaries | foundation |
+| 0010/0011/0012 | Plugin provisioning → validation plugins → linters in core | 0.13.0–0.14.0 |
+| 0013 | Constrained evaluation (sandboxed Deno, trust gate) | 0.15.x |
+| 0014 | Content-addressed fetches | 0.16.x |
+| 0015 | `grip adopt` | 0.16.x |
+| 0016 | Platform facts, floating git, read-only store | 0.16.x |
+| 0017 | Hardening/fuzzing playbook | process |
+| 0018 | Critique response 0.17.14 | 0.17.14 |
+| 0019 | Deploy journal (crash recovery) | 0.18.x |
+| 0020 | Review response 0.18.1 | 0.19.x–0.20.0 |
+| 0021 | cap-std fs hardening | 0.21.0 |
+| 0022 | SBOM cargo-auditable | 0.21.x |
+| 0023 | Case-fold everywhere | 0.26.0 |
+| 0024 | Review response 0.21.0 | 0.21.x |
+| 0025 | Transaction coverage | 0.22.0 |
+| 0026 | Path-centric transactions | 0.23.0 |
+| 0027 | Provable transactions | 0.24.0 |
+| 0028 | Machine-checked model | (no release) |
+| 0029 | Ownership lineage | 0.25.0 |
+| 0030 | Canonical destinations | 0.26.0 |
+| 0031 | Mode-aware identity | 0.27.0 |
+| 0032 | Durable activation | 0.28.0 |
+| 0033 | Review 0.27.0 | 0.29.0 |
+| 0034 | Shared operation list | 0.30.0 |
+| 0034+ | VM-level op harness | 0.31.0 |
+| 0035 | Review fb11aaf | 0.32.0 |
+| 0036 | Representation audit | (docs only) |
+| 0037 | Rollback activation | 0.33.0 |
+| 0039 | Build closures | core/TS 0.35.0 |
+| 0038 | Journey harness | 0.34.0 |
+| 0040 | Post-0.35 project sweep | review |
+| 0041 | P1 contract fidelity and persistence | core/TS 0.36.0 |
+| 0042 | Bounded acquisition, complete pins and stronger evidence | core/TS 0.37.0 |
+| 0043 | Migration feedback and permission identity | core/TS 0.38.0 |
+| 0044 | Complete surveys, explicit version spellings and bounded HTTP failures | core/SDK 0.39.0 |
+| 0045 | Recovery admission hardening, mutation sessions, editor-reachable frontends | core/SDK 0.40.0 |
+| 0046 | Verified decision kernels (Verus pilot + ownership + GC retention + op contracts) | core/SDK 0.41.0 |
+| 0047 | Verified merge splice, graph closures and scheduler transitions | core/SDK 0.42.0 |
+| 0048 | Unified review handoff with binding release and quality gates | 0.43–0.51 (partial) |
+| 0049 | Handover bundle import (edition 5) — H0 reconciliation + A0 bottle selection | superseded |
+| 0050 | E0 task/schedule scope and proof targets | partial (systemd) |
+| 0051 | Linux BuildKit production and B-row qualification | retired (0055) |
+| 0052 | Workspace graph, command, diagnostic and native-runtime contract | 0.44–0.51 |
+| 0053 | CI and release-flow migration | Buildbot local qualification |
+| 0054 | Workspace ergonomics and original handover completion | 0.48 |
+| 0055 | One workspace surface | 0.50–0.51 |
+| 0056 | Verified foundation: Lean-proved kernel, rings, trim | F0 + F1 (GO) in 0.52.0; F2 step 1 (`gripsack-host` Storage/RealFs/MemFs, resurrection rediscovered) in review; F2 step 2 (kernel recover machine, Lean (a)–(d), wedge refused by name + doctor view) merged; F2 step 6 part 1 (kernel `ownership::decide_unit`, K1 proved, FND-1 and the store-link widening fixed, `plan_copy`/`plan_link` and `lineage_model` gone) on `foundation/f2-ownership`; F2 step 8 (kernel rollback machine, K2 for rollback proved, exact restore or refusal before the flip, FND-2 fixed; blocks and directory transitions delegated) on `foundation/f2-rollback`; F2 step 6 part 2 (kernel managed block: grammar, scan, normalization, rendering, splice, block decision; K5 and K1 for blocks proved; rollback restores a block only from its record; FND-4 fixed; Verus merge, `MergeBoundary.tla` and the `merge` fuzz target gone) on `foundation/f2-splice`; F2 step 4 (kernel GC machine decides every deletion, K4 and K4′ proved, stale-staging reaper of 0058 item 4, `store_gc` fuzz target gone) on `foundation/f2-gc`; F2 step 3 (kernel journal-run machine: marker, leaf effect protocol with re-check before every act, flip, cleanup; P1 and the cleanup half of P3 proved; Verus `journal_protocol` and `admit_mutation` gone; rollback writes crash-explored over MemFs) on `foundation/f2-journal`; F2 step 5 (kernel activation machine decides every hook-ledger transition, P4 kernel part proved, K6 numbering/publication decisions proved, FND-5 fixed; Verus `activation` and five TLC activation negatives gone) on `foundation/f2-activation`; F2 step 7 (kernel apply machine decides every unit, release, commit and flip; K2/K1 through apply, the flip's K6 admission after every unit and FND-3 proved; FND-3 reproduced on `/mnt/c` and fixed with its rollback sibling; `mutated` flag replaces `ReportKind`; apply crash-explored over MemFs; `ops/model`, `mode_model`, `Ownership.tla` gone; blocks and directory domain delegated) on `foundation/f2-apply`; F2 step 9 (directory domain fenced as a typed sub-protocol: every directory step of apply and rollback machine-commanded in stage order, blocker removals kernel-decided `Clear` units, owned nodes held — no whole-object write lands on one, no step where a deploy claims, flip after every step settles; premise D stated; TLC directory models kept as bug-finders; pre-unit removals and rollback's pre-machine `prepare` gone) on `foundation/f2-directory`; F2 step 10a (Verus retired: `update_survey` ported to the kernel and proved — the lock is published only from a complete survey with no failure; `semantic` and the dead graph-closure checks deleted; the other policy kernels, budgets and the IR collector demoted to plain Rust with tests killing every former Verus mutant; `vstd`, the `verify` gate and its scripts gone) on `foundation/f2-verus`; F2 step 10b (`gripsack-store`, `-policy`, `-fs` and `-process` dissolved by `git mv` into their users — `gripsack-host` gains `fs`, `process` (with the process/operation budgets) and `store` (layout and wire codecs); source bundle, trust list and `DeploymentEntry` to exec, rate/retry budgets to fetch, target/command/graph-role tables to the IR, which drops its policy dependency; `check_architecture.py` enforces `gripsack → exec/fetch → host → kernel`, `ir → kernel` and rejects the retired crates; F2 phase exit met) on `foundation/f2-dissolve` |
+| 0057 | Fast qualification: cache mounts, one dev profile, parallel e2e/mutants/package, theorem-backed test trim | landed in 0.52.0 (qualified in ~20 min warm, 36 min cold) |
+| 0058 | Handover final reconciliation (supersedes 0056a): 25 landed, 18 obsolete, 13 pending, 3 rejected | landed (docs) |
+| 0059 | The front door: examples that run, approval of the evaluation closure, IR11 syntax (handles, map-form files, inference), host shell, cut sharing/Pixi/wheels/plugins/griplint, `grip status` | accepted; after 0056 F2 (services: owner decides). Step 1 (ABI read from the ELF, Conda CDT libraries host-provided with `strict: true`, documented examples as `examples/workspaces/*` run by e2e on glibc) on `fix/examples-run` |
+
+## Settled rejections (all eras)
+
+- **TOML/data-format frontend** — five times. TypeScript is the
+  authoring surface.
+- **cap-std piecemeal** — the migration was all-or-nothing (0020);
+  0021 did it whole.
+- **Sidecar-only SBOM** — the SBOM travels inside the binary (0022).
+- **SQLite for the store** — can't transact scattered HOME files;
+  the fs IS the store (0035).
+- **Machine-local pin grant setting** — the trust gate is the
+  boundary; validation happens at the grant (0033).

@@ -1,0 +1,30 @@
+name: Feature or design proposal
+description: Propose a capability or a change to intended behaviour.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "For a vulnerability, use [private reporting](https://github.com/gripsack-dev/gripsack/blob/main/SECURITY.md), not this form."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe a concrete workspace, command or workflow and what it cannot do today. Redact private information.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would success look like?
+      description: Give an observable result. You need not have an implementation or an RFC yet.
+    validations:
+      required: true
+  - type: textarea
+    id: contracts
+    attributes:
+      label: Which contracts or decisions might change?
+      description: For example, a CLI command, workspace IR, stored generation, ownership decision or recovery protocol. Link any relevant RFC.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds considered

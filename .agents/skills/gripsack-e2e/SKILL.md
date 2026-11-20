@@ -5,10 +5,10 @@ description: Write gripsack flow tests — fixture env repos, sandboxed HOME, of
 
 # Writing e2e flow tests
 
-E2E defends the observable contract of `grip` (plan/0003 §5): apply,
+E2E defends the observable contract of `grip` ([RFC 0003](../../../docs/rfcs/2026-08-22-repo-and-tooling.md) §5): apply,
 incremental reuse, scoped profile apply, rollback, drift detection. It runs
 the **real binary** against the **real TypeScript frontend** under the
-sandboxed Deno eval (plan/0013) — no mocks of either side.
+sandboxed Deno eval ([RFC 0013](../../../docs/rfcs/2026-08-28-constrained-evaluation.md)) — no mocks of either side.
 
 ## Harness conventions
 

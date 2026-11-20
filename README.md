@@ -107,7 +107,7 @@ and each guide on the site is one: [packages](https://gripsack.dev/docs/packages
   your own hooks and services, liveness).
 - [Safety and recovery](https://gripsack.dev/docs/safety.html): what apply
   does step by step, what a crash leaves behind, ownership and drift.
-- The design is [plan 0056](plan/0056-verified-foundation.md); the proofs are
+- The design is [the verified-foundation RFC](docs/rfcs/2026-11-08-verified-foundation.md); the proofs are
   in [`proofs/`](proofs/) over [`crates/gripsack-kernel`](crates/gripsack-kernel).
 
 Generations protect managed files and launchers. They do not undo a database
@@ -119,7 +119,7 @@ backups of anything irreplaceable.
 - [SDK reference](typescript/README.md) — every declaration and its contract
 - [Sharing reference](docs/sharing-reference.md) — the signed bundle format in full
 - [Agent skills](skills/) — `gripsack-adopt` and `gripsack-debug` for coding agents
-- [Design records](plan/) and [changelog](CHANGELOG.md)
+- [Design decisions (RFCs)](docs/rfcs/README.md), [tracked work](https://github.com/gripsack-dev/gripsack/issues) and [changelog](CHANGELOG.md)
 
 ## Development
 
@@ -130,6 +130,7 @@ docker compose run --build --rm e2e       # flow tests against the real binary
 docker compose run --build --rm proofs    # Lean proofs over the kernel translation
 ```
 
-See [AGENTS.md](AGENTS.md) for working agreements.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for issue intake and design review, and
+[AGENTS.md](AGENTS.md) for engineering agreements.
 
 MIT licensed.

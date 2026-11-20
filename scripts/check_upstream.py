@@ -86,7 +86,7 @@ def main() -> None:
             continue
         subprocess.run(
             ["gh", "issue", "create", "-R", REPO, "--title", title,
-             "--label", "linter", "--label", "help wanted",
+             "--label", "linter", "--label", "help wanted", "--label", "needs-triage",
              "--body", f"Upstream {repo} released **{tag}**, but the `{package}` data pack supports `{supported}`.\n\nRefresh the pack per `.agents/skills/griplint-author/SKILL.md` (research the release's config changes, update `crates/griplint/packs/{package}.toml`, bump `supported`, update fixtures in `crates/griplint/fixtures/{package}/`)."],
             check=True,
         )
