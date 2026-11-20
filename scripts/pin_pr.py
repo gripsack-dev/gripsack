@@ -101,7 +101,7 @@ def publish(key: str, propose) -> str:
             return "no changes — branch content already current (idempotent no-op)"
         git(["-c", f"user.name={BOT[0]}", "-c", f"user.email={BOT[1]}",
              "commit", "-am", f"pins: {unit.summary}\n\nPrepared by scripts/check_pins.py "
-             "(upstream-watch, plan/0042 F) from official upstream metadata — deliberate, "
+             "(upstream-watch, RFC 0042 F) from official upstream metadata — deliberate, "
              "reviewed bump; never auto-merged."], cwd=tmp)
         git(["push", "--force", "origin", f"HEAD:{branch}"], cwd=tmp)
 

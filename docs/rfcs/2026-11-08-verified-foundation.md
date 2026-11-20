@@ -1,0 +1,2855 @@
+---
+rfc: "2026-11-08-verified-foundation"
+title: "Build a Lean-proved transaction kernel and explicit storage protocols"
+status: "accepted"
+implementation: "in-progress"
+authors: ["tknawara"]
+created: "2026-11-08"
+updated: "2026-11-20"
+issue: "https://github.com/gripsack-dev/gripsack/issues/306"
+milestone: "Later"
+supersedes: ["2026-09-10-verified-policy-kernels", "2026-09-24-handover-bundle-import"]
+superseded_by: []
+blocked_on: []
+legacy_id: "0056"
+---
+
+# RFC: Build a Lean-proved transaction kernel and explicit storage protocols
+
+> **Backfill note (2026-11-20).** Owner-approved 2026-11-08. F0 and F1/GO landed in 0.52 ([#212](https://github.com/gripsack-dev/gripsack/pull/212)); §24.4, not the stale ‘F2 in progress’ header, records every F2 exit box checked. [#214](https://github.com/gripsack-dev/gripsack/pull/214)/#221/#222/#223/#229/#231/#233/#234/#236/#237/#238/#239 delivered all ten steps through dissolution; 0.54 ([#240](https://github.com/gripsack-dev/gripsack/pull/240)) shipped the result. K1–K6 and kernel ordering claims are not end-to-end storage P1–P4. A debug-only legacy recovery residue explicitly remains outside the F2 exit. The plan replaces 0047’s tooling decision, 0048 §§6/9/10 as gates and the formal/evidence portions of 0049–0055, not those whole RFCs or their runtime safety guarantees.
+> [Original design 0056](https://github.com/gripsack-dev/gripsack/blob/7924bc2b844d109dbb520040f5954ad237007ff3/plan/0056-verified-foundation.md) · [tracking issue #306](https://github.com/gripsack-dev/gripsack/issues/306). The text below is the historical record.
+
+- Status: approved by the owner 2026-11-08; F0 and F1 landed in 0.52.0 (F1: GO); F2 in progress (step 1 done)
+- Date: 2026-11-08
+- Owner direction: 2026-11-08 conversation — "a kernel that is Lean proved …
+  interaction with the world needs proper proofs … keep expanding the rings";
+  "go aggressive on the current proofs/test harness"; "feel free to reorganize
+  modules and crates"
+- Supersedes: 0047 "Tooling decisions" (Lean deferred), 0048 §6 binding
+  verification programme (M-V1–M-V8, "no new proof engine replaces Verus"),
+  0048 §9–§10 as release gates, the formal/evidence parts of 0053/0055 that
+  this plan replaces. Runtime safety contracts (0001 §9, ownership, journal
+  authority, artifact integrity) are **not** superseded — they become theorems.
+- End-state picture: [`docs/diagrams/foundation.svg`](../diagrams/foundation.svg)
+  (source `docs/diagrams/foundation.d2`, rendered by `docker compose run --rm diagram`)
+
+## 1. Why
+
+Gripsack's guarantees are real but expensive. They were added after the
+code was written, one review response at a time, so every new guarantee
+needed its own model, its own Rust explorer that mirrors the model, its own
+calibration mutant and its own evidence receipt. Measured on `main` at
+`ff8dd8f`:
+
+| Artifact | Size |
+|---|---|
+| TLA+ specs (`specs/`) | 90 modules, ~9.5k lines; TLAPS ~4,600 obligations, CI failures from prover timeouts |
+| Verus kernels (`gripsack-policy`) | 6.5k lines, depended on by 9 crates (ir, process, fetch …) — a utility crate, not a kernel |
+| Hand-mirrored Rust explorers | `lineage_model`, `mode_model`, `ops/model`, `gc/root_model`, `journal/model`, `journal/repeated_model` |
+| Evidence / release / local-CI Python | ~10k of the 15.7k lines in `scripts/` |
+| Committed evidence logs | `verification/reports/`, 180 files, 51 MB |
+| Plan prose | 16.4k lines; 0048 alone is ~2.9k lines of binding contract |
+| `gripsack-exec` | 54k lines: transaction core, Conda, sharing, services, schedules, launchers, semantic review |
+| Compose gates / CI jobs | 12 services; 11 CI jobs |
+
+Two structural problems sit under the numbers:
+
+1. **No proof is about the composition.** Verus proves small decision
+   functions, TLA+ proves abstract protocols, and tested "bridges" connect
+   them. 0048 itself labels those links unproved. Each bug found at a link
+   adds another bridge.
+2. **The code isn't shaped for proof.** Decisions, observation and effects are
+   interleaved through `apply.rs`, `ops/*`, `journal/*`, `gc.rs` and
+   `activation/*`. So every proof needs an extraction step, a mirror and a
+   receipt.
+
+## 2. Principles
+
+1. **Rings.** A pure kernel at the center, proved. Each ring outward holds
+   less trusted code and is checked in a cheaper way. Code moves *inward* to
+   gain guarantees; models are never added *outward*.
+2. **Proofs are about the shipped code.** The kernel is plain safe Rust,
+   translated to Lean by Charon/Aeneas, and proofs are over that translation.
+   There is no hand-written Lean copy of the Rust.
+3. **One proof language.** Lean 4 for the kernel *and* for the crash/recovery
+   protocol (ring 1), so "kernel plus storage is crash-safe" is one theorem
+   rather than a cross-tool bridge. TLC stays as a cheap **counterexample
+   finder**, never the proof of record. Verus and TLAPS retire.
+4. **Sans-IO.** Kernel and protocol machines never touch the world. They
+   consume events (observations, effect results) and emit commands. One small
+   driver executes commands.
+5. **The survival rule.** An artifact stays only if it is (a) a machine-checked
+   proof, (b) a test guarding behavior users see, or (c) a counterexample
+   finder that has caught a real bug. Anything that exists to prove we ran
+   something goes.
+6. **The release rule.** A release is green CI on the tag. Proofs run in CI
+   like any other test. No receipts, evidence indexes, per-release proof
+   catalogs or waiver IDs.
+7. **Generated claims.** The guarantee list is generated from Lean theorem
+   statements plus `#print axioms`, not written as prose.
+
+## 3. The rings (end state)
+
+| Ring | Contents | Guarantee | How it is checked |
+|---|---|---|---|
+| **0 — Kernel** | Pure decisions over typed state: desired-state planning, ownership/consent, drift, managed-block splice, generation/selection identity, commit classification, recovery decisions, GC retention, activation-intent bookkeeping | Kernel theorems (§5) for **all** inputs | Lean proofs over the Aeneas translation |
+| **1 — Protocol** | Sans-IO transaction machines: apply, rollback, recover, GC, activation; journal ordering and barriers | Crash anywhere, then recover, preserves the kernel invariants, under the storage model (§4) | Lean: machine × crash semantics of the storage model. TLC models stay as bug-finders |
+| **2 — Host** | Driver loop, cap-std filesystem adapter, store layout, wire encode/decode, process supervisor, clocks, locks | The storage model's assumptions hold on Linux ext4/btrfs/xfs/tmpfs (WSL2 named separately) | Small enough to read. Every assumption registered. Fault injection, a crash-injecting in-memory storage, power-cut/persistence smokes, property tests of the decoders |
+| **3 — Edge** | Deno frontend + IR admission, fetch/HTTP + rate limits, archives, Conda/Pixi, plugins, Docker services, systemd schedules | Untrusted input cannot reach rings 0–2 except as admitted typed values or hash-verified bytes | Sandbox, schema/type admission, content addressing; weekly fuzzing of parsers; e2e |
+| **4 — Product** | CLI, rendering, review/saved plans, adopt, doctor, self-update | Behavior users see | e2e flows, golden IR, examples |
+
+Expanding a ring means moving a decision inward. Candidates, in rough order
+of value: activation/hook pending-state, schedule lifecycle, service identity
+and ownership, sharing/closure admission, update survey. Each move follows
+§9 F5.
+
+## 4. Kernel interface and the storage model
+
+The reviewer's key finding (verified in the code): the real boundary is
+**observe → decide → re-check at mutation**, not plain command/event.
+`ops/mod.rs` plans from observed state and the journal re-validates at
+mutation time; `journal/mutation.rs` says outright "this is not CAS".
+The interface therefore makes the check explicit. Rollback and managed
+blocks show that the machines cannot plan everything up front and then
+execute: the next block in a shared file must see the previous block's
+actual result (`rollback.rs:187`). So every machine is a loop: **observe
+one unit → decide → issue one command → read its result**, with at most
+one effect outstanding. Sequential traces keep P2 a plain induction.
+
+```rust
+// kernel vocabulary: interned, Copy, no strings/paths/maps
+DestId(u32)  Digest([u8;32])  GenId(u64)  TxId([u8;32])  CmdId(u32)
+enum Live     { Absent, Obj(Ident), Unsupported }
+enum Command  { ReadJournal, ReadCurrent, ReadInventory(Scope), ReadLedger, Observe(DestId),
+                CapturePrior{dest, expect}, PublishRecord{role, rec},
+                Mutate{id, dest, expect, effect}, Seal{dest, file}, EnsureParent(DestId),
+                Reserve{gen}, RaiseFloor(GenId), PublishGeneration{gen, manifest},
+                Flip{expect, to}, Barrier(Scope), Unlink(Name), RenameNoReplace{from,to},
+                RemoveTree(Name), RunChecks, RunHook{intent, attempt},
+                PersistIntent{intent, state}, Finish(Outcome), Abort(Refusal) }
+enum Event    { Start, JournalRead{..}, CurrentRead(..), Observed{dest, live}, Inventory{..},
+                LedgerRead(..), PriorCaptured{..}, Reserved(..), Landed{id, live}, Done(CmdId),
+                Failed{id, why: Drift|Io(i32)|Unsupported}, ChecksDone(bool), HookDone{..} }
+fn recover_step(RecoverState, Event) -> (RecoverState, Command)   // likewise gc_, activation_,
+fn apply_step(ApplyState, &Desired, Event) -> (ApplyState, Command) // rollback_ (embed recover/
+                                                                    // activation sub-machines)
+```
+
+For `Mutate`/`CapturePrior` the driver opens the parent pinned, computes
+`Live` with the same function `Observe` uses, returns `Failed{Drift}` on
+mismatch, otherwise acts and returns `Landed{live}`. The *kernel* compares
+`Landed` with the intended identity. `Splice` re-reads the latest bytes and
+calls the kernel's proved splice. Two-barrier cleanup is `Unlink`+`Barrier`
+commands, so its order is proved, not trusted. `Flip` carries `expect`.
+
+**Storage model** (ring 1's only axioms, one Lean file, mirrored by the
+`MemFs` crash-injecting storage in ring 2). Inode-based, not path-based,
+so O_NOFOLLOW parent pinning and directory receipts (fs id, inode, birth
+time) are expressible:
+
+- S1 `rename` within a directory is atomic and replaces the target.
+  `RENAME_NOREPLACE` and exclusive `mkdir` fail if the name exists.
+  `remove_dir_all` is *not* atomic; it is a sequence of unlinks.
+- S2 A file's data is durable after `fsync(file)`. A name is durable after
+  `fsync(parent dir)`.
+- S3 Two crash kinds. **Kill**: the process dies, the page cache survives,
+  so later processes can observe non-durable state (why the code seals what
+  it observes before acting). **Power loss**: an *arbitrary subset* of
+  non-durable operations is lost, consistent only with completed barriers.
+  No prefix-closure is assumed. Each P-theorem is proved for both.
+- S4 One lifecycle writer at a time: apply, rollback, gc and recover hold
+  `LifecycleSession` (flock, released when the holder dies).
+- S5 External writers exist and are only *detected*. Between the driver's
+  re-check and its act there is a window. "Never overwrite unowned data" is
+  proved for every external write the re-check sees; the window is a named
+  residual risk in the claim list.
+- S6 The filesystem's name equivalence is no coarser than the kernel's
+  destination-key equivalence. (A case-insensitive mount such as WSL
+  `/mnt/c` violates this today unless keys fold consistently; see §5a.)
+- S7 Content identity is a SHA-256 digest; equal digests mean equal bytes
+  (collision resistance). `#print axioms` cannot show this, so it is listed.
+
+`gripsack-fs/src/persistence_model.rs` is a dirty-set checker over
+traces, not a storage. `MemFs` is new (inode table, volatile and durable
+layers, kill and power-loss enumeration, ~1–1.5k lines) and reuses its
+fault-boundary vocabulary and every-cut tests.
+
+## 5. Theorems (the end-state claim list)
+
+Revised after the F2 design study (2026-11-08), which found the first
+draft's K1, K2, K4, K6, P2 and P4 false or unprovable as stated.
+
+Ring 0 (all inputs):
+
+- K1 Ownership, per unit: a copy/template destination is mutated only if
+  Fresh, consented TakeOver, or its live identity equals the last managed
+  write; a managed block only if intact; a remove only if the live object is
+  the deployed one; rollback's restore only via the three-way rule. Preserved
+  drift is never overwritten. (Owned links currently violate this; §5a.)
+- K2 Fidelity, per unit: for each leaf destination the decision is a
+  function of (desired, live, previous record, consent); executing it to
+  `Landed` yields the intended identity or a refusal. Preserve/Refuse never
+  claim the desired state. The unjournaled effects (parent mkdirs,
+  selection reservations, staging dirs) are listed, not hidden.
+- K3 Commit classification: Committed iff current = target, plus the
+  existing biconditionals (CLASSIFY-001); numeric order never grants commit
+  authority.
+- K4 GC, relative to the `Inventory` event: deletions ⊆ candidates − roots;
+  current and every retained generation are never deleted; nothing is
+  deleted while recovery or activation is pending. K4′: roots include the
+  closure of every retained manifest. (Gathering workspace/schedule roots is
+  ring-3 input and is tested, not proved.)
+- K5 Managed-block splice: foreign bytes outside markers are preserved
+  exactly; splice is idempotent; block generation is in the kernel.
+- K6 Generations: new generation numbers exceed the durable high-water
+  floor; every flip carries a never-reused TxId; published generations are
+  immutable. (Rollback creates no generation; it reselects with a fresh
+  TxId. Vacuous applies create none.)
+
+Ring 1 (under S1–S7, separately for Kill and Power loss):
+
+- P1 Mutation never precedes durable intent and prior evidence.
+- P2 After any execution with crashes at arbitrary points (unbounded),
+  followed by recovery: the K-invariants hold, `current` names a durably
+  published generation, and each destination holds its prior, its intended
+  identity, or a value gripsack did not produce — never a gripsack-produced
+  intermediate.
+- P3 Cleanup never destroys evidence needed after a later crash; a
+  malformed or quarantined record yields no effects.
+- P4 A hook runs only after its `Started` record is durable and while its
+  selection is current; an interrupted `Started` attempt replays under the
+  same intent ID; `Failed`/`Succeeded`/`Superseded` are terminal. Hooks are
+  never auto-rolled back (0001 §3.8). (Not "at-least-once": failed intents
+  are not retried and superseded intents run zero times.)
+- Liveness ("eventually recovers") stays claim-gated and TLC-only.
+
+`grip doctor --guarantees` and the website list exactly these, generated from
+the Lean sources with their axioms.
+
+### 5a. Defects found while designing the theorems
+
+| ID | Defect | Evidence | Fix lands in |
+|---|---|---|---|
+| FND-1 | A recorded (owned) symlink is re-pointed whatever is live: if the user replaced it with their own file, the next apply overwrites it. Breaks the drift promise for links | `gripsack-policy/src/ownership.rs:103` (`recorded ⇒ Link`), `ops/plan/link.rs:18`; `lineage_model.rs:199` encodes it as intended | **Fixed** in F2 step 6 part 1 (§15), together with the store-prefix widening (design review finding 3) |
+| FND-2 | Rollback backfills `generations/<n>/env/profile.sh` into an existing generation and deletes the legacy env file outside the journal | `gripsack-exec/src/env.rs:27-49`, called from `rollback.rs:72` | **Fixed** in F2 step 8 (§16): the backfill is gone, a target without its own profile is refused |
+| FND-3 | On a case-insensitive mount, re-spelling only a destination's case deployed the new spelling ("unchanged"), recorded it, then pruned the old one — the same inode — leaving nothing; rolling back across such a re-spelling deleted it too | admission folds (`deploy/destinations.rs:26`) but prune compared raw `PathBuf` keys (`apply.rs:443-486`); reproduced on WSL `/mnt/c` with the baseline binary (§21.1) | **Fixed** in F2 step 7 (§21): the kernel decides every release against the run's claims by interned destination identity, which the host folds and probes by object |
+| FND-5 | A post-activation hook runs after its selection stopped being current: `current` was compared with the batch's selection once, before the first hook, so a hook (or any external writer) that moves `current` does not stop the hooks after it | `activation/ledger.rs` `authorize` at `bf44ad4`; e2e reproducer in §20.1 | **Fixed** in F2 step 5 (§20) |
+| FND-4 | A managed block whose payload has a carriage-return run before a line break (`a\r\r\nb`) never matches its own marker sha: content normalization (trim, then `\r\n` → `\n`) is not a fixed point of render-then-normalize. The second apply rewrites the block with CRLF line ends and reports it "hand-edited"; every later apply still cuts a new generation for a no-op | `managed_blocks/mod.rs` `normalized_content` + `str::lines` rendering at `524f576`; e2e reproducer in §17.1 | **Fixed** in F2 step 6 part 2 (§17) |
+
+## 6. Target layout
+
+```text
+crates/
+  gripsack-kernel/   rings 0+1: pure, no_std+alloc, no IO, no float, no dyn;
+                     Aeneas-shaped. Types, decisions, protocol machines.
+  gripsack-host/     ring 2: driver, cap-std fs (absorbs gripsack-fs), store
+                     layout + wire codecs (journal/manifest/selection), process
+                     supervisor (absorbs gripsack-process), locks, clock, trace
+  gripsack-ir/       ring 3: schema types + admission (drops policy dep)
+  gripsack-sources/  ring 3: fetch, archives, Conda/Pixi, pins, sharing,
+                     rate/retry budgets (absorbs gripsack-fetch, -conda,
+                     exec/workspace/{conda,sharing,pins,content})
+  gripsack-runtime/  ring 3: services (Docker), schedules (systemd), tasks,
+                     launchers, run/shell (exec/workspace/{consumer,schedules,
+                     hooks,image}, exec/services)
+  gripsack/          ring 4: CLI, render, review, adopt, doctor, config
+  griplint/          unchanged (standalone linter)
+proofs/              Lean 4 lake project
+  Extracted/         Aeneas output, committed; CI checks regeneration matches
+  Storage.lean       S1–S7
+  Kernel/*.lean      K1–K6
+  Protocol/*.lean    P1–P4
+  Claims.lean        generates the claim list + axiom audit
+specs/               ≤ 5 TLC models kept as counterexample finders
+```
+
+`gripsack-policy`, `gripsack-store`, `gripsack-exec`, `gripsack-fs`,
+`gripsack-process`, `gripsack-fetch`, `gripsack-conda`, `gripsack-config` and
+`gripsack-trace` dissolve into the crates above. Dependencies flow strictly
+inward: `gripsack → runtime/sources → host → kernel`, and `ir → kernel`.
+`check_architecture.py` becomes a `cargo-deny`/workspace-lint rule enforcing
+that direction. The kernel has no dependencies at all.
+
+`gripsack-review` is the one optional extra crate. Semantic review/saved plans
+(~7k lines) splits out only if it stays data-only after F4; otherwise it lives
+in the CLI.
+
+## 7. Toolchain and gates
+
+All tooling runs in containers built with BuildKit (`docker buildx`, cache
+mounts); nothing is installed on the host.
+
+| Compose service | Contents | When |
+|---|---|---|
+| `test` | fmt, clippy -D warnings, cargo test (includes crash-injection storage and decoder properties) | every PR |
+| `ts-test` | Deno frontend tests | every PR |
+| `e2e` | real binary flows (offline) | every PR |
+| `proofs` | pinned Lean + lake + Charon + Aeneas: regenerate `Extracted/`, check no drift, `lake build`, axiom audit, one calibration mutant per theorem family | every PR touching `gripsack-kernel` or `proofs/`, and on tags |
+| `model` | the ≤5 TLC bug-finders | weekly + on demand |
+| `fuzz` | 3 parser targets (archive, manifest/journal decode, IR admission) | weekly; a crash opens an issue |
+| `release` | musl tarball | tags |
+| `diagram` | d2 render of `docs/diagrams/*.d2` | on demand |
+
+The required gate is the owner's **local Buildbot** qualification, not
+GitHub Actions (hosted queues ran up to 14 h; 0053). `ci_infra qualify
+<checkout>` runs `.ci/pilot.json` and posts `local-practical-qualification`,
+which `main` requires. F0 slims that gate list to: test, ts-test, e2e/flows,
+audit, package (core + SDK + helper) and an installed-consumer smoke; F1 adds
+`proofs`. A release is that qualification green on the exact source, then
+one local release command that builds, verifies and publishes. Lean/Charon
+images are pinned by digest. Charon's nightly rustc lives only in the
+`proofs` image; the shipped binary still builds on stable musl with rustls.
+
+The optional Verus gate (`verify`, `scripts/check_verus*.py`, the Dockerfile
+`verify` stage, the `vstd` dependency) is gone since F2 step 10a (§23): the
+only proof gate is `proofs`.
+
+## 8. Trim register
+
+"Now" items are no-regret and land in F0. "After X" items are deleted the
+moment their replacement is green.
+
+| Artifact | Fate | When |
+|---|---|---|
+| `verification/reports/` (51 MB), `delivery.json`, `continuation-handoff.md`, `release-handoff.md` | delete; history stays in git | now |
+| `scripts/delivery_*`, `tlaps_*`, `verus_evidence.py`, `check_ci_gate.py`, `local_ci*.py`, `release_completion_witness.py` | delete | now |
+| `scripts/release_*.py` + tests (~6k lines) | replace with one `release-core.yml` (build → verify tarball → publish) and a ≤150-line installed-consumer smoke | F0, after one release goes out on the new flow |
+| `verification/guarantees.md` | freeze as historical; replaced by generated claims | now (freeze) / F3 (replace) |
+| Fuzz in the per-push gate + waiver machinery (`GRIPSACK_FUZZ_WAIVER`, `REL-*` IDs) | remove; weekly only | now |
+| Fuzz targets `merge`, `store_gc` | deleted: `merge` with K5 (§17), `store_gc` with K4 (§18) | after K4/K5 proofs |
+| GNU duplicate build, two-build repro, `mutants` campaign jobs | delete jobs (repro stays an on-demand script) | now |
+| TLAPS proofs (`*Proofs.tla`), `check_tlaps.py`, `tlaps` service | delete | after P1–P3 in Lean |
+| Remaining TLA+ | keep ≤5 TLC models that found real bugs (Transaction, Activation, UpdatePublication, ProcessSupervision, CredentialRouting candidates); delete the rest and the `MC`/bridge/witness modules | F3 |
+| Verus annotations, `check_verus*.py`, `verify` service | delete per kernel as its Lean proof lands; no Verus at end of F2 | **done** in F2 step 10a (§23) |
+| Rust explorers (`*_model.rs`) | replace with the crash-injecting storage harness driving the real machines; delete | F2 |
+| `rate_limit`, `process_budget`, `retry_budget`, `operation_budget` proofs | move to ring 2/3 as plain Rust plus property tests; no proof (no f64 in the kernel) | **done** in F2 step 10a (§23): plain Rust in `gripsack-policy`, every former Verus mutant killed by a unit test; the move into ring-2/3 crates waits for the crate dissolution |
+| Plans 0018–0055 | stay as history; STATUS shrinks to one row each plus this plan's ledger | F0 |
+| e2e | keep; delete cases that only back a receipt or a removed feature | F4 |
+| AGENTS.md | rewrite build/test, hard rules and "Plan 0048 contract" sections to this plan | F0 |
+
+## 9. Phases
+
+Each phase lands on `main` in small PRs with releases continuing under the
+gate in §7 (until §7 exists, under 0055's essential gates). Nothing freezes
+releases.
+
+**F0 — Trim and reset the gates (≈1 week).** The "now" rows of §8. Collapse
+CI to `gate` = test, ts-test, e2e. Rewrite AGENTS.md. One release goes out on
+the simplified flow before the old release scripts are deleted.
+*Exit:* six required gates; `scripts/` ≤ 3k lines excluding the Verus/TLAPS/TLC
+runners that retire in F2/F3 and the installer generators (product code);
+release from qualified bytes with no hand-assembled evidence.
+
+**F1 — Aeneas pilot (2 weeks, time-boxed; go/no-go).** Create
+`gripsack-kernel` holding *moved* (not copied) `selection::classify`, one
+journal transition (`RecordPublication`) and GC retention admission. Wire
+production to call them. Add the `proofs` service, translate, and prove the
+existing Verus postconditions in Lean. Axiom audit. One mutant per function
+must fail.
+*Falsifiers:* Charon/Aeneas cannot translate the needed subset without
+contorting the code; a proof needs an axiom equivalent to its claim; the
+generate-and-check loop exceeds ~10 min in CI.
+*No-go fallback:* the kernel crate and sans-IO shape still land; proofs stay
+in Verus against a Lean spec, with that link labelled *tested*. Ring 1 still
+moves to Lean over the spec. The owner decides at the F1 review.
+
+**F2 — Kernel extraction (≈8–10 weeks; the first estimate ignored the
+~3.7k-line directory domain and ~3k lines of non-transaction Verus).** Ten
+mergeable steps; `main` stays releasable throughout. Old and new engines run
+side by side behind a debug-only `GRIPSACK_ENGINE=legacy|kernel` switch, with
+the crash e2e run both ways for one release before the legacy path goes.
+
+1. Vocabulary + `gripsack-host::Storage` trait with `RealFs` and `MemFs`.
+   *Exit:* `MemFs` finds the 0.19.1 (no barrier) and 0.19.2 (trailing
+   barrier only) resurrections; ported persistence-model cases pass.
+   **Done 2026-11-09** (`crates/gripsack-host`): the shipped two-barrier
+   cleanup passes 574 cuts / 1749 kill and power-loss images; the 0.19.2
+   order fails at cut 23 (entry unlink lost, marker unlink kept). MemFs
+   loss granularity is one update (one write call, one entry, one side of
+   a cross-directory rename); it is deliberately pessimistic about renames
+   of never-durable sources, so a step-2 finding there is checked against
+   S1–S3 before it is called a bug. Not yet modelled: S5 external writers
+   (step 2 adds the injection hook) and directory birth time (before step 9).
+2. Recover machine (decide, order, cleanup, seal); directory records still
+   delegated to legacy code. *Exit:* `journal_cleanup.rs` drives the kernel
+   recover machine through a driver generic over `Storage` (not a
+   hand-written recover) over MemFs, including an S5 external-write hook;
+   then delete `journal/model.rs`, `repeated_model.rs`. Also closes the
+   unrestorable-entry wedge (0058 item 1).
+   **Done 2026-11-09** (branch `foundation/f2-recover`, stacked on step 1);
+   record in §14.
+3. Leaf + journal-run sub-machine; port `journal_protocol` to Lean.
+   **Done 2026-11-10** (branch `foundation/f2-journal`): the kernel journal-run
+   machine (`journal_run`: marker, per-destination leaf protocol, flip,
+   cleanup) drives every product leaf mutation and the run's completion over
+   `RealFs`; P1 and the cleanup half of P3 proved; the Verus
+   `journal_protocol` (`CleanupProgress`) and `admit_mutation` deleted;
+   rollback's writes go through the leaf protocol and are crash-explored over
+   MemFs; record in §19.
+4. GC machine incl. root derivation from manifests; `retention` Verus goes.
+   **Done 2026-11-09** (branch `foundation/f2-gc`): the kernel GC machine
+   decides every deletion, K4 and K4′ proved, the staging reaper (0058
+   item 4) folded in; record in §18. The `retention` Verus had already gone
+   in F1 (§13.2), so the `check_verus` floor does not move.
+5. Activation machine (ledger order, authorize/supersede, attempts).
+   **Done 2026-11-10** (branch `foundation/f2-activation`): the kernel
+   activation machine decides every hook-ledger transition, P4 proved at
+   the kernel level, K6's numbering and publication decisions moved into
+   the kernel and proved, FND-5 (a hook ran after its selection stopped
+   being current) fixed; the Verus `activation` family and five TLC
+   activation negatives gone; record in §20.
+6. Planner into the kernel (copy/template/link/merge/remove/restore per
+   unit; block generation on bytes). Fix FND-1. `lineage_model`,
+   `ops/model`, `mode_model` become kernel property tests, then go.
+   **Part 1 done 2026-11-09** (branch `foundation/f2-ownership`, taken ahead
+   of steps 3–5 by owner priority): the per-unit ownership decision
+   `ownership::decide_unit` for copy/template/link/remove/restore, K1 proved,
+   FND-1 and the store-link widening fixed, `lineage_model` moved to a
+   kernel property test; record in §15. Remaining: merge (K5, block
+   generation on bytes), and `ops/model`/`mode_model` (they check the host
+   lifting, which the kernel cannot see).
+   **Part 2 done 2026-11-09** (branch `foundation/f2-splice`): the managed
+   block in the kernel (`block`: marker grammar, scan, normalization,
+   rendering, splice, upsert/remove, and the per-block decision), K5 and K1
+   for blocks proved, rollback's block restore checked against its record
+   (§16.7 deviation 2 closed), FND-4 fixed; the Verus splice/scanner,
+   `MergeBoundary.tla` and the `merge` fuzz target deleted; record in §17.
+   **Remainder done 2026-11-10** with step 7 (§21): `ops/model` and
+   `mode_model` are gone — the lifting they explored is now checked on every
+   apply (the planner's op must install exactly what the kernel commanded)
+   and by a planner-vs-kernel agreement test; the permission policy is a
+   table test beside `WritePermissions`.
+7. Apply machine end to end (`mutated` flag replaces `ReportKind`); directory
+   transitions are an opaque `DirectoryStep` still run by legacy code.
+   Reproduce/fix FND-3.
+   **Done 2026-11-10** (branch `foundation/f2-apply`): the kernel apply
+   machine decides every whole-object unit, every release, whether the run
+   cuts a generation and when it flips; K2 and K1 through apply, the flip's
+   K6 admission after every unit, refusal before the flip and FND-3 proved;
+   the commit is judged on the machine's own `mutated` flag (`ReportKind` is
+   a presentation-only `Tone`); FND-3 reproduced on `/mnt/c` and fixed, with
+   its rollback sibling; apply crash-explored over MemFs; `ops/model`,
+   `mode_model` and `Ownership.tla` gone; record in §21. Managed blocks and the
+   directory domain stay delegated.
+8. Rollback machine (per-unit loop, fresh selection); fix FND-2.
+   **Done 2026-11-09** (branch `foundation/f2-rollback`, stacked on step 6
+   part 1, taken ahead of steps 3–5/7 by owner priority): the kernel
+   rollback machine, K2 for rollback proved, exact restore or refusal
+   before the flip (design review finding 2), FND-2 fixed; record in §16.
+   Delegated, not decided by the kernel: managed blocks (K5) and the
+   destinations a directory transition owns (step 9).
+9. Directory domain fenced into host as a sub-protocol; its TLC models stay
+   as bug-finders. Moving it into the kernel is F5 work — the largest risk.
+   **Done 2026-11-10** (branch `foundation/f2-directory`): every directory
+   step of apply and rollback is an item the kernel machine commands in
+   stage order (`gripsack_kernel::directory`), the leaf removals a directory
+   change needs are units it decides (`Clear`), the domain's nodes are held
+   (no whole-object write lands on one, no step runs where a deploy claims);
+   the flip follows every step's settlement; premise D states what the
+   theorems assume of a step; the pre-unit removals and rollback's
+   pre-machine `prepare` are gone; record in §22.
+10. Dissolve `gripsack-store`/`-policy`/`-fs`; port or demote the remaining
+   policy kernels (`semantic`, `graph`, `task`, `target`, `conda_admission`,
+   `workspace_command`, `update_survey`); delete Verus.
+   **Verus part (10a) done 2026-11-10** (branch `foundation/f2-verus`):
+   `update_survey` ported to the kernel and proved (the lock is published
+   only from a complete survey with no failure); `semantic` and the graph
+   closure deleted (standard-library equivalents and dead checks); every
+   other policy kernel, the budgets and the IR's typed collector demoted to
+   plain Rust with tests that kill every former Verus mutant; Verus, `vstd`,
+   the `verify` gate and its scripts deleted; record in §23.
+   **Done 2026-11-11 (10b)** (branch `foundation/f2-dissolve`): `gripsack-store`,
+   `-policy`, `-fs` and `-process` dissolved by moving every file to its user
+   — `gripsack-host` absorbs the fs, the process supervisor with its budgets
+   and the store layout and wire codecs; source bundle, trust list and
+   `DeploymentEntry` to exec; rate/retry budgets to fetch; target, command
+   and graph-role tables to the IR (no policy dependency); conda admission to
+   conda; task rules to exec — with no behaviour change;
+   `check_architecture.py` enforces the inward direction and rejects the
+   retired crates; record in §24. Step 10 is done.
+
+Each step's exit runs the matching e2e group (persistence matrix, recovery,
+GC, activation, ownership, merge, rollback, directory evolution).
+*Phase exit:* K1–K6 proved; no Verus; `gripsack-store`, `gripsack-policy`,
+`gripsack-fs` and `gripsack-process` gone.
+
+**F3 — Protocol proofs (≈3–4 weeks).** `Storage.lean` (S1–S7). P1–P4 over
+the translated machines. Generated claims and `grip doctor --guarantees`.
+Delete TLAPS and the excess TLA+.
+*Exit:* P1–P4 proved without axioms beyond S1–S7; ≤5 TLC models; website
+claim page generated.
+
+**F4 — Feature crates (≈2–3 weeks, can overlap F3).** Split the remainder of
+`gripsack-exec` into `gripsack-sources` / `gripsack-runtime` / CLI; dissolve
+`gripsack-config` and `gripsack-trace`; enforce dependency direction; prune
+e2e.
+*Exit:* layout of §6; no crate over ~15k lines.
+
+**F5 — Expand rings (ongoing).** Per candidate: move the decision into the
+kernel, state the theorem, prove it, delete the tests and models it makes
+redundant. One PR per candidate.
+
+**Handover reconciliation.** Done early (read-only), see
+[0056a](2026-11-08-handover-reconciliation.md). After F0, produce a landed/pending/dropped table
+for the original handover (0048 R1–R8 and M-V*, 0049 H0/A0, 0054 "original
+handover completion"). Every pending item is re-homed into a ring, dropped as
+superseded by this plan, or kept as product work.
+
+## 10. Risks
+
+| Risk | Mitigation |
+|---|---|
+| Aeneas cannot handle collections, traits or loop shapes the kernel needs | Pilot first. The kernel uses `Vec`, sorted vectors instead of maps, explicit loops, and error enums. F1's fallback keeps every other benefit |
+| Lean proof effort exceeds TLAPS/Verus effort | P-theorems are rewritten fresh and small against the sans-IO machines, not ported obligation by obligation. Time-box each family; an unproven theorem is listed as such, never claimed |
+| Rewriting the transaction core introduces regressions | The crash-injecting storage harness and the existing e2e/persistence flows run against old and new code paths during F2; switch over per machine |
+| Charon nightly drifts | Pinned image digest; a regeneration diff is a reviewable PR |
+| The external-writer window (S5) is misread as solved | It appears in the generated claim list as a named residual risk |
+| Trimming deletes something that was catching bugs | The survival rule's case (c): TLC models with a recorded real bug survive; deleted harnesses stay in git history |
+
+## 11. Non-goals
+
+- Proving Deno, Docker, systemd, Conda, rustls, the Rust compiler, or the OS.
+- Proving liveness or physical power-loss behavior.
+- Concurrency proofs of the scheduler's thread coordination (stays a Loom test
+  in ring 2; scheduling *decisions* may move into the kernel).
+- Platform expansion beyond Linux/WSL x86_64.
+- Signing and supply-chain policy changes.
+
+## 12. Decisions recorded
+
+| Decision | Choice | Alternative left open |
+|---|---|---|
+| Ring-1 proof language | Lean (one language across the seam) | TLA+/TLAPS for ring 1 (owner's first sketch). Reversible until F3 |
+| Kernel↔code link | Aeneas translation of shipped Rust — **F1 GO (2026-11-08)**, §13 | Lean spec + Verus code proofs (F1 fallback, not needed) |
+| Releases during the epic | Continue; this plan removes release gates rather than adding them | — |
+| Fuzzing | Keep 3 edge parsers, weekly, never release-blocking | Remove fully |
+| Review | Independent model review 2026-11-08 adopted: observe/re-check interface, S5 explicit, rate limits out of kernel, storage model reused, pilot falsifiers. Overruled: retaining Verus/TLAPS as sunk cost | — |
+
+## F0b record
+
+Scope: the local CI and release machinery (stream F0b, branch
+`foundation/f0-ci-release`). §7's single hosted `gate` job does not apply:
+the required check on `main` is the local Buildbot qualification
+(`local-practical-qualification`); hosted workflows are manual diagnostics.
+
+**Deleted** (≈8.5k lines; `scripts/` 14,559 → 6,566 Python lines):
+
+| What | Lines |
+|---|---|
+| `release_{admission,evidence,hosted,inventory,operator,prepare,publish,verify}.py` + tests (`test_release_manifest.py` included) | 5,106 |
+| `check_ci_gate.py`, `check_delivery.py`, `delivery_{scope,evidence,checker_calibration}.py`, `release_completion_witness.py` | 1,848 |
+| `local_ci_{checkpoints,partition,persistence,runtime}.py` + test | 1,067 |
+| `smoke_package_registry.py` (unreferenced) | 337 |
+| workflows `examples.yml`, `qualify-conda-helper.yml`, `repro.yml`; `ci.yml` 239 → 89 lines (4 manual jobs, no waiver/gate aggregation) | 363 |
+| compose `gnu-test`, `mutants` services and Dockerfile stages; stale `ldd` probe in the `release` stage | — |
+
+Kept on purpose: `release_manifest.py`, `release_consumer.py`,
+`release_installer.py` — `install.sh` and the embedded self-updater
+(`crates/gripsack/src/commands/self_update/installer.sh`) are generated from
+them byte-for-byte, so they are product code; `release-core.yml` stays as a
+no-op because the installer names it as signer identity. `fuzz.yml` stays
+manual-only (owner: never dispatch fuzz). `repro` service and
+`scripts/check_reproducible.sh` stay on demand. `model`/`tlaps`/`verify`/`fuzz`
+services untouched.
+
+**Gates** (`.ci/pilot.json`, each `python3 scripts/local_ci.py <gate>`):
+`test` (compose `test` + `scripts/test_*.py`), `ts-test`, `e2e`, `audit`
+(cargo audit, both locks), `package` (`release.py prepare`: core tarball from
+the Dockerfile `release` stage, Conda helper built fresh with `--check`
+against the committed pin, SDK `npm pack`, `install.sh`), `smoke`
+(`release.py verify`: exact inventory, checksum sidecars, static ELF and
+embedded cargo-auditable SBOM parsed from the packaged bytes, `grip
+--version`, helper manifest/licences, SDK name/version, installer bytes, then
+the installed-consumer smoke `local_artifact_consumers.py` against the pinned
+website/example commits). `proofs` is wired in `local_ci.py` and named under
+`external_inputs.pending_gates`; add it to `gates` once the service lands.
+
+**Release sequence** (tag `core-vX.Y.Z`; `ts-v*` tags ended at 0.46.0):
+
+```sh
+python3 -m ci_infra qualify <clean checkout on a local branch>   # → candidate id
+python3 scripts/release.py status <candidate_id>                 # posts local-practical-qualification
+python3 scripts/release.py publish <candidate_id> --notes N.md   # dry run; add --yes to publish
+```
+
+`publish` refuses an existing tag, a commit not on `origin/main` or a missing
+status; copies the qualified bytes from the ci-infra archive (digest-checked
+against `qualification.json`), re-runs the artifact checks, creates the
+release at the qualified commit and reads every asset back. Asset set = the
+0.51.0 set minus evidence files (`gripsack-release-X.json`,
+`*-runtime-evidence.json`, qualification-bundle tarball): core tarball +
+`.sha256`, helper + `.sha256` + `.manifest.json` + 3 licences, SDK `.tgz`,
+`install.sh`.
+
+**Validation** (2026-11-08, worktree at `277ba2f`): `local_ci.py test` 0,
+`ts-test` 0, `audit` 0, `e2e` 0 (706 passed, 12 deselected, 25 min),
+`package` 0 (fresh helper reproduced pin `60d66f94…`; tarball, SDK and
+installer produced user-owned), `smoke` 0 (88 consumer commands, 227 installed
+flows). `release.py verify --no-smoke` 0. `publish` against the archived
+0.51.0 candidate `8c0bc53c…` refused (tag exists); its collect+verify path
+passed on those archived bytes. Real Buildbot qualification **not run**:
+`ci_infra storage-check` failed (state volume 62.5 GB free < 64 GiB floor);
+a clean checkout is ready at `ci-checkouts/gripsack-foundation-f0` (branch
+`qualify/f0-ci-release`).
+
+**Left for the owner**: run that qualification and `release.py status` once
+storage allows; one release on this flow before calling F0 done (§9);
+`release_manifest.py` still names `REL-*` exclusions and lazily imports deleted
+modules in `validate_bundle` (dead in the installer path) — clean it together
+with the embedded installer in `crates/`; the mutant-calibration scripts that
+only the removed `mutants` stage ran (`check_{journal_admission,
+journal_protocol,gc_roots,rate_admission,http_budget,process_bounds,
+update_survey}.py`) are now unreferenced; per-attempt compose project names
+leave tagged `ci-…-<service>` images behind (layers shared).
+
+## 13. F1 pilot record
+
+- Branch: `foundation/f1-aeneas-pilot` (based on `187d741`); date 2026-11-08.
+- Question: can the shipped Rust kernel be translated by Charon/Aeneas into
+  Lean 4 and proved there, end to end, inside docker, within the falsifiers
+  of §9 F1?
+
+### 13.1 Pins (every input of the `proofs` image, `proofs/Dockerfile`)
+
+| Input | Pin | How |
+|---|---|---|
+| Aeneas | release `nightly-2026.11.07-c5eb4a2` (commit `c5eb4a28cef65e0aa27743105308243e535a2a2b`), `aeneas-linux-x86_64.tar.gz` | `ADD --checksum=sha256:14fbaed4ce8624cf3d668f887d6ebb237a59cc37d7498c792d9f3f97332cbb25` |
+| Charon | commit `8cae8fd1905946de61147a65ecdd7122cc6b491b` (Aeneas's `charon-pin`; LLBC version 0.1.313) | built from source in the image: no Charon release was cut at that commit (the nightlies before/after carry 0.1.313/0.1.314) |
+| Charon's rustc | `nightly-2026-09-17` + `rustc-dev llvm-tools rust-src miri` (Charon's `rust-toolchain`) | rustup in the image only; the shipped `grip` still builds on stable musl |
+| Lean | `leanprover/lean4:v4.35.0` (`proofs/lean-toolchain`, = Aeneas's `backends/lean/lean-toolchain`) | elan `v4.2.4`, `ADD --checksum=sha256:42b94d42…431f63` |
+| mathlib | `v4.35.0` → rev `56a005855ea17e0b0958f73ec801ae140b0a1679` | `proofs/lake-manifest.json` (generated once with `lake update` in the image, committed) |
+| base image | `ubuntu:24.04@sha256:224a1869…da254` | same digest as the `verify` stage |
+
+### 13.2 What moved into `crates/gripsack-kernel` (785 lines, no deps, `no_std` + `alloc`)
+
+- `selection`: `Classification`, `TransactionId`, `SelectionIdentity`,
+  `RecoveryFacts`, `classify` (from `gripsack-policy::selection` + `lib.rs`).
+- `generation`: `GenerationId`, `GenerationList` (admission) (from
+  `gripsack-policy::generation`; `GenerationInventory` dropped — the owned
+  list is borrowed instead).
+- `retention`: `GcAdmission`, `admit_gc`, `contains_generation`,
+  `plan_prune`, `same_bytes`, `contains_bytes`, `plan_delete` (from
+  `gripsack-policy::retention`, whole module).
+- `journal`: `RecordRole`, `PublicationAction`, `RecordPublication`,
+  `DurableRecord`, `MutationAuthority`, `admit_mutation` (from
+  `gripsack-policy::journal_protocol`; `CleanupProgress` stays in Verus).
+- Production callers (`gripsack-store`, `gripsack-exec`) call the kernel
+  crate; the Verus versions are deleted and `scripts/check_verus.py` lost
+  the `recovery`, `generation-inventory`, `retention`, `journal-publication`
+  and `journal-mutation-authority` families and their nine mutants (the
+  floor moves 410 → 384). `scripts/check_architecture.py` protects the
+  kernel with an empty dependency set.
+
+### 13.3 What Charon/Aeneas handled
+
+Everything in the four modules, first try, except nested borrows (below):
+structs, fieldless and payload enums, `Option`, `match` with guards (after
+Charon's match reconstruction), `[u8; 32]` arrays, slices, `Vec` (`push`,
+deref), `&mut self` methods (translated to returning the new value), `while`
+loops with early `return` (translated to a `loop` combinator over
+`ControlFlow`), `usize` arithmetic with overflow/underflow as `Result`
+failures, and a `pub const`. Translation of the crate takes ~1.2 s (Charon
+~1 s of cargo build, Aeneas 1.2 s); output is 822 lines of Lean, zero
+axioms, fully readable (`proofs/Extracted/GripsackKernel.lean`).
+
+### 13.4 Code contortions required (all recorded in the source)
+
+1. **Nested borrows.** `&[&[u8]]`/`&[&str]` is "unsupported nested borrows"
+   in Aeneas. Path identities are now `&[Vec<u8>]` (owned bytes), and
+   `plan_delete` returns candidate positions (`Vec<usize>`) instead of
+   borrowed `&str`s; the exec adapter owns the str↔bytes seam.
+2. **Owned facts.** `RecoveryFacts<'a>` (borrows in an ADT) became an owned
+   `Copy` struct; `MutationAuthority<'a>` owns the consumed entry instead of
+   borrowing the marker. (Shared borrows in ADTs are not a translation
+   blocker, but owned values keep the Lean types first-order.)
+3. **No derives on kernel types.** Charon translates every impl in a module
+   it starts from, derived or not; `#[derive(Debug, PartialEq, …)]` dragged
+   in `core::fmt` and produced one Aeneas `axiom`
+   (`core.option.Option.Insts.CoreFmtDebug.fmt`). The kernel modules carry
+   no derives; `Debug`/`Clone`/`Copy`/`PartialEq`/`Eq`/`Ord`/`Hash`/
+   `Display`/`FromStr`/`Deref`/`IntoIterator` are hand-written in
+   `convenience.rs`, which the translation never reaches
+   (`[package.metadata.charon] start_from`). `PartialEq` delegates to the
+   kernel's `same`, so `==` and the proved identity agree by construction.
+4. **Explicit equality.** Equality the theorems depend on is a kernel
+   function (`same`) — a byte loop for `TransactionId`, field comparison
+   for `GenerationId`, nested matches for enums — never a derived trait,
+   so the proved call graph reaches only Aeneas's standard-library models.
+5. **Identifier/namespace clash.** A Rust local named `generation` inside
+   the `generation` module made Aeneas emit `generation.GenerationId.same …`
+   where `generation` is the local → Lean parsed a field projection. Locals
+   are not named like their module (`candidate`).
+6. **No casts in the kernel.** `keep: Option<u32>` became `Option<usize>`
+   (the caller casts) because the `u32 → usize` `UScalar.cast` made the
+   Lean side unwieldy. Semantics unchanged.
+7. **Lean side.** Aeneas's `do`-notation extensions make `name` a reserved
+   token and reject tuple patterns in some positions; the audit avoids
+   both. The `step` tactic simp-normalises the final goal of a branch
+   (re-associates conjunctions, discharges arithmetic), so the loop proofs
+   close their last step with an explicit `WP.spec_bind` and `and_intros`.
+
+### 13.5 Proofs (`proofs/Kernel/`, 742 lines of Lean for 34 theorems)
+
+All theorems are total-correctness Hoare triples `f args ⦃ r => P r ⦄`
+over the extracted functions (termination and no failure included):
+
+- K3 / CLASSIFY-001: `classify_committed_iff`, `classify_uncommitted_iff`,
+  `classify_ambiguous_iff`, on top of `GenerationId.same_spec`,
+  `TransactionId.same_spec` (byte loop), `SelectionIdentity.same_spec`.
+- K4 (statements per the revised §5): `admit_gc_spec` (RecoveryPending ↔
+  pending; CorruptCurrent ↔ current ∉ inventory; Admitted otherwise),
+  `plan_prune_spec` (result = oldest `len − keep` identities, in order,
+  minus current — hence ⊆ inventory, never current, nothing newer),
+  `plan_delete_spec` (position deleted ↔ candidate no root names),
+  `strictly_ascending_spec` / `GenerationList.new_spec` (admission ↔
+  strictly ascending).
+- Journal: `PublicationAction.successor_spec`,
+  `RecordPublication.{new,action,acknowledge,finish}_spec`,
+  `admit_mutation_spec` — the former Verus `ensures`, verbatim.
+
+Effort: one working day for the whole pilot (toolchain image, kernel move,
+proofs, gate); the proofs themselves ~4 hours including learning the
+Aeneas `Result`/`loop` model. Hardest part: loop invariants against the
+`loop` combinator (`loop.spec_decr_nat`) and the `Usize`/`Nat` coercions;
+`scalar_tac` and `step` carry most of it.
+
+### 13.6 Gate (`docker compose run --build --rm proofs`)
+
+Steps: regenerate → `diff -ru` against committed `proofs/Extracted/` →
+`lake build` → axiom audit (`#print axioms`-equivalent over every theorem
+under `Gripsack.Kernel`, allow-list `propext`, `Classical.choice`,
+`Quot.sound`; the 12 headline claims must exist) → mutant calibration
+(`proofs/mutants.py`: 14 semantic mutants of the Rust source, each
+re-translated and built against the committed theorems; the build must fail
+inside the named theorem(s) and nowhere else).
+
+- Axiom audit: `AXIOM_AUDIT ok: 34 theorems, 12 required claims, axioms ⊆
+  [propext, Classical.choice, Quot.sound]` — no `sorryAx`, no project axiom,
+  no Aeneas external axiom.
+- Drift check: the committed translation equals a fresh one in the gate
+  (byte-identical; paths are relative to a shadow workspace so the output
+  is independent of the checkout location).
+- Mutants: 14/14 rejected, each by exactly the expected theorem(s)
+  (`PROOF_CALIBRATIONS=14`): three `classify` mutants (generation-only
+  commit; fresh run ambiguous; previous-equals-current committed) → the
+  CLASSIFY-001 biconditionals; a 31-byte transaction identity →
+  `TransactionId.same_loop_spec`; ignoring pending recovery / admitting a
+  corrupt current → `admit_gc_spec`; newest-prefix pruning and pruning the
+  current generation → `plan_prune_loop_spec` (+ `plan_prune_spec`);
+  deleting the roots → `plan_delete_loop_spec`; weak ascent (duplicates
+  admitted) → `strictly_ascending_loop_spec`; skipping the file barrier,
+  accepting a failed effect, early durability, marker-OR-entry authority →
+  the four journal theorems. Loop mutants are attributed to the loop lemma
+  (where the invariant breaks); the top-level theorem elaborates against the
+  failed lemma, as Lean does.
+- Wall time. Cold image build: tools stage 228 s (rustup nightly 25 s,
+  Charon from source 77 s, elan+Lean 36 s, Aeneas 20 s) + deps stage 423 s
+  (mathlib cache download 169 s, Aeneas library build 253 s) ≈ 11 min, plus
+  the first in-image translation (Charon's full-MIR sysroot) ≈ 1 min; the
+  images are 9.4 GB (tools) and 19.7 GB (deps). Warm gate run, unloaded
+  host: regenerate 2 s, drift check <1 s, `lake build` 13 s, audit 3 s,
+  14 mutants ≈ 170 s (each: Charon+Aeneas ≈ 3 s, scratch `lake build`
+  ≈ 9 s) → 191 s total; 213 s including compose's image freshness check.
+  Measured while the `test` and `e2e` gates ran concurrently.
+
+### 13.7 Other gates
+
+- `docker compose run --build --rm test`: **passed** (`gate passed: fmt +
+  clippy -D warnings + cargo test`; workspace step 219 s, conda-helper step
+  244 s). The first run failed only in the conda-helper step because its
+  own `Cargo.lock` lacked the new `gripsack-kernel` entry (it depends on
+  `gripsack-ir` → `gripsack-store`); the lock gained exactly that entry.
+  `scripts/check_architecture.py` passes with the kernel's empty
+  dependency set.
+- `docker compose run --build --rm e2e`: run once at the end; result in the
+  branch's final hand-off (see the pilot report).
+- `docker compose run --build --rm verify` (Verus, remaining kernels):
+  **could not run** — the pinned asset
+  `verus-0.2026.09.06.8dea4a2-x86-linux.zip` now downloads as a
+  well-formed 456,338,154-byte zip whose sha256 is
+  `bef140a1a96994029153dca8c00b1750b9a5a764fb9db2dc68d7bb40e8a29e8a`, not
+  the Dockerfile's `13d01e13…`. The same failure reproduces on `main`;
+  it is an upstream/pin question for the owner, not a change on this
+  branch (overriding the pin was deliberately not done). The driver edits
+  (`scripts/check_verus.py`: families and mutants of the moved kernels
+  removed, floor 410 → 384, unrelated-lemma calibration re-homed to
+  `ownership.rs`) were checked statically: every remaining mutant site
+  matches its source exactly once and every family module exists; the
+  obligation floor is an estimate (−26 moved obligations) to be confirmed
+  on the first green run.
+
+### 13.8 Recommendation against the §9 F1 falsifiers
+
+| Falsifier (§9 F1) | Outcome |
+|---|---|
+| Charon/Aeneas cannot translate the needed subset without contorting the code | **Not triggered.** One real limitation (nested borrows) and one translator naming clash; the other changes (owned facts, hand-written impls, kernel `same`, usize keep) are shape choices that also make the Lean side first-order and axiom-free. Production semantics unchanged; callers adapted at the boundary. |
+| A proof needs an axiom equivalent to its claim | **Not triggered.** 34 theorems, axioms ⊆ {propext, Classical.choice, Quot.sound}; the extraction contains no `axiom` at all; every spec is total correctness. |
+| The generate-and-check loop exceeds ~10 min in CI | **Not triggered** on a warm image: 3 min 11 s for the full gate including 14 mutants; ~20 s without mutants. The cold image build is ~11 min and 20 GB, so CI must cache the image (registry push of the `deps` stage, or a weekly rebuild) — the pin table in `proofs/Dockerfile` is the cache key. |
+
+**Recommendation: GO**, with these conditions for F2:
+
+1. Cache the `proofs` image in CI (digest-pinned, rebuilt only when a pin in
+   `proofs/Dockerfile` or `lake-manifest.json` changes); never build mathlib
+   or Charon in the per-PR path.
+2. Keep the kernel in the translated subset by rule: no borrows inside
+   ADTs or nested borrows, no derives in kernel modules (impls in
+   `convenience.rs`), equality as kernel functions, no locals named like a
+   module, no `as` casts, `Vec<u8>`/`Vec<T>` for collections. Put these in
+   the `gripsack-kernel` crate docs (done in `lib.rs`) and in F2's review
+   checklist.
+3. Proof style: loop lemmas via `loop.spec_decr_nat` with an explicit
+   invariant; close the last step of a branch with `WP.spec_bind` +
+   `and_intros` rather than `step`, so goal shapes stay predictable. Budget
+   ~1–2 hours per loop function for a new author, minutes per straight-line
+   function.
+4. Resolve the Verus pin drift (§13.7) before the next release so `verify`
+   runs again for the kernels that have not yet moved to Lean; F2 retires
+   it anyway.
+5. When upgrading Aeneas/Charon, move the five pins together (§13.1) and
+   expect the extraction to change (it is a reviewable PR, the drift check
+   enforces it).
+
+## 14. F2 step 2 record — the recover machine
+
+- Branch `foundation/f2-recover` (stacked on `foundation/f2-storage`, PR
+  #214); date 2026-11-09.
+- Question: can crash recovery be the proved kernel's sans-IO machine,
+  driven over `Storage`, wired into the product unchanged except for the
+  wedge, with its key properties proved in Lean?
+
+### 14.1 The machine (`crates/gripsack-kernel/src/recover.rs`)
+
+`recover_step(RecoverState, Event) -> (RecoverState, Command)`, one command
+outstanding, interned `DestId`/`Digest` from `ids.rs`.
+
+- **State:** `phase` (18 phases: `Start`, `ReadingJournal`, `ReadingCurrent`,
+  `SealingSelection`, `SettlingDirectories`, `OpeningLeaves`, `ReadingEntry`,
+  `Observing`, `Restoring`, `Sealing`, `Preserving`, `ClosingLeaves`,
+  `UnlinkingRecord`, `SyncingRecords`, `UnlinkingMarker`, `SyncingMarker`,
+  `Finished`, `Aborted`), the admitted `JournalFacts` (entry and directory
+  counts, leading reverse directory roots, `MarkerFacts`), `records`,
+  the `current` read, `verdict` (`Pending|Committed|Uncommitted`), `index`,
+  `leaves_open`, and the `EntryFacts` under decision (`dest`, `prior`,
+  `before`, `intended`, `route: Leaf|Delegated`).
+- **Commands:** `ReadJournal`, `ReadCurrent`, `ReadEntry(i)`,
+  `Observe{entry, dest}`, `Mutate{entry, dest, expect, effect: Restore(prior)}`,
+  `Seal{entry, dest, expect, prior}`, `Preserve{entry, dest}`,
+  `Delegate(Committed|BeforeLeaves|AfterLeaves)`,
+  `Unlink(Record(k)|Marker)`, `Barrier(Journal|Selection)`,
+  `Finish(NoJournal|Committed|Recovered)`, `Abort(Refusal)`.
+- **Events:** `Start`, `NoJournal`, `JournalRead(facts)`,
+  `CurrentRead(Option<SelectionIdentity>)`, `EntryRead(facts)`,
+  `Observed{dest, live}`, `Landed{live}`, `Done`, `Failed(Drift|Io(errno))`.
+- **Vocabulary:** `Ident = File(Digest)|Link(Digest)`,
+  `Live = Absent|Obj(Ident)|Unsupported`, `Prior = Absent|Obj(Ident)`,
+  `Intended = Removed|Obj(Ident)`; `Refusal = Ambiguous | MarkerMissing |
+  Malformed | Unrestorable{entry,dest} | Drifted{entry,dest} |
+  NotRestored{entry,dest} | Failed | Protocol`.
+- **Decides:** classification through the proved `classify` (K3); per entry
+  `decide` (the legacy `decide_from` order: intended, prior, immediate
+  pre-state; absent restores an existing prior) plus `Refuse` for
+  `Live::Unsupported`; seal-observed-prior as `Seal`; the cleanup order
+  (every record, journal barrier, marker, journal barrier) and the committed
+  run's selection barrier before any evidence goes. Directory records stay
+  with the legacy domain: three `Delegate` steps at the points the legacy
+  reconcile ran them, and `Route::Delegated` for entries that domain settled.
+
+### 14.2 Driver, storage hook, product wiring
+
+- `gripsack-host::recover::recover<H: RecoverHost>` executes commands over
+  `H::Storage`; `RecoverHost` carries the caller's journal wire, destination
+  resolution, identity hashing and directory domain. `Observe`, the
+  re-check and `Landed` share one `observe` (`Live` + a human `Found`).
+- The re-check is placed after staging (temp written, mode set, fsynced)
+  and immediately before the rename/unlink, and also guards `Seal`.
+- `MemFs` numbers every call (`Operation`) and lands an S5 `ExternalWrite`
+  before any chosen one (durably, not crash-explored).
+- `gripsack-store` `journal::reconcile` (before apply, rollback, gc) drives
+  the machine over `RealFs` (`recover_kernel.rs`). Destination parents
+  resolve exactly as before (`dest_capability` or the directory-bound
+  parent) and are pinned into `RealDir::pin` (cap-std's `O_PATH` handles
+  cannot be fsynced). Notes and errors read as before. The legacy reconcile
+  remains behind debug-only `GRIPSACK_ENGINE=legacy`; the e2e runs one
+  interrupted apply on both engines.
+- `journal::inspect` is a read-only view for `grip doctor` that asks the
+  kernel's own `decide`. `docs/operations/storage.md` hosts the user repair
+  procedure (that file is otherwise the workstation runbook; it was named
+  as the home by 0058).
+
+### 14.3 Proofs (`proofs/Kernel/Recover.lean`; `Audit.lean`: 86 theorems, 19 claims, standard axioms only)
+
+- Identities: `Digest.same_spec` (byte loop), `DestId.same_spec`,
+  `Ident.same_spec`, `Live.same_spec`, `Prior.matches_spec`.
+- `decide_spec`: `Restore → Restorable` (the live object is `Obj i` with
+  `intended = Obj i` or `before = some i`, or `Absent` with a prior),
+  `Refuse ↔ Unsupported`, `Unchanged →` the prior is live.
+- One total-correctness spec per helper, then `step_spec`: from any state
+  satisfying `Inv` (records issued before cleanup barriers; pre-
+  classification phases pending; `ReadCurrent` asked before read; the loop
+  only under an uncommitted verdict; an uncommitted verdict came from
+  `classify` or a markerless journal), every (phase, event) step re-
+  establishes `Inv`. `Run` is every execution from `RecoverState::new`;
+  `run_inv` gives `Inv` on all of them.
+- (a) `mutate_guard`: a `Mutate` answers `Observed{dest, expect}` for the
+  entry under decision, carries that observed object as `expect`, restores
+  that entry's prior, and the object is `Restorable` — never a foreign one.
+- (b) `marker_unlink_after_record_barrier`: the marker unlink is issued only
+  immediately after `Barrier(Journal)`, and every `Unlink(Record k)`,
+  `k < records`, precedes that barrier.
+- (c) `unrestorable_refused` (any state in `Observing`: the answer to
+  `Observed{d, Unsupported}` is `Abort(Unrestorable{index, d})`) and
+  `mutate_never_unsupported`.
+- (d) `mutate_after_classification`: a `Mutate` only under
+  `verdict = Uncommitted`, and with a marker only after `ReadCurrent` was
+  issued and `classify(marker, current) = ok Uncommitted`.
+- Mutants (`proofs/mutants.py`, 19 total, 5 new), each rejected by exactly
+  the named theorem: `recover-guard-restores-foreign` (`decide_spec`),
+  `recover-guard-wrong-expect` (`on_observed_spec`),
+  `recover-cleanup-barrier-swapped` — the 0.19.2 order —
+  (`next_unlink_spec`), `recover-mutates-unrestorable` (`decide_spec`),
+  `recover-restores-committed-run` (`on_current_spec`). As with the loop
+  mutants of §13.6, a mutant is attributed to the helper spec where the
+  contract breaks; the headline theorems build on those specs.
+
+### 14.4 Deviations from §4 / the step-2 brief, and why
+
+1. **No `CmdId` on commands/events.** One command is outstanding; each
+   event is checked against the phase, and anything else is
+   `Abort(Protocol)`. `CmdId` stays in `ids.rs`, unused.
+2. **Vocabulary adapted to recovery**: `ReadEntry` (entries are admitted one
+   at a time, keeping state first-order), `Preserve` (a kept foreign edit is
+   reported, so it is a command), `Delegate` (the legacy directory domain),
+   `Unlink(JournalName)` and `Barrier(Scope)` instead of host `Name`s,
+   `Seal` also carries `expect`. No `CapturePrior`/`PublishRecord` here:
+   those belong to the apply machine (step 3/7).
+3. **Total steps.** Counters advance with `checked_add` (a pure `Option` in
+   the translation); an overflow is `Refusal::Malformed`. The ITree-based
+   `Result` of this Aeneas release makes inverting a failed `+` awkward,
+   and totality is the stronger statement anyway.
+4. **The wedge is a refusal, not "keep".** Treating a directory as a foreign
+   edit and dropping the entry would make progress, but the brief requires
+   fail-closed with an actionable stop. The refusal changes nothing; the
+   repair is "move it aside, run again".
+5. **Drift on the re-check refuses** (`Drifted`): legacy recovery would have
+   overwritten a destination changed between its decision and its write.
+   The S5 window that remains is measured by
+   `recovery_never_overwrites_an_external_write_its_recheck_sees`: two
+   operations (an external write landing after the re-check's name lookup
+   but before its content read through the open handle, or between that
+   read and the rename) — the named residual risk of §4 S5.
+6. **Host-side residue (ring 2, tested, not proved):** journal admission
+   (quarantine, straggler removal, permission repair, marker admission,
+   reverse-root ordering) runs inside `ReadJournal`; parents are resolved
+   ambiently as before (`open_or_create`), so recovery can still create a
+   destination's missing parents.
+7. **The numeric-commit calibration** of `repeated_model.rs` is now a test
+   host whose `read_current` lies (the kernel's `classify` cannot be mutated
+   from a test); the kernel side is calibrated by the Lean mutants.
+
+### 14.5 Ported and deleted
+
+`journal/model.rs` and `journal/repeated_model.rs` are deleted. Their cases
+run in `crates/gripsack-host/tests/journal_cleanup.rs` against the kernel
+machine over MemFs, every kill and power-loss cut of the run, then every cut
+of the recovery, then recovery to the end: deploy and prune (create,
+replace, remove, link↔file, link→link) on fresh and existing machines;
+repeated writes (immediate pre-state); two destinations in interleaved and
+batched record orders; a user edit after the run's crash, after the
+recovery's crash, and both; an ambiguous `current` (refused, journal and
+destinations byte-identical); the numeric-commit mutant (caught). Plus the
+step-1 calibrations (0.19.1 and 0.19.2 cleanups resurrect after power loss;
+kill alone does not), the wedge (refused by name, state untouched, repair
+completes) and the S5 window.
+
+## 15. F2 step 6 part 1 record — the ownership decision (K1)
+
+- Branch `foundation/f2-ownership` from `main` at `7f1408c`; date
+  2026-11-09. Taken before steps 3–5 because the owner prioritised the
+  guarantees users feel (design review finding 1).
+- Question: can the per-unit "may gripsack touch this destination?"
+  decision be the proved kernel's, with the existing planner calling it,
+  and does that fix FND-1 and the `$GRIPSACK_HOME` link widening?
+
+### 15.1 Step 3 is not a prerequisite
+
+Step 3 is the leaf + journal-run sub-machine: the *effect* protocol (capture
+prior, publish record, mutate under re-check). The ownership question is
+answered before any of that, from three identities and consent, and the
+existing journal re-check already pins the decision to the observed object
+(S5). So the decision is a pure function the planner calls; no machine is
+needed, and K1 as stated in §5 is a property of that function. When step 3
+and step 7 land, the apply machine calls the same function per unit.
+
+### 15.2 The decision (`crates/gripsack-kernel/src/ownership.rs`)
+
+`decide_unit(&Recorded, &Live, &Intended, &Consent) -> Decision`, reusing
+the recover vocabulary (`Ident = File(Digest)|Link(Digest)`,
+`Live = Absent|Obj|Unsupported`, `Intended = Removed|Obj`).
+
+- `Recorded = Unrecorded | Observed | Wrote(Ident)`: no record; a preserved-
+  drift observation (confers nothing); the exact object gripsack last wrote.
+  The host derives it from the previous generation's entry **and its store
+  root**: an owned link's recorded identity is the link `store_path/from`, a
+  copy/template's is its manifest hash (legacy template receipts admitted
+  only by an exact match with the live file). A record whose hash is not a
+  SHA-256 identity is `Observed`.
+- `Consent { take_over: Withheld | Granted }`: the only consent the product
+  has (`--take-over`, `--take-over=<dest>`, the plan/adopt adoption set),
+  scoped per destination by the host. There is no separate "adopt" flag in
+  the planner; adoption is take-over.
+- `Decision = Create | Satisfied | ReplaceOwn | TakeOver | Refuse(Drifted |
+  Unowned | Unsupported)`. Order: unsupported refused; absent created (a
+  removal is already done); gripsack's own write kept when it is the intent,
+  replaced otherwise; consent absorbs anything else (also bytes that already
+  match: a take-over opens an epoch); a foreign object equal to the intent is
+  satisfied (reconvergence); otherwise refused, `Drifted` when a record
+  exists, `Unowned` when none does. Take-over never authorizes a removal.
+- Copies/templates: identical to the old `plan_copy` truth table
+  (`Preserve` ≡ `Refuse(Drifted|Unowned)`, which the host still records as
+  preserved drift). Links: the decision is now the same rule; a refusal
+  stops apply (`Authority::Foreign`, new `Authority::Drifted` with the
+  message "changed since gripsack deployed it"), rollback keeps and notes.
+
+### 15.3 Proofs (`proofs/Kernel/Ownership.lean`; `Audit.lean`: 110 theorems, 26 claims, standard axioms only)
+
+- `decide_unit_k1` (K1): `Writes d → live = Absent ∨ (∃ o, live = Obj o ∧
+  recorded = Wrote o) ∨ (consent = Granted ∧ ∃ o, live = Obj o)`.
+- `decide_unit_drift_never_written`: consent withheld and `recorded ≠ Wrote
+  o` for the live `Obj o` ⇒ no write.
+- `decide_unit_owned_drift_refused` (FND-1): `Wrote w`, live `Obj o`, `o ≠
+  w`, no consent, intent not `o` ⇒ `Refuse Drifted`.
+- `decide_unit_unrecorded_refused`: `Unrecorded`, live `Obj o`, no consent,
+  intent not `o` ⇒ `Refuse Unowned`.
+- `decide_unit_identity_only`: for every injective `f : Ident → Ident`,
+  renaming recorded/live/intended by `f` leaves the decision unchanged — the
+  decision sees a link's target only through identity equality.
+- `decide_unit_takeover_acquires`, `decide_unit_progress` (absent ⇒ create;
+  own write ⇒ satisfied or replace, whatever the consent),
+  `decide_unit_unsupported_refused`, `Decision.writes_spec`.
+- Every claim unfolds the shipped helpers itself (one shared tactic), so a
+  mutant is rejected by the claims it falsifies, not by a helper lemma.
+  Mutants (`proofs/mutants.py`, 22 total, 3 new), each rejected by exactly:
+  `ownership-recorded-overwrites-live` (FND-1: `Wrote(_) => true`) by
+  `k1`, `drift_never_written`, `owned_drift_refused`;
+  `ownership-link-target-confers` (an unrecorded *link* counts as ours — the
+  prefix rule's kernel analogue) by `k1`, `drift_never_written`,
+  `unrecorded_refused`, `identity_only`; `ownership-consent-ignored` by `k1`,
+  `drift_never_written`, `owned_drift_refused`, `unrecorded_refused`,
+  `takeover_acquires`.
+
+### 15.4 Wiring
+
+- `ops::plan::DestView` carries `prev: Option<PreviousRecord { entry,
+  store_path }>` and `consent: Consent` (no bools); `DestView::decide` builds
+  the kernel inputs. `plan_link`, `plan_write`, `plan_migration_write` (the
+  admitted predecessor link is the recorded identity; anything but
+  `ReplaceOwn` is refused) and the non-merge branch of `plan_remove_op`
+  (intent `Removed`, no consent) call `decide_unit`. `previous_ownership`,
+  `plan_restore_op` and rollback pass the recording generation's store path.
+- Kernel identities are built in one place, `gripsack_store::hash::kernel`
+  (also used by the recover driver now): a file is its mode-aware identity,
+  a link the SHA-256 of its target bytes.
+- Merge stays outside (`Recorded::Observed` if asked): K5 territory.
+
+### 15.5 Tests
+
+- e2e (failing before, passing after; `e2e/test_ownership_modes.py`):
+  `test_user_replacement_of_an_owned_link_is_refused_until_take_over[file|link]`,
+  `test_user_link_into_the_store_is_not_ours`,
+  `test_rollback_keeps_a_user_replacement_of_an_owned_link`. Before: all four
+  failed — apply/rollback re-pointed the user's object.
+- Two existing e2e encoded the old behaviour and were updated:
+  `test_a_repaired_destination_cuts_a_generation` relied on FND-1 (a
+  user-re-pointed owned link silently repaired); it now refuses, and the
+  repair is `--take-over`, which still cuts a generation that rollback
+  undoes. `test_preserved_copy_blocks_a_mode_switch_to_owned` keeps its
+  behaviour (refuse, edit stands) and now sees the drift message.
+- `crates/gripsack-kernel/tests/ownership_lineage.rs` (from `lineage_model`):
+  every sequence to depth 6 over copy and link modes with user files, user
+  links and user links into the store, driving `decide_unit` for deploy and
+  prune; oracles: a run without take-over never changes a live object that
+  is not gripsack's last write, own destinations converge, the origin
+  survives the epoch and returns at its end, aliases are rejected. A
+  calibration replays the legacy link rule and requires the explorer to
+  find both FND-1 and the widening.
+- `ops/model.rs` now uses the kernel as its oracle and adds
+  `owned_links_follow_recorded_identity_only` (lifting of both defects).
+- Copy/template: checked for the same bug class; none. `plan_copy` already
+  required live = last managed write (or consent); the kernel decision is
+  the same table, and the existing drift e2e pass unchanged.
+
+### 15.6 Deleted
+
+`gripsack-policy/src/ownership.rs` (`plan_copy`, `plan_link`, their Verus
+contracts; `check_verus.py` floor 384 → 382, its two mutants and the
+unrelated-lemma calibration retargeted to `merge.rs`),
+`gripsack-exec/src/lineage_model.rs` (its truth-table tests are the Lean
+claims, plan/0057 D7; its explorer moved to the kernel),
+`deploy::intact_deployed`, the `deploy` re-exports of the policy functions,
+and `ModeInput::Link::already` (equality is the kernel's).
+
+### 15.7 Deviations
+
+1. Step 6 is split: this is the ownership decision only. Merge/block
+   generation (K5) and the rest of step 6 stay.
+2. `ops/model.rs` and `mode_model.rs` stay: they test the host lifting
+   (observation, receipt, permission policy, execution) that the kernel
+   cannot see; they now use the kernel as their oracle.
+3. One behaviour beyond the two defects follows from deciding by recorded
+   identity: when a declaration switches from link to copy without a
+   directory migration, gripsack's own intact link is replaced by the file
+   (`ReplaceOwn`) instead of being kept as drift. K1 permits it (the live
+   object is gripsack's last write).
+4. A re-pointed own link now reports `Authority::Update` ("update") instead
+   of `Fresh` ("new").
+
+## 16. F2 step 8 record — rollback fidelity (K2 for rollback, FND-2)
+
+- Branch `foundation/f2-rollback`, stacked on `foundation/f2-ownership`
+  (PR #222, K1 `decide_unit`); date 2026-11-09. Taken before steps 3–5 and
+  7 because the design review's finding 2 is a user-facing guarantee.
+- Question: does rollback restore exactly what the target generation
+  deployed, and can that decision be the proved kernel's?
+
+### 16.1 The review's claims, checked (code at `0943a35`)
+
+Each claim has an e2e reproducer in `e2e/test_rollback_fidelity.py`, run
+against the baseline binary before any change (four failed, four passed).
+
+- **R1 "templates re-render from current source": refuted as stated; the
+  residue is real.** Rollback reads the template from the *target's* store
+  path (`ops/plan/restore.rs:33,59`), which is input-addressed and checked
+  against its recorded `tree256` before any write (`rollback.rs:372-397`).
+  Workspace templates (every generation the current frontend produces)
+  render into the store at preparation (`workspace/content.rs:281-312`,
+  `output` plus `result_digest`) and deploy as `tracked_copy`; no current
+  path deploys `Ownership::Template` (`workspace/preview.rs:349` refuses
+  it). So for current generations rollback already copied the retained
+  rendered bytes — `test_rollback_restores_the_rendered_bytes_after_the_template_source_changed`
+  passed before the change. The residue: older `template` receipts (0.16.1
+  "vars-in-manifest", 0001 §3.7) are re-rendered with recorded variables
+  (`restore.rs:67-76`) and the result was never compared with the recorded
+  identity. Reproducer `test_rollback_refuses_an_older_template_receipt_that_no_longer_renders_its_record`:
+  before, rollback exited 0, selected generation 1 and wrote
+  `email = "someone-else"` where the record named the `a@b.c` bytes.
+- **R2 "modes are guessed, nothing is checked against the record":
+  confirmed for older receipts.** A receipt without `file_mode` was
+  restored at the payload's exec-bit default (`restore.rs:77-90`) and
+  `plan_restore_op` compared nothing with `entry.hash`. Current receipts
+  always record the landed mode (`ops/plan/write.rs`), and
+  `test_rollback_restores_the_recorded_mode` passed before. Reproducer
+  `test_rollback_refuses_a_receipt_its_retained_bytes_do_not_reproduce`
+  (record says 0600, no mode recorded): before, rollback wrote 0644, exited
+  0 and flipped; the live identity differed from the record.
+- **R3 "no safe restore plan is a warning, then the flip": confirmed.**
+  `rollback.rs:307-314,343-350` pushed a warning and continued to the flip
+  (`rollback.rs:80`); reachable when a managed block's host file is no
+  longer UTF-8 text or no longer a file (`restore.rs:105-110`). Reproducer
+  `test_rollback_refuses_when_a_managed_block_cannot_be_restored`: before,
+  exit 0 with "skipped … no safe restore plan" and generation 1 selected.
+- **FND-2: confirmed.** `env.rs:27-49` (from `rollback.rs:72`) wrote
+  `generations/<n>/env/profile.sh` into the target and removed
+  `$GRIPSACK_HOME/env/profile.sh` outside the journal. Reproducer
+  `test_rollback_never_writes_into_the_target_generation`: before, the
+  profile was written into generation 1 and the legacy file deleted.
+- K6 already held apart from FND-2: rollback reserves a fresh transaction
+  (`journal/marker.rs:84`, `generations/selection.rs:52`) and publishes no
+  generation; `test_rollback_reselects_with_a_fresh_transaction` passes
+  before and after.
+
+### 16.2 Root cause: are the deployed bytes retained?
+
+Yes, for every generation the current product writes: tracked copies and
+workspace templates deploy from a store file whose bytes are what landed,
+the manifest records the landed mode and the mode-aware identity, and the
+store tree is verified before rollback. Only pre-workspace `template`
+receipts keep variables instead of bytes. No store format change is
+needed: rollback now accepts a restore source only if its identity IS the
+record (`ops::retained`, S7: equal digests mean equal bytes). An older
+receipt whose re-render or chosen mode does not reproduce the record is
+refused, not approximated. Storing rendered bytes for those receipts is
+impossible after the fact and unnecessary for new ones.
+
+### 16.3 The machine (`crates/gripsack-kernel/src/rollback.rs`)
+
+`rollback_step(RollbackState, Event) -> (RollbackState, Command)`, one
+command outstanding, one unit at a time (host order: deepest destination
+first).
+
+- **Facts:** `PlanFacts { units, reselect: SelectionIdentity, previous,
+  profile: Retained|Missing }`; per unit `UnitFacts { dest, place:
+  Outside|Generation, route: Leaf|Delegated, current: Recorded, target:
+  Released(Intended)|Wrote{ident, bytes: Retained|Missing}|Preserved }`.
+  `Released` is where the target deploys nothing: gripsack's write is
+  removed or replaced by the take-over origin the epoch recorded (apply's
+  prune intent).
+- **Decision** `decide_restore`: the K1 decision `decide_unit` without
+  consent, asked about the target's identity (or a removal, for a release);
+  `Satisfied` → `Leave(Already)`, `Refuse(r)` → `Leave(Kept(r))`, a
+  preserved target → `Leave(Untouched)`; a write → `Write(install)` only if
+  the bytes are retained and the place is outside generation directories,
+  else `Refuse(Unrestorable|Protected)`.
+- **Commands:** `ReadPlan`, `ReadUnit(k)`, `Observe`, `Mutate{unit, dest,
+  expect, install}` (driver re-checks `expect`), `Delegate`,
+  `Report{unit, dest, settled}`, `Flip(selection)`, `Finish`, `Abort`.
+  `Landed{live}` must equal `install`, else `NotRestored`. `admit` refuses a
+  missing profile (FND-2) and a reselection whose transaction equals the
+  current one.
+
+### 16.4 Proofs (`proofs/Kernel/Rollback.lean`; `Audit.lean`: 157 theorems, 37 claims, standard axioms only)
+
+- `decide_restore_spec`: a `Write i` satisfies `Installs target i` (the
+  recorded identity from retained bytes, or the release), `place =
+  Outside`, and live is absent or gripsack's current write; the decision
+  never claims `Restored`.
+- `decide_restore_drift_kept` (K1), `decide_restore_unrestorable_refused`.
+- Over every run (`Run`, invariant `Inv`, `step_spec`):
+  `rollback_installs_target` (K2: a write answers the observation of the
+  unit under decision and installs that unit's target identity),
+  `rollback_write_k1`, `rollback_never_writes_generation`,
+  `rollback_restored_landed` (restored only when the landed object is the
+  install), `rollback_flip_after_every_unit` (the flip names the planned
+  selection and every unit `k < units` was reported),
+  `rollback_flip_admitted` (fresh transaction, retained profile).
+- R3 by name: `rollback_unrestorable_aborts`,
+  `rollback_delegated_refusal_aborts`.
+- Mutants (`proofs/mutants.py`, 31 total, 9 new), each rejected by exactly
+  the named theorems: `rollback-unretained-installed`
+  (`decide_restore_spec`, `decide_restore_unrestorable_refused`),
+  `rollback-installs-not-target` (`decide_restore_spec`),
+  `rollback-drift-overwritten` (`decide_restore_spec`,
+  `decide_restore_drift_kept`), `rollback-writes-generation`
+  (`decide_restore_spec`), `rollback-restored-unchecked`
+  (`on_landed_spec`), `rollback-flip-skips-unit` (`on_plan_spec`),
+  `rollback-unrestorable-settled` (`on_delegated_spec`,
+  `rollback_delegated_refusal_aborts`), `rollback-reused-transaction`
+  (`fresh_spec`), `rollback-profile-ignored` (`admit_spec`).
+  `mutants.py` attribution fix: `end <section>` no longer resets the
+  namespace (theorems after `end helpers` were reported unqualified).
+
+### 16.5 Wiring
+
+- `gripsack-exec/src/rollback/restore.rs` is the driver: it decodes both
+  manifests into `UnitFacts` (current record via `PreviousRecord::recorded`,
+  target via `ops::retained`, the release via the entry's prior blob, place
+  by the canonical destination under `$GRIPSACK_HOME/generations`), executes
+  `Mutate` through `plan_restore_op`/`plan_remove_op` and `execute_op` (the
+  journal re-check pins the object; a planner that no longer agrees answers
+  `Failed(Drift)`), observes `Landed`, writes the user notes for `Kept`,
+  and returns at `Flip`. `rollback_generation` checks the reselection is
+  the run's reservation, prepares activation, flips, and answers the
+  machine. Any refusal returns an error; the existing compensation
+  (journal reconcile) undoes this run's writes.
+- `ops::retained` / `plan_restore_op`: the restore source is accepted only
+  when it reproduces the record (owned link: payload hash; copy/template:
+  `matches_file`, which also admits pre-0043 bytes-only template hashes
+  with their recorded mode).
+- Delegated units (managed blocks, directory-transition destinations) keep
+  the legacy per-destination code, but "no safe restore plan" is now
+  `Refused`, which aborts.
+- `env::render_env_file` is deleted; `env::retains_profile` is the read-only
+  check behind `PlanFacts.profile`.
+
+### 16.6 Tests
+
+- e2e `test_rollback_fidelity.py` (8): four fail before / pass after (§16.1
+  R1 residue, R2, R3, FND-2); four pin what held (rendered template bytes,
+  recorded mode, a consistent older template receipt, fresh transaction).
+  `test_generation_history.py::test_rollback_never_rewrites_historical_generations`
+  is unchanged and passes.
+- Kernel explorer `crates/gripsack-kernel/tests/rollback.rs`: every plan of
+  up to two units over a small identity alphabet (≈33k runs) with a
+  simulated host: writes only over absence or gripsack's write, never in a
+  generation directory, exactly the target identity; a flip implies every
+  needed write happened from retained bytes; every refusal has a cause; a
+  host that lands the wrong object never reaches the flip.
+
+Gates (docker, this branch): `test` passed (fmt, clippy `-D warnings`,
+cargo test); `proofs` passed in 259 s (no translation drift, 157 theorems,
+37 claims, standard axioms only, 31/31 mutants calibrated); `e2e` 679
+passed in 11m50s.
+
+### 16.7 Deviations and what is deferred
+
+1. **No MemFs crash exploration of rollback.** The driver executes through
+   the real journal and `execute_op`, not `gripsack-host::Storage`; the
+   machine fits the driver pattern, but its effects do not yet. It becomes
+   possible when step 3 moves the leaf effect protocol (capture prior,
+   publish record, mutate under re-check) onto `Storage`; until then the
+   restore→flip window is covered by the existing crash e2e
+   (`after-rollback-restore`) and recovery by the proved recover machine.
+   **Mostly closed by §19:** every rollback write now goes through the
+   kernel's leaf protocol over `Storage` (`RealFs` in the product), and the
+   kernel rollback machine composed with that protocol is crash-explored over
+   MemFs (§19.5). What remains is in §19.7 item 3.
+2. **Managed blocks (K5) are delegated.** Rollback splices the retained
+   block payload (store bytes verified by `tree256`) but does not compare it
+   with the block's recorded hash; that lands with the K5 splice in the
+   kernel (rest of step 6). An unrestorable block now refuses instead of
+   flipping. **Closed by §17:** the kernel's block decision restores (or
+   finds in place) a block only when the retained payload's digest is the
+   target's record (`decide_block_restore_exact`), and refuses otherwise.
+   The unit stays on the delegated route of the rollback machine.
+3. **Directory-transition destinations are delegated** to the directory
+   domain (step 9). **Closed by §22:** rollback's directory steps are items
+   of its plan, the target's nodes are held, and the children a shape change
+   takes away are units the machine decides.
+4. **The legacy `$GRIPSACK_HOME/env/profile.sh` is no longer removed.** It
+   is inert since 0.22 (the rc line sources `current/env/profile.sh`); a
+   one-shot cleanup belongs in `grip doctor` or the migration path the
+   review proposes for legacy readers, not in rollback.
+5. **Behaviour change:** where the current generation recorded preserved
+   drift and the destination is now absent, rollback creates the target's
+   recorded object (K1 allows writing into absence); the old code skipped
+   the unit.
+6. Not addressed here (review §2.1): `rollback` with no argument still
+   targets current−1 by number rather than the last selected generation.
+
+## 17. F2 step 6 part 2 record — the managed-block splice (K5, K1 for blocks)
+
+- Branch `foundation/f2-splice` from `main` at `524f576`; date 2026-11-09.
+- Question: can the managed block — marker grammar, scan, content
+  normalization, rendering, splice and the "may gripsack touch this block?"
+  decision — be the proved kernel's, with the bytes users keep outside the
+  markers preserved exactly, and re-applying a no-op?
+
+### 17.1 Defects, checked on the baseline
+
+Both reproducers live in `e2e/test_managed_block_splice.py` and were run
+against the baseline binary (`grip 0.52.0`, the `f2rollback-e2e` image built
+from the rollback branch merged as `524f576`) before any change: two failed,
+one passed.
+
+- **FND-4 (new): a block never matched its own sha.** Content normalization
+  was "trim trailing `\r`/`\n`, then `\r\n` → `\n`", and rendering split the
+  normal form with `str::lines`, which drops one `\r` before each `\n`. For a
+  payload with a carriage-return run before a line break the rendered block's
+  content normalizes to different bytes than the marker's sha was taken
+  over. Reproducer `test_a_payload_with_carriage_returns_before_a_newline_settles`
+  (payload `export A=1\r\r\r\nexport B=2\n`): before, the first apply
+  wrote `export A=1\r\n` inside an LF block, so the second `apply` saw a CRLF
+  file, rewrote the whole block with CRLF line ends, printed `merged shell →
+  ~/.bashrc (hand-edited block regenerated)` and activated generation 2; the
+  third apply changed no byte and still activated generation 3. The explorer
+  catches the same class (`the_legacy_normalization_is_caught_by_the_round_trip_oracle`).
+- **§16.7 deviation 2 (known): rollback restored a block without comparing it
+  with its record.** Reproducer
+  `test_rollback_refuses_a_block_payload_that_does_not_reproduce_its_record`
+  (generation 1's block record rewritten to another digest, standing in for
+  an older receipt in another hash domain): before, `grip rollback` exited 0
+  and selected generation 1 with a block that is not its record.
+- What held: `test_rollback_restores_a_managed_block_and_keeps_foreign_bytes`
+  (CRLF foreign bytes before and after the block survive a rollback).
+- Checked for and not found: the marker grammar admits a comment prefix with
+  whitespace (`DeploymentEntry.marker`), which would never scan back and
+  append a duplicate on every apply — but no current producer sets a custom
+  marker (`marker: None` everywhere; only retained deployments could carry
+  one). The kernel now refuses such a render instead (`Unrecognized`).
+
+### 17.2 The kernel (`crates/gripsack-kernel/src/block.rs`)
+
+- **Grammar and scan**, moved from `gripsack-exec/src/managed_blocks/parse.rs`
+  and `gripsack-policy/src/merge/scanner.rs` and restated over bytes:
+  `classify` (a marker is its key preceded by at most one word; Unicode
+  `White_Space` exactly as `char::is_whitespace`, so behaviour on foreign
+  lines is unchanged), `scan(text, owner) -> Result<Vec<Block>, ScanFailure>`
+  (blocks of other owners must nest correctly but are not returned; the
+  pre-hash header line is not content).
+- **Content and rendering**: `normalize` drops every line's trailing
+  carriage returns, then trims trailing `\r`/`\n` — identical to the old rule
+  wherever that rule was stable, and a fixed point of render-then-normalize
+  (FND-4). `render` writes the open marker (owner, the 16 recorded sha digits,
+  mode), the header, one line per content line and the close marker, every
+  line ending in the hosting text's newline convention. `mark(digest)` is the
+  16 lowercase hex digits; `marks(sha, digest)` compares them
+  case-insensitively, as markers always were. The host still computes the
+  SHA-256 (`managed_blocks::content_hash` = SHA-256 of `normalize`).
+- **Splice**: `ordered` (in order, disjoint, non-empty, in bounds),
+  `splice(text, blocks, replacement)`, `append(text, newline, block)`.
+  `upsert(text, owner, style, digest, mode, payload)` scans, checks
+  `ordered`, renders, splices (or appends), and returns the output only if
+  `settled` accepts it: the output's only block of `owner` is exactly the
+  rendered block, with the same newline convention, recording `mark(digest)`
+  and `mode`, and its content normalizes to `normalize(payload)`. Otherwise
+  it refuses (`Unrecognized`), never writes. `remove(text, owner)`.
+- **Decision** `decide_block(record, host, blocks, intent)` with
+  `Host = Absent | File{mode} | Foreign`, `Seen{content, marked, mode}`,
+  `BlockRecord{hash, mode, preserved}` and
+  `BlockIntent = Deploy{desired, mode} | Restore{retained, recorded, mode} | Remove`;
+  `BlockDecision = Write | Satisfied | Preserve | Remove | Keep | Absent | Refuse(Foreign | Unrestorable)`.
+  The table is the one `plan_merge`, `plan_remove_op`, `remove_or_restore_prior`
+  and `ManagedBlockSet::{mode_conflicts, satisfied, intact}` implemented,
+  plus the restore check.
+
+Product semantics, verified, not invented (CHANGELOG 0.19.0 "merge blocks
+carry their content hash", 0.21.1, `e2e/test_ownership_modes.py::test_merge_block_carries_its_content_hash`,
+`test_merge_boundaries.py`): inside its markers a block is gripsack's, so a
+deploy regenerates a hand-edited block and says so; a removal (prune,
+rollback's release) requires the block intact and otherwise keeps it; any
+conflicting mode evidence preserves the whole file; malformed markers refuse.
+
+### 17.3 Proofs (`proofs/Kernel/Block.lean`; `Audit.lean`: 216 theorems, 46 claims, standard axioms only)
+
+The K5 claims are partial-correctness statements over the shipped functions
+("if the call returns `out`, then …"); the decision claims likewise.
+
+- `splice_ok`: the splice returns exactly `spliceSpec` — the bytes before the
+  first span, the replacement, then every byte between and after the spans
+  in order (`spliceFrom`, a plain recursion over the spans).
+- `upsert_preserves_outside` (K5): an upsert's output is the splice of the
+  rendered block into the scanned blocks, which are `Ordered` (in order,
+  disjoint, non-empty, in bounds); with no block, the text, one separating
+  newline if it lacked one (`separator`), then the block.
+- `remove_preserves_outside` (K5): a removal keeps exactly the bytes outside
+  the scanned blocks.
+- `upsert_idempotent` (K5): upserting an upsert's output again with the same
+  inputs returns it unchanged.
+- `upsert_round_trip`: the output's only block of the owner is the rendered
+  block, recording the digest's sha digits and the mode, with content that
+  normalizes to the payload's normalization — the next apply sees it intact
+  (FND-4 cannot recur without the kernel refusing instead).
+- `decide_block_remove_intact` (K1 for blocks): only a removal removes, and
+  only an intact block — a file host, a non-drift record, exactly one block,
+  marker sha naming its content, content equal to the record, no mode drift.
+- `decide_block_foreign_untouched`, `decide_block_mode_evidence_preserves`
+  (conflicting mode evidence never writes, for every intent),
+  `decide_block_restore_exact` (rollback writes or claims a block only from a
+  retained payload whose digest is the record).
+- Helper specs the mutants are attributed to: `splice_loop_ok`,
+  `splice_single`, `append_ok`, `ordered_ok`, `settled_ok`, `upsert_ok`,
+  `intact_true`, `mode_conflict_false`, `deploy_facts`.
+- Mutants (`proofs/mutants.py`, 41 total, 10 new), each rejected by exactly
+  the named theorems: `block-splice-drops-tail` (`splice_loop_ok`,
+  `splice_ok`, `splice_single`), `block-splice-every-span`
+  (`splice_loop_ok`), `block-append-no-separator` (`append_ok`),
+  `block-overlapping-spans` (`ordered_ok`), `block-upsert-unchecked` (the
+  output check skipped: `upsert_ok`), `block-settled-ignores-bytes`
+  (`settled_ok`), `block-edited-intact` (`intact_true`),
+  `block-mode-evidence-ignored` (`mode_conflict_false`),
+  `block-foreign-written` (`deploy_facts`), `block-restore-mismatch-written`
+  (`decide_block_restore_exact`).
+
+What is **not** proved, and is tested instead: that `upsert` never refuses a
+well-formed hosting text (liveness), and the marker grammar itself (which
+lines are markers). Idempotence and the round trip are proved for every
+output the kernel returns because `upsert` checks its own output before
+returning it and the proof composes that check with the splice's
+specification (translation validation); a failing check is a loud refusal,
+never a wrong write. The explorer (§17.5) covers liveness.
+
+### 17.4 Wiring
+
+- `gripsack-exec/src/managed_blocks/mod.rs` is a thin adapter: kernel scan
+  offsets to `&str` views, the SHA-256 of the kernel's normal form, the
+  comment style of a destination, `record(entry)` and `host(observation)`
+  for the decision, `validate_payload` over the kernel's `classify`.
+- `plan_merge` asks `decide_block` with `BlockIntent::Deploy` (apply, plan)
+  or `BlockIntent::Restore` (rollback, `ModeInput::Merge.source =
+  BlockSource::Retained { recorded }`); `plan_remove_op` and
+  `remove_or_restore_prior` ask with `BlockIntent::Remove`.
+- Rollback's block units stay on the machine's delegated route; a payload
+  that is not the record is now refused by the kernel and the rollback stops
+  before the flip ("… is not the recorded block; cannot restore it exactly").
+
+### 17.5 Tests
+
+- e2e `test_managed_block_splice.py` (3): two failed before / pass after
+  (§17.1), one pins what held. `test_merge_boundaries.py`,
+  `test_ownership_modes.py` merge cases and `test_rollback_fidelity.py`'s
+  block case pass unchanged.
+- Kernel explorer `crates/gripsack-kernel/tests/block.rs`: every hosting text
+  of up to four lines over ten line kinds (foreign, empty, both owners'
+  markers, header, edited content, two-word prefixes, malformed metadata),
+  LF/CRLF, with and without a final newline, × 2 owner spellings × 4 comment
+  styles × 8 payloads: a malformed text is refused, a well-formed one never
+  is (liveness), and the output matches an independent splice oracle, removes
+  back to the foreign bytes, round-trips and is idempotent. Calibration: the
+  legacy normalization is caught by the round-trip oracle. Plus the marker
+  format golden test, the grammar cases ported from
+  `managed_blocks/tests.rs`, and the decision table against the planner it
+  replaced.
+
+Gates (docker, project `f2splice`, this branch): `proofs` passed in 799 s
+(no translation drift, 216 theorems, 46 claims, standard axioms only,
+41/41 mutants calibrated); `test` passed (fmt, clippy `-D warnings`, cargo
+test); `e2e` 682 passed in 18m50s. Not run: `verify` (the Verus gate whose
+floor and calibration this branch edits), `model` (whose list lost
+`MergeBoundary`), `ts-test`, fuzz.
+
+### 17.6 Deleted
+
+`gripsack-policy/src/merge.rs` and `merge/scanner.rs` (the Verus splice and
+scanner: 11 obligations, floor 382 → 371, their two Verus mutants; the
+unrelated-lemma calibration moved to `graph.rs`), `specs/MergeBoundary.tla`
+and its four cfgs (the decision model; its invariants are the decision
+theorems), the `merge` fuzz target (target, harness, corpus, seeds — trim
+register), `gripsack-exec/src/managed_blocks/parse.rs` (the grammar, now the
+kernel's) and `managed_blocks/tests.rs` (ported to the kernel test),
+`ManagedBlockSet::{intact, satisfied, mode_conflicts}` and
+`normalized_content`. `verification/guarantees.md` is frozen and keeps its
+historical MERGE-SPLICE-001 / MERGE-SCAN-001 rows.
+
+### 17.7 Code contortions (recorded in the source)
+
+1. A repeated-byte array constant (`*b">>>"`) is a repeat expression Aeneas
+   rejects ("unexpected constant `[62u8; 3]`"): `>>>`/`<<<` are written and
+   checked as one byte thrice (`push_triple`, `is_triple`).
+2. A `match` on an enum read from a slice element inside a loop ("Not allowed
+   to expand enumerations with several variants") moved into a helper
+   (`other_mode`).
+3. Locals named `block` inside module `block` (§13.4 item 5 again):
+   `span`, `rendered`, `only`.
+4. The scanner's open block is rebuilt per line instead of updated through
+   `&mut`; owner ranges are compared by an explicit byte loop.
+5. clippy idioms that go through trait methods or closures
+   (`RangeInclusive::contains`, `is_empty`, `Option::map`, `is_some`) are
+   allowed in `block.rs`; the proofs are stated over this spelling.
+6. Lean side: `Result` is an interaction tree, so constructor facts come from
+   `Result.match` (`vis_not_ok`, `div_not_ok`); a tuple pattern
+   `let (a, b) ← …` elaborates to `Std.uncurry`; partial correctness of a
+   loop is one generic rule (`loop_ok`) over the body.
+
+### 17.8 Deviations and what is deferred
+
+1. **K1 for blocks is stated per the product contract, not §5's wording.**
+   §5 says "a managed block only if intact". The product regenerates a
+   hand-edited block on deploy (0.19.0); what is proved is: removal only if
+   intact, deploy never touches a byte outside the owner's blocks (K5) and
+   never writes over conflicting mode evidence, a non-file host is never
+   written, and restore only from the record.
+2. **Liveness and the grammar are tested, not proved** (§17.3).
+3. **Rollback's block units stay delegated** in the rollback machine; the
+   kernel decision and splice now decide and perform them, but the machine's
+   K2 theorems do not range over them. Folding them in needs a block
+   identity in the machine's `Ident` vocabulary.
+4. A custom comment marker that the grammar cannot read back (whitespace or
+   a marker key in it) is refused instead of appended forever; no current
+   producer writes one.
+5. Host-computed SHA-256 stays outside the kernel (S7).
+6. A generation recorded by 0.19–0.52 for a payload hit by FND-4 keeps a
+   digest in the old normal form. `grip verify` still accepts it (one more
+   historical block domain in `verify_store`); rolling back to it refuses,
+   because no retained payload reproduces that record under the kernel's
+   normal form. Every other recorded block digest is unchanged.
+
+## 18. F2 step 4 record — the GC machine (K4, K4′)
+
+- Branch `foundation/f2-gc` from `main` at `524f576`; date 2026-11-09.
+- Question: can collection be the proved kernel's sans-IO machine, deciding
+  every deletion — generation retirement, payload and prior removal, and
+  the stale-staging reaper of 0058 item 4 — with K4 and K4′ proved over the
+  shipped code and the host executing only what it is commanded?
+
+### 18.1 Before: what was proved, what was trusted
+
+F1 moved three pure functions into the kernel (`admit_gc`, `plan_prune`,
+`plan_delete`). Everything between them was host code: the predecessor
+closure (`gc/directory_roots.rs::admit`, a fixpoint over manifests), root
+derivation from manifests, the effect order, and the decision of *which*
+effects to issue. `plan_delete` was proved over whatever flat root list the
+host built, so "roots include the closure of every retained manifest" (K4′)
+was not a theorem, and nothing tied an issued deletion to the admitted
+inventory.
+
+Defect checked (0058 item 4, §4.3): a publisher killed between staging and
+rename leaves `generations/.staging-<N>-<pid>`, and nothing ever removed it.
+Reproduced on the baseline: `gc::tests::stale_generation_staging_is_reaped`
+failed at "stale staging must be reaped"; it passes after. The
+`generations.rs` assertion on `.staging-1` (a name never created) was
+vacuous; it now asserts no `.staging-*` remains, and the canonical name has
+one parser (`generations::is_staging_name`) beside the one writer.
+
+### 18.2 The machine (`crates/gripsack-kernel/src/gc.rs`, helpers in `retention.rs`)
+
+`gc_step(GcState, Event) -> (GcState, Command)`, one command outstanding.
+
+- **Reads:** `ReadInventory` → `Inventory{recovery_pending, current,
+  generations}`; `ReadManifest(g)` (newest first, one per inventoried
+  generation; the event must name exactly that generation) →
+  `Manifest{id, predecessors, roots}`; `ReadRoots` → the workspace and
+  schedule roots (ring 3, tested, not proved); `ReadCandidates` → every
+  entry of `store/`, `prior/` and every canonical
+  `generations/.staging-<N>-<pid>`, each with the inode stamp the host saw.
+- **Decides:** admission (`admit_gc`), the prune plan (`plan_prune`), each
+  generation's `Fate` as its manifest arrives (retired only if pruned and no
+  retained newer manifest names it — reading newest first makes this the
+  closure in one pass, since receipt predecessors are strictly older), the
+  closure check over all fates (`closure`: retained predecessors are
+  inventoried, no retired generation is needed), and the deletion set
+  (`plan_delete` over `rooted` = pinned by a retained manifest or named by
+  an external root).
+- **Commands (collect mode, after `Plan`):** `SealFloor`; `Retire{generation,
+  current}` per retired generation, newest first; `Barrier`; `Delegate`
+  (the directory domain retires the receipts the retired generations held,
+  step 9); `Remove{candidate, expect}` per doomed candidate; `Finish`. A
+  preview finishes at `Plan`.
+- **Refusals:** `RecoveryPending`, `CorruptCurrent`,
+  `MissingPredecessor{generation}`, `Malformed`, `Drifted`, `Failed`,
+  `Protocol`.
+
+The staging reaper fits cleanly: publishers hold the lifecycle session, so
+under gc's session every canonical staging directory is stale; nothing names
+one, so it is a candidate no root names. Non-canonical names are not
+candidates.
+
+### 18.3 Driver (`crates/gripsack-exec/src/gc.rs`)
+
+`gc()` runs the loop. `Host` answers reads from the pinned home (journal
+and activation pending state, `GenerationDirectory`, manifests admitted with
+effect authority or inspected in a dry run, root inventories,
+`gc/inventory.rs::Collectable`) and executes only commanded effects:
+`Retire` re-reads `current` and answers `Failed(Drift)` if it is not the
+command's `current`; `Remove` re-reads the entry's `(dev, inode)` through
+the pinned directory and answers `Failed(Drift)` on mismatch; `Plan` reports
+and sizes the decision (every fallible size read precedes the first
+effect, as before). `GenerationDirectory::prune` is split into the commanded
+`admit_retirements`/`seal_floor`/`retire`/`seal`. Refusal messages are the
+old ones. `GcReport` gains `staging_removed`; `grip gc` prints "removed
+stale staging …".
+
+### 18.4 Proofs (`proofs/Kernel/Gc.lean`, `Retention.lean`; `Audit.lean`: 213 theorems, 48 claims, standard axioms only)
+
+Over every execution (`Run` from `GcState::new` in either mode, invariant
+`Inv` by phase, `step_spec`):
+
+- `gc_effects_admitted` (K4): an effect (`SealFloor`, `Retire`, `Barrier`,
+  `Delegate`, `Remove`) is issued only in collect mode, from an inventory
+  with no recovery or activation pending and `current` inventoried.
+  `gc_preview_effect_free`: a preview issues none.
+- `gc_retire_pruned` (K4): a retired generation is in the prune plan of the
+  admitted inventory, no retained manifest names it as a predecessor, and
+  the command carries the inventoried `current` for the driver's re-check.
+  `gc_never_retires_current`: never `current`, only inventoried
+  generations.
+- `gc_retire_newest_first`: when a generation is retired, every retired
+  generation before it in the manifest order (the inventory reversed) was
+  already retired — an interrupted batch never strands a live receipt's
+  predecessor.
+- `gc_remove_unreferenced` (K4, deletions ⊆ candidates − roots): a removal
+  names an inventoried candidate, carries its inventoried stamp, and no
+  retained manifest pins it and no external root names it.
+  `gc_doomed_exact`: the deletion set is exactly those candidates.
+- `gc_retained_closed` (K4′): at every effect, every inventoried
+  generation's manifest was read, and every retained generation's
+  predecessors are inventoried and retained — so the roots are the closure
+  of every retained manifest.
+- `gc_remove_after_retirement`: every removal follows the retirement of
+  every retired generation, the barrier on `generations/`, and the
+  delegated retirement of their receipts.
+- Helper claims `closure_spec`, `rooted_spec`; `plan_delete_spec` restated
+  over the structured roots.
+- Mutants (`proofs/mutants.py`, 41 total, 10 new, 1 updated), each rejected
+  by exactly the named theorem: `gc-roots-in-deletion` (updated,
+  `plan_delete_loop_spec`), `gc-external-roots-ignored` (`rooted_spec`),
+  `gc-closure-ignores-needed` and `gc-closure-ignores-missing`
+  (`closes_spec`), `gc-retires-unpruned` (`fate_spec`),
+  `gc-pending-admitted` (`on_inventory_spec`), `gc-manifest-unchecked`
+  (`on_manifest_spec`), `gc-remove-unstamped` (`remove_next_spec`),
+  `gc-preview-collects`, `gc-retirement-skipped` and
+  `gc-remove-before-delegate` (`step_spec`).
+
+### 18.5 Tests
+
+- Kernel explorer `crates/gripsack-kernel/tests/gc.rs`: every history of up
+  to three generations (each naming none, an older or a missing
+  predecessor, pinning none or one of three paths), every `current` and
+  `keep`, with and without an external root, collect and preview, pending
+  recovery, a corrupt current and a drifted removal, driven through the
+  shipped `gc_step` on a model home. The oracle is independent of the kernel
+  (prune plan's complement closed by fixpoint): the generations and payloads
+  left are exactly that set and its roots; previews and pending recovery
+  change nothing; a missing predecessor stops before any effect; retirement
+  is newest first; no removal precedes the barrier. Calibrated by hand
+  against two kernel mutants (external roots ignored; fate ignoring the
+  closure): both fail it.
+- Host: `stale_generation_staging_is_reaped` (new, failing before); the two
+  closure tests of `directory_roots` now run through `gc()` (they check the
+  host decodes migration receipts into predecessors); the interrupted-batch
+  test drives the commanded retirement steps in the kernel's order;
+  `root_model.rs` (real roots: payloads, build closures, priors; eight
+  recovery admissions; pinned removal under root replacement) unchanged in
+  substance. e2e: `test_gc_admission.py::test_gc_reaps_staging_left_by_a_dead_publisher`.
+
+### 18.6 Deleted
+
+`gc/directory_roots.rs::admit` (the host's predecessor fixpoint: the kernel
+decides and proves it), `GenerationDirectory::prune`, the old flat
+`plan_delete` and its proof, `gc::tests::never_prunes_the_current_generation`
+(now `gc_never_retires_current`), and the `store_gc` fuzz target with its
+corpus (its assertions are K4/K4′; trim register). No GC Verus remained
+after F1, so `check_verus` is unchanged (floor 382).
+
+Gates (docker, `-p f2gc`, one at a time). On the branch before the merge:
+`test` 850 passed, 0 failed, 1 ignored; `proofs` OK in 468 s (213
+theorems, 48 claims, 41/41 mutants); `e2e` 680 passed. After merging
+`main` with the K5 splice (§17), at the merge commit: `test` passed (fmt,
+clippy `-D warnings`, cargo test 848 passed, 0 failed, 1 ignored);
+`proofs` OK in 1191 s (no translation drift, 272 theorems, 57 claims,
+standard axioms only, 51/51 mutants calibrated); `e2e` 683 passed in
+16m47s. The new e2e was not run against the baseline binary; the baseline
+reproduction is the unit test (§18.1).
+
+### 18.7 Deviations and what is deferred
+
+1. **No MemFs crash exploration of gc.** As for rollback (§16.7), the
+   driver acts through `gripsack_fs`, not `gripsack-host::Storage`; the
+   crash order the old code relied on (floor, retirements, barrier, then
+   payloads) is now a theorem (`gc_remove_after_retirement`), and the
+   existing e2e prune-barrier oracle still runs.
+2. **The directory domain stays delegated** (`Delegate`): staging
+   retirement of directory-transition receipts and clearing `.retired-N`
+   are host code until step 9. They act only on `.retiring-`/`.retired-`
+   names, which only commanded retirements (or an earlier run's) create.
+3. **Ring-3 inputs are tested, not proved:** the manifest-to-roots decoding
+   (store paths, build closures, prior blobs, receipt predecessors), the
+   workspace and schedule roots, the pending-state reads, and the
+   classification of `generations/` entries into generations, retirements
+   and staging.
+4. **S5 residue:** between a re-check and its act (stat then rename/unlink)
+   an external writer can still race; `remove_dir_all` is not atomic.
+5. **Behaviour change:** gc now refuses ("run gc again") when `current`
+   changes before a retirement or an entry is replaced between inventory and
+   removal; before, it acted on the stale inventory. Under the lifecycle
+   session only an external writer can cause either.
+
+## 19. F2 step 3 record — the leaf effect protocol and the journal run (P1, P3)
+
+- Branch `foundation/f2-journal` from `main` at `0625d3e`; date 2026-11-10.
+- Question: can the journal's run — its marker, the leaf effect protocol for
+  each destination (record prior evidence and intent durably, then mutate,
+  then `Landed`) and its completion — be a kernel machine the product drives
+  over `Storage`, with P1 and the cleanup half of P3 proved in Lean over the
+  shipped Rust?
+
+### 19.1 The machine (`crates/gripsack-kernel/src/journal_run.rs`)
+
+`run_step(RunState, Event) -> (RunState, Command)`, one command outstanding,
+living as long as the run (`begin_run` → leaves → flip → `commit_run`, or
+`end_run`).
+
+- **Marker:** `Start` → `Publish{Marker, a}` for `a` = stage, sync the file,
+  publish the name, sync the journal directory (the F1 `PublicationAction`
+  order, its `successor`), each answered `Done`; then `Ready`.
+- **Leaf, per destination** (`Unit(UnitFacts{dest, expect, intended,
+  follows})` answers `Ready`): `Observe`; refuse `Unsupported` (no journal
+  identity), `Drifted` (not the plan's `expect`) or `Interleaved` (a repeated
+  write whose destination is not this run's earlier intent); else
+  `CapturePrior{expect: observed}` (the driver re-checks, makes the prior
+  durable — a file's bytes and mode in the prior blob store — and returns the
+  entry); then `Publish{Entry, a}` ×4; only then `Mutate{expect: observed,
+  intended}` (the driver re-checks after staging, immediately before the
+  rename or unlink); `Landed{live}` is accepted only if it is the intended
+  object (`rollback::lands`), else `NotLanded`.
+- **Completion:** `Commit` → `Flip` (the caller flips; answering `Done` means
+  durable) → `Settle(Committed)`; `End` is refused (`Unfinished`) once any
+  unit landed, else `Settle(Ended)`. `Settled{records}` → `Unlink(Record k)`
+  for every record, `Barrier`, `Unlink(Marker)`, `Barrier`, `Finish`.
+- Directory records stay with the legacy domain: the host seals or checks
+  them when settling and reports how many records the cleanup removes.
+
+### 19.2 Proofs (`proofs/Kernel/JournalRun.lean`; `Audit.lean`: 268 theorems, 50 claims, standard axioms only)
+
+An execution is its log of (event, command) pairs (`Run`); `Inv` is kept by
+every step (`step_spec`, `run_inv`).
+
+- **P1 `mutate_after_durable_intent`:** in every execution, a `Mutate` is
+  issued only in answer to `Done`, after a log that *starts* with the marker's
+  complete publication (`pubSteps Marker Start SyncNamespace` then `(Done,
+  Ready)`) and *ends* with exactly this unit's leaf protocol: `(Unit f,
+  Observe u f.dest)`, `(Observed f.dest x, CapturePrior u f.dest x)`, then
+  the entry's stage, sync, publish and sync, each answered `Done`; with
+  `f.expect = x` (the plan's observation is what is mutated over) and
+  `f.intended` installed.
+- **P3 `record_unlink_needs_no_evidence`:** a journal record is unlinked only
+  after `(Commit, Flip)` was answered `Done` (so any later crash classifies
+  the run committed and needs no entry) or in a run that never published an
+  entry.
+- **P3 `marker_unlink_after_record_barrier`:** the marker unlink only right
+  after a journal barrier that follows the unlink of every record (the
+  0.19.x resurrection order, now for the run as for recovery).
+- `unit_accepted_only_landed`: the machine is ready again after a mutation
+  only when the landed object is the unit's intended one.
+- Helper specs the mutants are attributed to: `on_observed_spec`,
+  `on_landed_spec`, `on_end_spec`, `next_unlink_spec`.
+- Mutants (`proofs/mutants.py`, 48 total: 8 new, 1 removed with
+  `admit_mutation`), each rejected by exactly the named theorem:
+  `run-mutates-before-entry-barrier` (mutation after the entry's rename,
+  before its directory barrier: `step_spec`),
+  `run-ready-before-marker-barrier` (units accepted before the marker's
+  barrier: `step_spec`), `run-skips-prior-capture` (`on_observed_spec`),
+  `run-ignores-plan-drift` (`on_observed_spec`), `run-landed-unchecked`
+  (`on_landed_spec`), `run-cleans-before-flip` (`step_spec`),
+  `run-ends-after-mutation` (`on_end_spec`), `run-cleanup-barrier-swapped`
+  — the 0.19.2 order — (`next_unlink_spec`).
+
+### 19.3 Wiring
+
+- `gripsack-host::journal_run::RunDriver` executes the machine over any
+  `Storage` behind a `RunHost` (marker and entry wire, prior capture, identity
+  hashing, settling). Installs are `File{bytes, mode}`, `Link{target}`,
+  `Remove` and `Splice` (a managed block's upsert or removal, computed from
+  the re-checked latest bytes).
+- `gripsack-store` (`journal/mutation.rs`) is the product `RunHost` over
+  `RealFs`: `begin_run` publishes the marker through the machine and keeps it
+  in `JournalRun`; `journal::mutate` replaces `capture` → `record` →
+  `MutationPermit::execute`; `flip` asks the machine for the flip and reports
+  a failed one; `commit_run` and `end_run` are the machine's cleanup. Error
+  texts users saw are kept ("changed between the drift decision and the
+  mutation", "did not reach its intended state", "between journaled
+  mutations").
+- `gripsack-exec`: every `execute_op` arm (link, write, merge upsert, removal
+  and prior restore) passes an `Install`; `deploy::removal` replaces
+  `remove_or_restore_prior`/`remove_entry_deployed`/`restore_prior` — the
+  exact-target re-check is the leaf protocol's, the K1 decision the
+  planner's. Rollback writes through `execute_op`, so through the same
+  protocol.
+- The directory domain's reactivation keeps a prior capture
+  (`mutation::capture`, same observation and prior evidence) — its record
+  carries the prior; it is not a leaf mutation (step 9).
+- `GRIPSACK_ENGINE=legacy` still selects the legacy *recovery* in debug
+  builds; there is no legacy leaf path (nothing to switch).
+
+### 19.4 Defects and the S5 window, measured
+
+No new correctness defect was found. One measured change, not claimed as a
+reproduced product bug: the 0.53 leaf checked the destination against the
+plan once, at capture, then published the entry and wrote with no re-check.
+`the_leaf_never_overwrites_an_external_write_its_recheck_sees` lands an
+external write before each storage operation of a one-destination run: the
+0.53 order (restated in the test, as the 0.19.x cleanups are) overwrites it
+at 12 operations (the entry's whole publication and the staging); the kernel
+leaf at 2 (between the act's re-check and the rename), and otherwise stops
+with a drift refusal and leaves the user's bytes. This was measured on MemFs
+over a restatement of the old order, not on the old binary.
+
+### 19.5 Tests
+
+- `crates/gripsack-host/tests/journal_cleanup.rs` now drives the *run* through
+  `RunDriver` (the hand-written apply is gone) and the recovery through the
+  recover machine, every kill and power-loss cut of each, over MemFs: every
+  entry shape on fresh and existing machines, repeated writes, two
+  destinations, edits after each crash, ambiguity, the numeric-commit mutant,
+  the 0.19.1/0.19.2 calibrations, the wedge, recovery's S5 window. New: the
+  leaf's S5 window (§19.4); an ended run recovers to nothing after any crash;
+  a run that journaled a destination cannot end; and
+  `rollback_survives_every_crash_and_every_recovery_crash` — the kernel
+  rollback machine, its writes through the leaf protocol, the flip and the
+  cleanup, crashed everywhere (45 cuts / 186 images), each image's recovery
+  crashed everywhere (1922 cuts / 7553 images), then recovered: every
+  destination holds exactly the generation rolled back from or to.
+- Store and exec unit tests moved from `capture`/`record` to `mutate` (a
+  crash between entry and act is a failing `Splice`, `crash_after_entry`);
+  `unfinished_mutation_cannot_end_the_run` now exercises the kernel's
+  `Unfinished` refusal after a landed unit.
+- The `Batched` record order (all entries, then all mutations) is gone from
+  the explorer: the kernel cannot produce it and no shipped version did.
+- No separate kernel explorer: P1/P3 are proved, and the MemFs suites drive
+  the machine with a real host.
+
+### 19.6 Deleted
+
+`gripsack-policy/src/journal_protocol.rs` (Verus `CleanupProgress`: the
+`journal-cleanup` family, four Verus mutants, floor 371 → 368, an estimate
+until the next green `verify`), the kernel's `MutationAuthority` /
+`admit_mutation` and `admit_mutation_spec`, `marker::cleanup` and its
+`CleanupProgress` bookkeeping (legacy reconcile keeps a plain
+`cleanup_legacy`), `mutation::{CapturedPrior, MutationPermit, record}`,
+`deploy::{remove_or_restore_prior, remove_entry_deployed, restore_prior}`.
+
+### 19.7 Deviations and what is deferred
+
+1. **TLA+ `JournalLifecycle` stays.** Its TLC calibrations
+   (`MarkerCoversEntries`, `MutationHasDurableMarker`, `ExactCommitIdentity`)
+   are now Lean theorems at the machine level, but the module is the base of
+   `PublicationSelection`, `RepeatedRecovery` and the TLAPS journal stack
+   (P2-level), which F3 retires. Deleting its cfgs while the model stays
+   would only uncalibrate it.
+2. **P1 is about the machine's commands**; that a `Done` means durable is the
+   driver's contract over S1–S3 (ring 1, `Storage.lean`, F3), tested by the
+   MemFs suites, not proved.
+3. **Rollback's exec driver is not generic over `Storage`.** Its writes go
+   through the leaf protocol over `RealFs`, and the kernel rollback machine
+   composed with the leaf protocol is crash-explored over MemFs, but the
+   exploration uses a test host, not `gripsack-exec/src/rollback/restore.rs`
+   (manifest decoding, `plan_restore_op` and the store stay on the real
+   filesystem). Delegated units (managed blocks, directory transitions) are
+   outside that exploration.
+4. **Unjournaled effects stay listed, not proved:** prior blobs (deduplicated
+   by content, synced before the entry), parent directories created by
+   `dest_capability`, the selection reservation.
+5. `RecordPublication`/`DurableRecord` remain for directory records
+   (`Journal::write`); `RecordRole::RunMarker` is no longer used by the product.
+6. **e2e instrumentation:** `test_recovery_durability.py`'s
+   `before-second-restore` cut located the trace row `Before Symlink ".b"`
+   (gripsack-fs labelled the temporary link by its final name); `RealFs`
+   labels the boundary with the staging name it really creates, so the test
+   now finds the row by that name. Behaviour is unchanged; the test failed
+   on the first e2e run of this branch for that reason alone.
+
+Gates (docker, project `f2journal`, this branch): `proofs` passed in 820 s
+(no translation drift, 268 theorems, 50 claims, standard axioms only, 48/48
+mutants calibrated — the F1 file-barrier mutant now also breaks
+`JournalRun.step_spec`, as it should); `e2e` 682 passed in 15m39s. `test`:
+the compose run failed three times in the shared `gripsack-target-dev`
+BuildKit cache (an rlib missing behind a fresh fingerprint, other agents'
+builds sharing the cache), after all 37 test binaries had passed; the gate's
+exact commands (`cargo fmt --check`, `cargo clippy --locked --workspace
+--all-targets -D warnings`, `cargo test --locked`, then the conda-helper
+fmt/clippy/test) passed from the same `builder` stage with a private, clean
+target directory. Not run: `verify` (whose floor this branch lowers), `model`,
+`tlaps`, `ts-test`, fuzz.
+
+After merging `main` (the GC machine, §18; `proofs/Extracted` regenerated):
+`proofs` passed in 1700 s (no drift, 324 theorems, 61 claims, standard axioms
+only, 58/58 mutants calibrated); `test` passed as a compose run (`gate
+passed: fmt + clippy -D warnings + cargo test`); `e2e` 688 passed in 13m59s.
+The `check_verus` floor is 368: main's 371, which step 4 left unchanged, less
+this step's three.
+
+## 20. F2 step 5 record — the activation machine (P4 kernel part, K6)
+
+- Branch `foundation/f2-activation` from `main` at `bf44ad4`; date
+  2026-11-10. Taken in parallel with step 3 (`foundation/f2-journal`, §19).
+- Question: can the post-activation hook ledger (ledger order,
+  authorize/supersede, attempts) be the proved kernel's sans-IO machine, with
+  P4's kernel part proved over the shipped code, and can K6's numbering and
+  publication decisions move into the kernel and be proved?
+
+### 20.1 Before, and the defect
+
+The ledger transitions (`next_attempt`, `finish_attempt`, `supersede`) were
+Verus-checked in `gripsack-policy::activation` (eight obligations); the walk
+that used them — compare `current` with the batch's selection, supersede or
+authorize, start, launch, settle, archive, clear — was host code
+(`activation/ledger.rs` `authorize`/`ReadyActivation`), modelled in
+`Activation.tla` and the TLAPS activation proofs but not proved over the
+shipped code. K6's allocator (`publication.rs` `allocate`), floor update
+(`preserve_allocation_floor`) and the vacuous-run test (`apply.rs`
+`pre_flip`) were host code with no proof.
+
+**FND-5, confirmed:** `authorize` compared `current` with the batch's
+selection once, before the first hook. A hook that moves `current` (an
+external writer: the lifecycle lock cannot exclude a hook's own process)
+did not stop the hooks after it. Reproducer
+`e2e/test_workspace_hooks.py::test_hook_launches_only_while_its_selection_is_current`
+(hook 1 re-points `current` at the previous generation; hook 2 appends to a
+file): against the baseline binary (`bf44ad4`) it fails at "a hook ran
+after its selection stopped being current" — the run log shows hook `later`
+passing; on this branch it passes: hook 2 never runs, its record stays
+`Started` (`apply` warns "activation evidence retained"), and the next run
+supersedes it (`superseded`, `last_attempt: 1`) without running it.
+
+No K6 defect was found: allocation already took the maximum of `current`,
+the newest generation and the floor; the floor was raised before the
+publishing rename; vacuous runs cut no generation; rollback reselects
+under a fresh transaction (`rollback_flip_admitted`, §16).
+
+### 20.2 The machine (`crates/gripsack-kernel/src/activation.rs`)
+
+`activation_step(ActivationState, Event) -> (ActivationState, Command)`,
+one command outstanding, intents read one at a time.
+
+- **Ledger vocabulary (moved from `gripsack-policy`):** `AttemptNumber`
+  (positive), `IntentState = Pending | Started | Succeeded | Failed |
+  Superseded`, `terminal`, `last_attempt`, `next_attempt`,
+  `finish_attempt`, `supersede`, `HookResult`.
+- **Commands:** `ReadBatch`, `ReadCurrent`, `Authorize(selection)`,
+  `ReadIntent(k)`, `Persist{intent, state}` (answer `Done` only once
+  durable), `RunHook{intent, attempt, expect}` (the driver re-checks
+  `current == expect` immediately before launching and answers
+  `Failed(Drift)` otherwise), `Archive`, `Clear`, `Finish`, `Abort`.
+- **Decides:** run or supersede (`bound`: `current` is exactly the batch's
+  selection, transaction bytes included); per intent in ledger order, skip a
+  terminal record, persist `Started` with the attempt that replays the
+  record, launch, persist the returned outcome, move on; in a superseded
+  batch persist `Superseded` for every non-terminal record; archive after
+  every intent, clear after the archive. The command set has no flip and no
+  restore: a failure is recorded, never rolled back.
+- **Refusals:** `Exhausted{intent}`, `Drifted{intent}`, `Malformed`,
+  `Failed`, `Protocol`.
+
+### 20.3 K6 in the kernel (`crates/gripsack-kernel/src/publication.rs`)
+
+- `allocate(Allocation{current, newest, floor})`: one above all three.
+- `floor_action(observed, retained)`: `Nothing`, `Seal` (the observed floor
+  covers everything) or `Raise(max)`; never down.
+- `decide_commit(CommitFacts)`: `Vacuous` exactly when a previous generation
+  exists, the state is unchanged and nothing was touched; otherwise
+  `admit_publication`: `Publish` only for a reserved selection whose
+  transaction is fresh (`selection::fresh`, moved from `rollback.rs`, now
+  shared by apply and rollback), bound to the allocated number, above the
+  floor read again now, not yet published; else `Refuse(Reused | Misbound |
+  BelowFloor | Exists)`.
+
+### 20.4 Driver and wiring
+
+- `gripsack-exec/src/activate.rs::run` drives the machine: it answers reads
+  from the admitted `ActivationBatch`, executes each command through one
+  store method (`facts`, `record`, `authorize`, `persist`, `launch`,
+  `archive`, `clear`), re-reads `current` before each launch, and renders
+  each settled attempt as before (hooks and adapters as verification blocks
+  through `Reporter::started`/`verified`, scheduler registration as a step;
+  the `hook-after-start`, `hook-after-effect`, `hook-after-receipt` and
+  `hooks-before-cleanup` crash points are where they were). `launch` grants
+  the opaque `LaunchPermit` only while the intent's durable record is exactly
+  `Started{attempt}`. Refusals keep their messages ("activation attempt
+  counter exhausted; evidence retained").
+- `ActivationBatch::authorize` (the supersede-or-run decision) and
+  `ReadyActivation` (the walk, the in-flight attempt check, the outcome
+  check) are gone; the store keeps admission, records and the permit.
+- `publication.rs::allocate` and `preserve_allocation_floor` call the
+  kernel; `apply.rs::pre_flip` asks `decide_commit` with the re-read
+  `current`, the run's reservation, the floor and whether the number is
+  published; `publish_generation` keeps its existence check as the
+  driver's re-check before the rename.
+
+### 20.5 Proofs (`proofs/Kernel/Activation.lean`, `Publication.lean`; `Audit.lean`: 361 theorems, 77 claims, standard axioms only)
+
+Ledger: `next_attempt_spec` (a non-terminal record gets the attempt that
+replays it — 1 after `Pending`, `n + 1` after `Started n` — a terminal one
+none), `finish_attempt_spec` (only the in-flight attempt settles, as what it
+returned), `supersede_spec` (a non-terminal record becomes `Superseded`
+keeping its last attempt). Over every run (`Run`, `Inv`, `step_spec`):
+
+- `hook_after_durable_start`: a hook runs only in answer to the `Done` of
+  its intent's `Started` record, which is the immediately preceding command.
+- `hook_selection_current`: only when the run read `current` as exactly the
+  batch's selection and authorized it; the launch carries it as `expect`.
+- `hook_once_per_run`: no intent's hook runs twice in a run.
+- `start_replays`: `Started` is written only over the non-terminal record
+  just read, with the attempt that replays it.
+- `settle_returned`: `Succeeded`/`Failed` only for the attempt that just
+  returned, as what it returned (no rollback: the machine moves on).
+- `terminal_never_rewritten`, `terminal_never_runs`.
+- `superseded_runs_nothing`, `supersede_writes_superseded`.
+- `leaves_terminal`, `archive_after_every_intent`, `clear_after_archive`.
+
+K6: `allocate_exceeds_floor`, `floor_never_lowers`, `publish_admitted`
+(fresh transaction bound to the allocated number, above the floor, not
+published, not vacuous), `vacuous_iff`; `fresh_spec` moved to
+`Selection.lean` (rollback's `rollback_flip_admitted` uses it unchanged).
+
+Mutants (`proofs/mutants.py`, 67 total, 16 new, 1 moved), each rejected by
+exactly the named theorem: `activation-interrupted-attempt`
+(`next_attempt_spec`), `activation-stale-outcome` (`finish_attempt_spec`),
+`activation-supersession` (`supersede_spec`), `activation-launch-before-start`
+and `activation-terminal-rewritten` (`on_intent_spec`),
+`activation-early-success` (`on_started_spec`), `activation-generation-bound`
+(`bound_spec`), `activation-superseded-runs` (`on_current_spec`),
+`activation-settled-reread` (`step_spec`), `activation-clear-before-archive`
+(`proceed_spec`), `publication-allocate-ignores-floor`
+(`allocate_exceeds_floor`), `publication-floor-lowered`
+(`floor_never_lowers`), `publication-vacuous-touched` (`vacuous_spec`),
+`publication-overwrites-published`, `publication-below-floor` and
+`publication-unchecked-transaction` (`admit_publication_spec`);
+`rollback-reused-transaction` now mutates `selection.rs` and is rejected by
+`fresh_spec`.
+
+### 20.6 Tests
+
+- Kernel explorer `crates/gripsack-kernel/tests/activation.rs`: every batch
+  of up to three intents over six records (pending, started, started at the
+  counter's end, succeeded, failed, superseded), every `current` (the batch's
+  selection, another, none) and every hook result, driven through the
+  shipped `activation_step` by a host with a durable ledger, against an
+  oracle written without the kernel; a launch-time drift at every launch;
+  and a crash after every command followed by a replay: a terminal intent
+  never runs again, a replay continues the interrupted attempt, a superseded
+  intent runs zero times. Calibrated by hand against two kernel mutants
+  (supersession ignored; interrupted attempt not advanced): both fail it.
+- e2e: the FND-5 reproducer (§20.1); the existing activation, hook-outcome
+  and workspace-hook flows run unchanged.
+
+Gates (docker, `-p f2act`, one at a time, at `82b3133`): `test` passed
+(fmt, clippy `-D warnings`, cargo test 857 passed, 0 failed, 1 ignored);
+`proofs` OK in 1284 s (no translation drift, 361 theorems, 77 claims,
+standard axioms only, 67/67 mutants calibrated); `e2e` 689 passed in
+15m31s. On the host, the five activation/rollback/generation e2e files
+passed (72) and the FND-5 reproducer failed against the baseline binary.
+After merging `main` with the journal run (§19), at `e526a35`: `proofs`
+OK in 1460 s (no translation drift, 413 theorems, 81 claims, standard
+axioms only, 74/74 mutants calibrated); `test` passed (cargo test 861
+passed, 0 failed, 1 ignored); `e2e` 689 passed in 15m32s. The `check_verus`
+floor is 360: 371 at `bf44ad4`, minus the three `CleanupProgress`
+functions (§19) and the eight `activation` functions here.
+Not run: `verify` (the Verus floor change is counted, not measured),
+`model` (TLC; only negatives were removed), `tlaps`.
+
+### 20.7 Deleted
+
+`gripsack-policy/src/activation.rs` (the Verus ledger transitions; the
+`check_verus` floor drops by its eight obligations, 371 → 363 — counted per
+function as in §15/§17, to be confirmed by the next `verify` run, which was
+not run here) and its three Verus mutants; `ActivationBatch::authorize`'s
+decision and `ReadyActivation`; five TLC activation negatives
+(`activation-unsealed-start`, `-early-success`, `-retry-failure`,
+`-generation-commit`, `-early-clear`), whose invariants are now theorems
+over the shipped machine, each calibrated by a Lean mutant. Kept:
+`Activation.tla`/`RepeatedActivation.tla` positive models (the crash-layer
+bug-finders §8 lists for F3) with the `activation-generation-token`
+negative (intent identity hashing is host code), and the TLAPS activation
+proofs, which the transaction induction catalog still imports (they go
+with TLAPS after P1–P3, §8).
+
+### 20.8 Deviations and what is deferred
+
+1. **No MemFs crash exploration of activation.** As for gc (§18.7;
+   rollback's leaf writes are crash-explored since §19), the ledger writes
+   go through `gripsack_fs`, not `gripsack-host::Storage`. Durability of a `Persist` before its `Done` is
+   the store's `atomic_write_with_mode` (file and directory fsync, S2); the
+   ring-1 P4 statement over S1–S7 is F3. The crash e2e cuts
+   (`hook-after-start`, `-effect`, `-receipt`, `hooks-before-cleanup`) and
+   the kernel explorer's crash-and-replay run.
+2. **Host residue (ring 2/3, tested, not proved):** plan/pointer/outcome
+   admission and budgets, legacy pointer migration, intent identity hashing,
+   the outcome record's process-receipt consistency, the permit's opaque
+   type, and the effect adapters.
+3. **"Never-reused TxId"** is the kernel's `fresh` (the flip's transaction
+   differs from the one it replaces) plus the host's exclusive `create_dir`
+   of a 256-bit random reservation; the second is ring 2.
+4. **"Published generations are immutable"** composes `publish_admitted`
+   (a publication names an unpublished number), the host's re-check before
+   the no-clobber rename, `rollback_never_writes_generation` and
+   `gc_retire_pruned`; there is no single theorem over the store layout.
+5. **Behaviour change:** when `current` moves during the hooks, the
+   remaining hooks no longer run; their records stay `Started` until the
+   next run supersedes them. An apply that cannot publish (`Refuse`) now
+   stops before the flip with "generation N cannot be published"; under the
+   lifecycle lock only corruption or an external writer reaches it.
+
+## 21. F2 step 7 record — the apply machine (K1/K2 through apply, K6 at the flip, FND-3)
+
+- Branch `foundation/f2-apply` from `main` at `4327004`; date 2026-11-10.
+- Question: can apply — every unit's decision, every release, whether the
+  run cuts a generation, and the flip — be the proved kernel's sans-IO
+  machine composing the decisions already proved (K1 `decide_unit`, K6
+  `decide_commit`, the leaf protocol of §19), with the host executing only
+  what it is commanded? And is FND-3 real?
+
+### 21.1 FND-3, checked on the baseline
+
+Real. Reproduced with the baseline binary (`4327004`, host debug build) on
+WSL's `/mnt/c` (drvfs over 9p, case-insensitive: `Foo` and `foo` stat to one
+inode). A tracked copy cannot be used there (drvfs without `metadata` holds
+every file at 0777, so the leaf protocol refuses: "did not reach its
+intended state" — fail-closed, correct), so the reproducer is an owned link:
+
+1. `symlinkTo(".../Config.toml")`, `apply` → generation 1, `Config.toml`
+   links into the store.
+2. re-spell to `.../config.toml`, `apply` → printed `config.toml unchanged`
+   and activated generation 2 recording `config.toml`; the directory was then
+   **empty**: deploy saw the existing link through the new spelling (an
+   unrecorded object equal to the intent: satisfied), and prune — comparing
+   raw `PathBuf` keys — removed `Config.toml`, the same inode.
+3. A sibling, found while verifying the fix: `grip rollback` across such a
+   re-spelling also deleted the link (rollback's units were keyed by raw
+   spelling; the current-only spelling was released after the target-only
+   spelling was satisfied).
+
+The suspected code was right. The baseline e2e reproducer
+(`test_destination_ownership.py::test_a_case_only_respelling_keeps_the_destination`,
+a hard link standing in for the folded name off WSL; it uses a real
+case-insensitive directory when `GRIPSACK_E2E_CASEFOLD_DIR` names one) fails
+on the baseline binary at "the old spelling's object was pruned under the new
+spelling" and passes after. On `/mnt/c` after the fix: the link survives, the
+manifest records the new spelling, the third apply is satisfied, and
+rollback leaves `Config.toml` in place.
+
+### 21.2 The machine (`crates/gripsack-kernel/src/apply.rs`)
+
+`apply_step(ApplyState, Event) -> (ApplyState, Command)`, one command
+outstanding, units read one at a time until the host answers `Exhausted`.
+
+- **Unit facts:** `dest` (interned), `slot: Whole | Block(owner)`, `route:
+  Leaf | Delegated`, `recorded` (gripsack's record, §15), `want: Deploy{ident,
+  adopted} | Release(Intended)`, `consent`, `drift: Keep | Stop`. `adopted`
+  is what a take-over installs (the intended bytes at the live object's
+  mode, 0033 R1); a release brings back the epoch's origin or nothing.
+- **Decision** `decide_apply`: `decide_unit` asked about the deploy's
+  identity or a removal; `Create`/`ReplaceOwn` install the want,
+  `TakeOver` the adoption; `Satisfied` → `Leave(Already)`; a refusal of a
+  deploy stops the run when the unit says `Stop` (an owned link the user
+  replaced, a migration predecessor that changed) or the object has no
+  identity, and is kept (`Leave(Kept)`) otherwise; a release always keeps.
+- **Releases (FND-3):** every deploy unit records a `Claim{dest, slot}`; a
+  release `covered` by a claim (any deploy at the destination for a
+  whole-object release; the same block for a block's) is reported
+  `Declared` and never observed or written. A deploy unit after the first
+  release aborts (`Order`), so a release is never contradicted later.
+- **Commands:** `ReadUnit(k)`, `Observe`, `Mutate{unit, dest, expect,
+  install, write}` (driver re-checks `expect`; `Landed{live}` must be
+  `install`, else `NotApplied`), `Delegate` (answered `Delegated{mutated}`
+  or `Refused`), `Report{unit, dest, settled}`, `DirectoryStep`,
+  `ReadCommit`, `Publish(generation)`, `Flip(selection)`, `Activate`,
+  `Finish(Vacuous | Applied)`, `Abort(refusal)`.
+- **Commit:** the host's `CommitInputs` (previous, reserved, allocated,
+  floor, unchanged, exists) plus the machine's own `mutated` flag (a unit
+  landed, or a delegated unit reported a change) form K6's `CommitFacts`;
+  `decide_commit` (§20.3) gives `Vacuous` → `Finish(Vacuous)`, `Publish` →
+  `Publish` → `Flip(reserved)` → `Activate` → `Finish(Applied)`, or
+  `Refuse(why)` → `Abort(Unpublishable)`. `Activate` is answered `Done`
+  whatever the hooks returned: nothing is rolled back (0001 §3.8).
+
+### 21.3 Proofs (`proofs/Kernel/Apply.lean`; `Audit.lean`: 474 theorems, 94 claims, standard axioms only)
+
+- `decide_apply_spec`: a `Write i w` installs what the unit wants with
+  authority `w` (`Installs`: the deploy's identity for create/replace, the
+  adoption for take-over, the release's origin for a replace-release) and
+  `w` is justified by the observation (`Authorized`: absence for create,
+  gripsack's own last write for replace, consent and a deploy for
+  take-over); the decision never claims `Applied`.
+- `decide_apply_drift_never_written` (K1): without consent, a live object
+  that is not gripsack's last write is never written.
+- `decide_apply_refused`: a `Stop` deploy over a user's object that is not
+  already the intent refuses the run, naming the unit.
+- Over every run (`Run` from `ApplyState::new`, invariant `Inv`, `step_spec`):
+  `apply_installs_intended` (K2: a write answers the observation of the unit
+  under decision, carries it as `expect`, installs exactly what the unit
+  wants), `apply_write_k1`, `apply_applied_landed` (applied only when the
+  landed object is the install; kept, already, declared and delegated never
+  claim it), `apply_release_undeclared` (FND-3: a release is written only
+  for a destination no deploy of the run claims, after releases began),
+  `apply_no_deploy_after_release`, `apply_flip_after_every_unit` (every unit
+  read was reported, the flip names the admitted commit's reserved
+  selection), `apply_flip_admitted` (K6: fresh transaction bound to the
+  allocated generation, above the floor, not published, not vacuous, and
+  `touched` is the machine's `mutated`), `apply_vacuous_untouched` (a run
+  that applied a unit never finishes vacuous), `apply_refused_aborts` and
+  `apply_aborted_terminal` (a refusal aborts; nothing follows an abort).
+- Mutants (`proofs/mutants.py`, 87 total, 13 new), each rejected by exactly
+  the named theorems: `apply-installs-not-intent` and
+  `apply-takeover-ignores-adoption` (`decide_apply_spec`),
+  `apply-consent-assumed` (`decide_apply_spec`, `decide_apply_refused`;
+  `decide_apply_drift_never_written` is their corollary),
+  `apply-drift-stop-kept` (`decide_apply_refused`), `apply-refused-settled`
+  (`on_observed_spec`, `apply_refused_aborts`), `apply-applied-unchecked`
+  and `apply-landed-not-mutated` (`on_landed_spec`),
+  `apply-release-ignores-claims` (`on_unit_spec`),
+  `apply-release-whole-uncovered` (`covers_spec`),
+  `apply-deploy-after-release` (`on_unit_spec`,
+  `apply_no_deploy_after_release`), `apply-flip-skips-unit`
+  (`advance_spec`), `apply-touched-ignored` (`commit_facts_ok`),
+  `apply-unpublishable-published` (`on_commit_spec`).
+
+### 21.4 Wiring
+
+- `gripsack-exec/src/apply/` (was `apply.rs`): `machine.rs` is the driver,
+  stepped by the host as it walks the workspace (deploy units in
+  `deploy_entry`, releases in `prune_undeclared`, then the commit and flip in
+  `apply_prepared`). For a whole-object unit the host hands over the facts
+  (`ops::unit_want`: the record, the deploy's identity and the adoption, the
+  same identities the planner computes) and its one observation; the planner
+  then builds the op, and the driver refuses to execute it unless it is
+  exactly what the machine commanded (`agrees`: same write kind, authority
+  and installed identity, or the same inert outcome) — the lifting
+  `ops/model.rs` explored, now enforced on every apply. The leaf protocol's
+  `RunDriver::leaf` returns what landed (`journal::mutate` → `Live`), and the
+  driver answers `Landed` with it.
+- `apply/dests.rs` interns destinations: byte-equal, or equal under the
+  admission's case fold *and* resolving to the same object (`dev`, `ino`,
+  not following a final link) right now — the host side of S6. Releases are
+  interned after the deploys landed; the deploy-side lineage lookup follows
+  the same identity, so a re-spelled destination keeps its record.
+  Rollback's unit enumeration (`rollback/restore.rs::plan_units`) folds a
+  current-only and a target-only spelling the filesystem judges one object
+  into one unit (the sibling of §21.1 step 3).
+- Managed blocks are `Delegated` units: `plan_merge`/`decide_block` (K5)
+  settle them and report `mutated`; the machine records their claims
+  (`Block(owner)`), so a renamed block's release is still decided by it.
+- The directory domain: `bind_existing`, `publish_directories` and
+  `prepare_directory_changes` run before the first unit, as before;
+  `finish`/`retire` run at `DirectoryStep`. Their effect on the commit is
+  through `unchanged` (receipts are compared), not `mutated`.
+- `ReportKind` is gone: `Tone { Done, Unchanged, Warned }` is presentation
+  only (the CLI's glyph); the vacuous-run decision no longer reads reports.
+  Per-unit lines and verification blocks stream exactly as before
+  (`Reporter::step` per unit; `live.rs` matches the tone exhaustively).
+- `GRIPSACK_ENGINE`: there was never a legacy apply engine to switch to; the
+  debug-only switch still selects the legacy *recovery* only.
+
+### 21.5 Tests
+
+- e2e: `test_a_case_only_respelling_keeps_the_destination` (§21.1; fails on
+  the baseline binary, passes after).
+- Kernel explorer `crates/gripsack-kernel/tests/apply.rs`: every run of one
+  or two units (72 unit shapes: deploys over four live objects × three
+  records × consent × drift policy, releases with and without an origin, on
+  one or two destinations) × four commit facts, 41 760 runs, driven through
+  the shipped `apply_step` by a host with a disk, against an oracle written
+  without the kernel: writes land exactly the want over absence, gripsack's
+  own write or a consented object; refusals never flip; a claimed release is
+  never written; a deploy after a release aborts; vacuous exactly when
+  nothing changed and nothing landed; a host landing the wrong object never
+  flips; every unpublishable commit (reused, misbound, at the floor,
+  existing) aborts. Calibrated by hand against two kernel mutants (claims
+  ignored; consent assumed): both fail it.
+- MemFs crash exploration
+  (`gripsack-host/tests/journal_cleanup.rs::apply_survives_every_crash_and_every_recovery_crash`):
+  the kernel apply machine composed with the leaf protocol, a create, a
+  replace of gripsack's own write, a satisfied deploy followed by its own
+  spelling's release (FND-3's shape) and a release of gripsack's link, the
+  flip and the cleanup — every kill and power-loss cut (48 cuts / 203
+  images), each image's recovery crashed everywhere (1721 cuts / 5704
+  images), then recovered: every destination holds exactly the generation
+  applied from or the one applied. Calibrated: with the claims check
+  removed from the kernel it fails (`d holds Absent, expected File("one")`).
+- Host: `apply::machine::tests::the_planner_builds_exactly_the_op_the_kernel_commands`
+  (72 cases: copy and owned link × six live objects × three records ×
+  consent), `ops::plan::write::tests::the_permission_policy`,
+  `apply::dests::tests::spellings_are_one_destination_only_when_the_filesystem_says_so`.
+
+Gates (docker, `-p f2apply`, one at a time). `proofs` OK in 2458 s at
+`63e7b6d` (no translation drift, 474 theorems, 94 claims, standard axioms
+only, 87/87 mutants calibrated); the kernel and proofs are unchanged since.
+At `d715d04`: `test` passed (fmt, clippy `-D warnings`, cargo test); `e2e`
+690 passed in 13m01s. The first `e2e` run (at `63e7b6d`) failed three
+subset-apply tests (§21.7 item 3), fixed in `d715d04`. On the host, against
+the e2e image: `test_destination_ownership.py` 1 failed / 13 passed with the
+baseline binary, 14 passed after. Not run: `verify` (Verus; floor unchanged),
+`model` (TLC; `Ownership.tla` removed from its list), `tlaps`, `ts-test`,
+fuzz.
+
+### 21.6 Deleted
+
+`gripsack-exec/src/ops/model.rs` (651 lines: the planner/executor explorer —
+its decision oracle was already the kernel; the lifting is now enforced by
+`agrees` on every apply and pinned by the agreement test),
+`gripsack-exec/src/mode_model.rs` (≈380 lines: mode policy through planner
+and executor — the policy is the table test, the landing is the leaf
+protocol's and the machine's identity check, FileMode.tla stays as the
+independent model), `specs/Ownership.tla` and `cfg/ownership.cfg` (its
+`DriftNeverPromoted` and `UndeclareRestores` are `decide_apply_drift_never_written`
+and `apply_installs_intended`; `OriginSurvives` and `ObservedIsMarked` are
+the lineage explorer's oracles), `ReportKind`, and the deploy path's own
+link-refusal check (the machine refuses). No apply-level Verus remained (the
+ownership, merge, journal-protocol and activation families left in §15, §17,
+§19, §20), so the `check_verus` floor stays 360.
+
+### 21.7 Deviations and what is deferred
+
+1. **The planner still evaluates `decide_unit`** (it is shared with `grip
+   plan` and rollback); in apply it is checked, not trusted: an op that is
+   not the machine's command is refused before any write. For releases the
+   planner (`plan_remove_op`) observes the destination again; a difference
+   from the machine's observation fails the agreement check or the
+   journal's re-check.
+2. **Delegated, not decided by the kernel's K1/K2 theorems:** managed
+   blocks (K5, §17 decides them) and the directory domain (step 9).
+   Directory work before the first unit (`prepare_directory_changes`
+   removals, publication of directory records) is outside the machine.
+   **Closed by §22:** every directory step is machine-commanded, the
+   removals are kernel-decided `Clear` units.
+3. **Unit enumeration is host residue:** "every unit" means every unit the
+   host hands over. Release candidates are the previous entries the new
+   manifest no longer records under their own spelling (a subset apply,
+   `--only`, carries the other profiles' entries forward without deploying
+   them, so they are not deploy units and must not become releases — the
+   first e2e run of this branch failed three such tests before the rule was
+   restored host-side); among those, the kernel decides coverage by
+   identity. Skipped by rule as well: preserved drift (never gripsack's
+   write) and directory-domain destinations.
+4. **The apply driver is not generic over `Storage`.** As for rollback
+   (§19.7 item 3), the crash exploration composes the kernel machine with
+   the leaf protocol through a test host; the product driver's manifest
+   decoding, planner and store stay on the real filesystem.
+5. **Destination identity (S6) is a host probe:** fold-equal names that
+   resolve to one object are one destination. A hard link between
+   fold-equal names on a case-sensitive filesystem is conservatively one
+   destination (never released); names a filesystem equates by Unicode
+   normalization but not by case (APFS) are not folded — a residual case.
+6. An object without identity in place of a deploy still fails at the
+   host's observation (the message is unchanged) before the kernel sees it.
+7. Activation is a hand-off (`Activate`), not composed: §20's machine runs
+   inside it.
+
+## 22. F2 step 9 record — the directory fence
+
+- Branch `foundation/f2-directory` from `main` at `5629518` (steps 1–8
+  landed); date 2026-11-10.
+- Question: can the directory domain (journal v3 receipts: a migrated owned
+  link turned into a real tree, its evolution, retirement, reactivation and
+  exchange; ~3.7k lines in `gripsack-store/src/journal/directory*.rs` plus
+  its callers) stay host code while the kernel apply and rollback machines
+  decide *when* each of its steps runs and *what it may touch* — with no
+  directory mutation outside a machine-commanded step?
+
+### 22.1 Before (code at `5629518`)
+
+- Apply: `bind_existing` (apply/mod.rs), `migration.publish_directories` and
+  `prepare_directory_changes` (evolution planning with staging `mkdir`s,
+  blocker removals through `plan_remove_op`/`execute_op`, evolution
+  publication) ran before the first unit, outside the machine; `finish` /
+  `retire` ran under one opaque `DirectoryStep`; prune skipped directory
+  destinations by two host filters (`receipt.destination == key`,
+  `is_directory`).
+- Rollback: `directory_transitions::prepare` (bind, child removals with
+  `execute_op`, `restore_shape`, `reverse` + `reactivate`) ran before the
+  machine started — before its plan admission (`ProfileMissing`, `Reused`)
+  — and `settle_delegated` reversed a current-only receipt from inside a
+  delegated unit; directory roots and "released" children were delegated.
+- Recovery already reached the domain only through the recover machine's
+  `Delegated::{Committed, BeforeLeaves, AfterLeaves}` hooks (§14), and GC
+  through its `Delegate` command (§18). Those hooks are unchanged; the
+  debug-only `GRIPSACK_ENGINE=legacy` recovery still calls the domain
+  directly until it is deleted (§9 F2, after one release).
+
+### 22.2 The boundary (`crates/gripsack-kernel/src/directory.rs`)
+
+- `Action { Bind, Birth, Plan, Evolve, Shape, Exchange, Reactivate, Hold,
+  Finish, Retire }`, `DirectoryFacts { dest, action }` (the receipt's root,
+  interned like any destination; for `Hold`, the held node).
+- `Stage { Opening, Clearing, Shaping, Holding, Units, Releases, Closing }`
+  with `rank`/`ordered`: items arrive in stage order — receipts opened
+  (bind, birth, plan), blockers cleared, shapes changed, nodes held, units
+  (apply: deploys, then releases), receipts closed (finish, retire). An item
+  of an earlier stage aborts (`Order`). This replaces apply's `releasing`
+  flag.
+- Both machines read directory items through the same `ReadUnit(k)` as
+  units (`Event::DirectoryRead`), so a directory item is a unit of the run:
+  `Command::Directory { unit, dest, action }`, answered `Directed {
+  mutated }` (apply) / `Done` (rollback) or `Refused` (aborts:
+  `Refusal::Directory`), then `Report { .., Settled::Directory }`. `Hold`
+  is never executed: it is recorded (`holds`) and reported `Held`.
+- Claims: a directory step at a destination a deploy of the run claims
+  (apply's `declared`, any slot) or a rollback unit restores the target's
+  record to (`claimed`) aborts (`Overlap`); a deploy, clear or rollback
+  restore at a held destination aborts (`Overlap`); a release there is
+  `Held` (the domain's, never observed or written).
+- `Want::Clear(origin)` (apply) / `Target::Cleared(origin)` (rollback): the
+  removal a directory change needs, decided by `decide_unit` as a removal
+  with consent withheld; gripsack's own unchanged write is removed, anything
+  else refuses the run (`Refused` / `Blocked`), and an epoch that would
+  bring an origin back refuses (`Blocked`). Rollback units carry `When {
+  BeforeShape, AfterShape }`: the releases below a borrowed directory the
+  target no longer keeps must settle before the shape change (the shape
+  change takes their parent's authority away) with the prune rule (drift
+  kept), so they run in the clearing stage too.
+- **Premise D** (the module doc): a commanded step changes only the
+  namespace of the receipt it names — its owned nodes, their private
+  staging siblings, and the predecessor link at its root (`Retire` restores
+  it, then releases it or reconciles it with the target's record;
+  `Reactivate` replaces gripsack's own object there or the receipt's
+  recorded origin, never a foreign one); it journals its record durably
+  before its first change; an interrupted step is recovered only through
+  the recover machine's delegated hooks; a step answered settled left the
+  namespace in the receipt's shape, one answered refused may have left a
+  journaled partial change that the run's compensation undoes. The kernel
+  theorems hold relative to D as ring 1 holds relative to S1–S7. D is
+  checked by the TLC directory models (bug-finders, unchanged:
+  `DirectoryEvolution`, `DirectoryHierarchy`, `OwnedDirectory`,
+  `RetainedDirectory`, `ReverseDirectoryHierarchy`, `IncarnationExchange`
+  and their cfgs) and the e2e directory flows, not proved.
+
+### 22.3 Proofs (`proofs/Kernel/Directory.lean`, `Apply.lean`, `Rollback.lean`; `Audit.lean`: 567 theorems, 108 claims, standard axioms only)
+
+- `Directory.ordered_spec`, `stage_ok`, `commands_spec`, `names_spec`.
+- Apply: `apply_write_unheld` (no whole-object write — deploy, release or
+  clear — targets a held destination); `apply_directory_unclaimed` (a
+  directory step is commanded only in answer to that item, for a destination
+  no deploy claims, never for a hold, in stage order);
+  `apply_directory_settled_answers` (a step is reported settled only in
+  answer to the host's settlement of the outstanding step, with the host's
+  `mutated`); `apply_directory_refusal_aborts`;
+  `apply_unit_out_of_stage_aborts`, `apply_directory_out_of_stage_aborts`;
+  `decide_apply_clear_refused` (a clear over anything but gripsack's last
+  write refuses); `decide_apply_spec` now covers clears (a clear installs
+  only the removal, only over gripsack's own write).
+  `apply_flip_after_every_unit` now also says every directory step
+  commanded was reported settled (`DirectoriesSettled`), and
+  `apply_vacuous_untouched` that a run whose directory step changed the
+  disk never finishes vacuous (the step's `mutated` feeds K6's `touched`).
+  `apply_release_undeclared` and `apply_no_deploy_after_release` restated
+  over the stage (`Releases`).
+- Rollback: `rollback_write_unheld`, `rollback_directory_unclaimed`,
+  `rollback_directory_settled_answers`, `rollback_directory_refusal_aborts`,
+  `rollback_unit_out_of_stage_aborts`,
+  `rollback_directory_out_of_stage_aborts`, `decide_restore_clear_refused`;
+  `rollback_flip_after_every_unit` adds `DirectoriesSettled`;
+  `decide_restore_drift_kept` now excludes clears (which refuse).
+- Mutants (`proofs/mutants.py`, 105 total, 18 new, one rewritten), each
+  rejected by exactly the named theorems: `apply-directory-out-of-order`,
+  `apply-directory-claimed`, `apply-deploy-held`,
+  `apply-release-held-written`, `apply-clear-held`, `apply-hold-forgotten`,
+  `apply-clear-restores-origin`, `apply-clear-drift-kept`,
+  `apply-directory-refusal-settled`, `apply-directory-mutation-ignored`,
+  `directory-hold-commanded`, `rollback-write-held`,
+  `rollback-directory-claimed`, `rollback-claim-forgotten`,
+  `rollback-directory-refusal-settled`, `rollback-clear-kept`,
+  `rollback-clear-restores-origin`, `rollback-out-of-order`;
+  `apply-deploy-after-release` now removes the stage check.
+
+### 22.4 Wiring
+
+- Apply (`gripsack-exec/src/apply/directories.rs`, new): `open` runs before
+  the first deploy — `Bind` per previous receipt, `Birth` per migration
+  directory (`Migration::birth`, one receipt each), `Plan` per active
+  receipt (`journal::directory::plan`, one receipt each, replacing
+  `plans`), the blockers' clears, `Evolve` per plan (`publish` now returns
+  whether the shape changed), `Hold` per owned node; `close` runs after the
+  last release — `Finish` (mutated when the receipt changed) or `Retire`.
+  Each step runs only inside `Machine::directory_step`, which hands the item
+  to the machine and executes the closure only on its `Directory` command; a
+  failing step is answered `Refused`. Blockers are admitted read-only first
+  (`admit_blockers`, the planner's judgement as before), so a refusal of a
+  later blocker never follows the removal of an earlier one; then each entry
+  at or below a blocker is a `Clear` unit through `remove_unit` (the shared
+  release path: observe, kernel verdict, planner agreement, leaf protocol).
+  Prune lost both directory filters: the kernel reports a release at a held
+  node `Held`; an object without identity there is `Unsupported`, settled by
+  the hold, and still an error elsewhere.
+- Rollback (`rollback/restore.rs`, `rollback/directory_transitions.rs`):
+  the plan is a list of items in stage order — `Bind` per current receipt;
+  per target receipt the children its shape change takes away (`clearing`:
+  structural ones as `Cleared` units, the others the target no longer
+  deploys as `BeforeShape` releases); `Shape` / `Exchange` / `Reactivate`;
+  `Hold` per node; every unit (destinations interned with apply's `Dests`,
+  no longer the unit index), without the roots of receipts the target does
+  not keep; `Retire` per such receipt (reverse, then the predecessor link is
+  settled from both records, as `settle_delegated` did). `prepare`, its
+  `Prepared`/`released` set and the directory branches of
+  `settle_delegated` are gone; only managed blocks are delegated.
+
+### 22.5 Tests
+
+- Kernel explorers: `tests/apply.rs` adds clears to the unit alphabet (the
+  oracle: remove only gripsack's write over a `Removed` origin) and
+  `the_directory_sub_protocol_is_fenced` — every sequence of up to three
+  items (clears, deploys, releases, plan/evolve/finish answered settled,
+  settled-with-change or refused, holds) over two destinations: no write on
+  a held destination, no step at a claimed one, out-of-order items abort,
+  the flip follows every step's settlement, vacuous exactly when nothing
+  changed. `tests/rollback.rs` likewise (clears of gripsack's and a user's
+  object, restores, releases, bind/shape/retire, holds).
+- e2e: the directory groups (`test_workspace_directory_evolution.py`,
+  `test_workspace_migration.py`) plus rollback fidelity, ownership,
+  recovery, generation history and repeated recovery: 74 tests. The first
+  run of this branch failed 20 (prune observed a held directory before the
+  kernel could hold it) and then 2 — `test_leaf_with_prior_refuses_…`
+  (a sequential clear removed an earlier blocker before a later one was
+  refused: fixed by the read-only admission) and
+  `test_growth_retirement_and_rollback_preserve_borrowed_ancestors` (a
+  release below a borrowed directory ran after `restore_shape` dropped its
+  authority: fixed by `When::BeforeShape`).
+
+### 22.6 Deleted
+
+`Command::DirectoryStep`, `Phase::Directories`, `ApplyState::releasing`,
+`Machine::directories_done`, `NativeProfiles::prepare_directory_changes`
+(its blocker logic moved into `apply::directories`),
+`Migration::publish_directories`/`receipts` and the `receipts` field,
+`journal::directory::plans` (per-receipt `plan`), rollback's `prepare` /
+`Prepared` and the `released` delegation, the directory branches of
+`settle_delegated`, prune's two directory filters, and the unreachable
+`clear_foreign` path. The directory TLC models stay.
+
+### 22.7 Deviations and what is deferred
+
+1. **No defect found.** The pre-machine rollback `prepare` changed the
+   directory namespace before plan admission (a target without its own
+   profile was refused only after the exchange, then compensated); with the
+   fence the admission comes first. Compensation restored the state, so no
+   user-visible failure was reproduced; it is recorded as a closed ordering
+   hazard, not a defect.
+2. **Premise D is not proved.** The steps' internals (staging, exchange,
+   reversal, the predecessor-link reconciliation inside `Retire` and the
+   root replacement inside `Reactivate`) stay host code checked by TLC and
+   e2e; moving them into the kernel is F5 work.
+3. **Holds are host-enumerated:** the kernel trusts that the host hands
+   over every owned node of every active receipt (as it trusts unit
+   enumeration, §21.7 item 3); the explorers and e2e check it.
+4. **Blocker admission is read-only host code** before the kernel's
+   per-clear decision, to keep "refuse before any removal".
+5. The legacy recovery engine (`GRIPSACK_ENGINE=legacy`, debug builds)
+   still calls the domain's recovery directly; it goes with the legacy
+   engine.
+
+### 22.8 Gates
+
+Docker, `-p f2dir`, one at a time, at `4f5a02a`: `proofs` OK in 4152 s (no
+translation drift, 567 theorems, 108 claims, standard axioms only, 105/105
+mutants calibrated); `test` passed (fmt, clippy `-D warnings`, cargo test;
+an earlier run under concurrent mutant load failed the unrelated
+timing test `native_file_checks_preserve_operation_deadline`, which passed
+when rerun alone); `e2e` 712 passed in 16m00s. Not run: `verify`, `model`
+(the TLC directory models are unchanged), `tlaps`, `ts-test`, fuzz.
+
+After merging `main` with step 10a (§23) at `e728b7b` (union of claims,
+mutants and kernel modules; `proofs/Extracted` regenerated by the gate's
+translation): `proofs` OK in 2926 s (no drift, 579 theorems, 114 claims,
+standard axioms only, 113/113 mutants calibrated); `test` passed. `e2e` not
+re-run: the merge touched no non-proof Rust beyond the kernel's
+`Cargo.toml` translation list and `convenience.rs` impls.
+
+## 23. F2 step 10a record — Verus retired
+
+- Branch `foundation/f2-verus` from `main` at `5629518`; date 2026-11-10.
+- Question: for each policy kernel still under Verus, prove it in Lean,
+  demote it to plain Rust with tests, or delete it (the owner's rule: prove
+  it or delete it; cut what has no use). Then remove Verus entirely. The
+  crate boundaries (`gripsack-store`/`-policy`/`-fs`/`-process`) are kept:
+  their dissolution is step 10b.
+
+### 23.1 Decisions
+
+| Kernel | Fate | Why |
+|---|---|---|
+| `update_survey` | **ported** → `gripsack-kernel::update_survey`, `proofs/Kernel/UpdateSurvey.lean` | "`grip update` writes the lock only from a complete survey with no failed entry" is a claim users rely on (the lock decides which bytes run), and it is over an unbounded domain (any sequence of reports), so no table test covers it. Counters, `&mut self` and `Option` translate with no contortion; the only change is `publishes_lock` matching on the mode instead of `==` |
+| `semantic` (framing, canonical order, identity lemmas) | **deleted** | Production called two functions. `length_header` is `u64::to_le_bytes`; `canonical_entries` was an O(n²) insertion sort plus dedup whose only callers pass `()` payloads — a `BTreeSet` of byte slices (or of `(scope, key)` pairs) gives the same order (`[u8]` order is the kernel's lexicographic order) and the same deduplication, so every identity digest is byte-identical. The injectivity and provenance lemmas were about spec functions (`encode_frames`, `DeclarationView`), not the shipped encoder, so there was nothing to port. Its other user, semantic review, is cut by plan 0059 step 5 |
+| `graph::build_closure`, `graph::roles::RoleDecision`, `graph::collector` | **deleted** | The closure's only caller checked that every declared production/build-input edge lies in its owner's closure — a one-step path, true by construction (the Verus lemma `lemma_projected_build_edge_in_closure` said exactly that), so the `E131` "absent from the admitted production closure" branch could never fire. Likewise "lost its validation role": `project_graph_role(Validation).required_validation` was constantly true. Both dead checks, the production adjacency they read, the closure, `RoleDecision` and the proof-only `collector` laws are gone |
+| `graph::name_index`, `GraphRole::is_dependency` | demoted (now `gripsack_policy::graph`) | defensive catalog-name binding and a seven-row role table; unit tests cover every role and every wrong candidate |
+| IR typed collector (`gripsack-ir` `workspace_model/graph*`: the Verus `typed-output-collector`, `typed-source-inputs`, `typed-catalog-binding` families) | demoted | walks serde types with `String`s and `BTreeMap`s — ring 3, not kernel-shaped. `graph/spec.rs` (212 lines of Verus type wrappers) deleted; new unit tests for the tree-source, image-entrypoint and Pixi-lock references; the admission coverage check (`sema/workspace/policy/coverage`) already cross-checks the collector on every workspace |
+| `task` | demoted | three one-line boolean rules over a finite domain; the existing table test enumerates every input |
+| `target` | demoted | enum equality plus a version-triple order (now a tuple comparison); exhaustive test over every OS × arch × ABI pair and floor shape. Plan 0059 step 3 reworks target inference |
+| `workspace_command` | demoted | four finite tables; exhaustive tests (every context × origin, position × origin, owner × origin) and the strict Bash option list. Plan 0059 step 4 reworks the pinned Bash |
+| `conda_admission` | demoted | advisory only ("not publication authority"), and its bindings borrow `&str` inside enums (borrows in ADTs: a translation contortion); a test per refusal |
+| `operation_budget`, `retry_budget`, `rate_limit` (`binary_rate`, `credit_balance`, `legacy_credits`), `process_budget` (`input`, `frame`, `output`, `tail`, `transfer`, `lifecycle`) | demoted | §8: resource budgets stay out of the kernel. Public preconditions Verus stated but never checked at the (unverified) call sites are now doc comments plus `debug_assert!`s; the call sites were read and satisfy them |
+
+### 23.2 Proofs (`proofs/Kernel/UpdateSurvey.lean`; `Audit.lean`: 486 theorems, 100 claims, standard axioms only)
+
+- `record_spec`: a report is admitted exactly when the survey is valid, the
+  report is at the next position and entries remain; an admitted report is
+  counted once, under its own disposition and no other; a rejected report
+  changes no count and poisons the survey, which stays poisoned; the
+  selection is kept, and so is the invariant counted ≤ selected (`Inv`).
+- `finish_spec`: a summary exists exactly for a valid survey that counted
+  every selected entry and whose caller holds that many reports; it carries
+  the survey's counts.
+- `finish_complete`: a summary's four counts add up to the selection.
+- `outcome_spec`: a failure makes the outcome `Incomplete` whatever else
+  changed; otherwise a change makes it `ChangesAvailable`; else `Current`.
+- `publishes_lock_spec`: the lock is published exactly in publish mode with
+  no failed entry and at least one change.
+- `lock_published_only_complete` (headline): for every survey a caller can
+  hold (`Reach`: fresh, then any sequence of recorded reports, admitted or
+  not), a summary accounts for every selected entry exactly once and a
+  published lock comes from a survey with no failure and at least one change.
+- Helpers: `new_spec`, `counted_spec` (no overflow under `Inv`), `reach_inv`.
+- Mutants (`proofs/mutants.py`, 95 total, 8 new — the former Verus
+  `update-survey` mutants rewritten for the kernel source), each rejected by
+  exactly the named theorems: `survey-report-position`,
+  `survey-selected-bound`, `survey-failure-accounting`,
+  `survey-invalid-revival` (`record_spec`); `survey-partial-finish`
+  (`finish_spec`, `finish_complete`); `survey-error-precedence`
+  (`outcome_spec`); `survey-check-publication`,
+  `survey-unchanged-publication` (`publishes_lock_spec`).
+  `lock_published_only_complete` and `reach_inv` are corollaries: a mutant
+  breaks the lemma they cite, as for `decide_apply_drift_never_written` (§21.3).
+
+### 23.3 Demotion calibrated
+
+Every former Verus mutant of a demoted module (47: `task` 3, `conda` 7,
+graph name index 1, `target` 1, `workspace` 4, rate/credit 6, operation 3,
+HTTP retry 6, process 12, IR collector 4) was re-applied to the plain Rust
+and `cargo test` of the policy crate plus its consumer run. The first pass
+left 23 alive — the Verus proofs were the only thing catching them: all of
+`conda_admission`, the rate refill unit and period-fraction rescale,
+operation deadline/terminal, five of six HTTP retry rules, input retry
+progress, three lifecycle rules and three collector references. Tests were
+added for each; the second pass killed all 47. (The runner is not committed:
+one-off calibration, §2 rule 5.) The mutants of deleted code (`graph-closure`,
+`graph-validation`, `graph-projection-coverage`, the six `semantic-*`) have
+no target left.
+
+### 23.4 Deleted
+
+- Verus: every `verus!` block, spec/proof function, ghost field and clause in
+  `gripsack-policy` and `gripsack-ir`; the `vstd` dependency of both crates
+  (75 lock lines in `Cargo.lock`, 88 in `tools/conda-helper/Cargo.lock`);
+  `gripsack-ir/src/workspace_model/graph/spec.rs` (212).
+- `gripsack-policy` 4779 → 2168 lines including its new tests:
+  `semantic.rs` (1312), the graph closure and `graph/{collector,roles,name_index}.rs`,
+  `update_survey.rs` (132, moved to the kernel), and ~2k lines of proofs
+  inside the budgets (`credit_balance.rs` alone lost 571).
+- The gate: `scripts/check_verus.sh`, `check_verus.py` (404),
+  `verus_evidence.py` (188), `check_collector_verus.py` (77); the Dockerfile
+  `verify` stage (39); the compose `verify` service; the `.verus-log/` ignore;
+  `vstd` in `scripts/check_architecture.py` (the policy crate now has no
+  dependencies).
+- References: AGENTS.md (gate list, "one proof language"), §7, §8.
+- `.ci/pilot.json` never listed `verify`; nothing to change there.
+
+### 23.5 Defects
+
+None in the shipped behaviour. Two findings:
+
+1. Dead admission checks (§23.1 graph row): two `E131` branches could not
+   fire. Removed with the closure.
+2. The Verus gate trusted its callers: `requires` clauses on public functions
+   (`admit_input_append`, `retain_tail`, `signal_succeeded`, `observe_reap`)
+   were never checked, since the callers in `gripsack-process` were not
+   verified. The callers satisfy them (read: the input buffer only grows by
+   admitted appends; the tail by `retain_tail`; `signal_succeeded` follows
+   `Signal`, `observe_reap` a true `begin_reap`); they are now
+   `debug_assert!`s.
+
+### 23.6 Gates
+
+Docker, `-p f2verus`, one at a time, at `1486f63`: `proofs` OK in 3669 s
+(no translation drift, 486 theorems, 100 claims, standard axioms only,
+95/95 mutants calibrated — the 8 new ones also ran alone first, 8/8); `test`
+passed (fmt, clippy `-D warnings`, cargo test; 676 s); `e2e` 712 passed in
+18m27s. Not run: `ts-test` (TypeScript untouched), `model`, `tlaps`, fuzz.
+On the host, two `gripsack-process` confinement tests fail (the
+confinement code is untouched here; not re-run on the baseline); they pass in
+the `test` image.
+
+## 24. F2 step 10b record — store, policy, fs and process dissolved
+
+- Branch `foundation/f2-dissolve` from `foundation/f2-directory` at `014dac2`
+  (step 9, with `main` and step 10a merged); date 2026-11-11.
+- Question: can `gripsack-store`, `gripsack-policy`, `gripsack-fs` and
+  `gripsack-process` go — each file moved to the crate that uses it, with no
+  behaviour change — so that dependencies flow strictly inward
+  (`gripsack → exec/fetch → host → kernel`, `ir → kernel`)?
+
+### 24.1 Placement
+
+A move, not a rewrite: every file moved with `git mv` (141 renames, history
+kept); only paths, imports, module declarations and manifests changed, with
+the exceptions in §24.3. Line counts are Rust source lines at `014dac2`.
+
+| Old module | Lines | New home |
+|---|---:|---|
+| `gripsack-fs` (whole crate) | 1767 | `gripsack-host::fs` (`src/fs/`) |
+| `gripsack-process` (whole crate) | 7481 | `gripsack-host::process` (`src/process/`) |
+| `gripsack-policy::process_budget` | 610 | `gripsack-host::process::budget` |
+| `gripsack-policy::operation_budget` | 95 | `gripsack-host::process::operation_budget` (also read by fetch's retry budget) |
+| `gripsack-policy::rate_limit` | 457 | `gripsack-fetch::throttle::rate_limit` |
+| `gripsack-policy::retry_budget` | 284 | `gripsack-fetch` `http::retry_budget` |
+| `gripsack-policy::target` | 160 | `gripsack-ir::target` (IR admission and exec's consumer both read it) |
+| `gripsack-policy::workspace_command` | 196 | `gripsack-ir::workspace_command` (single user) |
+| `gripsack-policy::graph` | 83 | `gripsack-ir::workspace_model::graph::role` (single user; exec reads `GraphRole` through the IR) |
+| `gripsack-policy::conda_admission` | 193 | `gripsack-conda` `client::conda_admission` (single user) |
+| `gripsack-policy::task` + `tests/task.rs` | 69 | `gripsack-exec` `workspace::consumer::task_policy` (+ `task_policy/tests.rs`; single user) |
+| `gripsack-policy` `lib.rs` | 21 | deleted |
+| `gripsack-store::{activation, generations, generation_wire, selection_wire, journal, prior, hash, paths, ownership, jobs, private_state, verification}` and the `Ownership`/`ActivationTrigger`/`EnvironmentOperation` enums of `deployment` | 12179 | `gripsack-host::store` (`src/store/`): the store layout and wire codecs — journal, manifests, selections, generations, activation storage, schedule identities |
+| `gripsack-store::source_bundle` | 3097 | `gripsack-exec::source_bundle` (users: exec and the CLI) |
+| `gripsack-store::trust` | 1568 | `gripsack-exec::trust` (users: exec and the CLI; it builds on the source bundle), with the three schema symlinks its contract tests read |
+| `gripsack-store::DeploymentEntry` | 21 | `gripsack-exec::DeploymentEntry` (`deployment_entry.rs`; its only user) |
+
+Not moved, because the store crate never held them: the GC driver is
+`gripsack-exec/src/gc.rs` since step 4 (§18.3) and moves with the F4 split;
+the lock primitive was `gripsack-fs::FlockGuard`, now `gripsack-host::fs`.
+
+Crates removed: 4 (`gripsack-store`, `gripsack-policy`, `gripsack-fs`,
+`gripsack-process`; 14 → 10 crates). Rust lines by crate, before → after:
+`gripsack-host` 5367 → 27536, `gripsack-exec` 56194 → 61063,
+`gripsack-fetch` 7437 → 8190, `gripsack-ir` 10784 → 11226,
+`gripsack-conda` 4618 → 4813; the four retired crates 28260 → 0. Workspace
+(crates + fuzz) 136402 → 136561: +159 from module headers, rustfmt reflowing
+the rewritten imports and the new `deployment_entry.rs` header.
+
+### 24.2 The architecture rule (`scripts/check_architecture.py`)
+
+- `INWARD`: every workspace member declares the workspace crates it may
+  depend on — kernel ∅; host {kernel}; ir {kernel}; fetch {host, ir,
+  kernel}; conda {fetch, host, ir, kernel}; config {ir}; trace {host};
+  griplint {ir}; exec {conda, config, fetch, host, ir, kernel}; the CLI
+  anything; the fuzz harness {fetch, host, ir}. Any other workspace edge
+  "breaks the inward dependency direction"; a member without an entry is
+  rejected ("no declared ring").
+- `RETIRED`: the four dissolved crates may not come back as a member or a
+  dependency.
+- `EXTERNAL`: closed third-party allowlists for the inner rings — the kernel
+  none; the host `cap-std`, `rustix`, `libc`, `serde`, `serde_json`, `sha2`,
+  `tempfile`, `getrandom`; the IR as before without `gripsack-policy`.
+- rustls-only, member discovery from the workspace globs and the resolved
+  conda-helper graph check are unchanged. The `--self-check` calibration
+  (host→exec, host→fetch through a renamed target-specific dependency,
+  host→ir, ir→host, fetch→exec, exec→CLI, a retired dependency, a network
+  client in the host, a kernel dependency, aliased openssl, fuzz openssl, a
+  target-specific build edge, a revived retired member, an undeclared member,
+  a missing host — each must fail; the clean control must pass) now runs in
+  the `test` image next to the real check.
+
+The direction rule is a Python manifest check, not yet the `cargo-deny`/
+workspace-lint rule §6 names; that conversion stays with F4, when the last
+crates of §6 exist.
+
+### 24.3 Decisions and deviations
+
+1. **`DeploymentEntry` split from the store.** It carries the IR's `Span`; in
+   the host it would have made ring 2 depend on the IR. Nothing in the store
+   reads it (the manifest records `Ownership`, triggers and environment
+   operations, which stay), so it moved to its only user. Its serde shape is
+   unchanged.
+2. **Schedule identities (`jobs`) stay in the store**, not exec: activation
+   records embed `JobId`/`JobRevision` and the adapter process counts.
+3. **`private_state` is now public** (`gripsack_host::store::private_state`):
+   the trust list and the source bundle, now in exec, seal their files
+   through it as before.
+4. **`unsafe` lint.** The host's crate-level `#![forbid(unsafe_code)]` became
+   the same attribute on `journal_run`, `recover` and `storage`: `fs`
+   (`flock`), `process` (its `libc` supervision) and the store's `paths`
+   tests (`set_var`) always used `unsafe` in their own crates.
+5. **Self-re-executing tests name their new paths.** Eleven host tests
+   re-run the test binary on one test by `--exact` name: one in
+   `fs::persistence_model`, one in `process::input`, three in
+   `process::tests::native` and the six `process::tests::task` probes
+   (through `isolated`). The move prefixed their module paths, so the child
+   selected no test: the first five failed, and the six task probes
+   **passed without running their probe** (`isolated` checks only the
+   child's exit status, and a test binary that selects nothing exits 0). Fixed by naming the new
+   paths; listed here because the F4 split will move them again.
+6. **One test shares a binary with forking tests.** `fs`, `process` and
+   `store` tests now run in one test binary. The first `test` gate run
+   failed `fs::tests::duplicate_handle_keeps_lease_locked_until_last_close`:
+   a sibling process test forked while the lease was open, and the child
+   held a copy of the descriptor until its exec. The check that the lease is
+   free after the last close now retries for up to 5 s (a lease that stays
+   held still fails); the product's locking is unchanged.
+7. **One dead variant deleted.** `task::TaskState::Pending` was never
+   constructed in production (only its table test named it); while the
+   policy crate exported it no lint saw that, and in exec's private module
+   the dead-code lint does. Deleted with its test row; no behaviour change.
+8. **One test annotation.** The host now depends on `serde_json`, whose
+   `PartialEq<Value> for u8` made `assert_eq!(lines, [vec![], vec![]])` in a
+   process test ambiguous; the literal now names `Vec::<u8>`.
+9. **The legacy recovery engine stays.** It is about 250 lines of
+   `store/journal/recover.rs` (`reconcile_legacy`, `decide`, the `Engine`
+   switch) plus `marker::cleanup_legacy`, behind the
+   debug-only `GRIPSACK_ENGINE=legacy` switch; it moved with the journal as
+   one file, so deleting it would not make this move simpler. It and its
+   legacy directory-recovery call path are still due for deletion now that
+   0.53.0 shipped the kernel path (§9 F2, §22.7 item 5).
+10. **Not updated:** `verification/guarantees.md` (an evidence ledger already
+   naming files deleted with Verus in steps 1–10a) and earlier plans; they
+   are history. `docker-compose.yml` names no crate; the Dockerfile copies
+   `crates/` whole, so the only Dockerfile change is adding `--self-check`
+   to the architecture check. `proofs/` names only `crates/gripsack-kernel`.
+11. Both lockfiles regenerated by `cargo metadata` (the four crates' entries
+    gone; `gripsack-host` gains their dependencies); the conda helper's
+    measured source digest changes with any edit to the crates it builds, as
+    before.
+
+### 24.4 F2 phase exit
+
+- [x] K1 proved — copy/template/link/remove/restore (§15), blocks (§17),
+  through apply (§21).
+- [x] K2 proved — rollback (§16), apply (§21).
+- [x] K3 proved — commit classification (`selection::classify`, F1 §13).
+- [x] K4, K4′ proved — the GC machine (§18).
+- [x] K5 proved — the managed-block splice (§17).
+- [x] K6 proved — numbering and publication (§20), the flip's admission
+  (§21).
+- [x] No Verus — retired in step 10a (§23).
+- [x] `gripsack-store` gone (this step).
+- [x] `gripsack-policy` gone (this step).
+- [x] `gripsack-fs` gone (this step).
+- [x] `gripsack-process` gone (this step).
+
+Still open from F2 (not part of the exit line): deleting the debug-only
+legacy recovery engine (item 9).
+
+### 24.5 Gates
+
+Docker, `-p f2dissolve`, one at a time, at `972400c`: `test` passed (fmt,
+clippy `-D warnings`, the architecture check with its `--self-check`
+calibration, cargo test: 892 tests; 4m22s) — the first run, at `a607abb`,
+failed the lease test of §24.3 item 6, the only change before the rerun;
+`e2e` 712 passed in 15m35s; `proofs` OK in 3626 s (no translation drift —
+the kernel is untouched — 579 theorems, 114 claims, standard axioms only,
+113/113 mutants calibrated). Not run: `ts-test` (TypeScript untouched),
+`model`, `tlaps`, fuzz (the fuzz targets were only type-checked with
+`--features fuzzing`). On the host the two known confinement tests (§23.6)
+still fail outside the `test` image.

@@ -21,7 +21,7 @@ In scope:
 - the `grip` binary and the Conda helper;
 - the TypeScript SDK;
 - the evaluation sandbox, meaning anything a workspace module can do beyond the
-  evaluation boundary in `plan/0013-constrained-evaluation.md`;
+  [evaluation boundary](docs/rfcs/2026-08-28-constrained-evaluation.md);
 - the store, generations and rollback;
 - the release assets and `install.sh`.
 

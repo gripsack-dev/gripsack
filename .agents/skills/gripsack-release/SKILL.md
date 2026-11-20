@@ -6,7 +6,7 @@ description: Qualify exact-source Gripsack artifacts locally and publish an immu
 # Releasing
 
 A release is the local Buildbot qualification green on the exact source,
-then one script that uploads those same bytes (plan/0056 §2 rule 6). Core,
+then one script that uploads those same bytes ([RFC 0056](../../../docs/rfcs/2026-11-08-verified-foundation.md) §2 rule 6). Core,
 SDK (`@gripsack/core` tarball) and Conda helper share one version. Publication
 is manual, unsigned and GitHub-asset-only; no npm/crates.io publication.
 

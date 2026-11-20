@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pin freshness watch + deliberate pin-update PR proposals (plan/0042 F).
+"""Pin freshness watch + deliberate pin-update PR proposals (RFC 0042 F).
 
 Every pinned toolchain, base-image digest and tool version is compared
 against its OFFICIAL upstream metadata. Where a bump has complete
@@ -296,7 +296,7 @@ class PinUnit:
         lines = [
             f"### pins: {self.summary}",
             "",
-            "Deliberate pin update (plan/0042 F), prepared by `scripts/check_pins.py`",
+            "Deliberate pin update (RFC 0042 F), prepared by `scripts/check_pins.py`",
             "(upstream-watch) from official upstream metadata only. Never a silent",
             "floating upgrade, never auto-merged — review and merge deliberately.",
             "",
@@ -315,9 +315,9 @@ class PinUnit:
 
 MANUAL_WORK = (
     "This pin cannot move automatically yet — the pin-update automation "
-    "(scripts/check_pins.py, plan/0042 F) fails closed here rather than "
+    "(scripts/check_pins.py, RFC 0042 F) fails closed here rather than "
     "fabricate a checksum or decouple pins that must move together. "
-    "Update deliberately per plan/0042 F: verify from official metadata "
+    "Update deliberately per [RFC 0042 §F](https://github.com/gripsack-dev/gripsack/blob/main/docs/rfcs/2026-09-07-bounded-acquisition-and-complete-pins.md): verify from official metadata "
     "(digest/manifest check, `rustc -vV`, asset sha256), move every "
     "coupled pin site in one reviewed PR, run "
     "`scripts/check_reproducible.sh` before and after.")
@@ -736,7 +736,7 @@ def open_issue(title: str, body: str) -> None:
         return
     subprocess.run(
         ["gh", "issue", "create", "-R", REPO, "--title", title,
-         "--label", "help wanted", "--body", body],
+         "--label", "help wanted", "--label", "needs-triage", "--body", body],
         check=True,
     )
     print(f"  + opened issue: {title}")

@@ -12,7 +12,8 @@ description: Author gripsack PRs — template and evidence contract
 <one paragraph: the change as a user of grip would observe it>
 
 ## why
-<motivation; link the plan doc section that justifies the design>
+<motivation; Refs #N for partial work, Closes #N only when this finishes it;
+link the governing RFC if one is required>
 
 ## how
 <key implementation decisions; anything a reviewer would trip on>
@@ -21,11 +22,12 @@ description: Author gripsack PRs — template and evidence contract
 <proof the change works — see below>
 
 ## checklist
-- [ ] compose gates green (test, ts-test, e2e)
+- [ ] relevant compose gates identified; actual results or checks not run stated
 - [ ] IR touched? schema + rust + typescript in this PR (gripsack-ir skill)
       + golden IR generated directly when corpus replay is excluded
 - [ ] changed flow exercised through the actual program
-- [ ] plan docs updated in this PR
+- [ ] kernel/protocol change? Rust, Aeneas translation and Lean proofs updated together
+- [ ] docs, changelog and applicable RFC implementation state + registry row updated
 ```
 
 ## Evidence contract
@@ -40,10 +42,16 @@ description: Author gripsack PRs — template and evidence contract
 
 ## Process
 
+- Follow [CONTRIBUTING.md](../../../CONTRIBUTING.md): open or find the
+  tracking issue before substantial work. Wait for owner acceptance before
+  implementing. If an RFC is required, only the owner can accept it; a
+  draft PR or merged draft does not authorize implementation. See the
+  [RFC registry and lifecycle](../../../docs/rfcs/README.md).
 - Branch `<feat|fix|chore>/<slug>`, commits grouped by theme.
 - Title mirrors the dominant commit type (`feat:`, `fix:`, `chore:`,
   `plan:`).
-- `main` requires `local-practical-qualification`. The owner may merge with
-  the existing admin exemption; never fabricate a hosted `test` result.
+- Protected `main` requires `local-practical-qualification` on the exact
+  source from the owner's local Buildbot. Hosted diagnostics and a
+  developer's compose run are not that status.
 - Self-review before requesting review: no stray debug output, no
   scratch files, gates actually run (not aspirational checkboxes).

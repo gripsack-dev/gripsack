@@ -74,4 +74,4 @@ jq -c 'select(.spans != null) | {spans, fields}' "$L"  # recorded operation ance
 - Don't suggest deleting `runs/` logs mid-investigation; they are the
   evidence.
 - Don't retry on E2xx hash mismatches — that's a tampering signal
-  (plan/0002 §4), escalate instead.
+  ([RFC 0002](https://github.com/gripsack-dev/gripsack/blob/main/docs/rfcs/2026-08-22-sourcing.md) §4), escalate instead.

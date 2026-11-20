@@ -1,6 +1,6 @@
 # Guarantee ledger (frozen, historical)
 
-> **Frozen 2026-11-08 by [plan 0056](../plan/0056-verified-foundation.md).**
+> **Frozen 2026-11-08 by [RFC 0056](../docs/rfcs/2026-11-08-verified-foundation.md).**
 > This ledger records the pre-foundation claims and their evidence as of
 > 0.51. It is no longer updated. The replacement is a guarantee list
 > generated from the Lean theorems and their `#print axioms` audit (0056 §5,
@@ -16,7 +16,7 @@ implementation bridges; a new unqualified proof packet remains explicit.
 
 Active product scope is **Linux/WSL x86_64**, under
 `PRODUCT-LINUX-NATIVE-2026-10-28` and `REL-PRACTICAL-051-2026-10-28`
-in [plan0048](../plan/0048-review-response-0.42.0.md).
+in [RFC 0048](../docs/rfcs/2026-09-24-review-response-0-42-0.md).
 Mac, Homebrew and BuildKit implementation/qualification records are historical,
 not current support promises. Existing retained data keeps its original meaning.
 The selected essential gates and changed-path runtime scenarios remain required.
@@ -27,7 +27,7 @@ does not claim fresh verification of the 0.51 source or of a newly changed adapt
 ## Current native additions
 
 These implementations are awaiting the integrated evidence recorded in
-[plan0055](../plan/0055-workspace-only-product.md#active-continuation--2026-10-28);
+[RFC 0055](../docs/rfcs/2026-10-27-workspace-only-product.md#active-continuation--2026-10-28);
 no new formal theorem, physical power-loss or arbitrary-package safety claim
 is made.
 
