@@ -6,6 +6,16 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+### Fixed
+
+- `grip adopt` copies the exact filenames it inspected. A name that cannot be
+  represented by `repoFile` (non-UTF-8 bytes or a literal backslash) stops
+  generation before anything is copied. Unreadable subtrees and metadata
+  errors also stop generation instead of silently omitting files. Deliberately
+  skipped links and special files are listed even when nothing is adoptable.
+  [#333](https://github.com/gripsack-dev/gripsack/issues/333),
+  [#332](https://github.com/gripsack-dev/gripsack/issues/332)
+
 
 ## [0.56.1] — Safer cleanup after adoption
 

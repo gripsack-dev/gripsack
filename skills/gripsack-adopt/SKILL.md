@@ -92,6 +92,12 @@ profile in `profiles/helix.ts`, and adds it to a simple multiline root
 snippet to integrate manually. Modes are `owned` (symlinks), `tracked_copy`,
 and `merge` (managed blocks). Inspect generated declarations and captured files.
 
+Inspect the skip list: adopt does not descend through directory links or
+copy broken links and special files. An unreadable subtree or a filename
+that `repoFile` cannot represent (non-UTF-8 bytes or a literal backslash)
+stops the whole inventory before generation. Fix the reported path or choose
+a narrower target; a readable sibling is not evidence of a complete copy.
+
 To abandon before `--resume`, remove only the generated paths listed by this
 attempt. A failed copy can leave a partial payload. Keep `gripsack.ts`: if
 adopt edited it, remove the import and the `outputs` entry named in the
