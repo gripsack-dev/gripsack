@@ -6,6 +6,9 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+
+## [0.56.1] — Safer cleanup after adoption
+
 ### Fixed
 
 - [`grip adopt` (#331)](https://github.com/gripsack-dev/gripsack/issues/331)
