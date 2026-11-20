@@ -1,5 +1,10 @@
 //! Generate explicit workspace profile files and a conservative root import.
 
+use super::inspect::InventoriedFile;
+use std::fmt;
+use std::fs;
+use std::io::{self, Write};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 /// Profile name from the adopted path: dir basename, or file name with
@@ -69,7 +74,13 @@ pub const MODE_TRACKED_COPY: &str = "tracked_copy";
 pub const MODE_MERGE: &str = "merge";
 
 /// Every inventoried file gets an explicit origin and ownership policy.
-pub fn profile_source(name: &str, to: &str, files: &[String], mode: &str, is_dir: bool) -> String {
+pub fn profile_source<'a>(
+    name: &str,
+    to: &str,
+    files: impl IntoIterator<Item = &'a str>,
+    mode: &str,
+    is_dir: bool,
+) -> String {
     let constructor = match mode {
         MODE_OWNED => "symlinkTo",
         MODE_MERGE => "managedBlock",
@@ -103,22 +114,25 @@ pub fn update_workspace(src: &str, name: &str) -> Option<String> {
         "import {ident} from {};",
         quoted(&format!("./profiles/{name}.ts"))
     );
-    if src.contains(&import) {
-        return None;
-    }
+    // Preserve every original byte so that removing the two lines undoes the edit.
     if src.contains("/*") || src.contains('`') || src.contains(&ident) {
         return None;
     }
-    let mut lines: Vec<String> = src.lines().map(str::to_owned).collect();
-    let opening = lines
-        .iter()
-        .position(|line| line == "export default defineWorkspace(() => workspace({")?;
-    if lines.get(opening + 1)? != "  outputs: [" {
+    let mut lines = src.split_inclusive('\n');
+    let mut end = 0;
+    lines.find(|line| {
+        end += line.len();
+        line.trim_end_matches(['\r', '\n']) == "export default defineWorkspace(() => workspace({"
+    })?;
+    let outputs = lines.next()?;
+    let newline = outputs.strip_prefix("  outputs: [")?;
+    if !matches!(newline, "\n" | "\r\n") {
         return None;
     }
-    lines.insert(opening + 2, format!("    {ident},"));
-    lines.insert(0, import);
-    Some(lines.join("\n") + "\n")
+    let (before, after) = src.split_at(end + outputs.len());
+    Some(format!(
+        "{import}{newline}{before}    {ident},{newline}{after}"
+    ))
 }
 
 pub fn workspace_snippet(name: &str) -> String {
@@ -129,48 +143,168 @@ pub fn workspace_snippet(name: &str) -> String {
     )
 }
 
-/// Copy the live payload into configs/<name>/ — verbatim, file
-/// symlinks dereferenced (adopt takes content, not indirection).
-pub fn write_payload(
-    repo: &Path,
-    dest: &Path,
-    name: &str,
-    rel_files: &[String],
-    is_dir: bool,
-) -> std::io::Result<()> {
-    let payload = repo.join("configs").join(name);
-    for rel in rel_files {
-        let source = if is_dir {
-            dest.join(rel)
-        } else {
-            dest.to_path_buf()
-        };
-        // copy on a fifo/device blocks forever — inventory already
-        // refuses them; this is the belt to that braces
-        if !std::fs::metadata(&source)
-            .map(|m| m.file_type().is_file())
-            .unwrap_or(false)
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "{} is not a regular file — refusing to adopt it",
-                    source.display()
-                ),
-            ));
+/// The payload directory and profile file are ours only after exclusive
+/// creation. The workspace is never ours; only its two inserted lines are.
+#[derive(Default)]
+pub(super) struct Writes {
+    payload_files: Option<usize>,
+    profile_created: bool,
+    pub(super) workspace_edited: bool,
+}
+
+impl Writes {
+    pub(super) fn generate(
+        &mut self,
+        repo: &Path,
+        dest: &Path,
+        name: &str,
+        files: &[InventoriedFile],
+        mode: &str,
+        is_dir: bool,
+    ) -> Result<(), String> {
+        let configs = repo.join("configs");
+        let payload = configs.join(name);
+        fs::create_dir_all(configs)
+            .and_then(|()| fs::create_dir(&payload))
+            .map_err(|e| format!("cannot create configs/{name}/: {e}"))?;
+        let created = self.payload_files.insert(0);
+        for file in files {
+            let nested;
+            let source = if is_dir {
+                nested = dest.join(&file.rel);
+                &nested
+            } else {
+                dest
+            };
+            copy_payload_file(source, &payload.join(&file.rel), created)
+                .map_err(|e| format!("cannot copy {}: {e}", source.display()))?;
         }
-        let out = payload.join(rel);
-        if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::copy(&source, &out)?;
+
+        let profiles = repo.join("profiles");
+        let mut profile = fs::create_dir_all(&profiles)
+            .and_then(|()| fs::File::create_new(profiles.join(format!("{name}.ts"))))
+            .map_err(|e| format!("cannot create profiles/{name}.ts: {e}"))?;
+        self.profile_created = true;
+        let source = profile_source(
+            name,
+            &tilde(dest),
+            files.iter().map(|f| f.rel.as_str()),
+            mode,
+            is_dir,
+        );
+        profile
+            .write_all(source.as_bytes())
+            .map_err(|e| format!("cannot write profiles/{name}.ts: {e}"))?;
+
+        self.integrate(repo, name)
+            .map_err(|e| format!("cannot integrate profile in gripsack.ts: {e}"))
     }
-    Ok(())
+
+    fn integrate(&mut self, repo: &Path, name: &str) -> io::Result<()> {
+        let root = Path::new("gripsack.ts");
+        let path = repo.join(root);
+        let metadata = path.symlink_metadata()?;
+        // Atomic replacement would detach an alias. Leave it for manual integration.
+        if !metadata.is_file() || metadata.nlink() != 1 {
+            return Ok(());
+        }
+        let Some(updated) = update_workspace(&fs::read_to_string(&path)?, name) else {
+            return Ok(());
+        };
+        // A writable parent alone is not permission to edit this file.
+        fs::OpenOptions::new().write(true).open(&path)?;
+        // Stage privately beside the original: a short write cannot truncate
+        // user source or expose it with wider permissions.
+        let mut staged = tempfile::NamedTempFile::new_in(repo)?;
+        staged.write_all(updated.as_bytes())?;
+        staged.as_file().set_permissions(metadata.permissions())?;
+        staged.as_file().sync_all()?;
+        staged.persist(path)?;
+        self.workspace_edited = true;
+        Ok(())
+    }
+
+    pub(super) fn report<'a>(
+        &'a self,
+        name: &'a str,
+        files: &'a [InventoriedFile],
+    ) -> impl fmt::Display + 'a {
+        fmt::from_fn(move |out| {
+            let Some(count) = self.payload_files else {
+                return writeln!(out, "  no adoption files were created");
+            };
+            writeln!(out, "  created by this adoption (remove to abandon):")?;
+            writeln!(out, "    configs/{name}/")?;
+            for file in &files[..count] {
+                writeln!(out, "      {}", file.rel.escape_debug())?;
+            }
+            if self.profile_created {
+                writeln!(out, "    profiles/{name}.ts")?;
+            }
+            if self.workspace_edited {
+                let binding = format!("adopted_{}", ident(name));
+                writeln!(
+                    out,
+                    "  edited gripsack.ts — keep this file. To undo, remove only the `import {binding} from \"./profiles/{name}.ts\";` line and the `{binding},` entry in `outputs`."
+                )?;
+            }
+            Ok(())
+        })
+    }
+}
+
+fn copy_payload_file(source: &Path, dest: &Path, created: &mut usize) -> io::Result<()> {
+    // Never open a fifo or device to copy its contents.
+    let metadata = fs::metadata(source)?;
+    if !metadata.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    let mut input = fs::File::open(source)?;
+    fs::create_dir_all(dest.parent().expect("payload file has a parent"))?;
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(metadata.permissions().mode())
+        .open(dest)?;
+    // Even a short/failed copy leaves a file to account for.
+    *created += 1;
+    io::copy(&mut input, &mut output)?;
+    output.set_permissions(metadata.permissions())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interrupted_payload_reports_only_the_created_prefix() {
+        let repo = tempfile::tempdir().unwrap();
+        let target = tempfile::tempdir().unwrap();
+        fs::write(target.path().join("first"), b"taken").unwrap();
+        fs::write(target.path().join("last"), b"not reached").unwrap();
+        // The middle source disappeared after inspection.
+        let files = ["first", "missing", "last"].map(|name| InventoriedFile {
+            rel: name.to_owned(),
+            size: 1,
+        });
+        let mut writes = Writes::default();
+        writes
+            .generate(repo.path(), target.path(), "demo", &files, MODE_OWNED, true)
+            .unwrap_err();
+        let report = writes.report("demo", &files).to_string();
+        let payload = repo.path().join("configs/demo");
+        assert_eq!(fs::read(payload.join("first")).unwrap(), b"taken");
+        assert!(report.contains("first"));
+        for absent in ["missing", "last"] {
+            assert!(!payload.join(absent).exists());
+            assert!(!report.contains(absent));
+        }
+        assert!(!report.contains("profiles/demo.ts"));
+        assert!(!report.contains("gripsack.ts"));
+    }
 
     #[test]
     fn inserts_profile_in_starter_workspace() {
@@ -202,7 +336,7 @@ mod tests {
         let src = profile_source(
             "demo",
             "~/.config/we\"ird.toml",
-            &["a\"b.toml".to_owned()],
+            ["a\"b.toml"],
             MODE_TRACKED_COPY,
             false,
         );
@@ -218,19 +352,19 @@ mod tests {
 
     #[test]
     fn profile_source_preserves_file_destinations_and_ownership() {
-        let files = vec!["config.toml".to_owned(), "themes/custom.toml".to_owned()];
-        let dir = profile_source("helix", "~/.config/helix", &files, MODE_OWNED, true);
+        let files = ["config.toml", "themes/custom.toml"];
+        let dir = profile_source("helix", "~/.config/helix", files, MODE_OWNED, true);
         assert!(dir.contains("symlinkTo(\"~/.config/helix/config.toml\")"));
         assert!(dir.contains("symlinkTo(\"~/.config/helix/themes/custom.toml\")"));
         let file = profile_source(
             "gitconfig",
             "~/.gitconfig",
-            &files[..1],
+            [files[0]],
             MODE_TRACKED_COPY,
             false,
         );
         assert!(file.contains("trackedCopyTo(\"~/.gitconfig\")"));
-        let merge = profile_source("bashrc", "~/.bashrc", &files[..1], MODE_MERGE, false);
+        let merge = profile_source("bashrc", "~/.bashrc", [files[0]], MODE_MERGE, false);
         assert!(merge.contains("managedBlock(\"~/.bashrc\", \"#\")"));
     }
 

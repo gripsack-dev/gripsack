@@ -6,6 +6,15 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+### Fixed
+
+- [`grip adopt` (#331)](https://github.com/gripsack-dev/gripsack/issues/331)
+  distinguishes newly created files from edits to your existing `gripsack.ts`,
+  including when a copy fails partway through. To abandon before resuming,
+  remove only the listed generated paths. If adopt edited the workspace, it
+  names the import and `outputs` entry to remove; otherwise it leaves the
+  entrypoint out of the cleanup instructions.
+
 
 ## [0.56.0] — Typed paths and live task output
 
