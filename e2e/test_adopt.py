@@ -171,6 +171,69 @@ def test_adopt_refuses_to_clobber_the_repo(sandbox):
     assert (repo / "profiles/demo.ts").read_text() == "// hand-written, do not touch\n"
 
 
+@pytest.mark.parametrize("failure", ["payload", "profile", "workspace"])
+def test_adopt_cleanup_names_only_created_artifacts(sandbox, failure):
+    target = sandbox / ".editorrc"
+    target.write_text("my settings\n")
+    repo = make_workspace_repo(sandbox / "repo", {})
+    root = repo / "gripsack.ts"
+    if failure == "workspace":
+        # Capture accepts bytes; integration must read TypeScript as UTF-8.
+        root.write_bytes(b"// keep my original bytes: \xff\n")
+    else:
+        (repo / {"payload": "configs", "profile": "profiles"}[failure]).write_text("keep me\n")
+    before = root.read_bytes()
+
+    result = grip("adopt", "~/.editorrc", "--host", "testhost", cwd=repo)
+    assert result.returncode == 1, result.stdout + result.stderr
+    advice = "\n".join(line for line in result.stderr.splitlines() if line.startswith("  "))
+    payload = repo / "configs/editorrc/.editorrc"
+    profile = repo / "profiles/editorrc.ts"
+    assert payload.is_file() == (failure != "payload")
+    assert profile.is_file() == (failure == "workspace")
+    assert ("configs/editorrc/" in advice) == payload.is_file(), advice
+    assert (".editorrc" in advice) == payload.is_file(), advice
+    assert ("profiles/editorrc.ts" in advice) == profile.is_file(), advice
+    assert "gripsack.ts" not in advice, advice
+    assert root.read_bytes() == before
+    assert target.read_text() == "my settings\n"
+
+
+@pytest.mark.parametrize("integration", ["automatic", "manual", "linked"])
+def test_adopt_distinguishes_an_edit_from_a_generated_file(sandbox, integration):
+    repo = make_workspace_repo(sandbox / "repo", {})
+    (sandbox / ".editorrc").write_text("my settings\n")
+    root = repo / "gripsack.ts"
+    original = root.read_bytes().replace(b"\n", b"\r\n").rstrip(b"\r\n")
+    if integration == "manual":
+        original = b"/* hand-maintained workspace */\r\n" + original
+    root.write_bytes(original)
+    root.chmod(0o640)
+    if integration == "linked":
+        os.link(root, repo / "workspace-source.ts")
+
+    result = grip("adopt", "~/.editorrc", "--name", "my-editor", "--host", "testhost", cwd=repo)
+    assert result.returncode == 1, result.stdout + result.stderr  # stops for review
+    assert (repo / "configs/my-editor/.editorrc").read_text() == "my settings\n"
+    assert (repo / "profiles/my-editor.ts").is_file()
+    assert "configs/my-editor/" in result.stdout and "profiles/my-editor.ts" in result.stdout
+    declaration = b'import adopted_my_editor from "./profiles/my-editor.ts";'
+    entry = b"    adopted_my_editor,"
+    if integration == "automatic":
+        assert declaration.decode() in result.stdout and "`adopted_my_editor,`" in result.stdout
+        edited = root.read_bytes()
+        assert declaration in edited and entry in edited
+        undone = edited.replace(declaration + b"\r\n", b"", 1).replace(entry + b"\r\n", b"", 1)
+        assert undone == original
+    else:
+        assert "gripsack.ts" not in result.stdout, result.stdout
+        assert declaration.decode() in result.stderr
+        assert root.read_bytes() == original
+        if integration == "linked":
+            assert root.samefile(repo / "workspace-source.ts")
+    assert stat.S_IMODE(root.stat().st_mode) == 0o640
+
+
 def test_adopt_does_not_follow_directory_symlinks(sandbox):
     """0015 §7 S2: a dir symlink inside the adopted tree must not pull
     an arbitrary tree into the repo — it's skipped and reported."""

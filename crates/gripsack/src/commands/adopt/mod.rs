@@ -109,7 +109,7 @@ pub fn adopt(
     ] {
         if artifact.symlink_metadata().is_ok() {
             eprintln!(
-                "grip: {} already exists — refusing to overwrite it (pick another --name, or remove it first)",
+                "grip: {} already exists — refusing to overwrite it; pick another --name",
                 artifact.display()
             );
             return ExitCode::FAILURE;
@@ -165,55 +165,17 @@ pub fn adopt(
     println!("  {}", palette.dim(&prompt::mode_line(&mode)));
 
     // ── generate ───────────────────────────────────────────────────
-    let rel_files: Vec<String> = inv.files.iter().map(|f| f.rel.clone()).collect();
-    let written = [
-        format!("configs/{name}/"),
-        format!("profiles/{name}.ts"),
-        "gripsack.ts".to_owned(),
-    ];
-    let workspace_rel = &written[2];
-    let revert = |why: &str| {
-        eprintln!("grip: {why}");
-        eprintln!(
-            "  written so far: {} — remove them (and the `{name}` entry in {}) to abandon",
-            written.join(", "),
-            written[2]
-        );
-        ExitCode::FAILURE
-    };
-    if let Err(e) = generate::write_payload(&repo, &dest, &name, &rel_files, is_dir) {
-        return revert(&format!("cannot write payload: {e}"));
+    let mut writes = generate::Writes::default();
+    if let Err(error) = writes.generate(&repo, &dest, &name, &inv.files, &mode, is_dir) {
+        eprintln!("grip: {error}");
+        eprint!("{}", writes.report(&name, &inv.files));
+        return ExitCode::FAILURE;
     }
-    let to = generate::tilde(&dest);
-    let profile_ts = generate::profile_source(&name, &to, &rel_files, &mode, is_dir);
-    if let Err(error) = std::fs::create_dir_all(repo.join("profiles")).and_then(|()| {
-        std::fs::write(
-            repo.join("profiles").join(format!("{name}.ts")),
-            &profile_ts,
-        )
-    }) {
-        return revert(&format!("cannot write profiles/{name}.ts: {error}"));
+    print!("{}", writes.report(&name, &inv.files));
+    if !writes.workspace_edited {
+        eprintln!("grip: add the generated profile to gripsack.ts manually:\n");
+        eprintln!("{}", generate::workspace_snippet(&name));
     }
-    let workspace_path = repo.join(workspace_rel);
-    let workspace_src = match std::fs::read_to_string(&workspace_path) {
-        Ok(source) => source,
-        Err(error) => return revert(&format!("cannot read {workspace_rel}: {error}")),
-    };
-    match generate::update_workspace(&workspace_src, &name) {
-        Some(updated) => {
-            if let Err(error) = std::fs::write(&workspace_path, updated) {
-                return revert(&format!("cannot update {workspace_rel}: {error}"));
-            }
-        }
-        None => {
-            eprintln!("grip: add the generated profile to {workspace_rel} manually:\n");
-            eprintln!("{}", generate::workspace_snippet(&name));
-        }
-    }
-    println!(
-        "  {} configs/{name}/ · profiles/{name}.ts · {workspace_rel}",
-        palette.good("wrote")
-    );
 
     eprintln!(
         "grip: review the generated files, approve the changed snapshot with `grip trust add .`, then resume:"

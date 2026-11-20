@@ -92,6 +92,11 @@ profile in `profiles/helix.ts`, and adds it to a simple multiline root
 snippet to integrate manually. Modes are `owned` (symlinks), `tracked_copy`,
 and `merge` (managed blocks). Inspect generated declarations and captured files.
 
+To abandon before `--resume`, remove only the generated paths listed by this
+attempt. A failed copy can leave a partial payload. Keep `gripsack.ts`: if
+adopt edited it, remove the import and the `outputs` entry named in the
+report. If it printed a manual-integration snippet, it did not edit the root.
+
 Generation deliberately stops with exit status 1 for source review, including
 with `--yes`; it does not apply unapproved source. After reviewing, approve and
 resume the same target and profile:
