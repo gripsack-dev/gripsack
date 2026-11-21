@@ -1,12 +1,13 @@
 //! grip doctor — the eval runtime check (0003 §8, plan/0013 D2), and the
 //! pending journal when an interrupted run left one (0058 item 1).
 
+mod deno;
+
 use crate::render::Palette;
 use std::process::ExitCode;
 
-/// The eval contract (plan/0013 D2): a runnable deno — the exact
-/// precedence eval uses (`GRIPSACK_DENO`, the pinned runtime, a PATH
-/// deno only as a loud last resort).
+/// Inspect an explicit evaluator override or an already provisioned pin.
+/// Diagnosis never provisions a runtime, evaluates a workspace or materializes the SDK.
 pub fn doctor(palette: Palette) -> ExitCode {
     let mut ok = true;
     let mark = |good: bool| {
@@ -19,85 +20,44 @@ pub fn doctor(palette: Palette) -> ExitCode {
 
     let home = gripsack_host::store::gripsack_home();
 
-    // deno is the eval runtime — required, no fallback exists.
-    match gripsack_exec::ensure_deno(&home, &gripsack_fetch::FetchContext::default()) {
-        Ok(deno) => {
-            let version = std::process::Command::new(&deno)
-                .arg("--version")
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .map(|o| {
-                    String::from_utf8_lossy(&o.stdout)
-                        .lines()
-                        .next()
-                        .unwrap_or("deno (unknown version)")
-                        .to_string()
-                })
-                .unwrap_or_else(|| "deno (unknown version)".into());
-            let source = if std::env::var_os("GRIPSACK_DENO").is_some() {
-                "GRIPSACK_DENO"
-            } else if deno.as_os_str() == "deno" {
-                // last-resort fallback — the pinned runtime was
-                // unavailable (musl host or failed download)
-                "on PATH — pinned unavailable"
-            } else {
-                "provisioned (pinned)"
-            };
-            println!("{}  deno: {version} ({source})", mark(true));
-        }
-        Err(e) => {
-            println!("{}  deno: {e}", mark(false));
-            let reason = e.to_string();
-            if reason.contains("musl") {
-                println!(
-                    "      {} the grip binary itself is musl-static and keeps working — \
-                     only the eval sandbox needs a Linux/WSL x86_64 glibc host",
-                    palette.warn("hint:")
-                );
-            } else {
-                println!(
-                    "      {} set GRIPSACK_DENO to a deno binary to bypass provisioning",
-                    palette.warn("hint:")
-                );
-            }
+    let (runtime, source) = match std::env::var_os("GRIPSACK_DENO") {
+        Some(path) => (std::path::PathBuf::from(path), "GRIPSACK_DENO"),
+        None => (
+            gripsack_exec::frontend::deno_install_directory(&home).join("deno"),
+            "provisioned (pinned)",
+        ),
+    };
+    match deno::version(&runtime) {
+        Ok(version) => println!("{}  deno: deno {version} ({source})", mark(true)),
+        Err(error) => {
+            println!(
+                "{}  deno: {source} {}: {error}",
+                mark(false),
+                runtime.display()
+            );
+            println!("      hint: set GRIPSACK_DENO to the absolute path of a working deno binary");
             ok = false;
         }
     }
 
-    // The frontend source embedded in this binary (plan/0013 D3) —
-    // materializing here is idempotent; a MISS means a build without
-    // the repo's typescript tree (crates.io builds).
-    match gripsack_exec::ensure_ts_frontend(&home, env!("CARGO_PKG_VERSION")) {
-        Ok(Some(dir)) => {
+    let embedded = env!("CARGO_PKG_VERSION");
+    if gripsack_exec::frontend::has_embedded_frontend() {
+        println!("{}  frontend: embedded TypeScript {embedded}", mark(true));
+        let current = home.join("frontend/current");
+        if current.join("src/index.ts").is_file() {
+            println!("      editor: SDK available at {}", current.display());
+        } else {
             println!(
-                "{}  frontend: embedded TypeScript {} (materialized at {})",
-                mark(true),
-                env!("CARGO_PKG_VERSION"),
-                dir.display()
-            );
-            // 0045: the stable link + the src-pointing package.json make
-            // the embedded frontend resolvable by any tsc-based editor
-            let current = dir.parent().unwrap_or(&dir).join("current");
-            println!(
-                "      {} symlink node_modules/@gripsack/core → {} — or tsconfig \
-                 \"paths\": {{\"@gripsack/core\": [\"{}\"]}}",
-                palette.warn("editor:"),
-                current.display(),
-                current.join("src/index.ts").display(),
+                "      editor: the next live evaluation materializes the SDK at {}",
+                current.display()
             );
         }
-        Ok(None) => {
-            println!(
-                "{}  frontend: this build carries no embedded TypeScript frontend",
-                mark(false)
-            );
-            ok = false;
-        }
-        Err(e) => {
-            println!("{}  frontend: materialization failed: {e}", mark(false));
-            ok = false;
-        }
+    } else {
+        println!(
+            "{}  frontend: this build carries no embedded TypeScript frontend",
+            mark(false)
+        );
+        ok = false;
     }
 
     // Eval only considers the repo-root install (typescript/src/pin.ts).
@@ -140,7 +100,6 @@ pub fn doctor(palette: Palette) -> ExitCode {
     } else {
         false
     };
-    let embedded = env!("CARGO_PKG_VERSION");
     match if editor_only {
         Ok(None)
     } else {
@@ -232,9 +191,7 @@ fn journal(palette: Palette, home: &std::path::Path) -> bool {
         }
     };
     let blocked = view.blocked().is_some()
-        || view
-            .verdict
-            .is_none_or(|verdict| verdict == RunVerdict::Ambiguous)
+        || view.verdict == RunVerdict::Ambiguous
         || !view.unadmitted.is_empty()
         || view.pending.quarantined > 0;
     println!(
@@ -248,18 +205,17 @@ fn journal(palette: Palette, home: &std::path::Path) -> bool {
         view.pending
     );
     let run = match view.verdict {
-        Some(RunVerdict::Unmarked) => "no run marker: every entry is restored to its prior".into(),
-        Some(RunVerdict::Uncommitted) => {
+        RunVerdict::Unmarked => "no run marker: every entry is restored to its prior".into(),
+        RunVerdict::Uncommitted => {
             "uncommitted (the selection never flipped): every entry is restored to its prior".into()
         }
-        Some(RunVerdict::Committed) => {
+        RunVerdict::Committed => {
             "committed (the selection flipped): the journal is only cleared, content stands".into()
         }
-        Some(RunVerdict::Ambiguous) => palette.error(
+        RunVerdict::Ambiguous => palette.error(
             "AMBIGUOUS: `current` matches neither the run's target nor its predecessor — \
              recovery refuses and changes nothing",
         ),
-        None => palette.error("the run marker cannot be read — recovery refuses"),
     };
     println!("      run: {run}");
     if view.directories > 0 {
@@ -271,23 +227,22 @@ fn journal(palette: Palette, home: &std::path::Path) -> bool {
     for entry in &view.entries {
         let outlook = match &entry.outlook {
             EntryOutlook::Committed => "committed: the deployed content stands".to_string(),
-            EntryOutlook::Decided(Decision::Restore) => "the prior will be restored".to_string(),
-            EntryOutlook::Decided(Decision::Unchanged) => {
+            EntryOutlook::Decided(Decision::Restore, _) => "the prior will be restored".to_string(),
+            EntryOutlook::Decided(Decision::Unchanged, _) => {
                 "the prior is already in place (it will be sealed)".to_string()
             }
-            EntryOutlook::Decided(Decision::Preserve) => {
+            EntryOutlook::Decided(Decision::Preserve, _) => {
                 "changed since the interrupted run — your edit will be kept".to_string()
             }
-            EntryOutlook::Decided(Decision::Refuse) => palette.error(&format!(
-                "BLOCKED: found {}, which the journal cannot identify",
-                entry.found
+            EntryOutlook::Decided(Decision::Refuse, found) => palette.error(&format!(
+                "BLOCKED: found {found}, which the journal cannot identify"
             )),
             EntryOutlook::Unreadable(error) => palette.error(&format!(
-                "cannot be evaluated ({error}); recovery will stop here"
+                "BLOCKED: cannot be evaluated ({error}); recovery will stop here"
             )),
         };
         println!("      {}: {outlook}", entry.dest);
-        if entry.blocks() {
+        if matches!(entry.outlook, EntryOutlook::Decided(Decision::Refuse, _)) {
             println!("        expected: {}", entry.expected);
             println!(
                 "        {} move {} aside (it is yours; nothing is deleted), then run `grip apply` \

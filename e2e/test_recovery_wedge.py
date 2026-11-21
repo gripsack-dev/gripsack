@@ -6,6 +6,8 @@ refuses by name and changes nothing, `grip doctor` shows the blocking entry,
 what recovery expected and found, and the repair; once the directory is moved
 aside, the next apply recovers and deploys.
 """
+import hashlib
+import json
 import signal
 
 import pytest
@@ -39,6 +41,30 @@ def crash_after_the_write(sandbox, repo, monkeypatch, *flags):
     journal = sandbox / ".local/share/gripsack/journal"
     assert len(list(journal.glob("*.json"))) == 2, "the run marker and one entry"
     return journal
+
+
+def diagnose_without_effects(sandbox, repo, monkeypatch):
+    home = sandbox / ".local/share/gripsack"
+
+    def snapshot():
+        return {
+            path.relative_to(home): (
+                path.lstat().st_mode,
+                path.readlink() if path.is_symlink() else
+                path.read_bytes() if path.is_file() else None,
+            )
+            for path in home.rglob("*")
+        }
+
+    before = snapshot()
+    trace = sandbox / "doctor-fs-effects"
+    with monkeypatch.context() as env:
+        env.setenv("GRIPSACK_FS_TRACE", str(trace))
+        env.delenv("GRIPSACK_FS_INCLUDE_READS", raising=False)
+        result = grip("doctor", cwd=repo, approve=False)
+    assert snapshot() == before, "doctor changed names, modes or content"
+    assert not trace.exists(), trace.read_text()  # includes file and directory syncs
+    return result
 
 
 @pytest.mark.requires_fault_controls
@@ -92,7 +118,22 @@ def test_an_interrupted_apply_restores_prior_bytes_and_mode(sandbox, monkeypatch
     destination.write_text("mine before\n")
     destination.chmod(0o640)
     journal = crash_after_the_write(sandbox, repo, monkeypatch, "--take-over")
-    pending = grip("doctor", cwd=repo)
+    # A later write in the same run can have a different immediate-before
+    # file. Neither it nor the original prior is repair authority for doctor.
+    record = next(p for p in journal.glob("*.json") if p.name != "run.json")
+    entry = json.loads(record.read_text())
+    directory = journal.parent / "prior"
+    original = directory / entry["prior"]["hash"]
+    middle = b"intermediate contents\n"
+    digest = hashlib.sha256(middle).hexdigest()
+    intermediate = directory / digest
+    intermediate.write_bytes(middle)
+    entry["before"] = {"kind": "file", "hash": digest, "mode": 0o640}
+    record.write_text(json.dumps(entry))
+    for blob in [original, intermediate]:
+        blob.chmod(0o644)
+    pending = diagnose_without_effects(sandbox, repo, monkeypatch)
+    assert pending.returncode == 0, pending.stdout + pending.stderr
     assert f"{destination}: the prior will be restored" in pending.stdout, pending.stdout
 
     # recovery alone restores the prior, with its mode
@@ -102,3 +143,81 @@ def test_an_interrupted_apply_restores_prior_bytes_and_mode(sandbox, monkeypatch
     assert destination.read_text() == "mine before\n"
     assert destination.stat().st_mode & 0o7777 == 0o640
     assert not list(journal.glob("*.json"))
+    assert all(blob.stat().st_mode & 0o777 == 0o600 for blob in [original, intermediate])
+
+
+@pytest.mark.requires_fault_controls
+@pytest.mark.parametrize("damaged", ["missing-prior", "corrupt-before", "unknown-entry", "broken-marker"])
+def test_doctor_refuses_without_repairing_journal(sandbox, monkeypatch, damaged):
+    repo = sandbox / "env"
+    declare(repo)
+    destination = sandbox / ".config/wedge/a.conf"
+    destination.parent.mkdir(parents=True)
+    destination.write_text("my prior\n")
+    journal = crash_after_the_write(sandbox, repo, monkeypatch, "--take-over")
+    record = next(p for p in journal.glob("*.json") if p.name != "run.json")
+    entry = json.loads(record.read_text())
+    directory = journal.parent / "prior"
+    original = directory / entry["prior"]["hash"]
+    original.chmod(0o644)
+    if damaged == "missing-prior":
+        original.unlink()
+        reason = f"prior blob {original.name}"
+    elif damaged == "corrupt-before":
+        bad = directory / hashlib.sha256(b"before").hexdigest()
+        bad.write_bytes(b"corrupt")
+        entry["before"] = {"kind": "file", "hash": bad.name, "mode": 0o644}
+        record.write_text(json.dumps(entry))
+        reason = "prior blob content hash mismatch"
+    elif damaged == "unknown-entry":
+        entry["v"] = 250
+        record.write_text(json.dumps(entry))
+        reason = "wire version 250"
+    else:
+        (journal / "run.json").write_text("{")
+        reason = "run marker"
+    diagnosis = diagnose_without_effects(sandbox, repo, monkeypatch)
+    assert diagnosis.returncode != 0, diagnosis.stdout
+    assert "MISS  journal:" in diagnosis.stdout and reason in diagnosis.stdout
+    assert "move " + str(destination) + " aside" not in diagnosis.stdout
+    assert destination.read_text() == "deployed\n"
+    monkeypatch.setenv("GRIPSACK_FS_RECOVER_ONLY", "1")
+    refused = grip("apply", cwd=repo)
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert destination.read_text() == "deployed\n"
+
+
+@pytest.mark.requires_fault_controls
+def test_doctor_admits_current_manifest_without_sealing(sandbox, monkeypatch):
+    repo = sandbox / "env"
+    declare(repo)
+    applied = grip("apply", cwd=repo)
+    assert applied.returncode == 0, applied.stderr
+    home = sandbox / ".local/share/gripsack"
+    current = (home / "current").readlink()
+    generation = int(current.name)
+    # Reconstitute the post-flip/pre-cleanup marker for the real published
+    # selection. A pointer match alone is insufficient for committed cleanup.
+    marker = home / "journal/run.json"
+    marker.write_text(json.dumps({
+        "version": 1, "previous_selection": None, "op": "apply",
+        "target_selection": {
+            "kind": "transaction", "generation": generation,
+            "transaction": current.parent.name,
+        },
+    }))
+    healthy = diagnose_without_effects(sandbox, repo, monkeypatch)
+    assert healthy.returncode == 0 and "committed (the selection flipped)" in healthy.stdout
+    manifest = home / current / "manifest.json"
+    wire = json.loads(manifest.read_text())
+    wire.get("generation", wire)["number"] = generation + 1
+    manifest.write_text(json.dumps(wire))
+    diagnosis = diagnose_without_effects(sandbox, repo, monkeypatch)
+    assert diagnosis.returncode != 0 and "MISS  journal:" in diagnosis.stdout
+    assert f"current generation {generation} manifest:" in diagnosis.stdout
+    assert "directory and identity disagree" in diagnosis.stdout
+    monkeypatch.setenv("GRIPSACK_FS_RECOVER_ONLY", "1")
+    refused = grip("apply", cwd=repo)
+    assert refused.returncode != 0
+    assert "directory and identity disagree" in refused.stderr + refused.stdout
+    assert marker.is_file() and (home / "current").readlink() == current

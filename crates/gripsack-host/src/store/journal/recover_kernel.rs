@@ -89,14 +89,14 @@ pub(super) fn entry_facts(
     index: u32,
     entry: &Entry,
     prior: Option<&ObjectIdentity>,
-    home: &Dir,
+    before_identity: impl FnOnce(&PriorSerde) -> io::Result<Option<ObjectIdentity>>,
 ) -> io::Result<EntryFacts> {
     let before = if entry.before.as_ref() == Some(&entry.prior) {
         None
     } else {
         match &entry.before {
             None => None,
-            Some(before) => super::prior_identity(before, home)?,
+            Some(before) => before_identity(before)?,
         }
     };
     Ok(EntryFacts {
@@ -357,7 +357,9 @@ impl RecoverHost for StoreHost<'_> {
                 &self.entries,
             )?
         {
-            let mut facts = entry_facts(index, entry, None, self.home)?;
+            let mut facts = entry_facts(index, entry, None, |before| {
+                super::prior_identity(before, self.home)
+            })?;
             facts.route = Route::Delegated;
             return Ok(HostEntry { facts, site: None });
         }
@@ -370,7 +372,9 @@ impl RecoverHost for StoreHost<'_> {
         };
         let (prior, restore) = prior_facts(&entry.prior, self.home)?;
         Ok(HostEntry {
-            facts: entry_facts(index, entry, prior.as_ref(), self.home)?,
+            facts: entry_facts(index, entry, prior.as_ref(), |before| {
+                super::prior_identity(before, self.home)
+            })?,
             site: Some(LeafSite {
                 parent: real_dir(&parent)?,
                 name: name(&leaf)?,

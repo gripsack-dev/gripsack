@@ -89,11 +89,10 @@ pub fn directory(home: &Dir) -> io::Result<Dir> {
     crate::fs::open_dir_nofollow(home, Path::new("prior"))
 }
 
-/// Read the named admitted blob through a pinned capability, verify its bytes,
-/// then seal the observed file and namespace before granting restore authority.
-pub fn read_blob(home: &Dir, identity: &PriorBlobId) -> io::Result<Vec<u8>> {
-    let directory = directory(home)?;
-    let mut file = crate::fs::open_file_nofollow(&directory, Path::new(identity.as_str()))?;
+fn verified_bytes(
+    file: &mut crate::fs::cap_std::fs::File,
+    identity: &PriorBlobId,
+) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
     if !crate::store::hash::hex_sha256(&bytes).eq_ignore_ascii_case(identity.as_str()) {
@@ -102,6 +101,21 @@ pub fn read_blob(home: &Dir, identity: &PriorBlobId) -> io::Result<Vec<u8>> {
             "prior blob content hash mismatch",
         ));
     }
+    Ok(bytes)
+}
+
+/// Observe the bytes of a prior without granting authority to restore them.
+pub(super) fn observe_blob(home: &Dir, identity: &PriorBlobId) -> io::Result<Vec<u8>> {
+    let directory = directory(home)?;
+    let mut file = crate::fs::open_file_nofollow(&directory, Path::new(identity.as_str()))?;
+    verified_bytes(&mut file, identity)
+}
+
+/// Verify and seal the same open file and namespace before granting restore authority.
+pub fn read_blob(home: &Dir, identity: &PriorBlobId) -> io::Result<Vec<u8>> {
+    let directory = directory(home)?;
+    let mut file = crate::fs::open_file_nofollow(&directory, Path::new(identity.as_str()))?;
+    let bytes = verified_bytes(&mut file, identity)?;
     crate::store::private_state::seal_file(&file, Path::new(identity.as_str()))?;
     crate::fs::fsync_dir(&directory, Path::new("."))?;
     crate::fs::fsync_dir(home, Path::new("."))?;

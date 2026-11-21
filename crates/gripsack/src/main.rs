@@ -270,10 +270,11 @@ fn main() -> ExitCode {
     // Retained wrappers name their private store explicitly; an absent or
     // unrelated ambient HOME must not redirect their diagnostic state.
     let run = match &command {
-        Command::RetainedPackage(args) => gripsack_trace::init(&args.home),
-        _ => gripsack_trace::init(&gripsack_host::store::gripsack_home()),
-    }
-    .ok();
+        // Diagnosis must not create or prune the very home it is inspecting.
+        Command::Doctor => None,
+        Command::RetainedPackage(args) => gripsack_trace::init(&args.home).ok(),
+        _ => gripsack_trace::init(&gripsack_host::store::gripsack_home()).ok(),
+    };
     let _run_span = run
         .as_ref()
         .map(|r| gripsack_trace::run_span!(r, command_name).entered());

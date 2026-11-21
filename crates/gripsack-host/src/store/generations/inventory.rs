@@ -356,9 +356,17 @@ pub fn list(home: &Path) -> io::Result<GenerationList> {
 
 /// Inspect persisted metadata without acquiring durability authority for effects.
 pub fn read_manifest(home: &Path, id: GenerationId) -> io::Result<Generation> {
-    let home_directory = crate::fs::open(home)?;
-    let root = open_dir_nofollow(&home_directory, Path::new(GENERATIONS_DIR))?;
-    read_manifest_in(&root, home, id, ManifestAccess::Inspection)
+    read_manifest_at(&crate::fs::open(home)?, home, id)
+}
+
+/// Inspect through the caller's pinned home, without any recovery barrier.
+pub(crate) fn read_manifest_at(
+    home: &Dir,
+    home_path: &Path,
+    id: GenerationId,
+) -> io::Result<Generation> {
+    let root = open_dir_nofollow(home, Path::new(GENERATIONS_DIR))?;
+    read_manifest_in(&root, home_path, id, ManifestAccess::Inspection)
 }
 
 /// Validate and seal retained generation artifacts before they authorize effects.

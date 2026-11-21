@@ -69,13 +69,87 @@ def test_binary_exists_and_runs():
 
 
 def test_doctor_reports_environment(sandbox):
-    out = grip("doctor")
-    # exit code depends on the sandbox's runtime being acceptable to
-    # doctor; the report itself is the contract.
-    assert "deno:" in out.stdout
+    out = grip("doctor", cwd=sandbox, approve=False)
+    assert out.returncode == 0, out.stderr + out.stdout
+    assert re.search(r"ok\s+deno: deno \d+\.\d+\.\d+\S* \(GRIPSACK_DENO\)", out.stdout)
     assert "frontend:" in out.stdout
     assert "home:" in out.stdout
     assert str(sandbox) in out.stdout
+    assert not (sandbox / ".local/share/gripsack").exists()
+
+
+def test_doctor_only_probes_version_without_workspace_or_credentials(sandbox, monkeypatch):
+    # A working intentional wrapper sees only --version and closed stdin.
+    # Neither its environment nor its readable files include operator secrets.
+    secret = sandbox / "token"
+    secret.write_text("private\n")
+    monkeypatch.setenv("GITHUB_TOKEN", "not-for-probes")
+    wrapper = sandbox / "selected-deno"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        '[ "$#" = 1 ] && [ "$1" = --version ] || exit 41\n'
+        'test -z "${GITHUB_TOKEN-}" || exit 42\n'
+        "if read -r unexpected; then exit 43; fi\n"
+        f"if (read -r secret < '{secret}'); then exit 44; fi\n"
+        "printf 'deno 2.9.6 (release)\\n'\n"
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("GRIPSACK_DENO", str(wrapper))
+    repo = sandbox / "repo"
+    repo.mkdir()
+    (repo / "gripsack.ts").write_text('throw new Error("must never evaluate");\n')
+    report = grip("doctor", cwd=repo, approve=False)
+    assert report.returncode == 0, report.stdout + report.stderr
+    assert "deno: deno 2.9.6 (GRIPSACK_DENO)" in report.stdout
+    assert not (sandbox / ".local/share/gripsack").exists()
+
+
+@pytest.mark.parametrize(("kind", "reason"), [
+    ("missing", "No such file"),
+    ("directory", "not an executable regular file"),
+    ("nonexec", "not an executable regular file"),
+    ("nonzero", "status 17"),
+    ("slow", "Deadline"),
+    ("noisy", "StdoutLimit"),
+    ("noisy-stderr", "StderrLimit"),
+    ("wrong-version", "did not report a supported deno"),
+])
+def test_doctor_refuses_unusable_override(sandbox, monkeypatch, kind, reason):
+    override = sandbox / "selected-deno"
+    bodies = {
+        "nonexec": "exit 0",
+        "nonzero": "exit 17",
+        "slow": "while :; do :; done",
+        "noisy": "while :; do printf '%0256d\\n' 0; done",
+        "noisy-stderr": "while :; do printf '%0256d\\n' 0 >&2; done",
+        "wrong-version": "printf 'not deno\\n'",
+    }
+    if kind == "directory":
+        override.mkdir()
+    elif kind != "missing":
+        override.write_text("#!/bin/sh\n" + bodies[kind] + "\n")
+        override.chmod(0o644 if kind == "nonexec" else 0o755)
+    original = (override.stat().st_mode, override.read_bytes()) if override.is_file() else None
+    monkeypatch.setenv("GRIPSACK_DENO", str(override))
+    out = grip("doctor", cwd=sandbox, approve=False)
+    assert out.returncode != 0, out.stdout + out.stderr
+    assert f"MISS  deno: GRIPSACK_DENO {override}:" in out.stdout
+    assert reason in out.stdout
+    assert "frontend: embedded TypeScript" in out.stdout
+    assert not (sandbox / ".local/share/gripsack").exists()
+    if original is not None:
+        assert (override.stat().st_mode, override.read_bytes()) == original
+
+
+def test_doctor_neither_provisions_nor_implicitly_executes_path_deno(sandbox, monkeypatch):
+    decoy = sandbox / "deno"
+    decoy.write_text("#!/bin/sh\nprintf 'deno 2.9.6\\n'\n")
+    decoy.chmod(0o755)
+    monkeypatch.setenv("PATH", str(sandbox))
+    monkeypatch.delenv("GRIPSACK_DENO")
+    out = grip("doctor", cwd=sandbox, approve=False)
+    assert out.returncode != 0 and "MISS  deno:" in out.stdout
+    assert not (sandbox / ".local/share/gripsack").exists()
 
 
 def test_untrusted_repo_fails_closed_without_tty(sandbox):
