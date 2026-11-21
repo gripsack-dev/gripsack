@@ -17,7 +17,7 @@ jobs:
       # dependency tree (old tinyvec) breaks compiling against new
       # runner toolchains — the action's install path failed CI while
       # the audit itself was clean
-      - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2
         with:
           tool: cargo-audit
       - run: cargo audit
