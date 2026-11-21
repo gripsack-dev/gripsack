@@ -20,6 +20,7 @@ import io
 import json
 import os
 import platform
+import re
 import stat
 import subprocess
 import shutil
@@ -201,6 +202,21 @@ def pytest_runtest_makereport(item, call):
     setattr(item, f"rep_{rep.when}", rep)
 
 
+def outcome_hint(result):
+    """Keep diagnostic context, never echo fixture source, env or credentials."""
+    text = result.stderr or ""
+    if isinstance(text, bytes):
+        text = text.decode(errors="replace")
+    facts = [f"exit={result.returncode}"]
+    if match := re.search(r"\(os error ([0-9]{1,4})\)", text):
+        facts.append(f"errno={match[1]}")
+    if "captured source/policy is not approved" in text:
+        facts.append("unapproved")
+        facts.extend(f"{key}={value}" for key, value in
+                     re.findall(r"--(bundle|policy) ([0-9a-f]{64})\b", text))
+    return " ".join(facts)
+
+
 def approve_fixture(command, *, cwd=None, env=None):
     """Explicitly approve only reviewed disposable fixtures, never real HOME.
 
@@ -245,23 +261,29 @@ def approve_fixture(command, *, cwd=None, env=None):
     if inspect.returncode:
         # Invalid config/source/runtime cases must reach the tested command's
         # actual diagnostic, not turn setup into a successful authorization.
+        print(f"fixture trust inspect: {outcome_hint(inspect)}; no approval granted",
+              file=sys.stderr)
         return
     inspected = json.loads(inspect.stdout)
     assert Path(inspected["repository"]).is_relative_to(_fixture_root)
+    reviewed = f"bundle={inspected['bundle_digest']} policy={inspected['policy_digest']}"
     if inspected["approval"]["status"]["status"] == "approved":
-        return
+        return reviewed
     added = subprocess.run(
         [str(command[0]), "trust", "add", specification,
          "--bundle", inspected["bundle_digest"], "--policy", inspected["policy_digest"]],
         cwd=cwd, env=environment, capture_output=True, text=True, timeout=120,
     )
-    assert added.returncode == 0, added.stdout + added.stderr
+    assert added.returncode == 0, f"fixture trust add: {outcome_hint(added)}; inspected {reviewed}"
+    return reviewed
 
 
 def run_grip(command, *, cwd=None, env=None, approve=True, **options):
-    if approve:
-        approve_fixture(command, cwd=cwd, env=env)
-    return subprocess.run(command, cwd=cwd, env=env, **options)
+    reviewed = approve_fixture(command, cwd=cwd, env=env) if approve else None
+    result = subprocess.run(command, cwd=cwd, env=env, **options)
+    if reviewed and result.returncode:
+        print(f"fixture command: {outcome_hint(result)}; inspected {reviewed}", file=sys.stderr)
+    return result
 
 
 def start_grip(command, *, cwd=None, env=None, approve=True, **options):
