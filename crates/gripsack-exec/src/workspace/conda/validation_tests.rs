@@ -578,7 +578,7 @@ fn cold_frozen_lifecycle_refusal_precedes_native_staging() {
 
 #[test]
 fn both_update_modes_require_archive_admission_and_accept_independent_clean_control() {
-    use super::super::admit_update_archives;
+    use super::super::{admit_update_archives, archive_object};
     for conda in [false, true] {
         for mode in [crate::UpdateMode::Check, crate::UpdateMode::Publish] {
             for script in [false, true] {
@@ -607,8 +607,15 @@ fn both_update_modes_require_archive_admission_and_accept_independent_clean_cont
                 if script {
                     assert!(result.is_err());
                 } else {
-                    let objects = result.unwrap();
-                    assert_eq!(objects.is_empty(), mode == crate::UpdateMode::Check);
+                    result.unwrap();
+                    if mode == crate::UpdateMode::Publish {
+                        let digest = &fixture.locked.packages[0].sha256;
+                        let retained = archive_object(&ctx.home, digest).join("archive");
+                        assert_eq!(
+                            fs::read(retained).unwrap(),
+                            fs::read(&fixture.archives[digest]).unwrap()
+                        );
+                    }
                 }
                 if mode == crate::UpdateMode::Check {
                     assert!(
