@@ -5,8 +5,8 @@ description: Diagnose a failing gripsack run from its structured run log — run
 
 # Debugging a gripsack run
 
-Every `grip` invocation writes a structured log an agent can read end to
-end. You never need to guess what the engine did — it is written down.
+Logged `grip` commands emit structured engine events. Parsing exits and a
+failure to initialize tracing can leave no log.
 
 ## 1. Find the run
 
@@ -16,9 +16,17 @@ end. You never need to guess what the engine did — it is written down.
 ```
 
 (`$GRIPSACK_HOME` if set, else `$XDG_DATA_HOME/gripsack`, else
-`~/.local/share/gripsack`.) If the user pastes an error, the run id is
-in the console output — every event carries `run_id`. Start at
-`latest` unless they name one.
+`~/.local/share/gripsack`.) Start with the named run file if available:
+`latest` points to the most recently initialized log, not the most recent
+failure. Another command can replace it.
+
+`runs/` is owner-only (0700), new logs are 0600. At start and normal exit,
+Gripsack keeps the newest 100 completed logs by start time, plus active runs
+and `latest` if outside that set. A crash releases the writer lock; the next
+pass can reclaim the log. Preserve a needed log privately outside `runs/`
+before starting more commands. Pre-0.57 files remain behind the tightened
+directory without changes to their own modes or contents. Run-log pruning
+does not prune task-invocation receipts.
 
 ## 2. Read the JSONL
 
@@ -40,7 +48,8 @@ cause", filter events containing the same recorded span.
 Useful filters:
 
 ```bash
-L=$(readlink ~/.local/share/gripsack/runs/latest)
+home=${GRIPSACK_HOME:-"${XDG_DATA_HOME:-"$HOME/.local/share"}/gripsack"}
+L="$home/runs/latest"
 jq -c 'select(.level == "ERROR")' "$L"          # every error
 jq -c 'select(.fields.code != null)' "$L"       # every coded diagnostic
 jq -c 'select(.spans != null) | {spans, fields}' "$L"  # recorded operation ancestry

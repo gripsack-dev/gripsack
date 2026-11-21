@@ -8,6 +8,7 @@ import pty
 import re
 import select
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -16,7 +17,7 @@ import time
 
 import pytest
 
-from conftest import GRIP, grip, start_grip, make_tarball
+from conftest import GRIP, grip, run_grip, start_grip, make_tarball
 from test_workspace_checks import command
 
 
@@ -384,6 +385,145 @@ def test_task_log_preserves_lines_without_replaying_terminal_controls(sandbox):
     assert "second\n" in log.stdout
     assert "\x1b" not in log.stdout
     assert "\\xff\n" in log.stdout
+    assert "truncated" not in log.stderr
+    status = grip("task", "status", report["invocation"], cwd=repo)
+    assert status.returncode == 0 and "truncated" not in status.stderr
+
+
+def test_task_log_reports_truncation_without_changing_stream_or_json(sandbox):
+    repo = sandbox / "graph"
+    # Include bytes that must pass through raw task stdout. They follow the
+    # saved-log boundary; neither a notice nor an ellipsis belongs in the log.
+    program = r'import sys; sys.stdout.buffer.write((b"x"*1023+b"\n")*1024+b"\x00\xff"); sys.exit(23)'
+    workspace(repo, [task("root", f"exec {shlex.quote(sys.executable)} -c {shlex.quote(program)}")])
+    ran = run_grip([str(GRIP.resolve()), "task", "run", "root"], cwd=repo,
+                   capture_output=True, timeout=120)
+    prefix = (b"x" * 1023 + b"\n") * 1024
+    assert ran.returncode == 23, ran.stderr
+    assert ran.stdout == prefix + b"\x00\xff"
+    invocation = re.search(rb"invocation ([0-9a-f]{64})", ran.stderr).group(1).decode()
+
+    notice = "saved task log was truncated"
+    log = grip("task", "log", invocation, cwd=sandbox, approve=False)
+    assert log.returncode == 0 and log.stdout.encode() == prefix
+    assert notice in log.stderr
+    status = grip("task", "status", invocation, cwd=sandbox, approve=False)
+    assert status.returncode == 1 and status.stdout == "" and notice in status.stderr
+    status = grip("task", "status", invocation, "--json", cwd=sandbox, approve=False)
+    receipt = sandbox / ".local/share/gripsack/task-invocations" / f"{invocation}.json"
+    assert status.returncode == 1 and notice not in status.stderr
+    assert status.stdout.encode() == receipt.read_bytes() + b"\n"
+    assert json.loads(status.stdout)["logs_truncated"] is True
+    log = grip("task", "log", invocation, "--json", cwd=sandbox, approve=False)
+    assert log.returncode == 0 and notice not in log.stderr
+    assert json.loads(log.stdout) == {"invocation": invocation, "log": prefix.decode(), "truncated": True}
+
+
+def test_task_receipts_need_neither_checkout_nor_working_directory(sandbox):
+    repo = sandbox / "graph"
+    workspace(repo, [task("root", "printf 'offline receipt'")])
+    ran, report = invoke(repo)
+    assert ran.returncode == 0, ran.stderr
+    invocation = report["invocation"]
+    shutil.rmtree(repo)
+    for operation, expected in [
+        ("status", report),
+        ("log", {"invocation": invocation, "log": "offline receipt", "truncated": False}),
+    ]:
+        args = ["task", operation, invocation, "--json"]
+        for obsolete in [str(repo), repo.as_uri()]:
+            result = grip(*args, "--repo", obsolete, cwd=sandbox, approve=False)
+            assert result.returncode == 0, result.stderr
+            assert json.loads(result.stdout) == expected
+        # Delete the child's *current* directory, not merely the checkout.
+        # Use exec so there is no shell that might silently change directory.
+        gone = sandbox / "unlinked"
+        gone.mkdir()
+        result = subprocess.run(
+            [sys.executable, "-c", "import os,sys; os.rmdir(sys.argv[1]); os.execv(sys.argv[2],sys.argv[2:])",
+             str(gone), str(GRIP.resolve()), *args],
+            cwd=gone, text=True, capture_output=True, timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) == expected
+    assert not (sandbox / ".local/share/gripsack/repos").exists()
+    for operation in [["list"], ["plan", "root"], ["run", "root"]]:
+        result = grip("task", *operation, "--repo", str(repo), cwd=sandbox, approve=False)
+        assert result.returncode != 0
+        assert ("no repo at" if operation[0] == "run" else "existing local --repo") in result.stderr
+
+
+def test_task_history_budget_recovers_after_archiving_a_terminal_pair(sandbox):
+    repo, marker, release = sandbox / "graph", sandbox / "started", sandbox / "release"
+    effects = sandbox / "admissions"
+    workspace(repo, [
+        task("quick", f"echo admitted >> {shlex.quote(str(effects))}; printf 'retained evidence'"),
+        task("active", f"echo ready > {shlex.quote(str(marker))}; "
+             f"while test ! -e {shlex.quote(str(release))}; do sleep 0.05; done"),
+    ])
+    completed, old = invoke(repo, "quick")
+    assert completed.returncode == 0, completed.stderr
+    history = sandbox / ".local/share/gripsack/task-invocations"
+    active = start_grip([str(GRIP.resolve()), "task", "run", "active", "--json"], cwd=repo,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        wait_file(marker, active)
+        old_id = old["invocation"]
+        [live] = [p.stem for p in history.glob("*.json") if p.stem != old_id]
+        status = grip("task", "status", live, "--json", cwd=sandbox, approve=False)
+        unknown = json.loads(status.stdout)
+        assert status.returncode == 70 and unknown["status"] == "indeterminate"
+        assert unknown["root_retained"] is True
+        live_pair = {p: p.read_bytes() for p in history.glob(f"{live}.*")}
+        assert set(live_pair) == {history / f"{live}.json", history / f"{live}.log"}
+
+        orphan = history / ("f" * 64 + ".log")
+        orphan.write_bytes(b"unpaired evidence")
+        for i in range(10_000 - sum(1 for _ in history.iterdir())):
+            (history / f"unrecognized-{i}").touch()
+        full = {p.name for p in history.iterdir()}
+        refused = grip("task", "run", "quick", "--json", cwd=repo)
+        assert refused.returncode != 0 and effects.read_text() == "admitted\n"
+        assert "task history budget exhausted" in refused.stderr
+        assert "tasks.html#archiving-task-history" in refused.stderr
+        assert {p.name for p in history.iterdir()} == full
+
+        # The documented operator procedure: select one exact terminal, root-free
+        # receipt using the CLI, check its log, move the original pair together.
+        status = grip("task", "status", old_id, "--json", cwd=sandbox, approve=False)
+        receipt = json.loads(status.stdout)
+        assert status.returncode == 0 and receipt == old
+        assert receipt["status"] == "succeeded" and receipt["root_retained"] is False
+        log = grip("task", "log", old_id, cwd=sandbox, approve=False)
+        assert log.returncode == 0 and log.stdout == "retained evidence"
+        archive = history.parent / "task-archive"
+        archive.mkdir(mode=0o700)
+        for suffix in ["json", "log"]:
+            path = history / f"{old_id}.{suffix}"
+            assert path.is_file() and not path.is_symlink()
+            path.rename(archive / path.name)
+        assert json.loads((archive / f"{old_id}.json").read_bytes()) == old
+        assert (archive / f"{old_id}.log").read_bytes() == b"retained evidence"
+
+        ran, fresh = invoke(repo, "quick")
+        assert ran.returncode == 0, ran.stderr
+        assert fresh["invocation"] not in {live, old_id} and fresh["attempt"] != old["attempt"]
+        assert effects.read_text() == "admitted\nadmitted\n"
+        assert {p.name for p in history.iterdir()} == (
+            full - {f"{old_id}.json", f"{old_id}.log"}
+        ) | {f"{fresh['invocation']}.json", f"{fresh['invocation']}.log"}
+        assert orphan.read_bytes() == b"unpaired evidence"
+        assert all(p.read_bytes() == content for p, content in live_pair.items())
+        release.touch()
+        stdout, stderr = active.communicate(timeout=30)
+        assert active.returncode == 0, stderr
+        finished = json.loads(stdout)
+        assert finished["invocation"] == live and finished["root_retained"] is False
+    finally:
+        release.touch()
+        if active.poll() is None:
+            active.terminate()
+            active.communicate(timeout=10)
 
 
 def test_task_steps_and_checks_are_labelled_while_partial_stdout_streams(sandbox):

@@ -8,6 +8,9 @@ repository.workspace = true
 
 [dependencies]
 gripsack-host.workspace = true
+rustix = { version = "1", features = ["fs", "process"] }
+serde.workspace = true
+serde_json.workspace = true
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter", "ansi"] }
 

@@ -1353,6 +1353,9 @@ name = "gripsack-trace"
 version = "0.56.1"
 dependencies = [
  "gripsack-host",
+ "rustix",
+ "serde",
+ "serde_json",
  "tempfile",
  "tracing",
  "tracing-subscriber",

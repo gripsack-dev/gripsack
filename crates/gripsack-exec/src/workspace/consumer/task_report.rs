@@ -180,7 +180,9 @@ impl TaskReport {
                     count += 1;
                     if count + 2 > MAX_REPORT_ENTRIES {
                         return Err(failure(
-                            "task history budget exhausted; archive completed receipts explicitly",
+                            "task history budget exhausted: a new invocation needs two free entries in task-invocations; \
+                             archive a completed .json/.log pair with root_retained=false, never an indeterminate invocation; \
+                             see https://gripsack.dev/docs/tasks.html#archiving-task-history",
                         ));
                     }
                 }

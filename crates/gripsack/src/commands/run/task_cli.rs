@@ -7,6 +7,7 @@ use gripsack_host::process::terminal::{display, write_output};
 
 #[derive(Debug, clap::Args)]
 pub struct TaskArgs {
+    /// Workspace for list, plan and run. Status and log ignore this option.
     #[arg(long, global = true)]
     pub repo: Option<String>,
     /// One total deadline, including realization, prerequisites and verification.
@@ -37,61 +38,61 @@ pub enum TaskCommand {
     Log { invocation: String },
 }
 
-impl TaskArgs {
-    /// Inspection must not invoke the generic remote clone/pull resolver.
-    pub fn resolve_repository(&mut self) -> Result<PathBuf, ExitCode> {
-        let specification = self.repo.take();
-        if matches!(self.command, TaskCommand::Run { .. }) {
-            return super::super::resolve_repo(specification.as_deref());
+/// Listing and planning must not invoke the remote clone/pull resolver.
+fn inspection_repository(specification: Option<String>) -> Result<PathBuf, ExitCode> {
+    match specification {
+        Some(path) if Path::new(&path).is_dir() => Ok(PathBuf::from(path)),
+        Some(_) => {
+            eprintln!(
+                "grip: task inspection accepts only an existing local --repo; it never clones or updates a checkout"
+            );
+            Err(ExitCode::from(2))
         }
-        match specification {
-            Some(path) if Path::new(&path).is_dir() => Ok(PathBuf::from(path)),
-            Some(_) => {
-                eprintln!(
-                    "grip: task inspection accepts only an existing local --repo; it never clones or updates a checkout"
-                );
-                Err(ExitCode::from(2))
-            }
-            None => std::env::current_dir().map_err(|error| {
-                eprintln!("grip: {}", tame(error.to_string()));
-                ExitCode::FAILURE
-            }),
-        }
+        None => std::env::current_dir().map_err(|error| {
+            eprintln!("grip: {}", tame(error.to_string()));
+            ExitCode::FAILURE
+        }),
     }
 }
 
-pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
+pub fn task(args: TaskArgs, palette: Palette) -> ExitCode {
     match &args.command {
         TaskCommand::Run {
             name,
             skip_busy,
             closed_stdin,
-        } => inner(
-            repo,
-            palette,
-            NativeRequest::Task {
-                name,
-                policy: TaskRunPolicy {
-                    on_busy: if *skip_busy {
-                        BusyPolicy::Skip
-                    } else {
-                        BusyPolicy::Fail
+        } => {
+            let repo = match super::super::resolve_repo(args.repo.as_deref()) {
+                Ok(repo) => repo,
+                Err(code) => return code,
+            };
+            inner(
+                &repo,
+                palette,
+                NativeRequest::Task {
+                    name,
+                    policy: TaskRunPolicy {
+                        on_busy: if *skip_busy {
+                            BusyPolicy::Skip
+                        } else {
+                            BusyPolicy::Fail
+                        },
+                        stdin: if *closed_stdin {
+                            TaskStdin::Closed
+                        } else {
+                            TaskStdin::Inherit
+                        },
+                        output: if args.json {
+                            TaskOutputMode::Capture
+                        } else {
+                            TaskOutputMode::Stream
+                        },
                     },
-                    stdin: if *closed_stdin {
-                        TaskStdin::Closed
-                    } else {
-                        TaskStdin::Inherit
-                    },
-                    output: if args.json {
-                        TaskOutputMode::Capture
-                    } else {
-                        TaskOutputMode::Stream
-                    },
+                    json: args.json,
                 },
-                json: args.json,
-            },
-            args.timeout_seconds,
-        ),
+                args.timeout_seconds,
+            )
+        }
         TaskCommand::Status { invocation } | TaskCommand::Log { invocation } => {
             let home = gripsack_host::store::gripsack_home();
             let id = match InvocationId::parse(invocation) {
@@ -104,7 +105,7 @@ pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
             let report = match gripsack_exec::read_task_report(&home, &id) {
                 Ok(report) => report,
                 Err(error) => {
-                    return report_execution_error(error, DiagnosticSink::terminal(palette, repo));
+                    return report_execution_error(error, DiagnosticSink::terminal(palette, &home));
                 }
             };
             if matches!(args.command, TaskCommand::Log { .. }) {
@@ -115,16 +116,18 @@ pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
                                 "{}",
                                 serde_json::json!({"invocation":id,"log":String::from_utf8_lossy(&bytes),"truncated":report.logs_truncated})
                             );
-                        } else if let Err(error) =
-                            write_output(&mut std::io::stdout().lock(), &bytes)
-                        {
-                            eprintln!("grip: {}", tame(error.to_string()));
-                            return ExitCode::FAILURE;
+                        } else {
+                            let written = write_output(&mut std::io::stdout().lock(), &bytes);
+                            if let Err(error) = written {
+                                eprintln!("grip: {}", tame(error.to_string()));
+                                return ExitCode::FAILURE;
+                            }
+                            warn_if_truncated(&report);
                         }
                         ExitCode::SUCCESS
                     }
                     Err(error) => {
-                        report_execution_error(error, DiagnosticSink::terminal(palette, repo))
+                        report_execution_error(error, DiagnosticSink::terminal(palette, &home))
                     }
                 }
             } else {
@@ -133,8 +136,12 @@ pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
             }
         }
         TaskCommand::List | TaskCommand::Plan { .. } => {
-            let mut sink = DiagnosticSink::terminal(palette, repo);
-            let evaluated = match eval_repo(repo, None, &mut sink) {
+            let repo = match inspection_repository(args.repo) {
+                Ok(repo) => repo,
+                Err(code) => return code,
+            };
+            let mut sink = DiagnosticSink::terminal(palette, &repo);
+            let evaluated = match eval_repo(&repo, None, &mut sink) {
                 Ok(value) => value,
                 Err(code) => return code,
             };
@@ -187,6 +194,12 @@ pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
     }
 }
 
+fn warn_if_truncated(report: &gripsack_exec::TaskReport) {
+    if report.logs_truncated {
+        eprintln!("grip: saved task log was truncated; only retained output is available");
+    }
+}
+
 fn print_report(report: &gripsack_exec::TaskReport, json: bool) {
     if json {
         println!(
@@ -203,6 +216,7 @@ fn print_report(report: &gripsack_exec::TaskReport, json: bool) {
         if let Some(error) = &report.error {
             eprintln!("grip: {}", display(error));
         }
+        warn_if_truncated(report);
         if report.root_retained {
             eprintln!(
                 "grip: unconfirmed cleanup retains process roots and mutation exclusion; no automatic retry"
