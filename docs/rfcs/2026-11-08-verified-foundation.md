@@ -25,7 +25,7 @@ debug-only legacy recovery route left at §24.3(9). Debug and release builds
 now drive the same recovery machine. Historical journal records keep their
 meaning; this retirement does not complete F3 or prove the directory premise.
 
-**F3 leaf P1 (unreleased, [#365](https://github.com/gripsack-dev/gripsack/issues/365)).**
+**0.58 implementation note: F3 leaf P1 ([#365](https://github.com/gripsack-dev/gripsack/issues/365)).**
 At the cut where the translated `journal_run::run_step` issues `Mutate`,
 [`mutation_cut_after_crash`](../../proofs/Protocol/Leaf.lean) identifies the
 same run marker, destination entry and prior in the visible image after a

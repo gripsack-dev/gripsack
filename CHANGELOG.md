@@ -6,6 +6,8 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+## [0.58.0] — Durable journal evidence
+
 ### Verification
 
 - Before a journaled leaf mutation, the Lean proof now checks what recovery
