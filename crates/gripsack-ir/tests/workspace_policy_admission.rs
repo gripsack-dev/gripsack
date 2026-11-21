@@ -22,6 +22,70 @@ fn schema() -> jsonschema::Validator {
     .unwrap()
 }
 
+#[test]
+fn tree_filters_are_segment_prefixes_and_only_artifacts_expand_tokens() {
+    let validator = schema();
+    let tokens = "v{version}-{version.bare}/{os}/{arch}/{arch.go}/{arch.x64}/{target}/{system}";
+    for origin in ["repo_tree", "tree", "repo_directory"] {
+        let (pointer, line) = if origin == "repo_directory" {
+            ("/workspace/inputs/0/origin", 7)
+        } else {
+            ("/workspace/outputs/2/files/0/source", 5)
+        };
+        for field in ["include", "exclude"] {
+            for prefix in [
+                "bin",
+                "bin/debug",
+                tokens,
+                "bin/*",
+                "bin/?",
+                "bin/[ab]",
+                "bin/{a,b}",
+                "bin/{unknown}",
+                "bin/{version",
+                "bin/file\x7f",
+            ] {
+                let mut doc = document(gripsack_ir::IR_VERSION);
+                let mut selection = json!({"kind":origin,"include":["bin"],"exclude":[]});
+                selection[field] = json!([prefix]);
+                if origin == "tree" {
+                    selection["output"] = json!("tool");
+                } else {
+                    selection["path"] = json!(".");
+                }
+                if origin == "repo_directory" {
+                    doc["workspace"]["inputs"] = json!([{
+                        "name":"assets","span":{"file":"gripsack.ts","line":line},"origin":selection
+                    }]);
+                } else {
+                    *doc.pointer_mut(pointer).unwrap() = selection;
+                }
+                let valid =
+                    matches!(prefix, "bin" | "bin/debug") || (prefix == tokens && origin == "tree");
+                let case = format!("{origin}.{field}: {prefix}");
+                assert_eq!(validator.is_valid(&doc), valid, "{case}");
+                let result = check(&doc.to_string());
+                if valid {
+                    result.unwrap();
+                } else {
+                    let diagnostics = result.unwrap_err();
+                    assert!(
+                        diagnostics.iter().any(|d| {
+                            d.code == gripsack_ir::codes::INVALID_WORKSPACE_VALUE
+                                && d.labels.iter().any(|l| {
+                                    l.span
+                                        .as_ref()
+                                        .is_some_and(|s| s.file == "gripsack.ts" && s.line == line)
+                                })
+                        }),
+                        "{case}: {diagnostics:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn add_authority(doc: &mut Value, authority: &str) {
     let outputs = &mut doc["workspace"]["outputs"];
     match authority {

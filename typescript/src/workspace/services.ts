@@ -1,7 +1,7 @@
 /** Pure managed-service declarations; Docker lifecycle and trust remain core-owned. */
 import { rejectUnknownFields } from "../fields.ts";
 import type { ServiceNode, ServiceSpec, WorkspaceOutput } from "./ir.ts";
-import { asName, asNames, asRecord, freezeDeep, nodeSpan } from "./validate.ts";
+import { asName, asRecord, freezeDeep, nodeSpan } from "./validate.ts";
 import { asInstallPrefix } from "./target.ts";
 
 const MAX_BINDINGS = 128;
@@ -10,9 +10,18 @@ const MAX_VALUE_BYTES = 65536;
 const utf8 = new TextEncoder();
 
 export function serviceNames(value: unknown, where: string): string[] {
-  const names = asNames(value, where) ?? [];
-  if (names.length > MAX_BINDINGS) throw new Error(`${where} exceeds ${MAX_BINDINGS} entries`);
-  return names;
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_BINDINGS) throw new Error(`${where} must be an array of at most ${MAX_BINDINGS} entries`);
+  const names = new Set<string>();
+  for (const entry of value) {
+    const name = asName(entry, where);
+    if (/\p{Cc}/u.test(name) || utf8.encode(name).length > MAX_VALUE_BYTES) {
+      throw new Error(`${where}: service names must be control-free and at most ${MAX_VALUE_BYTES} bytes`);
+    }
+    if (names.has(name)) throw new Error(`${where}: duplicate service name`);
+    names.add(name);
+  }
+  return [...names];
 }
 
 function positiveInteger(value: unknown, maximum: number, where: string): void {
@@ -20,10 +29,18 @@ function positiveInteger(value: unknown, maximum: number, where: string): void {
     throw new Error(`${where} must be an integer in 1..${maximum}`);
   }
 }
-function strings(value: unknown, where: string): asserts value is string[] {
-  if (!Array.isArray(value) || value.length > MAX_ARGUMENTS || value.some((part) => typeof part !== "string" || part.includes("\0") || utf8.encode(part).length > MAX_VALUE_BYTES)) {
-    throw new Error(`${where} must have at most ${MAX_ARGUMENTS} NUL-free arguments of at most ${MAX_VALUE_BYTES} bytes each`);
+function argv(value: unknown, where: string, required: boolean): void {
+  if (!Array.isArray(value) || value.length > MAX_ARGUMENTS) throw new Error(`${where} must be an array of at most ${MAX_ARGUMENTS} arguments`);
+  if ((required || value.length > 0) && !value[0]) throw new Error(`${where} must name an executable`);
+  for (const part of value) {
+    if (typeof part !== "string" || part.includes("\0") || utf8.encode(part).length > MAX_VALUE_BYTES) {
+      throw new Error(`${where}: arguments must be NUL-free and at most ${MAX_VALUE_BYTES} bytes`);
+    }
   }
+}
+function environmentName(value: unknown): boolean {
+  // An admitted name is ASCII, so its length is also its UTF-8 byte count.
+  return typeof value === "string" && value.length <= MAX_VALUE_BYTES && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 function loopback(value: unknown): boolean {
   if (value === "::1") return true;
@@ -74,24 +91,23 @@ export function serviceProperties(spec: ServiceSpec, where: string): Omit<Servic
   asRecord(env, `${where}: env`);
   if (Object.keys(env).length > MAX_BINDINGS) throw new Error(`${where}: too many environment entries`);
   for (const [name, binding] of Object.entries(env)) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`${where}: invalid environment name`);
+    if (!environmentName(name)) throw new Error(`${where}: invalid environment name`);
     const record = asRecord(binding, `${where}: env.${name}`);
     if (binding.kind === "literal") {
       rejectUnknownFields(`${where}: env.${name}`, record, ["kind", "value"]);
       if (typeof binding.value !== "string" || binding.value.includes("\0") || utf8.encode(binding.value).length > MAX_VALUE_BYTES) throw new Error(`${where}: environment literal must be NUL-free and at most ${MAX_VALUE_BYTES} bytes`);
     } else if (binding.kind === "inherited") {
       rejectUnknownFields(`${where}: env.${name}`, record, ["kind", "name"]);
-      if (typeof binding.name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(binding.name)) throw new Error(`${where}: invalid inherited environment name`);
+      if (!environmentName(binding.name)) throw new Error(`${where}: invalid inherited environment name`);
     } else throw new Error(`${where}: environment binding must be literal or inherited`);
   }
   const command = spec.command === undefined ? [] : spec.command;
-  strings(command, `${where}: command`);
+  argv(command, `${where}: command`, false);
   const health = spec.health;
   const healthRecord = asRecord(health, `${where}: health`);
   rejectUnknownFields(`${where}: health`, healthRecord, ["kind", "argv", "interval_seconds", "timeout_seconds", "retries"]);
   if (health.kind !== "command") throw new Error(`${where}: health kind must be command`);
-  strings(health.argv, `${where}: health argv`);
-  if (!health.argv.length || !health.argv[0]) throw new Error(`${where}: health argv must name an executable`);
+  argv(health.argv, `${where}: health argv`, true);
   for (const field of ["interval_seconds", "timeout_seconds", "retries"] as const) {
     positiveInteger(health[field], field === "retries" ? 100 : 3600, `${where}: health.${field}`);
   }

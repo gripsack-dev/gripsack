@@ -59,8 +59,8 @@ export function artifactFile(output: string, selector: string): WorkspaceSource 
 export function artifactTree(output: string, selection: { include: readonly string[]; exclude?: readonly string[] }): WorkspaceSource {
   return freezeDeep({
     kind: "tree", output: asName(output, "artifactTree(output)"),
-    include: asPatterns(selection.include, "artifactTree(include)", true),
-    ...(selection.exclude ? { exclude: asPatterns(selection.exclude, "artifactTree(exclude)", false) } : {}),
+    include: asPatterns(selection.include, "artifactTree(include)", true, true),
+    ...(selection.exclude ? { exclude: asPatterns(selection.exclude, "artifactTree(exclude)", false, true) } : {}),
   });
 }
 

@@ -290,9 +290,9 @@ export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
   return makeOutput(node);
 }
 
-/** An inert schedule declaration over local daily/weekly time —
- *  registration is E3's and is rejected with an explicit diagnostic
- *  until then; it never activates anything by itself. */
+/** Declare a task schedule in local daily or weekly time. Declaration alone
+ *  registers nothing: attach its name to a profile's `schedules` and apply
+ *  that profile to register the systemd user timer. */
 export function schedule(name: string, spec: ScheduleSpec): WorkspaceOutput<ScheduleNode> {
   const what = `schedule("${name}")`;
   asName(name, `${what}: name`);
@@ -397,6 +397,13 @@ export function hook(name: string, spec: HookSpec): WorkspaceOutput<HookNode> {
   return makeOutput(node);
 }
 
+function earlierSpan(left: Span, right: Span): boolean {
+  if (left.file !== right.file) return left.file < right.file;
+  if (left.line !== right.line) return left.line < right.line;
+  // A line-only location precedes any explicit (one-based) column.
+  return (left.col ?? 0) < (right.col ?? 0);
+}
+
 /** Collect returned outputs into a workspace value. Falsy entries drop out,
  *  so ordinary TypeScript conditions compose outputs. Duplicate names report
  *  both declaration spans. */
@@ -444,8 +451,7 @@ export function workspace(spec: WorkspaceSpec): WorkspaceValue {
     for (const lock of output.mutation_locks ?? []) {
       const key = lockKey(lock);
       const previous = locks.get(key);
-      if (!previous || `${lock.span.file}:${lock.span.line}:${lock.span.col ?? 0}` <
-        `${previous.span.file}:${previous.span.line}:${previous.span.col ?? 0}`) locks.set(key, lock);
+      if (!previous || earlierSpan(lock.span, previous.span)) locks.set(key, lock);
     }
   }
   const mutation_locks = [...locks].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([, lock]) => lock);

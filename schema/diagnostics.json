@@ -5,7 +5,7 @@
     {"rust": "VERSION", "code": "E100", "description": "Unsupported IR version"},
     {"rust": "BAD_DESTINATION", "code": "E102", "description": "Invalid destination path"},
     {"rust": "MISSING_SOURCE", "code": "E110", "description": "Missing source file"},
-    {"rust": "DUPLICATE_DESTINATION", "code": "E111", "description": "Conflicting physical destination"},
+    {"rust": "DUPLICATE_DESTINATION", "code": "E111", "frontend": "duplicateDestination", "description": "Conflicting physical destination"},
     {"rust": "PROBE_UNSTABLE", "code": "E112", "description": "Probe binding failed to reach a fixpoint"},
     {"rust": "PROBE_UNSUPPORTED", "code": "E113", "description": "Unsupported frontend probe request"},
     {"rust": "DESTINATION_ALIAS", "code": "E119", "description": "Aliased physical destination"},
