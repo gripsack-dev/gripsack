@@ -27,6 +27,10 @@ User-visible changes per release. Design decisions live in the
   saying the workspace is ready. It does not fetch Deno, materialize the
   editor SDK or create a run log to make that diagnosis.
   [#362](https://github.com/gripsack-dev/gripsack/issues/362), [#382](https://github.com/gripsack-dev/gripsack/issues/382)
+- `grip update --check` reports every selected output even when a captured
+  source is missing. The failed row makes the survey incomplete (exit 2)
+  without hiding healthy siblings or changing the lock.
+  [#377](https://github.com/gripsack-dev/gripsack/issues/377)
 
 ## [0.58.0] — Durable journal evidence
 

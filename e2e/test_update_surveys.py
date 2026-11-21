@@ -5,6 +5,7 @@ explicit paths. Native check/apply preflight never runs a package's contents.
 """
 import io
 import json
+import re
 import tarfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -94,12 +95,12 @@ def test_survey_keeps_all_results_and_error_dominates_changes(sandbox, failed_po
     make_tarball(changing, {"payload": b"two"})
     result = grip("update", "--check", cwd=repo)
     assert result.returncode == 2, result.stdout + result.stderr
-    rows = [line.strip().split(maxsplit=1) for line in result.stdout.splitlines()
-            if line.startswith("  ") and line.strip()]
+    # A failed row can span several lines: its source location is not an output.
+    rows = re.findall(r"^  (.+?) (unchanged|would bump|skipped|failed:)(?: |$)",
+                      result.stdout, re.MULTILINE)
     expected = {failed: "failed:", stable: "unchanged", moving: "would bump",
                 **{name + "-files": "skipped" for name in paths}}
-    assert [name for name, _ in rows] == sorted(expected)
-    assert all(status.startswith(expected[name]) for name, status in rows)
+    assert rows == sorted(expected.items())
     assert "survey incomplete: 1 unchanged, 1 would change, 3 skipped, 1 failed" in result.stdout
     assert survey_snapshot(repo, sandbox / ".local/share/gripsack") == before
     assert not any((sandbox / f".{name}").exists() for name in paths)
