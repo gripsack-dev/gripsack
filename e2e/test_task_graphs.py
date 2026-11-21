@@ -17,7 +17,7 @@ import time
 
 import pytest
 
-from conftest import GRIP, grip, run_grip, start_grip, make_tarball
+from conftest import GRIP, grip, run_grip, start_grip, make_tarball, outcome_hint
 from test_workspace_checks import command
 
 
@@ -39,7 +39,10 @@ def task(name, script, *, deps=(), env=None, checks=(), locks=False):
 
 def invoke(repo, name="root", *flags):
     result = grip("task", "run", name, "--json", *flags, cwd=repo)
-    return result, json.loads(result.stdout)
+    try:
+        return result, json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        pytest.fail(f"task report is not JSON at offset {error.pos}: {outcome_hint(result)}")
 
 
 def signal_command(termination):
