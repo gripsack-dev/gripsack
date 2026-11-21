@@ -22,24 +22,23 @@ Modes:
              Idempotent.
 
 Coupled pins move as ONE proposal each:
-  rust    Dockerfile rust:alpine digest + FUZZ_TOOLCHAIN + the native
-          dtolnay/rust-toolchain pins (ci.yml). The
-          image's rustc must equal the native pin — proven by digest
-          equality with the rust:<version>-alpine tag (identical
-          manifests are identical images), not by running the image.
+  rust    Dockerfile rust:alpine digest, GNU_RUST_IMAGE, FUZZ_TOOLCHAIN
+          and the Conda helper's matching builder/compiler pins. The
+          alpine digest must match the version-specific alpine manifest.
+          The proof-extraction compiler has its own independent pin.
   deno    Dockerfile (image tag/digest, DENO_VERSION, DENO_SHA256) and
           host.rs DENO_RELEASE (version and Linux x86_64 asset checksum).
           There is no hosted Deno toolchain pin.
   tools   cargo-auditable (version + both musl tarball sha256s), tla2tools
-          (version + jar sha256), uv (version + both wheel hashes),
-          node 22 (the setup-node pin in ci.yml).
+          (version + jar sha256), uv (version + Linux x86_64 wheel hash),
+          node (pinned major + Linux x64 distribution checksum).
   images  other digest-pinned FROM lines (eclipse-temurin, python) —
           tag-scoped digests coupled to nothing else.
 
 Metadata sources (official, read-only): Docker Hub registry API
 (manifest digests), static.rust-lang.org stable channel, GitHub
 releases API (latest tags + asset sha256 digests), deno release
-.zip.sha256sum sidecars, PyPI JSON (uv wheels), nodejs.org dist index.
+.zip.sha256sum sidecars, PyPI JSON (uv wheels), nodejs.org dist index and SHASUMS256.txt.
 
 Deliberately unsupported (fail closed, the issue asks for manual work):
 a checksum/digest upstream does not publish at any of those sources
@@ -60,6 +59,7 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -74,9 +74,9 @@ MANIFEST_ACCEPT = ", ".join([
     "application/vnd.docker.distribution.manifest.v2+json",
 ])
 
-WORKFLOW_FILES = [
-    ".github/workflows/ci.yml",
-]
+HELPER_PACKAGE = "tools/conda-helper/package.py"
+VERSION = r"[0-9]+\.[0-9]+\.[0-9]+"
+SHA256 = r"[0-9a-f]{64}"
 HOST_RS = "crates/gripsack-fetch/src/host.rs"
 
 # deno asset name per host.rs AssetTarget slot (glibc builds for the
@@ -134,7 +134,8 @@ def docker_hub_digest(repository: str, tag: str) -> str | None:
             headers={"Accept": MANIFEST_ACCEPT, "Authorization": f"Bearer {tok}", **UA},
         )
         with urllib.request.urlopen(req, timeout=30) as r:
-            return r.headers.get("Docker-Content-Digest", "").removeprefix("sha256:")
+            digest = re.fullmatch(rf"sha256:({SHA256})", r.headers.get("Docker-Content-Digest", ""))
+            return digest[1] if digest else None
     except Exception as e:
         print(f"  ! {repository}:{tag}: {e}")
         return None
@@ -143,10 +144,10 @@ def docker_hub_digest(repository: str, tag: str) -> str | None:
 def channel_stable() -> tuple[str, str] | None:
     """(short, full) for current stable rustc, e.g. ("1.98.1", "1.98.1 (48a… 2026-09-01)")."""
     try:
-        toml = urllib.request.urlopen(
-            "https://static.rust-lang.org/dist/channel-rust-stable.toml", timeout=30).read().decode()
-        full = re.search(r'\[pkg\.rust\]\nversion = "([^"]+)"', toml).group(1)
-        return full.split(" ", 1)[0], full
+        with urllib.request.urlopen("https://static.rust-lang.org/dist/channel-rust-stable.toml", timeout=30) as r:
+            full = tomllib.load(r)["pkg"]["rust"]["version"]
+        match = re.fullmatch(rf"({VERSION}) \([0-9a-f]+ \d{{4}}-\d{{2}}-\d{{2}}\)", full)
+        return (match[1], full) if match else None
     except Exception as e:
         print(f"  ! rust stable channel: {e}")
         return None
@@ -167,33 +168,38 @@ def deno_sidecar_sha(version: str, triple: str) -> str | None:
         return None
 
 
-def uv_wheels(version: str) -> tuple[str, str] | None:
-    """(x86_64, aarch64) sha256 for the broadest-manylinux uv wheel of
-    each arch — the same choice the Dockerfile pin encodes today. Zero
-    or ambiguous candidates per arch -> None (manual work)."""
+def uv_wheel(version: str) -> str | None:
+    """Digest of the unique broadest-manylinux x86_64 wheel, from PyPI."""
     try:
-        urls = fetch_json(f"https://pypi.org/pypi/uv/{version}/json")["urls"]
+        candidates = []
+        legacy = {"manylinux1_x86_64": 5, "manylinux2010_x86_64": 12, "manylinux2014_x86_64": 17}
+        for wheel in fetch_json(f"https://pypi.org/pypi/uv/{version}/json")["urls"]:
+            name = wheel["filename"]
+            prefix = f"uv-{version}-py3-none-"
+            if not name.startswith(prefix) or not name.endswith(".whl") or wheel.get("yanked"):
+                continue
+            floors = []
+            for tag in name[len(prefix):-4].split("."):
+                if m := re.fullmatch(r"manylinux_2_([0-9]+)_x86_64", tag):
+                    floors.append(int(m[1]))
+                elif tag in legacy:
+                    floors.append(legacy[tag])
+            if floors:
+                candidates.append((min(floors), wheel["digests"]["sha256"]))
+        if candidates:
+            lowest = min(floor for floor, _ in candidates)
+            winners = [sha for floor, sha in candidates if floor == lowest]
+            if len(winners) == 1 and re.fullmatch(SHA256, winners[0]):
+                return winners[0]
     except Exception as e:
         print(f"  ! uv {version}: {e}")
-        return None
+    return None
 
-    def pick(arch: str) -> str | None:
-        floors = []
-        for f in urls:
-            fn = f["filename"]
-            if not (fn.startswith(f"uv-{version}-py3-none-") and "manylinux" in fn
-                    and fn.endswith(f"{arch}.whl")):
-                continue
-            g = re.findall(r"manylinux_2_(\d+)", fn)
-            floors.append((min(float(x) for x in g) if g else 17.0, f["digests"]["sha256"]))
-        if not floors:
-            return None
-        lowest = min(f for f, _ in floors)
-        winners = {sha for f, sha in floors if f == lowest}
-        return winners.pop() if len(winners) == 1 else None
 
-    x86, arm = pick("x86_64"), pick("aarch64")
-    return (x86, arm) if x86 and arm else None
+def _line(text: str, prefix: str) -> str:
+    """Return the unique active source line with this prefix, or fail closed."""
+    matches = [line for line in text.splitlines() if line.startswith(prefix)]
+    return matches[0] if len(matches) == 1 else ""
 
 
 def vtuple(version: str) -> tuple[int, ...]:
@@ -220,32 +226,12 @@ class PinSites:
         m = re.search(rf"^ARG {re.escape(name)}=(\S+)", self.text("Dockerfile"), re.M)
         return m.group(1) if m else None
 
-    def dockerfile_env(self, name: str) -> str | None:
-        m = re.search(rf"^ENV {re.escape(name)}=(\S+)", self.text("Dockerfile"), re.M)
-        return m.group(1) if m else None
-
     def dockerfile_froms(self) -> dict[str, tuple[str, str]]:
         """name -> (tag, digest) for every digest-pinned FROM line."""
         out = {}
         for ref, dig in re.findall(r"^FROM (\S+)@sha256:([0-9a-f]{64})", self.text("Dockerfile"), re.M):
             name, tag = ref.rsplit(":", 1)
             out[name] = (tag, dig)
-        return out
-
-    def workflow_pins(self, key: str) -> dict[str, list[str]]:
-        """workflow file -> the pin values under `key:` (raw value minus
-        an optional quote; the deno `v` prefix stays in the value)."""
-        out = {}
-        for p in WORKFLOW_FILES:
-            try:
-                text = self.text(p)
-            except FileNotFoundError:
-                # The hosted CI workflow was retired. Units still requiring
-                # its native pins must fail closed, not abort the whole watch.
-                continue
-            vals = re.findall(rf"^\s*{re.escape(key)}:\s*[\"']?([\w.+-]+)", text, re.M)
-            if vals:
-                out[p] = vals
         return out
 
     def host_deno(self) -> tuple[str, dict[str, str]] | None:
@@ -296,6 +282,23 @@ class PinUnit:
         return self.blocked(f"{self.key} pin sites not found where expected — parser needs a look",
                             f"pins: {self.key}: pin sites not found where expected")
 
+    def propose_lines(self, sites: PinSites, *changes: tuple[str, str, str]) -> PinUnit:
+        """Only propose the unit if each changed line can be replaced unambiguously."""
+        edits = []
+        for path, old, new in changes:
+            if old == new:
+                continue
+            text = sites.text(path)
+            left = "" if text.startswith(old + "\n") or text == old else "\n"
+            right = "" if text.endswith("\n" + old) or text == old else "\n"
+            source = left + old + right
+            if text.count(source) != 1:
+                return self.sites_missing()
+            edits.append(Edit(path, source, left + new + right))
+        if edits:
+            self.status, self.edits = "ready", edits
+        return self
+
     def pr_body(self) -> str:
         lines = [
             f"### pins: {self.summary}",
@@ -332,117 +335,58 @@ MANUAL_WORK = (
 
 def unit_rust(sites: PinSites) -> PinUnit:
     u = PinUnit(key="rust", summary="rust toolchain")
-    froms = sites.dockerfile_froms()
-    native = sites.workflow_pins("toolchain")
-    fuzz = sites.dockerfile_env("FUZZ_TOOLCHAIN")
-    gnu_ref = sites.dockerfile_arg("GNU_RUST_IMAGE")
-    gnu = re.fullmatch(r"rust:(\d+\.\d+\.\d+)@sha256:([0-9a-f]{64})", gnu_ref or "")
-    if "rust" not in froms or not native or fuzz is None or gnu is None:
-        return u.sites_missing()
-    tag, pin_digest = froms["rust"]
-    pinned = next(iter(native.values()))[0]
-    stable = channel_stable()
-    cur = docker_hub_digest("library/rust", tag)
-    if stable is None or cur is None:
-        u.status, u.note = "unknown", "stable channel / Docker Hub metadata unreachable this run"
-        return u
-    u.sources = [
-        f"https://static.rust-lang.org/dist/channel-rust-stable.toml — stable `{stable[1]}`",
-        f"https://registry-1.docker.io/v2/library/rust/manifests/{tag} — `sha256:{cur}`",
-    ]
-    native_vals = {v for vs in native.values() for v in vs}
-
-    def with_gnu_image(version: str) -> PinUnit:
-        """Never propose only half of the musl/GNU compiler update."""
-        digest = docker_hub_digest("library/rust", version)
-        if digest is None:
-            u.edits = []
-            return u.blocked(
-                f"GNU rust:{version} metadata unavailable; no partial compiler update",
-                f"pins: rust: GNU image for {version} unavailable")
-        u.sources.append(
-            f"https://registry-1.docker.io/v2/library/rust/manifests/{version} — `sha256:{digest}`")
-        wanted = f"rust:{version}@sha256:{digest}"
-        if gnu_ref != wanted:
-            u.edits.append(Edit("Dockerfile", f"ARG GNU_RUST_IMAGE={gnu_ref}",
-                                f"ARG GNU_RUST_IMAGE={wanted}"))
-            if u.status != "ready":
-                u.summary = f"GNU rust image refresh (rustc {version})"
-            u.status = "ready"
-        return u
-
-    def diverged() -> PinUnit | None:
-        """The coupled pins disagree among themselves with no bump to
-        ride on — that never silently passes; only the full coupled
-        bump normalizes it."""
-        if fuzz == pinned and native_vals == {pinned} and gnu.group(1) == pinned:
-            return None
-        return u.blocked(
-            f"rust pins diverged without an upstream bump (native {sorted(native_vals)}, "
-            f"FUZZ_TOOLCHAIN {fuzz}, GNU image {gnu.group(1)}, pinned base {pinned}) — only a deliberate coupled PR fixes this",
-            "pins: rust: coupled pins diverged without an upstream bump")
-
-    def image_lagging(why: str) -> PinUnit:
-        return u.blocked(
-            f"stable rustc is now {stable[0]} but the digest-pinned rust:{tag} still ships "
-            f"{pinned} ({why}) — a native-only bump would silently decouple the docker builder "
-            "from the native jobs; no PR until the image catches up, then the next watch run "
-            "opens the coupled one automatically",
-            f"pins: rust toolchain {pinned} behind upstream {stable[0]} (image lagging)")
-
-    if vtuple(stable[0]) <= vtuple(pinned):
-        if d := diverged():
-            return d
-        if cur == pin_digest:
-            u.note = f"rustc {pinned} current (stable {stable[0]} not ahead)"
-            return with_gnu_image(pinned)
-        # tag moved under the same rustc: a rebuild. Prove the floating
-        # tag still resolves to OUR version's image via the version tag.
-        if docker_hub_digest("library/rust", f"{pinned}-{tag}") == cur:
-            u.status, u.summary = "ready", f"rust:alpine digest refresh (rustc {pinned} unchanged)"
-            u.edits = [Edit("Dockerfile", f"rust:{tag}@sha256:{pin_digest}", f"rust:{tag}@sha256:{cur}")]
-            return with_gnu_image(pinned)
-        return u.blocked(
-            f"rust:{tag} moved to a build that is not {pinned} "
-            f"(digest(rust:{pinned}-{tag}) != digest(rust:{tag})) — inspect manually",
-            f"pins: rust: {tag} tag moved off rustc {pinned}")
-
-    # stable is ahead — the native pins, FUZZ_TOOLCHAIN and the image
-    # digest must move together or the docker/native builds decouple.
-    if cur == pin_digest:
-        return image_lagging("the floating tag has not moved off our digest")
-    ver_digest = docker_hub_digest("library/rust", f"{stable[0]}-{tag}")
-    if ver_digest is None:
-        return image_lagging(f"no rust:{stable[0]}-{tag} image tag exists yet")
-    if ver_digest != cur:
-        return image_lagging(f"digest(rust:{tag}) != digest(rust:{stable[0]}-{tag})")
-
-    # coupling proven: the floating tag IS the new stable's image
-    new, full = stable
-    u.sources.append(f"digest(rust:{tag}) == digest(rust:{new}-{tag}) — identical manifests, "
-                     "so the image's rustc IS the new native pin")
-    u.summary = f"rust toolchain {pinned} → {new}"
-    u.note = f"musl/GNU builder digests, FUZZ_TOOLCHAIN and native pins move together to {new}."
-    if fuzz != pinned:
-        u.note += f" (FUZZ_TOOLCHAIN was {fuzz} — normalized to {new}.)"
-    if native_vals != {pinned}:
-        u.note += " (native toolchain pins had diverged — normalized.)"
-    u.edits = [Edit("Dockerfile", f"rust:{tag}@sha256:{pin_digest}", f"rust:{tag}@sha256:{cur}")]
     df = sites.text("Dockerfile")
-    if old_full := re.search(rf"{re.escape(pinned)} \([0-9a-f]+ \d{{4}}-\d{{2}}-\d{{2}}\)", df):
-        u.edits.append(Edit("Dockerfile", old_full.group(0), full))
-    u.edits.append(Edit("Dockerfile", f"ENV FUZZ_TOOLCHAIN={fuzz}", f"ENV FUZZ_TOOLCHAIN={new}"))
-    for path, vals in native.items():
-        for old in dict.fromkeys(vals):
-            u.edits.append(Edit(path, f'toolchain: "{old}"', f'toolchain: "{new}"', vals.count(old)))
-    ci = sites.text(".github/workflows/ci.yml")
-    if f"— {pinned}" in ci:
-        u.edits.append(Edit(".github/workflows/ci.yml", f"— {pinned}", f"— {new}"))
-    if old_paren := re.search(r"\([0-9a-f]+ \d{4}-\d{2}-\d{2}\)", ci):
-        u.edits.append(Edit(".github/workflows/ci.yml", old_paren.group(0),
-                            re.search(r"\([^)]+\)$", full).group(0)))
-    u.status = "ready"
-    return with_gnu_image(new)
+    try:
+        helper = sites.text(HELPER_PACKAGE)
+    except FileNotFoundError:
+        return u.sites_missing()
+    musl = _line(df, "FROM rust:")
+    gnu = _line(df, "ARG GNU_RUST_IMAGE=")
+    fuzz = _line(df, "ENV FUZZ_TOOLCHAIN=")
+    image = _line(helper, "LINUX_IMAGE = ")
+    compiler = _line(helper, "COMPILER = ")
+    m = re.fullmatch(rf"FROM (rust:alpine@sha256:({SHA256})) AS builder", musl)
+    g = re.fullmatch(rf"ARG GNU_RUST_IMAGE=rust:({VERSION})@sha256:({SHA256})", gnu)
+    if not (m and g and _line(df, "FROM ${GNU_RUST_IMAGE} ") == "FROM ${GNU_RUST_IMAGE} AS local-rust-tools"):
+        return u.sites_missing()
+    pinned = g[1]
+    if (fuzz != f"ENV FUZZ_TOOLCHAIN={pinned}" or compiler != f'COMPILER = "{pinned}"'
+            or image != f'LINUX_IMAGE = "{m[1]}"'):
+        return u.blocked("Builder, fuzz and helper pins disagree; refusing a partial compiler update",
+                         "pins: rust: coupled pins missing or diverged")
+
+    stable = channel_stable()
+    if not stable or not re.fullmatch(VERSION, stable[0]):
+        u.status, u.note = "unknown", "stable channel metadata unavailable"
+        return u
+    new = max((pinned, stable[0]), key=vtuple)  # never downgrade a deliberate pin
+    registry = "https://registry-1.docker.io/v2/library/rust/manifests"
+    digests = {}
+    for tag in ("alpine", f"{new}-alpine", new):
+        digest = docker_hub_digest("library/rust", tag)
+        if not re.fullmatch(SHA256, digest or ""):
+            return u.blocked(f"No valid manifest digest for rust:{tag}; no partial compiler update",
+                             f"pins: rust: image metadata for {new} unavailable")
+        digests[tag] = digest
+        u.sources.append(f"{registry}/{tag} — `sha256:{digest}`")
+    if (digests["alpine"] != digests[f"{new}-alpine"] or
+            (new != pinned and (digests["alpine"] == m[2] or digests[new] == g[2]))):
+        return u.blocked(f"The musl/GNU image digests do not establish the move to rustc {new}",
+                         f"pins: rust: builder images not ready for {new}")
+    u.sources.append(f"https://static.rust-lang.org/dist/channel-rust-stable.toml — stable `{stable[1]}`")
+    new_image = f"rust:alpine@sha256:{digests['alpine']}"
+    u.propose_lines(sites,
+        ("Dockerfile", musl, f"FROM {new_image} AS builder"),
+        ("Dockerfile", gnu, f"ARG GNU_RUST_IMAGE=rust:{new}@sha256:{digests[new]}"),
+        ("Dockerfile", fuzz, f"ENV FUZZ_TOOLCHAIN={new}"),
+        (HELPER_PACKAGE, image, f'LINUX_IMAGE = "{new_image}"'),
+        (HELPER_PACKAGE, compiler, f'COMPILER = "{new}"'),
+    )
+    if u.status == "ready":
+        u.summary = f"rust toolchain {pinned} → {new}" if new != pinned else f"rustc {pinned} image refresh"
+    elif u.status == "current":
+        u.note = f"rustc {pinned} and both image digests current"
+    return u
 
 
 def unit_deno(sites: PinSites) -> PinUnit:
@@ -600,75 +544,88 @@ def unit_tla(sites: PinSites) -> PinUnit:
 
 def unit_uv(sites: PinSites) -> PinUnit:
     u = PinUnit(key="uv", summary="uv")
-    pinned = sites.dockerfile_arg("UV_VERSION")
-    m = re.search(r"--hash=sha256:([0-9a-f]{64}) --hash=sha256:([0-9a-f]{64})", sites.text("Dockerfile"))
-    if not pinned or not m:
+    df = sites.text("Dockerfile")
+    arg = _line(df, "ARG UV_VERSION=")
+    pinned = arg.removeprefix("ARG UV_VERSION=")
+    requirement = _line(df, "RUN printf 'uv==")
+    # Select the live requirement, not a comment; the Linux install needs
+    # just its x86_64 wheel, even when the previous pin allowed two hashes.
+    prefix = "RUN printf 'uv==%s"
+    suffix = "\\n' \"$UV_VERSION\" > /tmp/uv.req \\"
+    hashes = re.escape(prefix) + rf"(?: --hash=sha256:{SHA256}){{1,2}}" + re.escape(suffix)
+    install = "    && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req \\"
+    if (not re.fullmatch(VERSION, pinned) or not re.fullmatch(hashes, requirement)
+            or requirement + "\n" + install + "\n" not in df):
         return u.sites_missing()
     try:
         latest = fetch_json("https://pypi.org/pypi/uv/json")["info"]["version"]
     except Exception as e:
         print(f"  ! uv: {e}")
         latest = None
-    if not latest:
+    if not isinstance(latest, str) or not re.fullmatch(VERSION, latest):
         u.status, u.note = "unknown", "uv upstream metadata unreachable this run"
         return u
     if vtuple(latest) <= vtuple(pinned):
         u.note = f"uv {pinned} current (upstream {latest} not ahead)"
         return u
-    if not (wheels := uv_wheels(latest)):
+    if not (sha := uv_wheel(latest)):
         return u.blocked(
-            f"PyPI publishes no unambiguous broadest-manylinux wheel pair for uv {latest} — the "
-            "pip --require-hashes digests must be taken manually, never guessed",
-            f"pins: uv {pinned} → {latest}: ambiguous wheel digests")
+            f"PyPI publishes no unambiguous broadest-manylinux x86_64 wheel digest for uv {latest}",
+            f"pins: uv {pinned} → {latest}: missing or ambiguous Linux wheel digest")
     u.summary = f"uv {pinned} → {latest}"
     u.sources = [
         f"https://pypi.org/pypi/uv/json — `{latest}`",
-        f"https://pypi.org/pypi/uv/{latest}/json — wheel `digests.sha256` (broadest manylinux per arch)",
+        f"https://pypi.org/pypi/uv/{latest}/json — wheel `digests.sha256` (broadest manylinux x86_64)",
     ]
-    u.edits = [
-        Edit("Dockerfile", f"ARG UV_VERSION={pinned}", f"ARG UV_VERSION={latest}"),
-        Edit("Dockerfile", f"--hash=sha256:{m.group(1)}", f"--hash=sha256:{wheels[0]}"),
-        Edit("Dockerfile", f"--hash=sha256:{m.group(2)}", f"--hash=sha256:{wheels[1]}"),
-    ]
-    u.status = "ready"
-    return u
+    return u.propose_lines(sites,
+        ("Dockerfile", arg, f"ARG UV_VERSION={latest}"),
+        ("Dockerfile", requirement, f"{prefix} --hash=sha256:{sha}{suffix}"),
+    )
 
 
 def unit_node(sites: PinSites) -> PinUnit:
-    u = PinUnit(key="node", summary="node 22")
-    pins = sites.workflow_pins("node-version")
-    if not pins:
+    u = PinUnit(key="node", summary="node")
+    df = sites.text("Dockerfile")
+    version_arg = _line(df, "ARG LOCAL_NODE_VERSION=")
+    sha_arg = _line(df, "ARG LOCAL_NODE_SHA256=")
+    pinned = version_arg.removeprefix("ARG LOCAL_NODE_VERSION=")
+    download = _line(df, "ADD --checksum=sha256:${LOCAL_NODE_SHA256} ")
+    if (not re.fullmatch(VERSION, pinned) or not re.fullmatch(rf"ARG LOCAL_NODE_SHA256={SHA256}", sha_arg)
+            or download != "ADD --checksum=sha256:${LOCAL_NODE_SHA256} https://nodejs.org/dist/"
+                           "v${LOCAL_NODE_VERSION}/node-v${LOCAL_NODE_VERSION}-linux-x64.tar.xz /tmp/node.tar.xz"):
         return u.sites_missing()
+    major = pinned.split(".")[0]
+    dist = "https://nodejs.org/dist"
     try:
-        idx = fetch_json("https://nodejs.org/dist/index.json")
-        latest = next(e["version"].lstrip("v") for e in idx if e["version"].startswith("v22."))
+        index = fetch_json(f"{dist}/index.json")
+        latest = max((row["version"][1:] for row in index
+                      if re.fullmatch(rf"v{major}\.[0-9]+\.[0-9]+", row["version"])), key=vtuple)
     except Exception as e:
         print(f"  ! node: {e}")
-        latest = None
-    if not latest:
-        u.status, u.note = "unknown", "node dist index unreachable this run"
+        u.status, u.note = "unknown", f"no stable Node {major} in the dist index this run"
         return u
-    vals = [v for vs in pins.values() for v in vs]
-    if all(v == latest for v in vals):
-        u.note = f"node {latest} current in every setup-node pin"
+    if vtuple(latest) <= vtuple(pinned):
+        u.note = f"node {pinned} current (upstream {latest} not ahead)"
         return u
-    ahead = max(vals, key=vtuple)
-    if vtuple(latest) < vtuple(ahead):
-        if set(vals) == {ahead}:
-            u.note = (f"node {ahead} pinned everywhere, deliberately ahead of the dist index "
-                      f"({latest}) — nothing to do")
-            return u
-        return u.blocked(
-            f"node-version pins diverged and the dist index ({latest}) is below the highest "
-            f"({sorted(set(vals))}) — never auto-downgrade",
-            "pins: node: pin sites diverged above the dist index")
-    u.summary = f"node 22 {vals[0]} → {latest}"
-    u.sources = [f"https://nodejs.org/dist/index.json — `{latest}` (first v22 entry)"]
-    for path, vs in pins.items():
-        for old in dict.fromkeys(vs):
-            u.edits.append(Edit(path, f"node-version: {old}", f"node-version: {latest}", vs.count(old)))
-    u.status = "ready"
-    return u
+    url = f"{dist}/v{latest}/SHASUMS256.txt"
+    artifact = f"node-v{latest}-linux-x64.tar.xz"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as response:
+            rows = [line.split() for line in response.read().decode("ascii").splitlines()]
+        matches = [row for row in rows if row and row[-1] == artifact]
+    except Exception as e:
+        print(f"  ! {url}: {e}")
+        matches = []
+    if len(matches) != 1 or len(matches[0]) != 2 or not re.fullmatch(SHA256, matches[0][0]):
+        return u.blocked(f"No unique valid checksum for {artifact} in {url}",
+                         f"pins: node {pinned} → {latest}: missing or ambiguous Linux checksum")
+    sha = matches[0][0]
+    u.summary = f"node {pinned} → {latest}"
+    u.sources = [f"{dist}/index.json — `{latest}` (stable major {major})", f"{url} — `{sha}  {artifact}`"]
+    return u.propose_lines(sites,
+        ("Dockerfile", version_arg, f"ARG LOCAL_NODE_VERSION={latest}"),
+        ("Dockerfile", sha_arg, f"ARG LOCAL_NODE_SHA256={sha}"),
+    )
 
 
 def unit_base_images(sites: PinSites) -> list[PinUnit]:
