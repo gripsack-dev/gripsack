@@ -27,19 +27,21 @@ def build(root: Path) -> None:
         # including the collision class: a link target spelling the
         # old removal sentinel or a file-identity-looking string
         entries = [
-            json.dumps({"dest": "/outside", "prior": prior, "after": "gripsack:removed"}, sort_keys=True).encode(),
-            json.dumps({"v": 1, "dest": "/outside", "prior": prior, "after": {"kind": "removed"}}, sort_keys=True).encode(),
-            json.dumps({"v": 1, "dest": "/outside", "prior": prior, "after": {"kind": "link", "target": "gripsack:removed"}}, sort_keys=True).encode(),
-            json.dumps({"v": 1, "dest": "/outside", "prior": prior, "after": {"kind": "file", "identity": "ab" * 32}}, sort_keys=True).encode(),
-            json.dumps({"v": 1, "dest": "/outside", "prior": prior, "after": {"kind": "link", "target": "ab" * 32}}, sort_keys=True).encode(),
+            ("legacy-removed", {"after": "gripsack:removed"}),
+            ("removed", {"v": 1, "after": {"kind": "removed"}}),
+            ("link-sentinel", {"v": 1, "after": {"kind": "link", "target": "gripsack:removed"}}),
+            ("file", {"v": 1, "after": {"kind": "file", "identity": "ab" * 32}}),
+            ("link-identity", {"v": 1, "after": {"kind": "link", "target": "ab" * 32}}),
         ]
-        for entry in entries:
+        for case, fields in entries:
+            entry = json.dumps({"dest": "/outside", "prior": prior, **fields}, sort_keys=True).encode()
             for previous, target, op in [(None, 1, "apply"), (3, 1, "rollback"), (1, 2, "apply"), (2, 3, "rollback")]:
                 marker = json.dumps({"previous_generation": previous, "target_generation": target, "op": op}, sort_keys=True).encode()
                 # Whitespace changes fixture current selection without altering Entry semantics.
                 for prefix in [b"", b" ", b"\n", b"\t"]:
-                    name = f"{kind}-{previous}-{target}-{op}-{len(prefix)}-{prefix.hex()}-{entry[:8].hex()}.json"
-                    (journal / name).write_bytes(marker + b"\0" + prefix + entry)
+                    name = f"{kind}-{previous}-{target}-{op}-{prefix.hex() or 'none'}-{case}.json"
+                    with (journal / name).open("xb") as out:
+                        out.write(marker + b"\0" + prefix + entry)
     archive_seeds(root / "archive")
 
 
