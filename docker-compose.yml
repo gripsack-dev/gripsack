@@ -2,9 +2,10 @@
 # Cargo builds use BuildKit cache mounts (Dockerfile); the first build after
 # `docker builder prune` is cold, every later one reuses the dependency tree.
 #
-# Required local qualification (.ci/pilot.json, via scripts/local_ci.py):
-#   docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
+# Required gates and commands: .ci/pilot.json, implemented by scripts/local_ci.py.
+#   python3 scripts/local_ci.py test          # Rust compose test + Python script tests
 #   docker compose run --build --rm ts-test   # deno test on the frontend
+#   docker compose run --build --rm proofs    # extraction, Lean, axiom audit, mutants
 #   docker compose run --build --rm e2e       # flow tests (offline)
 #   docker compose run --build --rm audit     # cargo audit (core + helper locks)
 #   python3 scripts/release.py prepare        # release/helper/tools services -> ./dist/
