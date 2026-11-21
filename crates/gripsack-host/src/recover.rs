@@ -4,16 +4,18 @@
 //! The kernel decides; this loop executes one command at a time and feeds
 //! the result back as the next event. What the driver owns is exactly what
 //! the kernel cannot: computing [`Live`] from one observation, and the
-//! re-check before every act. For [`Command::Mutate`] and [`Command::Seal`]
-//! the driver stages what it can first (the restored file is written and
-//! synced under a temporary name), then observes the destination again by
-//! name and compares it with the command's `expect` using the kernel's own
+//! re-check before every act. For [`Command::Mutate`] the driver stages
+//! what it can first (the restored file is written and synced under a
+//! temporary name), then observes the destination again by name and
+//! compares it with the command's `expect` using the kernel's own
 //! [`Live::same`]. A mismatch answers [`Failure::Drift`] and nothing is
 //! touched; otherwise the act follows at once and the destination is
 //! observed a third time for [`Event::Landed`]. Between that re-check and
 //! the act there is still a window (S5): an external write landing there is
 //! overwritten. It is the residual risk the claim list names; the MemFs
 //! tests measure it.
+//! For both [`Command::Seal`] and [`Command::Preserve`], cleanup requires
+//! successful settlement of the rechecked leaf, not just a visible match.
 //!
 //! The journal's wire format, the destination resolution and the legacy
 //! directory domain stay with the caller, behind [`RecoverHost`].
@@ -133,7 +135,7 @@ pub enum Settled {
     Restored,
     /// The prior was already live; it was sealed durable.
     Unchanged,
-    /// A foreign object stands in place of the run's write; it was kept.
+    /// A foreign object stands in place of the run's write; it was sealed without rewriting it.
     Kept,
 }
 
@@ -230,7 +232,7 @@ pub fn observe_with<S: Storage>(
     };
     Ok(match metadata.kind {
         ObjectKind::File => {
-            let file = storage.open_file(parent, name)?;
+            let (file, metadata) = storage.open_file_with_metadata(parent, name)?;
             let bytes = storage.read_file(&file)?;
             (
                 Live::Obj(file_ident(&bytes, metadata.permissions)),
@@ -250,7 +252,7 @@ pub fn observe_with<S: Storage>(
 struct Current<D> {
     index: u32,
     site: Option<LeafSite<D>>,
-    found: Option<Found>,
+    observed: Option<(Live, Found)>,
 }
 
 /// Run recovery to its end: a finished outcome with one note per settled
@@ -278,7 +280,7 @@ pub fn recover<H: RecoverHost>(host: &mut H) -> Result<Recovery, RecoverError> {
                     (Refusal::Failed, Some(error)) => RecoverError::Io(error),
                     (refusal, _) => RecoverError::Refused {
                         refusal,
-                        found: current.and_then(|current| current.found),
+                        found: current.and_then(|c| c.observed.map(|(_, found)| found)),
                     },
                 });
             }
@@ -324,7 +326,7 @@ fn execute<H: RecoverHost>(
             *current = Some(Current {
                 index,
                 site: entry.site,
-                found: None,
+                observed: None,
             });
             Event::EntryRead(entry.facts)
         }),
@@ -332,7 +334,7 @@ fn execute<H: RecoverHost>(
             .and_then(|site| observe(host, &site.parent, &site.name))
             .map(|(live, found)| {
                 if let Some(current) = current.as_mut() {
-                    current.found = Some(found);
+                    current.observed = Some((live, found));
                 }
                 Event::Observed { dest, live }
             }),
@@ -354,29 +356,25 @@ fn execute<H: RecoverHost>(
                 None => Event::Failed(Failure::Drift),
             })
         }),
-        Command::Seal {
-            entry,
-            expect,
-            prior,
-            ..
-        } => site(current, entry).and_then(|site| {
-            let sealed = seal(host, site, &expect, &prior)?;
-            if sealed {
-                notes.push(Note {
-                    entry,
-                    settled: Settled::Unchanged,
-                });
+        cmd @ (Command::Seal { entry, .. } | Command::Preserve { entry, .. }) => {
+            site(current, entry).and_then(|site| {
+                let (expect, settled) = if let Command::Seal { expect, .. } = cmd {
+                    (expect, Settled::Unchanged)
+                } else {
+                    // Preserve carries the entry, not an `expect`. Recheck
+                    // the very observation delivered to the kernel for it.
+                    let (live, _) = current
+                        .as_ref()
+                        .and_then(|c| c.observed)
+                        .ok_or_else(|| io::Error::other("preserve without observation"))?;
+                    (live, Settled::Kept)
+                };
+                if !seal(host, site, &expect)? {
+                    return Ok(Event::Failed(Failure::Drift));
+                }
+                notes.push(Note { entry, settled });
                 Ok(Event::Done)
-            } else {
-                Ok(Event::Failed(Failure::Drift))
-            }
-        }),
-        Command::Preserve { entry, .. } => {
-            notes.push(Note {
-                entry,
-                settled: Settled::Kept,
-            });
-            Ok(Event::Done)
+            })
         }
         Command::Delegate(step) => host.delegate(step).map(|()| Event::Done),
         Command::Unlink(name) => unlink(host, name).map(|()| Event::Done),
@@ -468,22 +466,31 @@ fn restore<H: RecoverHost>(
     Ok(Some(live))
 }
 
-/// `seal_observed_prior` under the re-check: a file barrier for regular
-/// bytes, then the parent's namespace barrier. `false` when the re-check
-/// failed.
+/// For a file, rehash and sync the *same descriptor* (including mode);
+/// then confirm that the name still denotes what was synced. For a symlink
+/// its immutable target rides the name, and absence is a name fact alone.
+/// S5 still applies: an in-place writer can race the read/fsync, and a
+/// rename can race the last name check/parent fsync. This is not CAS.
 fn seal<H: RecoverHost>(
     host: &H,
     site: &LeafSite<<H::Storage as Storage>::Dir>,
     expect: &Live,
-    prior: &Prior,
 ) -> io::Result<bool> {
-    if !unchanged(host, site, expect)? {
-        return Ok(false);
-    }
     let storage = host.storage();
-    if let Prior::Obj(Ident::File(_)) = prior {
-        let file = storage.open_file(&site.parent, &site.name)?;
-        storage.sync_file(&file)?;
+    match expect {
+        Live::Obj(Ident::File(_)) => {
+            let (file, meta) = storage.open_file_with_metadata(&site.parent, &site.name)?;
+            let actual = host.file_ident(&storage.read_file(&file)?, meta.permissions);
+            if !Live::Obj(actual).same(expect) {
+                return Ok(false);
+            }
+            storage.sync_file(&file)?;
+            if storage.metadata(&site.parent, &site.name)? != meta {
+                return Ok(false);
+            }
+        }
+        Live::Absent | Live::Obj(Ident::Link(_)) if unchanged(host, site, expect)? => {}
+        _ => return Ok(false),
     }
     storage.sync_dir(&site.parent)?;
     Ok(true)

@@ -210,6 +210,24 @@ impl State {
             .expect("handles and entries name allocated inodes")
     }
 
+    fn metadata(&self, ino: Ino) -> Metadata {
+        let (kind, len, permissions) = match self.node(ino) {
+            Node::File { data, permissions } => (ObjectKind::File, data.len() as u64, *permissions),
+            Node::Dir { permissions, .. } => (ObjectKind::Dir, 0, *permissions),
+            Node::Symlink { target } => (
+                ObjectKind::Symlink,
+                target.as_os_str().len() as u64,
+                Permissions::new(0o777),
+            ),
+        };
+        Metadata {
+            kind,
+            len,
+            permissions,
+            object: Self::object(ino),
+        }
+    }
+
     /// A directory that can still gain entries.
     fn live_dir(&self, dir: Ino) -> io::Result<()> {
         match self.node(dir) {
@@ -599,17 +617,26 @@ impl Storage for MemFs {
         })
     }
 
-    fn open_file(&self, parent: &MemDir, name: &Name) -> io::Result<MemFile> {
+    fn open_file_with_metadata(
+        &self,
+        parent: &MemDir,
+        name: &Name,
+    ) -> io::Result<(MemFile, Metadata)> {
         self.observe(Some(name), |state| {
             let ino = state.lookup(parent.ino, name)?;
-            match state.node(ino) {
-                Node::File { .. } => Ok(MemFile {
-                    ino,
-                    offset: 0,
-                    writable: false,
-                }),
-                Node::Dir { .. } => Err(Errno::ISDIR.into()),
-                Node::Symlink { .. } => Err(Errno::LOOP.into()),
+            let meta = state.metadata(ino);
+            match meta.kind {
+                ObjectKind::File => Ok((
+                    MemFile {
+                        ino,
+                        offset: 0,
+                        writable: false,
+                    },
+                    meta,
+                )),
+                ObjectKind::Dir => Err(Errno::ISDIR.into()),
+                ObjectKind::Symlink => Err(Errno::LOOP.into()),
+                ObjectKind::Other => Err(Errno::INVAL.into()),
             }
         })
     }
@@ -731,23 +758,7 @@ impl Storage for MemFs {
     fn metadata(&self, parent: &MemDir, name: &Name) -> io::Result<Metadata> {
         self.observe(Some(name), |state| {
             let ino = state.lookup(parent.ino, name)?;
-            let (kind, len, permissions) = match state.node(ino) {
-                Node::File { data, permissions } => {
-                    (ObjectKind::File, data.len() as u64, *permissions)
-                }
-                Node::Dir { permissions, .. } => (ObjectKind::Dir, 0, *permissions),
-                Node::Symlink { target } => (
-                    ObjectKind::Symlink,
-                    target.as_os_str().len() as u64,
-                    Permissions::new(0o777),
-                ),
-            };
-            Ok(Metadata {
-                kind,
-                len,
-                permissions,
-                object: State::object(ino),
-            })
+            Ok(state.metadata(ino))
         })
     }
 
