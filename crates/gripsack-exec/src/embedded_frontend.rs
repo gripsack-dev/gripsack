@@ -4026,7 +4026,7 @@ export const source = { package: packageSource };
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.56.1",
+  "version": "0.57.0",
   "description": "gripsack TypeScript workspace SDK — typed declarations, emits IR10",
   "license": "MIT",
   "type": "module",

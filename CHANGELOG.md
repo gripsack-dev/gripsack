@@ -6,6 +6,9 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+
+## [0.57.0] — Reliable previews and recovery
+
 ### Fixed
 
 - `grip adopt` copies the exact filenames it inspected. A name that cannot be
@@ -15,6 +18,45 @@ User-visible changes per release. Design decisions live in the
   skipped links and special files are listed even when nothing is adoptable.
   [#333](https://github.com/gripsack-dev/gripsack/issues/333),
   [#332](https://github.com/gripsack-dev/gripsack/issues/332)
+- `grip init` publishes complete scaffold files before marking a workspace
+  ready. Correcting a file/directory collision and retrying no longer
+  requires deleting generated workspace markers. Existing workspaces are
+  still refused. The suggested commands select the actual target directory;
+  a failed `git init` is distinguished from a missing optional Git.
+- `grip update --check` surveys Pixi inputs without retaining the manifest,
+  lock or archive in the store. An imported-package survey tells you whether
+  you need to import the signed bundle or update its local projection.
+- Default rollback names an unreadable predecessor instead of reporting empty
+  history. Recovery warnings are labeled even without color, and GC dry runs
+  report what *would* be removed or freed. Neither preview nor refusal grants
+  additional write authority.
+- `grip task status` and `task log` can inspect a retained invocation after
+  its checkout is gone. Truncation warnings go to stderr without changing
+  the saved bytes on stdout or JSON output. The full-history error links to
+  a [procedure for archiving terminal receipt/log pairs](https://gripsack.dev/docs/tasks.html#archiving-task-history);
+  active and indeterminate task evidence is not pruned.
+- SDK preflight diagnoses command bindings without an owning subject,
+  incompatible runtime dependencies and package layouts, colliding literal
+  destinations, and invalid service and Conda/Pixi/wheel declarations before
+  execution. Passive environment artifact references remain data rather than
+  native package selections. Shared mutation-lock provenance compares line
+  and column numerically. Declaring a schedule alone does not register it;
+  applying its profile registers the systemd user timer.
+
+### Changed
+
+- Directory filters take segment prefixes, not globs. Authoring and raw IR10
+  reject unsupported glob syntax in both `include` and `exclude`; use `bin`
+  for the `bin` subtree, not `bin/*`. Documented artifact placeholders such
+  as `{version.bare}` still bind to the producer's lock.
+- Diagnostic `runs/` is private (0700), with new JSONL files at 0600.
+  Retention keeps the newest 100 completed managed logs, plus active runs
+  and the target of `latest`. Pre-0.57 logs and unknown entries are not
+  removed. This does not change generation or task history retention.
+- Debug and release builds now use the same recovery machine. The expired
+  debug-only legacy selector was removed; historical journal records retain
+  their meaning. The Deno pin watcher again proposes coupled Linux x86_64
+  updates; this release does not change the pinned Deno version.
 
 
 ## [0.56.1] — Safer cleanup after adoption
