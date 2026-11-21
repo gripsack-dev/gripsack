@@ -1,6 +1,7 @@
 import Lean
 import Kernel
 import Protocol.LeafExample
+import Protocol.Preservation
 
 /-!
 # Axiom audit (plan/0056 §7)
@@ -199,6 +200,9 @@ def claims : List Name := [
   ``Gripsack.Protocol.Leaf.mutation_evidence_survives,
   ``Gripsack.Protocol.Leaf.mutation_cut_after_crash,
   ``Gripsack.Protocol.Leaf.Example.reachable_file_removal,
+  ``Gripsack.Protocol.Preservation.checked_file_settlement,
+  ``Gripsack.Protocol.Preservation.checked_symlink_settlement,
+  ``Gripsack.Protocol.Preservation.checked_absence_settlement,
 ]
 
 /-- Every Gripsack theorem, including transitive use of the upstream library. -/

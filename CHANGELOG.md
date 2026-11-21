@@ -6,6 +6,17 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+### Fixed
+
+- Recovery no longer treats seeing a foreign edit as proof that it survived
+  power loss. Before discarding a leaf's undo record it seals the observed
+  file or symlink and its name. A failed barrier or changed identity keeps
+  the evidence for another recovery attempt. [#364](https://github.com/gripsack-dev/gripsack/issues/364)
+- A legal destination name at the filesystem's component limit no longer
+  prevents journaled file or symlink installation and restoration. The
+  temporary name stays in the same directory without embedding the basename.
+  [#363](https://github.com/gripsack-dev/gripsack/issues/363)
+
 ## [0.58.0] — Durable journal evidence
 
 ### Verification
