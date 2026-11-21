@@ -272,23 +272,29 @@ fn scoped_update_migrates_large_legacy_rows_and_resumes_segment_compaction() {
     };
     update(&ir, &scoped(&["anchor"]), UpdateMode::Publish).unwrap();
     let mut lock: WorkspaceLock = serde_json::from_slice(&fixture.lock_bytes()).unwrap();
-    let resolution = lock.resolutions.entry("linux-x86_64".into()).or_insert(PlatformResolution {
-        pins: Vec::new(), transitive: Vec::new(),
-    });
+    let resolution = lock
+        .resolutions
+        .entry("linux-x86_64".into())
+        .or_insert(PlatformResolution {
+            pins: Vec::new(),
+            transitive: Vec::new(),
+        });
     let session = LifecycleSession::acquire(&fixture.home).unwrap();
     let mut members = BTreeSet::new();
     let mut survivor = BTreeSet::new();
     for (group, name) in names[1..].iter().enumerate() {
         let mut paths = BTreeSet::new();
-        let packages: Vec<_> = (0..850).map(|n| {
-            let digest = format!("{group:02x}{n:030x}{n:032x}");
-            paths.insert(conda::archive_object(&fixture.home, &digest));
-            json!({
-                "name": format!("pkg-{n:04}"), "version":"1.0", "build":"0", "build_number":0,
-                "subdir":"linux-64", "channel":"https://example.invalid", "sha256":digest,
-                "url":format!("https://example.invalid/linux-64/pkg-{n:04}-1.0-0.conda"),
+        let packages: Vec<_> = (0..850)
+            .map(|n| {
+                let digest = format!("{group:02x}{n:030x}{n:032x}");
+                paths.insert(conda::archive_object(&fixture.home, &digest));
+                json!({
+                    "name": format!("pkg-{n:04}"), "version":"1.0", "build":"0", "build_number":0,
+                    "subdir":"linux-64", "channel":"https://example.invalid", "sha256":digest,
+                    "url":format!("https://example.invalid/linux-64/pkg-{n:04}-1.0-0.conda"),
+                })
             })
-        }).collect();
+            .collect();
         let frozen: LockedCondaEnvironment = serde_json::from_value(json!({
             "platform":"linux-64", "channels":["https://example.invalid"], "channel_priority":"strict",
             "system_requirements":{}, "packages":packages,
@@ -305,30 +311,58 @@ fn scoped_update_migrates_large_legacy_rows_and_resumes_segment_compaction() {
         });
         members.extend(paths.iter().map(|p| p.to_str().unwrap().to_owned()));
         if *name == "survives" {
-            survivor = paths.iter().map(|p| p.to_str().unwrap().to_owned()).collect();
+            survivor = paths
+                .iter()
+                .map(|p| p.to_str().unwrap().to_owned())
+                .collect();
         }
         let closure = roots::RetentionSet::admit(&session, paths).unwrap();
-        roots::register_output_root(&session, &roots::built_output_id(&fixture.repo, name).unwrap(), &closure).unwrap();
+        roots::register_output_root(
+            &session,
+            &roots::built_output_id(&fixture.repo, name).unwrap(),
+            &closure,
+        )
+        .unwrap();
     }
     drop(session);
     lock.validate().unwrap();
-    fs::write(fixture.repo.join("gripsack.lock"), serde_json::to_vec(&lock).unwrap()).unwrap();
+    fs::write(
+        fixture.repo.join("gripsack.lock"),
+        serde_json::to_vec(&lock).unwrap(),
+    )
+    .unwrap();
     let original = fixture.lock_bytes();
     update(&ir, &scoped(&["anchor"]), UpdateMode::Publish).unwrap();
-    assert_eq!(fixture.lock_bytes(), original, "root-only migration rewrote the lock");
+    assert_eq!(
+        fixture.lock_bytes(),
+        original,
+        "root-only migration rewrote the lock"
+    );
     let home = gripsack_host::fs::open(&fixture.home).unwrap();
     assert_eq!(roots::inventory(&home, &fixture.home).unwrap(), members);
     let directory = fixture.home.join("roots/outputs");
     let mut segments = Vec::new();
     for index in 0.. {
-        let id = roots::RootId::from_identity(&serde_json::to_vec(&(&fixture.repo, "conda-lock", index)).unwrap());
+        let id = roots::RootId::from_identity(
+            &serde_json::to_vec(&(&fixture.repo, "conda-lock", index)).unwrap(),
+        );
         let path = directory.join(format!("{}.json", id.as_str()));
-        if !path.exists() { break; }
+        if !path.exists() {
+            break;
+        }
         segments.push((path.clone(), fs::read(path).unwrap()));
     }
-    assert!(segments.len() >= 3, "fixture must cross multiple root bounds");
+    assert!(
+        segments.len() >= 3,
+        "fixture must cross multiple root bounds"
+    );
     assert_eq!(fs::read_dir(&directory).unwrap().count(), segments.len());
-    update(&ir, &scoped(&["old-a", "old-b", "old-c"]), UpdateMode::Publish).unwrap();
+    update(
+        &ir,
+        &scoped(&["old-a", "old-b", "old-c"]),
+        UpdateMode::Publish,
+    )
+    .unwrap();
     assert_eq!(roots::inventory(&home, &fixture.home).unwrap(), survivor);
     assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
     let settled = fixture.lock_bytes();

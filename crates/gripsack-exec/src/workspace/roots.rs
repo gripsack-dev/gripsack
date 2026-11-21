@@ -258,7 +258,9 @@ pub fn register_output_root(
 /// The original build identity is also where older Conda updates wrote a
 /// lock-only root. Preserve the identity of any existing built consumer.
 pub(super) fn built_output_id(repository: &Path, name: &str) -> Result<RootId, ExecError> {
-    Ok(RootId::from_identity(&serde_json::to_vec(&(repository, name))?))
+    Ok(RootId::from_identity(&serde_json::to_vec(&(
+        repository, name,
+    ))?))
 }
 
 pub(super) fn output_paths(
@@ -395,7 +397,9 @@ pub(super) fn admit_output_growth<'a>(
         if !paths.contains(path.to_str().ok_or_else(|| error("non-UTF-8 store root"))?) {
             count += 1;
             if count > MAX_RETAINED_OBJECTS {
-                return Err(error("lock handoff exceeds the consumer retention object bound"));
+                return Err(error(
+                    "lock handoff exceeds the consumer retention object bound",
+                ));
             }
         }
     }

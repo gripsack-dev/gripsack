@@ -8,9 +8,6 @@ use super::{
     pins::WorkspacePins,
     selection::Selection,
 };
-pub(super) use retention::LockRoots;
-use retention::Acquired;
-use std::collections::BTreeSet;
 use crate::{
     Ctx, ExecError, LifecycleSession, UpdateMode,
     report::{SurveyReports, UpdateReport, UpdateStatus, UpdateSurvey},
@@ -19,9 +16,14 @@ use gripsack_ir::{
     Diagnostic, Ir, Severity, codes,
     workspace_model::{
         AcquisitionSource, WorkspaceCatalog, WorkspaceOutput, WorkspaceProducer,
-        lock::{LockedPin, PlatformResolution, WORKSPACE_LOCK_VERSION, WorkspaceLock, platform_key},
+        lock::{
+            LockedPin, PlatformResolution, WORKSPACE_LOCK_VERSION, WorkspaceLock, platform_key,
+        },
     },
 };
+use retention::Acquired;
+pub(super) use retention::LockRoots;
+use std::collections::BTreeSet;
 
 pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, ExecError> {
     if let Some(diagnostic) = gripsack_ir::sema::run(ir)
@@ -57,7 +59,11 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
         // even when no declaration remains to visit on the next publication.
         if mode == UpdateMode::Publish
             && let Some(roots) = LockRoots::plan(
-                ctx, &session, old_conda, pins.lock.as_ref(), Acquired::default(),
+                ctx,
+                &session,
+                old_conda,
+                pins.lock.as_ref(),
+                Acquired::default(),
             )?
         {
             pins.publish(ctx, &session, None, Some(roots))?;
@@ -73,7 +79,9 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
         .iter()
         .filter(|name| {
             ctx.only.is_empty()
-                && !selection.as_ref().is_some_and(|s| s.outputs.contains_key(name.as_str()))
+                && !selection
+                    .as_ref()
+                    .is_some_and(|s| s.outputs.contains_key(name.as_str()))
         })
         .collect();
     let definitions = captured_definitions(&ctx.repository)?;
@@ -136,7 +144,13 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
                     if matches!(package.producer, WorkspaceProducer::Provider { .. }))
                 && remove_conda(&mut lock, name);
             let result = resolve_output(
-                ctx, &session, workspace, declaration, mode, &mut lock, &mut acquired,
+                ctx,
+                &session,
+                workspace,
+                declaration,
+                mode,
+                &mut lock,
+                &mut acquired,
             );
             let status = match result {
                 Ok(UpdateStatus::Skipped { .. } | UpdateStatus::Unchanged) if retired => {
@@ -186,13 +200,21 @@ fn resolve_output(
         ),
         WorkspaceOutput::Package(package) => {
             let WorkspaceProducer::Provider { provider } = &package.producer else {
-                return Ok(UpdateStatus::Skipped { reason: "no external source resolution" });
+                return Ok(UpdateStatus::Skipped {
+                    reason: "no external source resolution",
+                });
             };
             let key = platform_key(&package.target);
             let resolved = match provider {
                 AcquisitionSource::CondaEnvironment(_) | AcquisitionSource::PixiLock(_) => {
                     let (next, inputs) = super::conda::resolve_update(
-                        ctx, session, name, provider, &package.target, workspace, mode,
+                        ctx,
+                        session,
+                        name,
+                        provider,
+                        &package.target,
+                        workspace,
+                        mode,
                     )?;
                     if mode == UpdateMode::Publish {
                         acquired.record(ctx, &next, inputs);
@@ -250,7 +272,11 @@ fn resolve_output(
                 },
             )
         }
-        _ => return Ok(UpdateStatus::Skipped { reason: "no external source resolution" }),
+        _ => {
+            return Ok(UpdateStatus::Skipped {
+                reason: "no external source resolution",
+            });
+        }
     };
     Ok(upsert(lock, key, next))
 }
@@ -259,7 +285,9 @@ fn remove_conda(lock: &mut WorkspaceLock, name: &str) -> bool {
     let mut removed = false;
     for resolution in lock.resolutions.values_mut() {
         let before = resolution.pins.len();
-        resolution.pins.retain(|pin| pin.output != name || pin.conda.is_none());
+        resolution
+            .pins
+            .retain(|pin| pin.output != name || pin.conda.is_none());
         removed |= resolution.pins.len() != before;
     }
     removed

@@ -81,7 +81,12 @@ pub(super) fn version(path: &Path) -> io::Result<String> {
             let release = version.split(['-', '+']).next().unwrap_or_default();
             let mut numbers = release.split('.').map(str::parse::<u64>);
             matches!(
-                (numbers.next(), numbers.next(), numbers.next(), numbers.next()),
+                (
+                    numbers.next(),
+                    numbers.next(),
+                    numbers.next(),
+                    numbers.next()
+                ),
                 (Some(Ok(2..)), Some(Ok(_)), Some(Ok(_)), None)
             ) && version
                 .bytes()

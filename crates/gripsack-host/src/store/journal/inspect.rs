@@ -198,7 +198,10 @@ pub fn inspect(home: &Dir, home_path: &Path) -> io::Result<Option<JournalView>> 
             continue;
         }
         let bytes = read_plain(&journal, Path::new(&name)).map_err(|error| {
-            io::Error::new(error.kind(), format!("cannot read journal record {text}: {error}"))
+            io::Error::new(
+                error.kind(),
+                format!("cannot read journal record {text}: {error}"),
+            )
         })?;
         match Entry::from_wire(&bytes) {
             Ok(entry) => {
