@@ -57,7 +57,8 @@ mod wire;
 pub use wire::{Entry, IntendedSerde, PriorSerde, WireRejection};
 
 pub use marker::{JournalRun, RunOp, begin_run, commit_run, end_run};
-pub use recover::{NoteSeverity, RecoveryNote, reconcile};
+pub use recover::{NoteSeverity, RecoveryNote};
+pub use recover_kernel::reconcile;
 
 use crate::fs::Dir;
 use std::io;

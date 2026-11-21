@@ -5,7 +5,7 @@ status: "accepted"
 implementation: "in-progress"
 authors: ["tknawara"]
 created: "2026-11-08"
-updated: "2026-11-20"
+updated: "2026-11-21"
 issue: "https://github.com/gripsack-dev/gripsack/issues/306"
 milestone: "Later"
 supersedes: ["2026-09-10-verified-policy-kernels", "2026-09-24-handover-bundle-import"]
@@ -18,6 +18,12 @@ legacy_id: "0056"
 
 > **Backfill note (2026-11-20).** Owner-approved 2026-11-08. F0 and F1/GO landed in 0.52 ([#212](https://github.com/gripsack-dev/gripsack/pull/212)); §24.4, not the stale ‘F2 in progress’ header, records every F2 exit box checked. [#214](https://github.com/gripsack-dev/gripsack/pull/214)/#221/#222/#223/#229/#231/#233/#234/#236/#237/#238/#239 delivered all ten steps through dissolution; 0.54 ([#240](https://github.com/gripsack-dev/gripsack/pull/240)) shipped the result. K1–K6 and kernel ordering claims are not end-to-end storage P1–P4. A debug-only legacy recovery residue explicitly remains outside the F2 exit. The plan replaces 0047’s tooling decision, 0048 §§6/9/10 as gates and the formal/evidence portions of 0049–0055, not those whole RFCs or their runtime safety guarantees.
 > [Original design 0056](https://github.com/gripsack-dev/gripsack/blob/7924bc2b844d109dbb520040f5954ad237007ff3/plan/0056-verified-foundation.md) · [tracking issue #306](https://github.com/gripsack-dev/gripsack/issues/306). The text below is the historical record.
+
+**0.57 implementation note (2026-11-21).**
+[#311](https://github.com/gripsack-dev/gripsack/issues/311) removes the
+debug-only legacy recovery route left at §24.3(9). Debug and release builds
+now drive the same recovery machine. Historical journal records keep their
+meaning; this retirement does not complete F3 or prove the directory premise.
 
 - Status: approved by the owner 2026-11-08; F0 and F1 landed in 0.52.0 (F1: GO); F2 in progress (step 1 done)
 - Date: 2026-11-08

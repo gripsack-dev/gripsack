@@ -1,4 +1,3 @@
-use super::marker::*;
 use super::*;
 
 fn home() -> tempfile::TempDir {
@@ -575,8 +574,6 @@ fn completed_rollback_reads_committed() {
 
 // --- 0045 F1: tagged identities, typed admission ---
 
-use super::recover::{RecoveryDecision, decide_from};
-
 #[test]
 fn tagged_entries_round_trip_through_the_wire() {
     let home = home();
@@ -633,53 +630,29 @@ fn wire_admission_rejects_legacy_versions_and_malformed() {
 }
 
 #[test]
-fn cross_variant_identities_never_compare_equal() {
-    // The F1 collision class, reduced to the kernel: a symlink whose
-    // target SPELLS a file identity or the old removal sentinel is
-    // still a link — typed equality keeps the variants disjoint.
+fn post_crash_symlink_spelling_a_file_identity_or_removal_is_kept() {
+    // Compare through the real recovery path, including wire admission and
+    // kernel identity conversion. Neither string grants authority over a link.
     let file_id = crate::store::hash::canonical_bytes_identity(b"payload\n", 0o644);
-    let link_spelling_file = ObjectIdentity::Link(file_id.to_string());
-    let file_intended = Intended::Object(ObjectIdentity::File(file_id));
-    assert_eq!(
-        decide_from(Some(&link_spelling_file), &file_intended, None, None),
-        RecoveryDecision::Keep,
-        "a link spelling the intended file identity is a foreign edit"
-    );
-    let link_spelling_sentinel = ObjectIdentity::Link("gripsack:removed".to_string());
-    assert_eq!(
-        decide_from(
-            Some(&link_spelling_sentinel),
-            &Intended::Removed,
-            None,
-            None
-        ),
-        RecoveryDecision::Keep,
-        "a link spelling the old removal sentinel is a user object, never a landed removal"
-    );
-}
+    let file_spelling = file_id.to_string();
+    for (intended, spelling) in [
+        (file_intent(file_id), file_spelling.as_str()),
+        (Intended::Removed, "gripsack:removed"),
+    ] {
+        let home = home();
+        let capability = cap(&home);
+        let run = new_run(&capability, home.path());
+        let dest = home.path().join("config");
+        std::fs::write(&dest, b"old\n").unwrap();
+        crash_record(capture_at(&dest, &run), &intended);
+        std::fs::remove_file(&dest).unwrap();
+        std::os::unix::fs::symlink(spelling, &dest).unwrap();
 
-#[test]
-fn post_crash_sentinel_symlink_is_kept() {
-    // The handoff's semantic witness, end to end through reconcile:
-    // the run intended a removal; after the crash the user creates a
-    // symlink whose target is the pre-0.40 sentinel string.
-    let home = home();
-    let capability = cap(&home);
-    let run = new_run(&capability, home.path());
-    let dest = home.path().join("config");
-    std::fs::write(&dest, b"old\n").unwrap();
-    let prior = capture_at(&dest, &run);
-    crash_record(prior, &Intended::Removed);
-    std::fs::remove_file(&dest).unwrap(); // the removal landed
-    std::os::unix::fs::symlink("gripsack:removed", &dest).unwrap(); // post-crash user edit
-
-    let lines = reconcile(&cap(&home), home.path()).unwrap();
-    assert!(lines[0].message.contains("kept"), "{lines:?}");
-    assert_eq!(
-        std::fs::read_link(&dest).unwrap(),
-        Path::new("gripsack:removed"),
-        "the user's symlink is untouched"
-    );
+        let notes = reconcile(&capability, home.path()).unwrap();
+        assert_eq!(notes[0].severity, NoteSeverity::Warn);
+        assert!(notes[0].message.contains("kept"), "{notes:?}");
+        assert_eq!(std::fs::read_link(&dest).unwrap(), Path::new(spelling));
+    }
 }
 
 #[test]
@@ -777,26 +750,25 @@ fn unsafe_metadata_symlinks_never_read_or_chmod_their_referents() {
 }
 
 #[test]
-fn recovery_cleanup_keeps_the_pinned_journal_after_a_directory_replacement() {
+fn committed_cleanup_keeps_the_pinned_journal_after_a_directory_replacement() {
     let temporary = home();
     let capability = cap(&temporary);
     let dest = temporary.path().join("destination");
-    let run = begin_run(
-        &capability,
-        temporary.path(),
-        None,
-        crate::store::GenerationId::new(1),
-        RunOp::Apply,
+    let run = new_run(&capability, temporary.path());
+    mutate_at(
+        capture_at(&dest, &run),
+        &file_intent(crate::store::canonical_bytes_identity(b"managed\n", 0o600)),
+        mutation::file(b"managed\n", 0o600),
     )
     .unwrap();
-    crash_record(capture_at(&dest, &run), &Intended::Removed);
-    let journal = Journal::open(&capability).unwrap().unwrap();
+    crate::store::generations::write_manifest(&capability, &manifest(1)).unwrap();
+    let committed = crate::store::generations::flip(run).unwrap();
     let retained = temporary.path().join("retained-journal");
     std::fs::rename(dir(temporary.path()), &retained).unwrap();
     std::fs::create_dir(dir(temporary.path())).unwrap();
     let decoy = dir(temporary.path()).join("run.json");
     std::fs::write(&decoy, b"not this transaction").unwrap();
-    cleanup_legacy(&journal.directory, [entry_name(&dest).as_path()]).unwrap();
+    commit_run(committed).unwrap();
     assert_eq!(std::fs::read(decoy).unwrap(), b"not this transaction");
     assert!(!retained.join("run.json").exists());
     assert!(!retained.join(entry_name(&dest)).exists());

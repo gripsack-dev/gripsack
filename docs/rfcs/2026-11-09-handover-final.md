@@ -5,7 +5,7 @@ status: "accepted"
 implementation: "complete"
 authors: ["tknawara"]
 created: "2026-11-09"
-updated: "2026-11-20"
+updated: "2026-11-21"
 issue: "https://github.com/gripsack-dev/gripsack/issues/309"
 milestone: null
 supersedes: ["2026-09-24-handover-bundle-import", "2026-11-08-handover-reconciliation"]
@@ -18,6 +18,15 @@ legacy_id: "0058"
 
 > **Backfill note (2026-11-20).** [#213](https://github.com/gripsack-dev/gripsack/pull/213) supersedes 0056a. The 25 landed / 18 obsolete / 13 pending / 3 rejected entries are a snapshot. Ranked 1: [#221](https://github.com/gripsack-dev/gripsack/pull/221) delivered fail-closed recovery, read-only doctor view, repair procedure in docs/operations/storage.md and e2e/test_recovery_wedge.py. Ranked 2: [#222](https://github.com/gripsack-dev/gripsack/pull/222) replaced bool/string ownership decisions and fixed FND-1; [#229](https://github.com/gripsack-dev/gripsack/pull/229) extended K1 to blocks. Ranked 3: [#213](https://github.com/gripsack-dev/gripsack/pull/213) supplied SECURITY.md, read-only audit permissions and npm Dependabot for /typescript, and deleted the demo workflow. Ranked 4: [#231](https://github.com/gripsack-dev/gripsack/pull/231) reaps actual canonical dead-publisher staging names and tests both stale and foreign names (e2e/test_gc_admission.py). None of 1–4 needs an issue. 5–8 are qualified below. No request/approval to restore dropped signing, VM campaigns, D4 substitution, automated overlays, self-dogfooding or the mostly refuted temp collision. A5-02 is optional on user demand. 0058’s suggestion to delete Buildbot scripts is not current: §F0b of 0056 and AGENTS.md retain local qualification, and TLAPS retirement depends on F3.
 > [Original design 0058](https://github.com/gripsack-dev/gripsack/blob/7924bc2b844d109dbb520040f5954ad237007ff3/plan/0058-handover-final.md) · [tracking issue #309](https://github.com/gripsack-dev/gripsack/issues/309). The text below is the historical record.
+
+**0.57 owner decision (2026-11-21).** Ranked item 5
+([#316](https://github.com/gripsack-dev/gripsack/issues/316)) retains the newest
+100 completed diagnostic runs plus protected active/current/latest runs.
+New `runs/` directories are private (0700); new JSONL files are private
+(0600) at creation. This count is not a task receipt, generation, or
+process-root retention policy. Ranked item 8
+([#318](https://github.com/gripsack-dev/gripsack/issues/318)) documents when
+file-to-directory growth refuses; it grants no new mutation authority.
 
 Supersedes [0056a](2026-11-08-handover-reconciliation.md). Checked against
 `origin/foundation/release-0.52` at `5af45a6` (0.52.0 head), read-only: no

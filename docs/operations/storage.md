@@ -10,11 +10,18 @@ user: repairing a journal whose recovery refused (plan 0058 item 1).
 
 An `apply` or `rollback` that is killed, or loses power, leaves a journal in
 `$GRIPSACK_HOME/journal` (default `~/.local/share/gripsack/journal`): a run
-marker and one record per destination it touched. The next `apply`,
-`rollback` (and `gc`, which waits for it) recovers first: an interrupted run
-whose selection never flipped has every destination put back to its prior; a
-run that did flip only has its journal cleared. A destination you edited
-since the crash is kept, with a warning.
+marker and one record per destination it touched. The next `apply` or
+`rollback` reconciles before making new changes. If the selection never
+flipped, recovery restores the recorded priors where safe. If it did flip,
+recovery clears the journal; it does not roll back that generation. A
+destination you edited since the crash is kept, with a warning. `gc`
+(including `--dry-run`) refuses while the journal is pending.
+
+Without a generation argument, `rollback` tries the immediately preceding
+number. A gap means there is nothing to roll back to; a retained predecessor
+with an unreadable manifest is reported by number, not skipped. On success,
+read any `warning:` lines before the selection summary: the generation was
+selected, but an edited file may have been kept.
 
 Recovery refuses — changes nothing, keeps the journal, and stops the command
 — when it cannot establish what is at a destination: a directory, a FIFO,
@@ -57,6 +64,20 @@ deleting anything), an unadmissible or quarantined record (inspect
 the journal by hand discards the only record of what the interrupted run
 changed; do it only after you have put every listed destination back
 yourself.
+
+### When a file would have to become a directory
+
+In a tree Gripsack already manages with a directory receipt, an unchanged
+managed file with no prior to restore can become a directory. For example,
+if `data` becomes `data/child`, `plan` leaves `data` intact, `apply` installs
+the child, and rolling back to the earlier generation restores the file.
+
+If `data` was taken over and its entry records a prior file, removing it
+would bring that file back, not leave room for a directory. If Gripsack
+has no receipt for the blocking file, it has no authority to remove it.
+In both cases `plan` and `apply` refuse before changing the deployed files
+or selecting a generation. Choose a different destination for the child;
+do not delete a prior or edit a receipt to force the transition.
 
 ## Storage hygiene and archive relocation
 

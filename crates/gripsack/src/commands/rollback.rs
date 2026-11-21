@@ -26,23 +26,29 @@ pub fn rollback(generation: Option<store::GenerationId>, palette: Palette) -> Ex
             return ExitCode::FAILURE;
         }
     };
-    let target = generation.or_else(|| {
-        // Generation zero is adopt's historical empty baseline.
-        current
-            .and_then(store::GenerationId::checked_previous)
-            .filter(|id| store::read_manifest(&home, *id).is_ok())
-    });
-    let target = match target {
-        Some(target) => target,
-        None => {
-            eprintln!("grip: nothing to roll back to");
-            return ExitCode::FAILURE;
-        }
+    // Generation zero is adopt's historical empty baseline. A gap is not
+    // permission to skip to some older retained generation.
+    let target = generation.or_else(|| current.and_then(store::GenerationId::checked_previous));
+    let Some(target) = target else {
+        eprintln!("grip: nothing to roll back to");
+        return ExitCode::FAILURE;
     };
     let manifest = match store::generations::admit_manifest(&home, target) {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("grip: cannot admit generation {target}: {e}");
+            // NotFound can also mean a missing manifest *inside* a retained
+            // generation. Only an absent generation explains an empty history.
+            if generation.is_none()
+                && e.kind() == std::io::ErrorKind::NotFound
+                && matches!(
+                    std::fs::symlink_metadata(store::generation_dir(&home, target)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound
+                )
+            {
+                eprintln!("grip: nothing to roll back to");
+            } else {
+                eprintln!("grip: cannot admit generation {target}: {e}");
+            }
             return ExitCode::FAILURE;
         }
     };
@@ -62,7 +68,12 @@ pub fn rollback(generation: Option<store::GenerationId>, palette: Palette) -> Ex
     match gripsack_exec::rollback_generation(&session, current_manifest.as_ref(), &manifest) {
         Ok(notes) => {
             for note in notes {
-                println!("  {note}");
+                match note.severity {
+                    store::journal::NoteSeverity::Warn => {
+                        println!("  {} {note}", palette.warn("warning:"));
+                    }
+                    store::journal::NoteSeverity::Info => println!("  {note}"),
+                }
             }
             info!(generation = %target, "rolled back");
             println!("{} generation {}", palette.good("rolled back to"), target);

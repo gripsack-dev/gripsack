@@ -39,8 +39,9 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
                 println!("{}", palette.dim("gc: nothing to collect"));
             } else {
                 if !report.generations_removed.is_empty() {
+                    let action = if dry_run { "would prune" } else { "pruned" };
                     println!(
-                        "{} pruned generations {}",
+                        "{} {action} generations {}",
                         palette.good("gc:"),
                         report
                             .generations_removed
@@ -51,17 +52,28 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
                     );
                 }
                 for path in &report.store_removed {
-                    println!("{} collected {}", palette.good("gc:"), path.display());
+                    let action = if dry_run {
+                        "would collect"
+                    } else {
+                        "collected"
+                    };
+                    println!("{} {action} {}", palette.good("gc:"), path.display());
                 }
                 for path in &report.staging_removed {
+                    let action = if dry_run { "would remove" } else { "removed" };
                     println!(
-                        "{} removed stale staging {}",
+                        "{} {action} stale staging {}",
                         palette.good("gc:"),
                         path.display()
                     );
                 }
                 if report.bytes_freed > 0 {
-                    println!("{} freed", format_size(report.bytes_freed));
+                    let size = format_size(report.bytes_freed);
+                    if dry_run {
+                        println!("would free {size}");
+                    } else {
+                        println!("{size} freed");
+                    }
                 }
             }
             ExitCode::SUCCESS
