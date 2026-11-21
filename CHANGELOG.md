@@ -8,6 +8,11 @@ User-visible changes per release. Design decisions live in the
 
 ### Fixed
 
+- A publishing Conda or Pixi update no longer drops the reference that keeps
+  a previously built output usable after `grip gc`. If a multi-output update
+  fails, the old lock's retained archives remain available offline. A successful
+  update protects the new lock without making superseded archives permanent.
+  [#375](https://github.com/gripsack-dev/gripsack/issues/375)
 - Recovery no longer treats seeing a foreign edit as proof that it survived
   power loss. Before discarding a leaf's undo record it seals the observed
   file or symlink and its name. A failed barrier or changed identity keeps

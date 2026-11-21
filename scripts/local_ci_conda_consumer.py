@@ -147,6 +147,10 @@ export default defineWorkspace(() => workspace({
             prefix = Path(result["outputs"][0]["path"])
             require((prefix / "share/value").read_text() == f"{prefix}/retained-value\n", "real helper prefix relocation differs")
             original = snapshot(prefix)
+            # A lock is not the build consumer of the path just returned. An
+            # unchanged update must not replace that consumer's retention set.
+            consumer.run([consumer.grip, "update"], cwd=repo, env=env)
+            require(lock.read_bytes() == frozen, "unchanged Pixi update rewrote the lock")
             require(server.requests and set(server.requests) == {f"/channel/linux-64/{archive.name}"},
                     f"frozen Pixi import unexpectedly queried repodata: {server.requests}")
 
@@ -181,9 +185,10 @@ export default defineWorkspace(() => workspace({
             server.close()
             closed = True
             offline = dict(env, GRIPSACK_CONDA_HELPER=str(base / "unavailable-helper"))
+            consumer.run([consumer.grip, "gc"], cwd=repo, env=offline)
+            require(snapshot(prefix) == original, "GC collected or changed the previously returned prefix")
             warm = json.loads(consumer.run([consumer.grip, "build", "data", "--json"], cwd=repo, env=offline))
             require(warm == result, "offline build selected a different retained output")
-            consumer.run([consumer.grip, "gc"], cwd=repo, env=offline)
             require(lock.read_bytes() == frozen and (repo / "pixi.lock").read_text() == pixi_lock,
                     "offline consumer rewrote a frozen lock")
             require(snapshot(prefix) == original and sha(archive) == digest, "offline reuse changed prior bytes")
@@ -193,7 +198,7 @@ export default defineWorkspace(() => workspace({
                 "requests": requests, "status": "passed", "helper_selection": "compiled-pin private mirror",
                 "exercise": "real Pixi import + archive hash admission + prefix patch + independent native core receipt/tree validation",
                 "negative_cases": ["wrong helper pin", "wrong archive digest", "unapproved source", "approved stale Pixi input"],
-                "reuse": "origin stopped and helper unavailable; retained build/gc; locks and prefix unchanged"})
+                "reuse": "unchanged update, then GC with origin stopped and helper unavailable; printed prefix and frozen lock retained"})
         finally:
             if not closed:
                 server.close()
