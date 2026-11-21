@@ -74,30 +74,34 @@ def test_unchanged_update_preserves_exact_lock_bytes(sandbox):
     assert not (sandbox / ".stable").exists()
 
 
+@pytest.mark.parametrize("local", [True, False], ids=["captured", "external"])
 @pytest.mark.parametrize("failed_position", [0, 1, 2])
-def test_survey_keeps_all_results_and_error_dominates_changes(sandbox, failed_position):
+def test_survey_keeps_all_results_and_error_dominates_changes(sandbox, failed_position, local):
     names = ["alpha", "middle", "omega"]
     failed = names.pop(failed_position)
     stable, moving = names
     archive = make_tarball(sandbox / "stable.tar.gz", {"payload": b"stable"})
     changing = make_tarball(sandbox / "moving.tar.gz", {"payload": b"one"})
-    paths = {failed: sandbox / "missing.tar.gz", stable: archive, moving: changing}
+    missing = "missing.tar.gz" if local else sandbox / "missing.tar.gz"
+    paths = {failed: missing, stable: archive, moving: changing}
     repo = make_workspace_repo(sandbox / "env", {
         name: package_outputs(name, path) for name, path in paths.items()
     })
     run(repo, "update", stable + "-files", moving + "-files")
     lock = repo / "gripsack.lock"
-    before_lock, before_store = lock.read_bytes(), store_snapshot(sandbox)
+    before = survey_snapshot(repo, sandbox / ".local/share/gripsack")
+    before_lock = lock.read_bytes()
     make_tarball(changing, {"payload": b"two"})
     result = grip("update", "--check", cwd=repo)
     assert result.returncode == 2, result.stdout + result.stderr
-    lines = result.stdout.splitlines()
-    assert any(stable in line and "unchanged" in line for line in lines)
-    assert any(moving in line and "would bump" in line for line in lines)
-    assert any(failed in line and "failed" in line for line in lines)
-    assert "incomplete" in result.stdout
-    assert lock.read_bytes() == before_lock
-    assert store_snapshot(sandbox) == before_store
+    rows = [line.strip().split(maxsplit=1) for line in result.stdout.splitlines()
+            if line.startswith("  ") and line.strip()]
+    expected = {failed: "failed:", stable: "unchanged", moving: "would bump",
+                **{name + "-files": "skipped" for name in paths}}
+    assert [name for name, _ in rows] == sorted(expected)
+    assert all(status.startswith(expected[name]) for name, status in rows)
+    assert "survey incomplete: 1 unchanged, 1 would change, 3 skipped, 1 failed" in result.stdout
+    assert survey_snapshot(repo, sandbox / ".local/share/gripsack") == before
     assert not any((sandbox / f".{name}").exists() for name in paths)
     assert not (sandbox / ".local/share/gripsack/current").exists()
     changed_only = grip("update", "--check", moving + "-files", cwd=repo)
@@ -105,8 +109,7 @@ def test_survey_keeps_all_results_and_error_dominates_changes(sandbox, failed_po
     run(repo, "update", "--check", stable + "-files")
     unknown = grip("update", "--check", "not-selected", cwd=repo)
     assert unknown.returncode == 2, unknown.stdout + unknown.stderr
-    assert lock.read_bytes() == before_lock
-    assert store_snapshot(sandbox) == before_store
+    assert survey_snapshot(repo, sandbox / ".local/share/gripsack") == before
     # A publishing update retains the all-or-nothing lock contract.
     assert grip("update", cwd=repo).returncode == 1
     assert lock.read_bytes() == before_lock

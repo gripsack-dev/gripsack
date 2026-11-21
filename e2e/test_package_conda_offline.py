@@ -93,7 +93,7 @@ def pinned_helper(producer):
     return target, hashes[0]
 
 
-def original_archive(producer):
+def original_archive(producer, version="1.0"):
     compiler = shutil.which("cc")
     assert compiler, "Conda runtime fixture requires cc and static libc development files"
     source = producer / "probe.c"
@@ -110,7 +110,7 @@ def original_archive(producer):
             entry.update(prefix_placeholder=PLACEHOLDER, file_mode="text")
         paths.append(entry)
     files = {
-        "info/index.json": canonical({"name": "fixture", "version": "1.0", "build": "0",
+        "info/index.json": canonical({"name": "fixture", "version": version, "build": "0",
                                       "build_number": 0, "subdir": "linux-64", "depends": []}),
         "info/paths.json": canonical({"paths_version": 1, "paths": paths}),
         "info/files": b"bin/probe\nshare/value\n",
@@ -125,7 +125,7 @@ def original_archive(producer):
             member.size = len(data)
             member.mtime = 0
             archive.addfile(member, io.BytesIO(data))
-    result = producer / "fixture-1.0-0.tar.bz2"
+    result = producer / f"fixture-{version}-0.tar.bz2"
     result.write_bytes(bz2.compress(stream.getvalue()))
     return result
 
@@ -170,32 +170,44 @@ def remove_producer(path):
     shutil.rmtree(path)
 
 
-def pixi_workspace(repo, server, archive):
-    repo.mkdir()
+def pixi_documents(repo, stem, server, archive):
     channel = server.base + "/channel"
     url = f"{channel}/linux-64/{archive.name}"
-    (repo / "env.toml").write_text('[env]\nname = "portable-conda-fixture"\n\n[eval]\n'
-        + f'env = {{ SSL_CERT_FILE = {json.dumps(str(server.cert))} }}\n')
-    (repo / "pixi.toml").write_text(
+    version = archive.name.removeprefix("fixture-").removesuffix("-0.tar.bz2")
+    (repo / f"{stem}.toml").write_text(
         f"[workspace]\nname='fixture'\nchannels=['{channel}']\nplatforms=['linux-64']\n"
-        "[dependencies]\nfixture='==1.0'\n")
-    (repo / "pixi.lock").write_text(
+        f"[dependencies]\nfixture='=={version}'\n")
+    (repo / f"{stem}.lock").write_text(
         "version: 6\nenvironments:\n  default:\n    channels:\n"
         f"    - url: {channel}/\n    packages:\n      linux-64:\n      - conda: {url}\n"
         f"packages:\n- conda: {url}\n  sha256: {sha(archive)}\n  size: {archive.stat().st_size}\n"
         "  depends: []\n  constrains: []\n")
+
+
+def pixi_catalog(repo, outputs):
     (repo / "gripsack.ts").write_text('''import {
   defineWorkspace, workspace, pkg, provider, pixi, inputFile,
 } from "@gripsack/core";
+const outputs: [string, string][] = ''' + json.dumps(list(outputs.items())) + ''';
 export default defineWorkspace(() => workspace({
-  inputs: [inputFile("manifest", "pixi.toml"), inputFile("lock", "pixi.lock")],
-  outputs: [pkg("data", {
-    producer: provider(pixi.fromLock({manifest:"manifest",lock:"lock",environment:"default"})),
-    commands: {}, target:{os:"linux",arch:"x86_64",abi:"gnu"},
+  inputs: outputs.flatMap(([name, stem]) => [
+    inputFile(name + "-manifest", stem + ".toml"), inputFile(name + "-lock", stem + ".lock"),
+  ]),
+  outputs: outputs.map(([name]) => pkg(name, {
+    producer: provider(pixi.fromLock({manifest:name+"-manifest",lock:name+"-lock",environment:"default"})),
+    commands: {probe: "bin/probe"}, target:{os:"linux",arch:"x86_64",abi:"gnu"},
     layout:{kind:"prefix_materialized"},
-  })],
+  })),
 }));
 ''')
+
+
+def pixi_workspace(repo, server, archive):
+    repo.mkdir()
+    (repo / "env.toml").write_text('[env]\nname = "portable-conda-fixture"\n\n[eval]\n'
+        + f'env = {{ SSL_CERT_FILE = {json.dumps(str(server.cert))} }}\n')
+    pixi_documents(repo, "pixi", server, archive)
+    pixi_catalog(repo, {"data": "pixi"})
     return repo
 
 
@@ -264,6 +276,179 @@ def test_pixi_survey_validates_without_publishing(sandbox):
         result = workspace_command(env, repo, "update", "--check", code=2)
         assert "fixture archive download" in result.stdout
         assert survey_snapshot(repo, state) == warm
+    finally:
+        server.close()
+
+
+def printed_probe(output, env):
+    prefix = Path(output["path"])
+    assert Path(output["commands"]["probe"]) == prefix / "bin/probe"
+    assert checked([output["commands"]["probe"]], env=env, text=True).stdout == f"conda-prefix={prefix}\n"
+
+
+def historical_lock_roots(state, repo, inputs):
+    """Install the prior version's actual v2 (repo, output) roots, not extra consumers."""
+    roots = state / "roots/outputs"
+    old_ids = {hashlib.sha256(canonical([str(repo.resolve()), name])).hexdigest() for name in inputs}
+    if {p.stem for p in roots.glob("*.json")} == old_ids:
+        return  # Already the historical producer when exercising a pre-fix binary.
+    [current] = roots.glob("*.json")
+    record = json.loads(current.read_bytes())
+    assert record["version"] == 2 and record["kind"] == "output"
+    paths = {Path(path) for path in record["store_paths"]}
+    expected = set()
+    for name, (stem, archive) in inputs.items():
+        documents = {(repo / f"{stem}.{ext}").read_bytes() for ext in ("toml", "lock")}
+        closure = {p for p in paths if (
+            p.name.endswith("-conda-archive") and sha(p / "archive") == sha(archive)
+            or p.name.endswith("-workspace-input") and (p / "value").read_bytes() in documents)}
+        assert len(closure) == 3
+        expected.update(closure)
+        identity = hashlib.sha256(canonical([str(repo.resolve()), name])).hexdigest()
+        (roots / f"{identity}.json").write_bytes(canonical({
+            **record, "id": identity, "store_paths": sorted(map(str, closure)),
+        }))
+    assert paths == expected
+    current.unlink()
+
+
+@pytest.mark.native_integration
+@pytest.mark.parametrize("legacy", [False, True], ids=["current", "first-after-historical-build"])
+def test_unchanged_conda_update_keeps_printed_build_after_gc(sandbox, legacy):
+    env = recipient(sandbox / "isolated home")
+    state = Path(env["GRIPSACK_HOME"])
+    archive = original_archive(sandbox)
+    server = HttpFixture(tls=True)
+    server.archive = archive.read_bytes()
+    try:
+        repo = pixi_workspace(sandbox / "workspace", server, archive)
+        workspace_command(env, repo, "update")
+        if legacy:
+            historical_lock_roots(state, repo, {"data": ("pixi", archive)})
+        # No project, profile, import or other home pins this prefix.
+        built = json.loads(workspace_command(env, repo, "build", "data", "--json").stdout)["outputs"][0]
+        lock = (repo / "gripsack.lock").read_bytes()
+        workspace_command(env, repo, "update")
+        assert (repo / "gripsack.lock").read_bytes() == lock
+    finally:
+        server.close()
+    workspace_command(env, repo, "gc")
+    assert not (state / "current").exists()
+    printed_probe(built, env)
+
+
+@pytest.mark.native_integration
+@pytest.mark.parametrize("outcome", ["failed-sibling", "scoped-success", "remove-output"])
+def test_conda_lock_archives_follow_only_published_pins(sandbox, outcome):
+    env = recipient(sandbox / "isolated home")
+    state = Path(env["GRIPSACK_HOME"])
+    store = state / "store"
+    first, sibling, replacement = [original_archive(sandbox, version) for version in ("1.0", "2.0", "3.0")]
+    a, b = HttpFixture(tls=True), HttpFixture(tls=True)
+    a.archive, b.archive = first.read_bytes(), sibling.read_bytes()
+    try:
+        repo = pixi_workspace(sandbox / "workspace", a, first)
+        pixi_documents(repo, "second", b, sibling)
+        pixi_catalog(repo, {"data": "pixi", "sibling": "second"})
+        workspace_command(env, repo, "update")
+        if outcome == "scoped-success":
+            historical_lock_roots(state, repo, {"data": ("pixi", first), "sibling": ("second", sibling)})
+        lock = repo / "gripsack.lock"
+        original = lock.read_bytes()
+        a.archive = replacement.read_bytes()
+        pixi_documents(repo, "pixi", a, replacement)
+        if outcome == "failed-sibling":
+            (repo / "second.lock").write_bytes(b"\xff")
+            result = workspace_command(env, repo, "update", code=1)
+            assert "pixi lock is not UTF-8" in result.stderr
+            assert lock.read_bytes() == original
+            assert a.requests.count(f"/channel/linux-64/{replacement.name}") == 1
+            pixi_documents(repo, "pixi", a, first)
+            pixi_documents(repo, "second", b, sibling)
+            active = {"data": ("pixi", first), "sibling": ("second", sibling)}
+        elif outcome == "scoped-success":
+            workspace_command(env, repo, "update", "data")
+            assert lock.read_bytes() != original
+            active = {"data": ("pixi", replacement), "sibling": ("second", sibling)}
+        else:
+            pixi_catalog(repo, {"data": "pixi"})
+            workspace_command(env, repo, "update")
+            active = {"data": ("pixi", replacement)}
+    finally:
+        a.close()
+        b.close()
+    # No build, profile or process lease has protected either candidate or old
+    # lock. Compare the complete surviving archive set, not merely existence.
+    workspace_command(env, repo, "gc")
+    assert not (state / "current").exists()
+    assert not list(store.glob("*-workspace-package"))
+    assert {sha(p) for p in store.glob("*-conda-archive/archive")} == {
+        sha(archive) for _, archive in active.values()
+    }
+    assert {p.read_bytes() for p in store.glob("*-workspace-input/value")} == {
+        (repo / f"{stem}.{ext}").read_bytes() for stem, _ in active.values() for ext in ("toml", "lock")
+    }
+    locked = {pin["output"]: pin["conda"]["packages"][0]["sha256"]
+              for resolution in json.loads(lock.read_bytes())["resolutions"].values()
+              for pin in resolution["pins"]}
+    assert locked == {name: sha(archive) for name, (_, archive) in active.items()}
+    built = json.loads(workspace_command(env, repo, "build", *active, "--json").stdout)
+    for output in built["outputs"]:
+        printed_probe(output, env)
+
+
+@pytest.mark.native_integration
+@pytest.mark.requires_fault_controls
+def test_interrupted_conda_lock_handoff_survives_gc_and_reconciles(sandbox):
+    home = sandbox / "recipient"
+    env = recipient(home)
+    state = Path(env["GRIPSACK_HOME"])
+    first, replacement = [original_archive(sandbox, version) for version in ("1.0", "2.0")]
+    def archives():
+        return {sha(p) for p in (state / "store").glob("*-conda-archive/archive")}
+
+    server = HttpFixture(tls=True)
+    try:
+        repo = pixi_workspace(sandbox / "workspace", server, first)
+        server.archive = first.read_bytes()
+        workspace_command(env, repo, "update")
+        lock = repo / "gripsack.lock"
+        old = lock.read_bytes()
+        [root] = (state / "roots/outputs").glob("*.json")
+        server.archive = replacement.read_bytes()
+        pixi_documents(repo, "pixi", server, replacement)
+        saved = sandbox / "before-update"
+        shutil.copytree(home, saved, symlinks=True)
+        trace = sandbox / "update.trace"
+        workspace_command(dict(env, GRIPSACK_FS_TRACE=str(trace)), repo, "update")
+        new = lock.read_bytes()
+        assert new != old
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        publishes = [(row[0], json.loads(row[3])) for row in rows if row[1:3] == ["After", "FilePublish"]]
+        cuts = [(ordinal, name) for ordinal, name in publishes if name in (root.name, "gripsack.lock")]
+        assert [name for _, name in cuts] == [root.name, "gripsack.lock", root.name]
+        for index, (ordinal, name) in enumerate(cuts):
+            remove_producer(home)
+            shutil.copytree(saved, home, symlinks=True)
+            lock.write_bytes(old)
+            pixi_documents(repo, "pixi", server, replacement)
+            trace.unlink()
+            failed_env = dict(env, GRIPSACK_FS_TRACE=str(trace), GRIPSACK_FS_CUT=ordinal)
+            workspace_command(failed_env, repo, "update", code=1)
+            observed = trace.read_text().splitlines()[int(ordinal) - 1].split("\t", 3)
+            assert observed[1:] == ["After", "FilePublish", json.dumps(name)]
+            visible = first if index == 0 else replacement
+            assert lock.read_bytes() == (old if index == 0 else new)
+            workspace_command(env, repo, "gc")
+            assert archives() == ({sha(first), sha(replacement)} if index < 2 else {sha(replacement)})
+            # The retry is a no-change publication against whatever lock name
+            # survived. It must seal that name before dropping excess roots.
+            pixi_documents(repo, "pixi", server, visible)
+            before = lock.read_bytes()
+            workspace_command(env, repo, "update")
+            assert lock.read_bytes() == before
+            workspace_command(env, repo, "gc")
+            assert archives() == {sha(visible)}
     finally:
         server.close()
 

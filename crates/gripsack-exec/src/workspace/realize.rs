@@ -3,7 +3,7 @@
 use super::{
     artifact::{self, Package, ProducerIdentity},
     prepare::Prepared,
-    roots::{self, RetentionSet, RootId},
+    roots::{self, RetentionSet},
 };
 use crate::{Ctx, ExecError, LifecycleSession};
 use gripsack_host::process::OperatorEnvironment;
@@ -117,7 +117,7 @@ pub fn build_workspace(
         closures,
     } = realize_held(ir, ctx, options, &ctx.only)?;
     for (name, paths) in closures {
-        let id = RootId::from_identity(&serde_json::to_vec(&(ctx.repository.identity(), &name))?);
+        let id = roots::built_output_id(ctx.repository.identity(), &name)?;
         let consumer = RetentionSet::admit(&session, paths)?;
         roots::register_output_root(&session, &id, &consumer)?;
     }

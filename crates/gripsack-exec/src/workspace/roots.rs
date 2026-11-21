@@ -11,10 +11,10 @@ use std::{
 };
 
 const ROOT_VERSION: u32 = 2;
-const MAX_ROOT_BYTES: u64 = 1024 * 1024;
+pub(super) const MAX_ROOT_BYTES: u64 = 1024 * 1024;
 const ROOT_DIRECTORY: &str = "roots";
-const MAX_ROOT_ENTRIES: usize = 100_000;
-const MAX_RETAINED_OBJECTS: usize = 100_000;
+pub(super) const MAX_ROOT_ENTRIES: usize = 100_000;
+pub(super) const MAX_RETAINED_OBJECTS: usize = 100_000;
 /// Private native command projections retain the historical directory spelling.
 pub(super) const BUILD_STAGING_DIRECTORY: &str = "workspace-staging";
 
@@ -255,6 +255,41 @@ pub fn register_output_root(
 ) -> Result<(), ExecError> {
     write_root(session, RootKind::Output, id, closure, None)
 }
+/// The original build identity is also where older Conda updates wrote a
+/// lock-only root. Preserve the identity of any existing built consumer.
+pub(super) fn built_output_id(repository: &Path, name: &str) -> Result<RootId, ExecError> {
+    Ok(RootId::from_identity(&serde_json::to_vec(&(repository, name))?))
+}
+
+pub(super) fn output_paths(
+    home: &gripsack_host::fs::Dir,
+    session: &LifecycleSession,
+    id: &RootId,
+) -> Result<Option<BTreeSet<PathBuf>>, ExecError> {
+    let Some(dir) = directory(home, RootKind::Output, false)? else {
+        return Ok(None);
+    };
+    let name = format!("{}.json", id.as_str());
+    match read_record(&dir, &name, RootKind::Output, session.home()) {
+        Ok(Some(record)) => Ok(Some(record.store_paths)),
+        Err(ExecError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Ok(None) => unreachable!("a json filename cannot be a flock"),
+        Err(error) => Err(error),
+    }
+}
+
+/// A retry may observe a record whose rename preceded a failed directory
+/// barrier. Seal the pinned namespace before depending on those names.
+pub(super) fn seal_output_roots(session: &LifecycleSession) -> Result<(), ExecError> {
+    let home = gripsack_host::fs::open_or_create(session.home())?;
+    directory(&home, RootKind::Output, true)?;
+    Ok(())
+}
+
+pub(super) fn remove_output_root(session: &LifecycleSession, id: &RootId) -> Result<(), ExecError> {
+    remove_root(session, RootKind::Output, id)
+}
+
 fn remove_root(session: &LifecycleSession, kind: RootKind, id: &RootId) -> Result<(), ExecError> {
     let home = gripsack_host::fs::open_or_create(session.home())?;
     if let Some(directory) = directory(&home, kind, false)? {
@@ -340,10 +375,41 @@ pub(crate) fn inventory(
     home: &gripsack_host::fs::Dir,
     home_path: &Path,
 ) -> Result<BTreeSet<String>, ExecError> {
+    Ok(root_inventory(home, home_path)?.0)
+}
+
+/// The peak of a lock handoff includes all other consumers and both possible
+/// lock outcomes. Refuse before the first write if GC could not admit it.
+pub(super) fn admit_output_growth<'a>(
+    home: &gripsack_host::fs::Dir,
+    session: &LifecycleSession,
+    extra_entries: usize,
+    extended: impl Iterator<Item = &'a PathBuf>,
+) -> Result<(), ExecError> {
+    let (paths, entries) = root_inventory(home, session.home())?;
+    if entries + extra_entries > MAX_ROOT_ENTRIES {
+        return Err(error("lock handoff exceeds the consumer root entry bound"));
+    }
+    let mut count = paths.len();
+    for path in extended {
+        if !paths.contains(path.to_str().ok_or_else(|| error("non-UTF-8 store root"))?) {
+            count += 1;
+            if count > MAX_RETAINED_OBJECTS {
+                return Err(error("lock handoff exceeds the consumer retention object bound"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn root_inventory(
+    home: &gripsack_host::fs::Dir,
+    home_path: &Path,
+) -> Result<(BTreeSet<String>, usize), ExecError> {
     let mut paths = BTreeSet::new();
     let roots = match gripsack_host::fs::open_dir_nofollow(home, Path::new(ROOT_DIRECTORY)) {
         Ok(roots) => roots,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(paths),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok((paths, 0)),
         Err(error) => return Err(error.into()),
     };
     for entry in roots.entries()? {
@@ -398,7 +464,7 @@ pub(crate) fn inventory(
             }
         }
     }
-    Ok(paths)
+    Ok((paths, entries))
 }
 
 fn read_record(

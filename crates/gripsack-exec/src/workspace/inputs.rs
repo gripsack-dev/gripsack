@@ -20,6 +20,17 @@ pub(super) enum InputKind {
     File,
     Directory,
 }
+impl InputKind {
+    pub(super) fn identity(self, tree: &store::hash::PayloadHash) -> ArtifactDigest {
+        let mut identity = Sha256::new();
+        identity.update(match self {
+            Self::File => b"gripsack/input-file/v1\0".as_slice(),
+            Self::Directory => b"gripsack/input-directory/v1\0".as_slice(),
+        });
+        identity.update(tree.as_str().as_bytes());
+        ArtifactDigest::from_bytes(identity.finalize().into())
+    }
+}
 pub(super) struct CapturedInput {
     pub artifact: Arc<super::artifact::Artifact>,
     pub identity: ArtifactDigest,
@@ -218,16 +229,10 @@ pub(super) fn capture_readonly(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
-    let mut identity = Sha256::new();
-    identity.update(match kind {
-        InputKind::File => b"gripsack/input-file/v1\0".as_slice(),
-        InputKind::Directory => b"gripsack/input-directory/v1\0".as_slice(),
-    });
-    identity.update(checked.tree_hash().as_str().as_bytes());
     Ok((
         temporary,
         CapturedInput {
-            identity: ArtifactDigest::from_bytes(identity.finalize().into()),
+            identity: kind.identity(checked.tree_hash()),
             kind,
             artifact: Arc::new(super::artifact::Artifact {
                 payload: stage,
