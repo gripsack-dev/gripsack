@@ -7,11 +7,16 @@ self-update — split from test_flow.py; fixture repos come from conftest."""
 import json
 import os
 import re
+import resource
 import shutil
+import signal
+import subprocess
 
 import pytest
 
 from conftest import (
+    GRIP,
+    approve_fixture,
     grip,
     make_workspace_repo,
     make_tarball,
@@ -248,8 +253,9 @@ def test_init_scaffolds_a_working_env_repo(sandbox):
     clobbers an existing env repo."""
     repo = sandbox / "fresh"
     repo.mkdir()
-    out = grip("init", cwd=repo)
+    out = grip("init", ".", cwd=repo)
     assert out.returncode == 0, out.stderr
+    assert "next: grip check && grip plan && grip apply" in out.stdout.splitlines()
     assert (repo / "env.toml").exists()
     assert (repo / "gripsack.ts").exists()
     assert not (repo / "modules").exists()
@@ -281,6 +287,143 @@ def test_init_scaffolds_a_working_env_repo(sandbox):
         for path in repo.rglob("*")
         if path.is_file() and ".git" not in path.relative_to(repo).parts
     } == existing
+
+
+def test_init_collision_preserves_user_files_and_can_retry(sandbox):
+    repo = sandbox / "existing"
+    repo.mkdir()
+    (repo / "README.md").write_text("my readme")
+    conflict = repo / "configs"
+    conflict.write_text("my configs")
+
+    out = grip("init", repo.name, cwd=sandbox)
+    assert out.returncode != 0 and "configs" in out.stderr
+    assert conflict.read_text() == "my configs"
+    assert (repo / "README.md").read_text() == "my readme"
+    assert not (repo / "env.toml").exists()
+    assert not (repo / "gripsack.ts").exists()
+    assert not (repo / ".git").exists()
+
+    conflict.rename(repo / "saved-configs")
+    out = grip("init", repo.name, cwd=sandbox)
+    assert out.returncode == 0, out.stderr
+    assert (repo / "README.md").read_text() == "my readme"
+    assert (repo / "saved-configs").read_text() == "my configs"
+    assert (repo / "configs/hello/hello.toml").is_file()
+    out = grip("check", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+
+def test_init_failed_write_does_not_publish_partial_file(sandbox):
+    repo = sandbox / "limited"
+    repo.mkdir()
+
+    def limit_file_size():
+        # A real short write followed by EFBIG, including when running as root.
+        resource.setrlimit(resource.RLIMIT_FSIZE, (512, 512))
+        signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+
+    out = subprocess.run(
+        [GRIP.resolve(), "init"], cwd=repo, preexec_fn=limit_file_size,
+        capture_output=True, text=True, timeout=120,
+    )
+    assert out.returncode != 0 and "cannot write" in out.stderr, out.stderr
+    assert not (repo / "README.md").exists()
+    assert not (repo / "env.toml").exists()
+    assert not (repo / "gripsack.ts").exists()
+    out = grip("init", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (repo / "README.md").stat().st_size > 512
+
+
+@pytest.mark.parametrize("collision", ["configs", "package.json"])
+def test_init_does_not_write_through_symlinks(sandbox, collision):
+    repo = sandbox / "existing"
+    repo.mkdir()
+    outside = sandbox / "outside"
+    if collision == "configs":
+        outside.mkdir()
+    (repo / collision).symlink_to(outside)
+    out = grip("init", cwd=repo)
+    assert out.returncode != 0 and collision in out.stderr
+    assert (repo / collision).readlink() == outside
+    if collision == "configs":
+        assert list(outside.iterdir()) == []
+    else:
+        assert not outside.exists()
+    assert not (repo / "env.toml").exists()
+    assert not (repo / "gripsack.ts").exists()
+
+
+def test_init_printed_next_steps_apply_the_selected_workspace(sandbox, monkeypatch):
+    caller = sandbox / "caller"
+    caller.mkdir()
+    name = "-my env'$(touch UNINTENDED)"
+    out = grip("init", "--", name, cwd=caller)
+    assert out.returncode == 0, out.stderr
+    _, marker, commands = out.stdout.partition("next: ")
+    assert marker
+    repo = caller / name
+    tools = sandbox / "bin"
+    tools.mkdir()
+    (tools / "grip").symlink_to(GRIP.resolve())
+    monkeypatch.setenv("PATH", f"{tools}:{os.environ['PATH']}")
+    decoy = sandbox / "decoy"
+    (decoy / name).mkdir(parents=True)
+    monkeypatch.setenv("CDPATH", str(decoy))
+    approve_fixture([str(GRIP.resolve()), "check"], cwd=repo)
+
+    ran = subprocess.run(
+        ["/bin/sh", "-ec", commands], cwd=caller,
+        capture_output=True, text=True, timeout=120,
+    )
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert not (caller / "UNINTENDED").exists()
+    assert (sandbox / ".config/hello/hello.toml").read_bytes() == (
+        repo / "configs/hello/hello.toml"
+    ).read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("git_state", "message"),
+    [
+        ("missing", "git not available"),
+        ("nonexecutable", "could not start git init"),
+        ("missing-interpreter", "could not start git init"),
+        ("failed", "git init failed"),
+    ],
+)
+def test_init_reports_optional_git_outcome(sandbox, monkeypatch, git_state, message):
+    repo = sandbox / "workspace"
+    if git_state == "failed":
+        # Exercise the installed Git itself with a malformed, sandbox-only config.
+        config = sandbox / "invalid.gitconfig"
+        config.write_text("[invalid\n")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+        monkeypatch.setenv("LC_ALL", "C")
+    else:
+        tools = sandbox / "bin"
+        tools.mkdir()
+        if git_state == "nonexecutable":
+            (tools / "git").touch(mode=0o644)
+        elif git_state == "missing-interpreter":
+            (tools / "git").write_text("#!/no/such/gripsack-test-interpreter\n")
+            (tools / "git").chmod(0o755)
+        monkeypatch.setenv("PATH", str(tools))
+
+    out = grip("init", repo.name, cwd=sandbox)
+    assert out.returncode == 0, out.stderr  # Git remains optional
+    assert "workspace initialized" in out.stderr and message in out.stderr
+    if git_state != "missing":
+        assert "git not available" not in out.stderr
+    if git_state == "failed":
+        assert "exit status:" in out.stderr
+        assert "bad config line" in out.stderr and str(config) in out.stderr
+    assert (repo / "gripsack.ts").is_file() and (repo / "env.toml").is_file()
+    assert (repo / "configs/hello/hello.toml").is_file()
+    if git_state != "failed":  # A Git process that started owns its partial output.
+        assert not (repo / ".git").exists()
 
 
 
