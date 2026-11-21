@@ -19,16 +19,30 @@ def run(repo, *args):
     return result
 
 
-def store_snapshot(sandbox):
-    root = sandbox / ".local/share/gripsack/store"
+def tree_snapshot(root):
+    if not root.exists():
+        return None
     return {
         str(path.relative_to(root)): (
             path.lstat().st_mode,
             str(path.readlink()) if path.is_symlink()
             else path.read_bytes() if path.is_file() else None,
         )
-        for path in root.rglob("*")
+        for path in (root, *root.rglob("*"))
     }
+
+
+def store_snapshot(sandbox):
+    return tree_snapshot(sandbox / ".local/share/gripsack/store")
+
+
+def survey_snapshot(repo, state):
+    lock = repo / "gripsack.lock"
+    return (
+        lock.read_bytes() if lock.exists() else None,
+        tree_snapshot(state / "store"),
+        tree_snapshot(state / "roots"),
+    )
 
 
 def package_outputs(name, archive):

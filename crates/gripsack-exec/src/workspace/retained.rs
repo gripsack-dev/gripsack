@@ -177,7 +177,7 @@ fn retained_source(
     limits: gripsack_fetch::FetchLimits,
 ) -> Result<Option<PreparedSource>, ExecError> {
     if let AcquisitionSource::Package { manifest, .. } = source {
-        return super::sharing::inspect_source(home, manifest, limits);
+        return super::sharing::inspect_source(home, manifest, limits).map(Result::ok);
     }
     let AcquisitionSource::Fetch(fetch) = source else {
         let Some(pin) = pin else {

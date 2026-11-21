@@ -33,6 +33,9 @@ use std::{
 
 const VERSION: u32 = 3;
 const RECEIPT: &str = "projection.json";
+const IMPORT_REQUIRED: &str = "package is not imported; import its signed bundle first";
+const PROJECTION_REQUIRED: &str =
+    "environment projection is not retained; run grip update to create it";
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -138,17 +141,17 @@ pub(in crate::workspace) fn acquire(
             Ok(source)
         }
         Some(runtime::AdmittedSource { prepared, .. }) => Ok(prepared),
-        None => Err(runtime::failure(
-            "package is not imported; import its signed bundle first",
-        )),
+        None => Err(runtime::failure(IMPORT_REQUIRED)),
     }
 }
 
+/// A missing prerequisite is an ordinary cache miss for planning. A survey
+/// also needs the remedy. Admission failures are never treated as cache misses.
 pub(in crate::workspace) fn inspect_source(
     home: &Path,
     identity: &str,
     limits: FetchLimits,
-) -> Result<Option<PreparedSource>, ExecError> {
+) -> Result<Result<PreparedSource, &'static str>, ExecError> {
     match runtime::admit_source(home, identity, limits)? {
         Some(runtime::AdmittedSource {
             environment: Some(environment),
@@ -159,10 +162,10 @@ pub(in crate::workspace) fn inspect_source(
             if let Some(source) = &source {
                 admit_captured_source(home, identity, source)?;
             }
-            Ok(source)
+            Ok(source.ok_or(PROJECTION_REQUIRED))
         }
-        Some(runtime::AdmittedSource { prepared, .. }) => Ok(Some(prepared)),
-        None => Ok(None),
+        Some(runtime::AdmittedSource { prepared, .. }) => Ok(Ok(prepared)),
+        None => Ok(Err(IMPORT_REQUIRED)),
     }
 }
 

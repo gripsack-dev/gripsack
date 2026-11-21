@@ -27,6 +27,7 @@ import pytest
 from conftest import GRIP, run_grip
 from test_http_policy import HttpFixture
 from test_package_sharing import canonical, checked, independent_sign, native_target, package, recipient
+from test_update_surveys import survey_snapshot
 
 pytestmark = pytest.mark.skipif(
     platform.system() != "Linux" or platform.machine() != "x86_64",
@@ -129,10 +130,10 @@ def original_archive(producer):
     return result
 
 
-def workspace_command(env, repo, *arguments):
+def workspace_command(env, repo, *arguments, code=0):
     result = run_grip([str(GRIP.resolve()), *arguments], env=env, cwd=repo,
                       capture_output=True, text=True, timeout=120)
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == code, result.stdout + result.stderr
     return result
 
 
@@ -169,6 +170,104 @@ def remove_producer(path):
     shutil.rmtree(path)
 
 
+def pixi_workspace(repo, server, archive):
+    repo.mkdir()
+    channel = server.base + "/channel"
+    url = f"{channel}/linux-64/{archive.name}"
+    (repo / "env.toml").write_text('[env]\nname = "portable-conda-fixture"\n\n[eval]\n'
+        + f'env = {{ SSL_CERT_FILE = {json.dumps(str(server.cert))} }}\n')
+    (repo / "pixi.toml").write_text(
+        f"[workspace]\nname='fixture'\nchannels=['{channel}']\nplatforms=['linux-64']\n"
+        "[dependencies]\nfixture='==1.0'\n")
+    (repo / "pixi.lock").write_text(
+        "version: 6\nenvironments:\n  default:\n    channels:\n"
+        f"    - url: {channel}/\n    packages:\n      linux-64:\n      - conda: {url}\n"
+        f"packages:\n- conda: {url}\n  sha256: {sha(archive)}\n  size: {archive.stat().st_size}\n"
+        "  depends: []\n  constrains: []\n")
+    (repo / "gripsack.ts").write_text('''import {
+  defineWorkspace, workspace, pkg, provider, pixi, inputFile,
+} from "@gripsack/core";
+export default defineWorkspace(() => workspace({
+  inputs: [inputFile("manifest", "pixi.toml"), inputFile("lock", "pixi.lock")],
+  outputs: [pkg("data", {
+    producer: provider(pixi.fromLock({manifest:"manifest",lock:"lock",environment:"default"})),
+    commands: {}, target:{os:"linux",arch:"x86_64",abi:"gnu"},
+    layout:{kind:"prefix_materialized"},
+  })],
+}));
+''')
+    return repo
+
+
+def test_pixi_failed_survey_leaves_no_captured_inputs(sandbox):
+    env = recipient(sandbox / "recipient")
+    state = Path(env["GRIPSACK_HOME"])
+    archive = original_archive(sandbox)
+    server = HttpFixture(tls=True)
+    try:
+        repo = pixi_workspace(sandbox / "workspace", server, archive)
+        (repo / "pixi.lock").write_bytes(b"\xff")
+        before = survey_snapshot(repo, state)
+        result = workspace_command(env, repo, "update", "--check", code=2)
+        assert "pixi lock is not UTF-8" in result.stdout
+        assert survey_snapshot(repo, state) == before
+        assert not server.requests
+    finally:
+        server.close()
+
+
+@pytest.mark.native_integration
+def test_pixi_survey_validates_without_publishing(sandbox):
+    env = recipient(sandbox / "recipient")
+    if not env.get("GRIPSACK_CONDA_HELPER"):
+        mirror = env.get("GRIPSACK_CONDA_HELPER_MIRROR")
+        assert mirror and urlparse(mirror).scheme in ("", "file"), (
+            "supply a local Conda helper or offline helper mirror"
+        )
+    state = Path(env["GRIPSACK_HOME"])
+    store = state / "store"
+    archive = original_archive(sandbox)
+    server = HttpFixture(tls=True)
+    server.archive = archive.read_bytes()
+    try:
+        repo = pixi_workspace(sandbox / "workspace", server, archive)
+        cold = survey_snapshot(repo, state)
+        assert cold == (None, None, None)
+        workspace_command(env, repo, "update", "--check", code=1)
+        assert survey_snapshot(repo, state) == cold
+        assert server.requests == [f"/channel/linux-64/{archive.name}"]
+
+        workspace_command(env, repo, "update")
+        workspace_command(env, repo, "gc")
+        documents = [repo / "pixi.toml", repo / "pixi.lock"]
+        assert {p.read_bytes() for p in store.glob("*-workspace-input/value")} == {
+            path.read_bytes() for path in documents
+        }
+        assert [p.read_bytes() for p in store.glob("*-conda-archive/archive")] == [server.archive]
+        warm = survey_snapshot(repo, state)
+        pins = [pin for resolution in json.loads(warm[0])["resolutions"].values()
+                for pin in resolution["pins"]]
+        assert len(pins) == 1
+        assert pins[0]["conda"]["packages"][0]["sha256"] == sha(archive)
+        for field in ("manifest_sha256", "lock_sha256"):
+            assert re.fullmatch("[a-f0-9]{64}", pins[0]["source"][field])
+        workspace_command(env, repo, "update", "--check")
+        assert survey_snapshot(repo, state) == warm
+
+        # Both documents now have unretained identities but select the very same archive.
+        for path in documents:
+            with path.open("a") as stream:
+                stream.write("# new input identity\n")
+        workspace_command(env, repo, "update", "--check", code=1)
+        assert survey_snapshot(repo, state) == warm
+        server.archive = b"corrupt archive from the origin"
+        result = workspace_command(env, repo, "update", "--check", code=2)
+        assert "fixture archive download" in result.stdout
+        assert survey_snapshot(repo, state) == warm
+    finally:
+        server.close()
+
+
 @pytest.mark.native_integration
 def test_original_archives_reconstruct_at_two_offline_final_prefixes(sandbox):
     producer = sandbox / "producer home with spaces"
@@ -181,33 +280,8 @@ def test_original_archives_reconstruct_at_two_offline_final_prefixes(sandbox):
     archive_digest = sha(archive)
     server = HttpFixture(tls=True)
     server.archive = original
-    repo = producer / "workspace"
-    repo.mkdir()
     try:
-        channel = server.base + "/channel"
-        url = f"{channel}/linux-64/{archive.name}"
-        (repo / "env.toml").write_text('[env]\nname = "portable-conda-fixture"\n\n[eval]\n'
-            + f'env = {{ SSL_CERT_FILE = {json.dumps(str(server.cert))} }}\n')
-        (repo / "pixi.toml").write_text(
-            f"[workspace]\nname='fixture'\nchannels=['{channel}']\nplatforms=['linux-64']\n"
-            "[dependencies]\nfixture='==1.0'\n")
-        (repo / "pixi.lock").write_text(
-            "version: 6\nenvironments:\n  default:\n    channels:\n"
-            f"    - url: {channel}/\n    packages:\n      linux-64:\n      - conda: {url}\n"
-            f"packages:\n- conda: {url}\n  sha256: {archive_digest}\n  size: {len(original)}\n"
-            "  depends: []\n  constrains: []\n")
-        (repo / "gripsack.ts").write_text('''import {
-  defineWorkspace, workspace, pkg, provider, pixi, inputFile,
-} from "@gripsack/core";
-export default defineWorkspace(() => workspace({
-  inputs: [inputFile("manifest", "pixi.toml"), inputFile("lock", "pixi.lock")],
-  outputs: [pkg("data", {
-    producer: provider(pixi.fromLock({manifest:"manifest",lock:"lock",environment:"default"})),
-    commands: {}, target:{os:"linux",arch:"x86_64",abi:"gnu"},
-    layout:{kind:"prefix_materialized"},
-  })],
-}));
-''')
+        repo = pixi_workspace(producer / "workspace", server, archive)
         workspace_command(env, repo, "update")
         built = json.loads(workspace_command(env, repo, "build", "data", "--json").stdout)
         producer_prefix = Path(built["outputs"][0]["path"])
