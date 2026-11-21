@@ -16,6 +16,17 @@ User-visible changes per release. Design decisions live in the
   prevents journaled file or symlink installation and restoration. The
   temporary name stays in the same directory without embedding the basename.
   [#363](https://github.com/gripsack-dev/gripsack/issues/363)
+- A workspace can declare its only output conditionally on a read-only
+  probe. A provisional empty round waits for the answer; a genuinely empty
+  final workspace still fails. [#371](https://github.com/gripsack-dev/gripsack/issues/371)
+- `grip check` diagnoses missing or wrong-kind captured task inputs at their
+  declarations, including in JSON output. It does not build packages or run
+  the task to check those paths. [#372](https://github.com/gripsack-dev/gripsack/issues/372)
+- `grip doctor` leaves recovery evidence untouched. It reports an unreadable
+  prior, invalid current manifest or unusable Deno as a blocker instead of
+  saying the workspace is ready. It does not fetch Deno, materialize the
+  editor SDK or create a run log to make that diagnosis.
+  [#362](https://github.com/gripsack-dev/gripsack/issues/362), [#382](https://github.com/gripsack-dev/gripsack/issues/382)
 
 ## [0.58.0] — Durable journal evidence
 
