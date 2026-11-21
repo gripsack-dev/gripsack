@@ -84,6 +84,61 @@ fn mutate_at(captured: Captured<'_>, intended: &Intended, install: Install<'_>) 
 }
 
 #[test]
+fn component_limit_names_install_and_recover_files_and_links() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    let home = home();
+    let capability = cap(&home);
+    let parent = home.path().join("parent");
+    std::fs::create_dir(&parent).unwrap();
+    let max = usize::try_from(rustix::fs::statvfs(&parent).unwrap().f_namemax).unwrap();
+    let regular = parent.join("f".repeat(max));
+    let link = parent.join("l".repeat(max));
+    std::fs::write(&regular, b"original").unwrap();
+    std::fs::set_permissions(&regular, std::fs::Permissions::from_mode(0o640)).unwrap();
+    symlink("../original-target", &link).unwrap();
+    let run = new_run(&capability, home.path());
+
+    mutate_at(
+        capture_at(&regular, &run),
+        &intent("../new-target"),
+        Install::Link {
+            target: "../new-target".into(),
+        },
+    )
+    .unwrap();
+    mutate_at(
+        capture_at(&link, &run),
+        &file_intent(crate::store::hash::canonical_bytes_identity(b"new", 0o600)),
+        mutation::file(b"new", 0o600),
+    )
+    .unwrap();
+    assert_eq!(
+        std::fs::read_link(&regular).unwrap(),
+        Path::new("../new-target")
+    );
+    assert_eq!(std::fs::read(&link).unwrap(), b"new");
+    assert_eq!(
+        std::fs::metadata(&link).unwrap().permissions().mode() & 0o7777,
+        0o600
+    );
+
+    drop(run);
+    reconcile(&capability, home.path()).unwrap();
+    assert_eq!(std::fs::read(&regular).unwrap(), b"original");
+    assert_eq!(
+        std::fs::metadata(&regular).unwrap().permissions().mode() & 0o7777,
+        0o640
+    );
+    assert_eq!(
+        std::fs::read_link(&link).unwrap(),
+        Path::new("../original-target")
+    );
+    assert!(pending_recovery(&capability).unwrap().is_none());
+    assert_eq!(std::fs::read_dir(parent).unwrap().count(), 2);
+}
+
+#[test]
 fn repeated_destination_mutations_restore_the_run_original_at_both_crash_windows() {
     for second_write_landed in [false, true] {
         let temporary = home();

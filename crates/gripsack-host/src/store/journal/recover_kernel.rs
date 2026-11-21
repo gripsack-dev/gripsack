@@ -129,19 +129,24 @@ pub(super) fn link_ident(target: &Path) -> Option<Ident> {
         .map(|target| Ident::Link(link_digest(target.as_bytes())))
 }
 
-/// `gripsack_host::fs`'s temp sibling naming: pid + counter, so a stale one from
-/// a crashed process is the only possible collision (and is replaced).
+/// Bound the component length independently of the destination's basename.
+/// Keep file/link namespaces distinct and never stage under the final name.
 static STAGING: AtomicU64 = AtomicU64::new(0);
 
 pub(super) fn staging_name(at: &Name, link: bool) -> Name {
     let prefix = if link { "tmp-link" } else { "tmp-write" };
-    Name::new(format!(
-        ".{prefix}-{}-{}-{}.tmp",
-        std::process::id(),
-        STAGING.fetch_add(1, Ordering::Relaxed),
-        at.as_os_str().to_string_lossy()
-    ))
-    .expect("a staging name is one component")
+    loop {
+        let sequence = STAGING.fetch_add(1, Ordering::Relaxed);
+        let staged = Name::new(format!(".{prefix}-{}-{sequence}.tmp", std::process::id()))
+            .expect("a staging name is one component");
+        if !staged
+            .as_os_str()
+            .as_encoded_bytes()
+            .eq_ignore_ascii_case(at.as_os_str().as_encoded_bytes())
+        {
+            return staged;
+        }
+    }
 }
 
 struct StoreHost<'a> {
