@@ -2,6 +2,8 @@
 //! retained descriptor. This does not bind dynamic libraries or native
 //! subprocesses selected by the launched program.
 mod loader;
+#[cfg(target_os = "linux")]
+mod seal;
 use super::{ByteBinding, OperatorEnvironment, Sha256Digest};
 pub(crate) use loader::ImageDescriptors;
 pub use loader::SelectedGnuLoader;
@@ -117,23 +119,7 @@ impl Image {
         }
         output.set_permissions(std::fs::Permissions::from_mode(0o500))?;
         #[cfg(target_os = "linux")]
-        {
-            // SAFETY: this owned memfd has no writable mappings. Refuse a
-            // platform that cannot seal it; no hash/reopen fallback is hidden.
-            let status = unsafe {
-                libc::fcntl(
-                    output.as_raw_fd(),
-                    libc::F_ADD_SEALS,
-                    libc::F_SEAL_WRITE
-                        | libc::F_SEAL_GROW
-                        | libc::F_SEAL_SHRINK
-                        | libc::F_SEAL_SEAL,
-                )
-            };
-            if status < 0 {
-                return Err(io::Error::last_os_error());
-            }
-        }
+        seal::executable(&output, deadline, std::thread::sleep)?;
         Ok(Self {
             digest,
             binding,
