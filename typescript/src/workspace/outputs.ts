@@ -432,9 +432,6 @@ export function workspace(spec: WorkspaceSpec): WorkspaceValue {
     seen.set(o.ir.name, o.ir.span);
     outputs.push(o.ir);
   }
-  if (outputs.length === 0) {
-    throw new Error(`${what}: outputs must declare at least one output`);
-  }
   outputs.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
   if (spec.inputs !== undefined && !Array.isArray(spec.inputs)) throw new Error(`${what}: inputs must be an array`);
   const inputs = spec.inputs?.map((input, index) => asInput(input, `${what}: inputs[${index}]`)) ?? [];

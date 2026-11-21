@@ -122,6 +122,46 @@ Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () 
   });
 });
 
+Deno.test("an empty first round requests its probe but has no final IR", () => {
+  const source = `import { defineWorkspace, workspace, profile } from "@gripsack/core";
+export default defineWorkspace(ctx => workspace({
+  outputs: [ctx.probe.file_exists("/vendor/tool") && profile("vendor", {})],
+}));`;
+  withRepo({ "gripsack.ts": source }, (repo) => {
+    const pending = runDriver(repo, baseInputs);
+    assert.equal(pending.status, 0, pending.stderr);
+    const first = JSON.parse(pending.stdout);
+    assert.equal(first.ir, null);
+    assert.deepEqual(first.diagnostics, []);
+    assert.equal(first.probe_requests.length, 1);
+    assert.equal(first.probe_requests[0].kind, "file_exists");
+    assert.equal(first.probe_requests[0].name, "/vendor/tool");
+
+    const absent = runDriver(repo, { ...baseInputs, probes: { "file_exists:/vendor/tool": false } });
+    assert.equal(absent.status, 1);
+    const final = JSON.parse(absent.stdout);
+    assert.deepEqual(final.probe_requests, []);
+    assert.equal(final.ir, null);
+    assert.equal(final.diagnostics[0].code, "E130");
+    assert.match(final.diagnostics[0].message, /at least one output/);
+    assert.equal(final.diagnostics[0].labels[0].span.line, 2);
+  });
+});
+
+Deno.test("a pending probe does not hide an unrelated authoring failure", () => {
+  const source = `import { defineWorkspace, workspace } from "@gripsack/core";
+export default defineWorkspace(ctx => workspace({
+  outputs: [ctx.probe.executable("ninja") && false], inputs: ["invalid"],
+}));`;
+  withRepo({ "gripsack.ts": source }, (repo) => {
+    const failed = runDriver(repo, baseInputs);
+    assert.equal(failed.status, 1);
+    const envelope = JSON.parse(failed.stdout);
+    assert.equal(envelope.probe_requests.length, 1);
+    assert.match(envelope.diagnostics[0].message, /inputs\[0\]/);
+  });
+});
+
 Deno.test("host identity never selects an alternate entrypoint", () => {
   withRepo({ "gripsack.ts": WORKSPACE, "hosts/lap.ts": 'throw new Error("must not execute");' }, (repo) => {
     const r = runDriver(repo, { ...baseInputs, probes: { "executable:ninja": true } });

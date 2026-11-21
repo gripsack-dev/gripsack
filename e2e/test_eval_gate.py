@@ -186,14 +186,17 @@ def test_repo_build_env_does_not_reach_frontend_runtime(sandbox, monkeypatch):
     assert not marker.exists(), "Deno must not inherit repo build env"
 
 
-def test_probe_fixpoint_converges_in_two_rounds(sandbox):
+@pytest.mark.parametrize("present", [True, False])
+def test_probe_fixpoint_converges_in_two_rounds(sandbox, present):
     """The probe loop (0013 D6) is bounded demand-driven re-eval: a
     healthy frontend requests its probes in round 1, sees them bound
     in round 2, and requests nothing new — exactly 2 frontend runs.
     More means probe caching broke (every eval paying 4 rounds would
     be a silent 2x slowdown); the round cap is for non-convergence,
     not the happy path."""
-    import json
+    reference = sandbox / "vendor-tool"
+    if present:
+        reference.touch()
 
     repo = make_workspace_repo(sandbox / "myenv",
     {
@@ -205,15 +208,20 @@ def test_probe_fixpoint_converges_in_two_rounds(sandbox):
     },)
     # The root declaration actually requests a core-bound probe.
     (repo / "gripsack.ts").write_text(
-        'import { defineWorkspace, workspace, profile } from "@gripsack/core";\n'
+        'import { defineWorkspace, workspace } from "@gripsack/core";\n'
         'import hosted from "./outputs/hosted.ts";\n'
         "export default defineWorkspace((ctx) => workspace({\n"
-        '  outputs: [profile("baseline", {files: []}), '
-        '...(ctx.probe.executable("sh") ? [hosted] : [])],\n'
+        f'  outputs: [ctx.probe.file_exists({json.dumps(str(reference))}) && hosted],\n'
         "}));\n"
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
+    if present:
+        assert out.returncode == 0, out.stderr
+        assert "hosted" in out.stdout
+    else:
+        assert out.returncode != 0
+        assert "outputs must declare at least one output" in out.stderr
+        assert "gripsack.ts:3" in out.stderr
     runs = sandbox / ".local/share/gripsack/runs"
     latest = (runs / "latest").resolve()
     rounds = []

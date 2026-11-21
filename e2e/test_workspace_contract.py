@@ -133,8 +133,9 @@ def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):
     repo.mkdir()
     (repo / "gripsack.ts").write_text(
         'import { defineWorkspace, workspace, pkg, provider, fileFetch, '
-        'targetPlatform, task, bash, packageCommand, exec, lit, profile } '
+        'targetPlatform, task, bash, packageCommand, exec, lit, profile, inputFile, input } '
         'from "@gripsack/core";\n'
+        'const source = inputFile("source", "gripsack.ts");\n'
         'const shell = pkg("shell", { producer: provider(fileFetch("shell.bin")), '
         'commands: { bash: "bin/bash" }, '
         'target: targetPlatform({ os: "linux", arch: "x86_64" }), '
@@ -143,14 +144,17 @@ def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):
         '.interpreter(packageCommand("shell", "bash"))'
         '.env("INPUT", lit("two words")).build()] });\n'
         'const argv = task("argv", { steps: [exec(lit("echo"))'
-        '.arg(lit("two words")).build()] });\n'
-        'export default defineWorkspace(() => workspace({ outputs: [shell, script, argv, profile("personal", {})] }));\n'
+        '.arg(lit("two words")).arg(input(source)).build()] });\n'
+        'export default defineWorkspace(() => workspace({ inputs: [source], outputs: [shell, script, argv, profile("personal", {})] }));\n'
     )
     checked = grip("check", cwd=repo)
     assert checked.returncode == 0, checked.stdout + checked.stderr
     assert "shell (package)" in checked.stdout
     assert "script (task)" in checked.stdout
     assert "argv (task)" in checked.stdout
+    # Check validates the input without trying to acquire the absent shell.bin.
+    assert not (repo / "gripsack.lock").exists()
+    assert not (sandbox / ".local/share/gripsack/store").exists()
     result = grip("plan", cwd=repo)
     assert result.returncode == 0, result.stdout + result.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()

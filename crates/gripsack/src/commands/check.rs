@@ -23,6 +23,11 @@ pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> Exi
         Ok(ir) => ir,
         Err(code) => return sink.finish_failure(code),
     };
+    let diagnostics = gripsack_exec::check_command_inputs(&ir.workspace, &outcome.sources);
+    if !diagnostics.is_empty() {
+        sink.report(&diagnostics);
+        return sink.finish_failure(ExitCode::FAILURE);
+    }
     if ir
         .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
         .is_none()

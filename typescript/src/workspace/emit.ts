@@ -3,6 +3,7 @@
 import type { HostFacts } from "../facts.ts";
 export const IR_VERSION = 10;
 import type { Span } from "../span.ts"
+import type { ProbeRequest } from "../probe.ts";
 import type {
   EnvironmentNode,
   PackageNode,
@@ -222,11 +223,13 @@ function orList(kinds: readonly string[]): string {
  *  command bindings require an owning subject, and literal destinations
  *  cannot have conflicting owners. The core independently admits the IR.
  *  Host facts are injected for the envelope only, never used to select
- *  target outputs; the hostname never crosses into the IR. */
+ *  target outputs; the hostname never crosses into the IR. A provisional
+ *  empty workspace has no IR (`null`) until its requested probes are bound. */
 export function emitWorkspaceIr(
   value: WorkspaceValue,
   facts: HostFacts,
   tags: string[] = [],
+  pendingProbes?: readonly ProbeRequest[],
 ): string {
   if (
     typeof value !== "object" || value === null ||
@@ -239,11 +242,8 @@ export function emitWorkspaceIr(
     );
   }
   const ir = value.ir;
-  if (
-    typeof ir !== "object" || ir === null || !Array.isArray(ir.outputs) ||
-    ir.outputs.length === 0
-  ) {
-    throw new Error("emitWorkspaceIr: workspace value must carry at least one output");
+  if (typeof ir !== "object" || ir === null || !Array.isArray(ir.outputs)) {
+    throw new Error("emitWorkspaceIr: workspace value must carry an outputs array");
   }
   asSpan(ir.span, "emitWorkspaceIr: workspace");
   rejectUnknownFields("emitWorkspaceIr: workspace", ir, ["span", "name", "outputs", "inputs", "mutation_locks"]);
@@ -253,6 +253,11 @@ export function emitWorkspaceIr(
     const previous = inputCatalog.get(input.name);
     if (previous) throw duplicateError(input.name, previous.span, input.span);
     inputCatalog.set(input.name, input);
+  }
+  if (ir.outputs.length === 0) {
+    if (pendingProbes?.length) return "null";
+    throw errorAt(diagnosticCodes.invalidWorkspaceValue,
+      "workspace(...): outputs must declare at least one output", ir.span, "in this declaration");
   }
 
   const catalog = new Map<string, WorkspaceOutputNode>();

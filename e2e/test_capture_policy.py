@@ -358,6 +358,78 @@ def test_excluded_declared_input_has_no_live_tree_fallback(sandbox, kind, alias)
     assert "EXCLUDED_INPUT" not in result.stdout
 
 
+def test_check_validates_task_input_kinds_in_the_approved_capture(sandbox, monkeypatch):
+    repo = make_workspace_repo(sandbox / "inputs", {})
+    effect = sandbox / "task-ran"
+    (repo / "gripsack.ts").write_text(
+        'import {defineWorkspace, workspace, inputFile, inputDirectory, input, task, exec, lit} from "@gripsack/core";\n'
+        'const manifest = inputFile("manifest", "manifest.txt");\n'
+        'const config = inputFile("config", "config.txt");\n'
+        'const assets = inputDirectory("assets", "assets", {include:["version"]});\n'
+        'export default defineWorkspace(() => workspace({inputs:[manifest, config, assets],\n'
+        '  outputs:[task("consume", {steps:[exec({argv:[lit("/usr/bin/touch"), '
+        f'lit({json.dumps(str(effect))}), input(manifest), input(config), input(assets)]'
+        '})]})]}));\n'
+    )
+    (repo / "manifest.txt").touch()
+    (repo / "config.txt").touch()
+    (repo / "assets").mkdir()
+    (repo / "assets/version").touch()
+
+    # Change all three roots after approval and capture. This invocation must
+    # pass using the old types, not the now-missing or wrong-kind live paths.
+    with monkeypatch.context() as patched:
+        control = pause_runtime(sandbox, patched)
+        approve_source(repo)
+        process = subprocess.Popen(
+            [str(GRIP), "check", "--json"], cwd=repo,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        try:
+            wait_ready(control, 1, process)
+            (repo / "manifest.txt").unlink()
+            (repo / "config.txt").unlink()
+            (repo / "config.txt").mkdir()
+            shutil.rmtree(repo / "assets")
+            (repo / "assets").touch()
+            (control / "release-1").touch()
+            stdout, stderr = process.communicate(timeout=30)
+            assert process.returncode == 0, stdout + stderr
+            assert [o["name"] for o in json.loads(stdout)["outputs"]] == ["consume"]
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+
+    # The newly approved snapshot now has three independent failures, each
+    # pointing at the input declaration, not the reference in the task.
+    approve_source(repo)
+    expected = {
+        2: ("E110", "manifest.txt", "no such captured repository source"),
+        3: ("E301", "config.txt", "inputFile must select a captured regular file"),
+        4: ("E301", "assets", "inputDirectory must select a captured directory"),
+    }
+    terminal = grip("check", cwd=repo, approve=False)
+    assert terminal.returncode != 0
+    for line, (code, path, reason) in expected.items():
+        for text in (code, path, reason, f"gripsack.ts:{line}"):
+            assert text in terminal.stderr, terminal.stderr
+    structured = grip("check", "--json", cwd=repo, approve=False)
+    assert structured.returncode != 0
+    document = json.loads(structured.stdout)
+    assert not document["ok"]
+    assert len(document["diagnostics"]) == len(expected)
+    for diagnostic in document["diagnostics"]:
+        label, = diagnostic["labels"]
+        assert label["span"]["file"].endswith("/gripsack.ts")
+        code, path, reason = expected.pop(label["span"]["line"])
+        assert diagnostic["code"] == code
+        assert path in diagnostic["message"] and reason in diagnostic["message"]
+    assert not effect.exists()
+    assert not (repo / "gripsack.lock").exists()
+    assert not (Path(os.environ["GRIPSACK_HOME"]) / "store").exists()
+
+
 def test_capture_policy_cannot_add_ambient_roots(sandbox):
     repo = value_repo(sandbox / "repo")
     (repo / "env.toml").write_text('[capture]\nroots = ["/usr"]\n')
