@@ -25,6 +25,43 @@ debug-only legacy recovery route left at §24.3(9). Debug and release builds
 now drive the same recovery machine. Historical journal records keep their
 meaning; this retirement does not complete F3 or prove the directory premise.
 
+**F3 leaf P1 (unreleased, [#365](https://github.com/gripsack-dev/gripsack/issues/365)).**
+At the cut where the translated `journal_run::run_step` issues `Mutate`,
+[`mutation_cut_after_crash`](../../proofs/Protocol/Leaf.lean) identifies the
+same run marker, destination entry and prior in the visible image after a
+kill and in every admitted power-loss image. This includes both the original
+and immediate-before priors of a repeated write. File priors need reachable
+`home/prior/<hash>` bytes; their original permissions travel in the entry,
+not in the private blob's mode. The home-to-journal binding also has to
+survive. Nothing here requires the final record name to exist before staging.
+
+The [storage relation](../../proofs/Storage.lean) distinguishes a pinned
+inode from its directory entry. The host stages bytes under a private name,
+sets the mode, syncs the file, renames, then syncs the parent. A write-all
+loop can stop after any prefix; neither that prefix nor a failed barrier
+acknowledges the command. `store_blob` also seals an existing validated cache
+hit. The [publication proof](../../proofs/Protocol/Publication.lean) uses the
+pinned Tauten reachability library, not a replacement theorem with an
+invented old file. Omitting the file sync can lose bytes while retaining the
+name; omitting the directory sync can retain the bytes without the name.
+
+The theorem assumes a durably reachable home, truthful host observations,
+wire encoding/decoding and name/digest identity, serialized lifecycle calls
+and no interference with private evidence names or inodes. Inode IDs in the
+model distinguish allocations; Linux need not reserve a raw inode number
+forever after unlink. The theorem does not
+prove that a host observation is atomic: file mode and bytes come from
+separate calls, and an editor can still write after the recheck (S5).
+S1–S3 are disk-backed filesystem assumptions, including for a WSL guest
+filesystem; tmpfs only supplies the kill case, and mounted Windows volumes
+do not inherit the guest's sync or name-equivalence assumptions.
+
+This cut is **before cleanup**. [#312](https://github.com/gripsack-dev/gripsack/issues/312)
+still owns cleanup, repeated-crash recovery and hook replay, in that order.
+In particular, seeing a foreign edit is not proof it is durable
+([#364](https://github.com/gripsack-dev/gripsack/issues/364)). Directory
+premise D, OS/hardware behavior and liveness remain outside leaf P1.
+
 - Status: approved by the owner 2026-11-08; F0 and F1 landed in 0.52.0 (F1: GO); F2 in progress (step 1 done)
 - Date: 2026-11-08
 - Owner direction: 2026-11-08 conversation — "a kernel that is Lean proved …

@@ -60,7 +60,7 @@ impl Image {
             .and_then(|entries| entries.get(name).copied())
     }
 
-    fn entries_mut(&mut self, dir: Ino) -> &mut BTreeMap<Name, Ino> {
+    pub(super) fn entries_mut(&mut self, dir: Ino) -> &mut BTreeMap<Name, Ino> {
         match self.nodes.get_mut(&dir) {
             Some(Node::Dir { entries, .. }) => entries,
             _ => unreachable!("updates name only directory inodes as parents"),
@@ -83,7 +83,8 @@ pub(super) enum Update {
     Rename {
         dir: Ino,
         from: Name,
-        to: Name,
+        /// Absent if a later durable external binding superseded this leg.
+        to: Option<Name>,
         ino: Ino,
     },
     /// Bytes at an offset; a gap reads as zeros (a torn write).
@@ -108,6 +109,30 @@ pub(super) enum Barrier {
 }
 
 impl Update {
+    /// Mask just this binding in an older update. Keep any remaining leg
+    /// in place so it retains its survival choice, order and trace index.
+    pub(super) fn retain_after_replacement(&mut self, parent: Ino, name: &Name) -> bool {
+        match self {
+            Update::Entry { dir, name: at, .. } => *dir != parent || at != name,
+            Update::Rename { dir, from, to, ino } if *dir == parent => {
+                if from == name {
+                    let Some(destination) = to.take() else {
+                        return false;
+                    };
+                    *self = Update::Entry {
+                        dir: parent,
+                        name: destination,
+                        target: Some(*ino),
+                    };
+                } else if to.as_ref() == Some(name) {
+                    *to = None;
+                }
+                true
+            }
+            _ => true,
+        }
+    }
+
     pub(super) fn covered_by(&self, barrier: Barrier) -> bool {
         match (self, barrier) {
             (Update::Data { ino, .. } | Update::Mode { ino, .. }, Barrier::File(file)) => {
@@ -135,7 +160,9 @@ impl Update {
             }
             Update::Rename { dir, from, to, ino } => {
                 let entries = image.entries_mut(*dir);
-                entries.insert(to.clone(), *ino);
+                if let Some(to) = to {
+                    entries.insert(to.clone(), *ino);
+                }
                 if entries.get(from) == Some(ino) {
                     entries.remove(from);
                 }

@@ -117,6 +117,112 @@ fn cross_directory_rename_needs_both_barriers() {
     assert!(exists(&after, &d, "f"));
 }
 
+fn land_replacement(fs: &MemFs, dir: MemDir, at: &Name) {
+    fs.inject(
+        fs.operations().len(),
+        ExternalWrite {
+            dir,
+            name: at.clone(),
+            bytes: b"external".to_vec(),
+            permissions: Permissions::new(0o640),
+        },
+    );
+    // A read lands the writer without staging another update.
+    assert_replacement(fs, &dir, at);
+}
+
+fn assert_replacement(fs: &MemFs, dir: &MemDir, at: &Name) {
+    assert_eq!(fs.read(dir, at).unwrap(), b"external");
+    assert_eq!(
+        fs.metadata(dir, at).unwrap().permissions,
+        Permissions::new(0o640)
+    );
+}
+
+#[test]
+fn durable_replacement_masks_older_create_and_unlink() {
+    for unlink in [false, true] {
+        let fs = MemFs::new();
+        let root = fs.root().unwrap();
+        let at = name("f");
+        fs.create_dir(&root, &name("sub"), Permissions::new(0o755))
+            .unwrap();
+        fs.sync_dir(&root).unwrap();
+        let sub = fs.open_dir(&root, &name("sub")).unwrap();
+        fs.create_file(&root, &at, Permissions::new(0o600)).unwrap();
+        if unlink {
+            fs.sync_dir(&root).unwrap();
+            fs.unlink(&root, &at).unwrap();
+        }
+        // Same basename, different parent: this older create is not masked.
+        fs.create_file(&sub, &at, Permissions::new(0o600)).unwrap();
+        land_replacement(&fs, root, &at);
+
+        let killed = fs.kill();
+        let mut saw_sub_file = [false; 2];
+        for mask in 0..(1usize << killed.pending_updates()) {
+            let (after, _) = killed.power_loss(|i| mask & (1 << i) != 0);
+            assert_replacement(&after, &root, &at);
+            saw_sub_file[usize::from(exists(&after, &sub, "f"))] = true;
+        }
+        assert_eq!(saw_sub_file, [true, true]);
+        fs.sync_dir(&root).unwrap();
+        fs.sync_dir(&sub).unwrap();
+        let after = all_lost(&fs);
+        assert_replacement(&after, &root, &at);
+        assert!(exists(&after, &sub, "f"));
+    }
+}
+
+#[test]
+fn durable_replacement_preserves_other_rename_leg() {
+    for replace_source in [false, true] {
+        let fs = MemFs::new();
+        let root = fs.root().unwrap();
+        let src = name("f");
+        let dst = name("g");
+        let file = unsynced_file(&fs);
+        fs.sync_file(&file).unwrap();
+        fs.create_file(&root, &dst, Permissions::new(0o644))
+            .unwrap();
+        fs.sync_dir(&root).unwrap();
+        fs.rename(&root, &src, &root, &dst).unwrap();
+        fs.create_file(&root, &name("other"), Permissions::new(0o600))
+            .unwrap();
+        let at = if replace_source { &src } else { &dst };
+        land_replacement(&fs, root, at);
+
+        let rename_survived = |after: &MemFs| {
+            assert_replacement(after, &root, at);
+            if replace_source {
+                match after.read(&root, &dst).unwrap().as_slice() {
+                    b"bytes" => true,
+                    b"" => false,
+                    other => panic!("unexpected rename destination: {other:?}"),
+                }
+            } else if exists(after, &root, "f") {
+                assert_eq!(after.read(&root, &src).unwrap(), b"bytes");
+                false
+            } else {
+                true
+            }
+        };
+        let killed = fs.kill();
+        let mut outcomes = [[false; 2]; 2];
+        for mask in 0..(1usize << killed.pending_updates()) {
+            let (after, _) = killed.power_loss(|i| mask & (1 << i) != 0);
+            let rename = rename_survived(&after);
+            let unrelated = exists(&after, &root, "other");
+            outcomes[usize::from(rename)][usize::from(unrelated)] = true;
+        }
+        assert_eq!(outcomes, [[true; 2]; 2]);
+        fs.sync_dir(&root).unwrap();
+        let after = all_lost(&fs);
+        assert!(rename_survived(&after));
+        assert!(exists(&after, &root, "other"));
+    }
+}
+
 #[test]
 fn remove_tree_is_a_sequence_of_unlinks() {
     let fs = MemFs::new();

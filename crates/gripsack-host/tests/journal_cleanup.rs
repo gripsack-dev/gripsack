@@ -54,6 +54,7 @@ use gripsack_kernel::rollback::{
 };
 use gripsack_kernel::selection::{SelectionIdentity, TransactionId};
 use gripsack_kernel::{DestId, Digest, GenerationId};
+use rustix::io::Errno;
 use std::cell::RefCell;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -823,6 +824,136 @@ fn journal_records(fs: &MemFs) -> Vec<(Name, Vec<u8>)> {
             (at, bytes)
         })
         .collect()
+}
+
+/// Cut the real driver's Stage between two data syscalls. `openat(O_EXCL)`
+/// created the private name and the first `write` landed. Neither `fchmod`
+/// (the rest of Stage) nor `fsync(file)`, `renameat`, or `fsync(parent)` may
+/// follow an error/kill on the remaining bytes.
+fn interrupt_stage(
+    host: &mut RunWire<'_>,
+    scenario: &Scenario,
+    record: &Name,
+    bytes: &[u8],
+    kill: bool,
+    stage: impl FnOnce(&mut RunWire<'_>) -> io::Result<()>,
+) {
+    const PREFIX: usize = 4;
+    let fs = host.fs;
+    let before = journal_records(fs);
+    let dest = scenario.dests[0].at;
+    let leaf_before = content_at(fs, dest).unwrap();
+    let temp = host.staging_name(record, false);
+    assert!(PREFIX < bytes.len());
+    let start = fs.effects();
+    fs.short_write_next(PREFIX);
+    if kill {
+        fs.crash_at(start + 2);
+    } else {
+        fs.fail_at(start + 2, Errno::NOSPC);
+    }
+    let error = stage(host).unwrap_err();
+    let restarted;
+    let image = if kill {
+        assert!(MemFs::is_crash(&error), "{error}");
+        assert!(MemFs::is_crash(&fs.root().unwrap_err()));
+        restarted = fs.kill(); // next process, same page cache
+        &restarted
+    } else {
+        assert_eq!(error.raw_os_error(), Some(Errno::NOSPC.raw_os_error()));
+        // ENOSPC came from the next data syscall, not from a later fchmod
+        // after a write-all that silently accepted the prefix.
+        assert!(matches!(
+            fs.operations().last(),
+            Some(Operation {
+                boundary: Some(Boundary::Write),
+                name: None
+            })
+        ));
+        fs // the process can keep using this instance after a syscall error
+    };
+    let trace = image.trace();
+    assert!(matches!(&trace[start..], [create, prefix]
+        if create.boundary == Boundary::Write && create.name.as_ref() == Some(&temp)
+        && prefix.boundary == Boundary::Write && prefix.name.is_none()));
+    let dir = journal(image).unwrap();
+    assert_eq!(image.read(&dir, &temp).unwrap(), &bytes[..PREFIX]);
+    assert_eq!(journal_records(image), before);
+    assert_eq!(content_at(image, dest).unwrap(), leaf_before);
+    // The torn temp is not parseable as a record. Recovery must use only
+    // the final names — including the old complete entry, if there was one.
+    run_recovery(image).unwrap();
+    recovered_state_is_consistent(image, scenario, &[]).unwrap();
+}
+
+#[test]
+fn short_data_syscalls_still_publish_complete_durable_records_on_success() {
+    let scenario = Scenario::one(dest("dest", ONE, TWO));
+    let fs = home(&scenario);
+    let mut host = RunWire::new(&fs, PREVIOUS, TARGET);
+    fs.short_write_next(4);
+    let mut run = RunDriver::begin(&mut host).unwrap();
+    fs.short_write_next(4);
+    write(&mut run, &mut host, &scenario.dests[0], ONE, TWO, None).unwrap();
+
+    let (disk, _) = fs.power_loss(|_| false);
+    let dir = journal(&disk).unwrap();
+    assert_eq!(
+        disk.read(&dir, &name(RUN_MARKER)).unwrap(),
+        host.marker_bytes().unwrap()
+    );
+    assert_eq!(
+        disk.read(&dir, &name("dest.json")).unwrap(),
+        encode_entry("dest", ONE, ONE, TWO)
+    );
+}
+
+#[test]
+fn marker_stage_prefix_error_or_kill_never_publishes() {
+    let scenario = Scenario::one(dest("dest", ONE, TWO));
+    for old_final in [false, true] {
+        for kill in [false, true] {
+            let fs = home(&scenario);
+            if old_final {
+                // A different complete marker at the destination of rename.
+                RunDriver::begin(&mut RunWire::new(&fs, PREVIOUS, "generations/3")).unwrap();
+            }
+            let mut host = RunWire::new(&fs, PREVIOUS, TARGET);
+            let bytes = host.marker_bytes().unwrap();
+            interrupt_stage(&mut host, &scenario, &name(RUN_MARKER), &bytes, kill, |h| {
+                RunDriver::begin(h).map(drop).map_err(RunError::into_io)
+            });
+        }
+    }
+}
+
+#[test]
+fn entry_stage_prefix_error_or_kill_never_mutates_leaf() {
+    let scenario = Scenario::one(dest("dest", ONE, TWO));
+    let dest = &scenario.dests[0];
+    for old_final in [false, true] {
+        for kill in [false, true] {
+            let fs = home(&scenario);
+            let mut host = RunWire::new(&fs, PREVIOUS, TARGET);
+            let mut run = RunDriver::begin(&mut host).unwrap();
+            let from = if old_final {
+                // The second write of this leaf replaces its first entry.
+                write(&mut run, &mut host, dest, ONE, MID, None).unwrap();
+                MID
+            } else {
+                ONE
+            };
+            let bytes = encode_entry(dest.at, ONE, from, TWO);
+            interrupt_stage(
+                &mut host,
+                &scenario,
+                &name("dest.json"),
+                &bytes,
+                kill,
+                |h| write(&mut run, h, dest, from, TWO, old_final.then_some(MID)),
+            );
+        }
+    }
 }
 
 #[test]
