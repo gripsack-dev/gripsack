@@ -23,7 +23,7 @@ archspec = "0.2"
 url = "2"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 csv = "1"
-base64 = "0.22"
+base64 = "0.23"
 sha2.workspace = true
 tempfile = "3"
 uv-distribution-filename = "=0.0.98"
