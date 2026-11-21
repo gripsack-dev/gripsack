@@ -1,8 +1,7 @@
 //! M-V4: deterministic byte-level properties over the production decoders and
 //! recovery path. No random generator, fuzz runner or corpus replay is involved.
 use super::marker::{RunMarker, RunOp, begin_run};
-use super::recover::reconcile;
-use super::{Entry, Intended, ObjectIdentity, entry_name};
+use super::{Entry, Intended, ObjectIdentity, entry_name, reconcile};
 use serde_json::{Value, json};
 use std::path::Path;
 

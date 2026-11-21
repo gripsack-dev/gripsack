@@ -4,6 +4,7 @@ import type { HostFacts } from "../facts.ts";
 export const IR_VERSION = 10;
 import type { Span } from "../span.ts"
 import type {
+  EnvironmentNode,
   PackageNode,
   WorkspaceArg,
   WorkspaceArtifactRef,
@@ -18,10 +19,11 @@ import type {
 } from "./ir.ts";
 import { asName, asRecord, asSelector, asSpan, duplicateError } from "./validate.ts";
 import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
-import { checkTargetsAndLayouts } from "./target.ts";
+import { checkEnvironmentPrefix, checkPackageTarget, checkTargetAndLayout } from "./target.ts";
 import { asInput } from "./bindings.ts";
 import { rejectUnknownFields } from "../fields.ts";
-import { checkFileBindings } from "./file-checks.ts";
+import { fileCheckAttachments } from "./file-checks.ts";
+import { checkLiteralDestinations } from "./destinations.ts";
 import { serviceNames, serviceProperties } from "./services.ts";
 
 /** Catalog roles never conflate publication checks or retention with
@@ -35,6 +37,7 @@ interface Edge {
   span: Span;
   expected: readonly WorkspaceOutputKind[];
   role: EdgeRole;
+  targetConsumer?: EnvironmentNode | PackageNode;
 }
 
 function isDependency(role: EdgeRole): boolean {
@@ -74,7 +77,23 @@ function envValueError(from: string, key: string, span: Span): DiagnosticError {
   );
 }
 
-function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges: Edge[]): void {
+type Subject = "none" | "package" | "file";
+
+function checkSubjectBinding(
+  value: WorkspaceArg | WorkspacePath, subject: Subject, cwd: boolean, span: Span, from: string,
+): void {
+  if (value.kind !== "source" && value.kind !== "output") return;
+  if (value.kind === "source" &&
+    (subject === "package" || (subject === "file" && !cwd && value.selector === "."))) return;
+  const reason = value.kind === "output"
+    ? "outputPath requires a writable production output"
+    : subject === "file"
+    ? 'an attached file supports only sourcePath(".") as data, not as a working directory'
+    : "sourcePath requires a package check subject or an explicitly attached file";
+  throw errorAt(diagnosticCodes.badWorkspaceContext, `workspace: '${from}': ${reason}`, span, "referenced here");
+}
+
+function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges: Edge[], subject: Subject = "none"): void {
   const artifactEdge = (a: WorkspaceArtifactRef): void => {
     checkSelector(a.selector, cmd.span, `output '${from}' artifact reference`);
     edges.push({ from, to: a.output, span: cmd.span, expected: ARTIFACT_KINDS, role });
@@ -82,14 +101,13 @@ function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges
   const packageEdge = (a: WorkspacePackageCommand): void => {
     edges.push({ from, to: a.package, span: cmd.span, expected: ["package"], role });
   };
-  /** Command position (exec argv, run_bash interpreter pin, cwd): the
-   *  only places a tool invocation is legal. */
-  const argEdge = (a: WorkspaceArg | WorkspacePath): void => {
+  const argEdge = (a: WorkspaceArg | WorkspacePath, cwd = false): void => {
+    checkSubjectBinding(a, subject, cwd, cmd.span, from);
     if (a.kind === "artifact") artifactEdge(a);
     else if (a.kind === "package_command") packageEdge(a);
   };
   if (cmd.kind === "exec") {
-    cmd.argv.forEach(argEdge);
+    for (const arg of cmd.argv) argEdge(arg);
   } else {
     // a run_bash body runs under a pinned package interpreter only —
     // a literal or artifact interpreter is ambient host discovery
@@ -109,7 +127,7 @@ function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges
     if (a.kind === "package_command") throw envValueError(from, key, cmd.span);
     argEdge(a);
   }
-  if (cmd.cwd) argEdge(cmd.cwd);
+  if (cmd.cwd) argEdge(cmd.cwd, true);
 }
 
 function stepEdges(step: WorkspaceStep, from: string, span: Span, role: EdgeRole, edges: Edge[]): void {
@@ -117,25 +135,29 @@ function stepEdges(step: WorkspaceStep, from: string, span: Span, role: EdgeRole
   else edges.push({ from, to: step.action.output, span: step.action.span ?? span, expected: ARTIFACT_KINDS, role });
 }
 
-function outputEdges(node: WorkspaceOutputNode): Edge[] {
+function outputEdges(node: WorkspaceOutputNode, checkSubject: Subject): Edge[] {
   const edges: Edge[] = [];
   const names = (
     list: string[] | undefined,
     expected: readonly WorkspaceOutputKind[],
     role: EdgeRole,
+    targetConsumer?: EnvironmentNode | PackageNode,
   ): void => {
     for (const to of list ?? []) {
-      edges.push({ from: node.name, to, span: node.span, expected, role });
+      const edge: Edge = { from: node.name, to, span: node.span, expected, role };
+      if (targetConsumer) edge.targetConsumer = targetConsumer;
+      edges.push(edge);
     }
   };
   switch (node.kind) {
     case "package":
-      names(node.runtime, ["package"], "runtime");
+      names(node.runtime, ["package"], "runtime", node);
       break;
     case "environment":
-      names(node.packages, ["package"], "runtime");
+      names(node.packages, ["package"], "runtime", node);
       for (const [key, a] of Object.entries(node.env ?? {})) {
         if (a.kind === "package_command") throw envValueError(node.name, key, node.span);
+        checkSubjectBinding(a, "none", false, node.span, node.name);
         if (a.kind === "artifact") {
           checkSelector(a.selector, node.span, `environment '${node.name}' variable '${key}'`);
           edges.push({ from: node.name, to: a.output, span: node.span, expected: ARTIFACT_KINDS, role: "runtime" });
@@ -157,7 +179,7 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
       names([node.task], ["task"], "retention");
       break;
     case "check":
-      commandEdges(node.run, node.name, "runtime", edges);
+      commandEdges(node.run, node.name, "runtime", edges, checkSubject);
       names([node.subject], ["package", "environment", "service", "task", "schedule", "check", "profile", "hook"], "validation");
       break;
     case "profile":
@@ -194,10 +216,11 @@ function orList(kinds: readonly string[]): string {
  *  `{ir_version: 10, host, workspace}`. Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
- *  paths, environment values are data only, producer/consumer OS,
- *  architecture and ABI agree with compatible minimum OS floors;
- *  fixed_prefix environment selections require a matching declared
- *  prefix, and dependency cycles throw with declaration spans.
+ *  paths, environment values are data only, selected packages and
+ *  runtime dependencies agree on OS/arch/ABI with compatible OS floors;
+ *  package producers and environment prefixes respect the declared layout,
+ *  command bindings require an owning subject, and literal destinations
+ *  cannot have conflicting owners. The core independently admits the IR.
  *  Host facts are injected for the envelope only, never used to select
  *  target outputs; the hostname never crosses into the IR. */
 export function emitWorkspaceIr(
@@ -239,9 +262,11 @@ export function emitWorkspaceIr(
     asSpan(rec.span, `emitWorkspaceIr: output '${name}'`);
     const prev = catalog.get(name);
     if (prev) throw duplicateError(name, prev.span, node.span);
+    checkTargetAndLayout(node);
     catalog.set(name, node);
   }
-  checkFileBindings(catalog);
+  const attachedChecks = fileCheckAttachments(catalog);
+  checkLiteralDestinations(catalog.values());
 
   // typed references: existence + expected kinds
   const depEdges: Edge[] = [];
@@ -267,7 +292,9 @@ export function emitWorkspaceIr(
     collectArgKeys(args, cmd.span);
   };
   for (const node of catalog.values()) {
-    for (const e of outputEdges(node)) {
+    const checkSubject = node.kind === "check" && catalog.get(node.subject)?.kind === "package"
+      ? "package" : attachedChecks.has(node.name) ? "file" : "none";
+    for (const e of outputEdges(node, checkSubject)) {
       const target = catalog.get(e.to);
       if (!target) {
         throw errorAt(
@@ -289,6 +316,10 @@ export function emitWorkspaceIr(
             { span: target.span, note: `'${e.to}' declared here as a '${target.kind}'` },
           ],
         });
+      }
+      if (target.kind === "package") {
+        if (e.targetConsumer) checkPackageTarget(e.targetConsumer, target);
+        if (node.kind === "environment") checkEnvironmentPrefix(node, target);
       }
       if (isDependency(e.role)) depEdges.push(e);
     }
@@ -326,7 +357,6 @@ export function emitWorkspaceIr(
       });
     }
   }
-  checkTargetsAndLayouts(catalog);
 
   // Validation and retention edges may legitimately close a dependency loop.
   const adj = new Map<string, Edge[]>();

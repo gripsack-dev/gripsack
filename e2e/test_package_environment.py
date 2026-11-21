@@ -33,6 +33,7 @@ from test_package_conda_offline import remove_producer, sha
 from test_package_sharing import (
     canonical, checked, independent_sign, native_target, package, recipient,
 )
+from test_update_surveys import survey_snapshot
 
 pytestmark = pytest.mark.skipif(
     platform.system() != "Linux" or platform.machine() != "x86_64",
@@ -244,6 +245,35 @@ def native_environment(sandbox):
     bundle = sandbox / "native environment transfer"
     identity = pack_environment(env, specification(), source, bundle, seed)
     return bundle, identity, public, private, producer, original
+
+
+def test_update_survey_distinguishes_missing_bundle_from_projection(sandbox, native_environment):
+    bundle, identity, public, *_ = native_environment
+    env = offline_environment(sandbox / "survey recipient", public)
+    state = Path(env["GRIPSACK_HOME"])
+    repo = consumer_workspace(Path(env["HOME"]), identity, ["native-child"])
+
+    def survey(code):
+        before = survey_snapshot(repo, state)
+        result = project(env, repo, "update", "--check", "shared", ok=code == 0)
+        assert result.returncode == code, result.stdout + result.stderr
+        assert survey_snapshot(repo, state) == before
+        return result.stdout
+
+    missing = survey(2)
+    assert "import its signed bundle first" in missing
+    assert "run grip update" not in missing
+
+    package(env, "import", "--bundle", bundle)
+    shutil.rmtree(bundle)
+    imported = survey(2)
+    assert "environment projection is not retained; run grip update" in imported
+    assert "import its signed bundle first" not in imported
+
+    project(env, repo, "update", "shared")
+    assert (repo / "gripsack.lock").is_file()
+    assert list((state / "store").rglob("projection.json"))
+    assert "shared unchanged" in survey(0)
 
 
 def test_native_environment_is_passive_and_consumed_by_existing_package_source(sandbox, native_environment):

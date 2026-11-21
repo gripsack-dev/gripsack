@@ -5,16 +5,10 @@
 //! `crate::recover` drives it over `RealFs`, re-checking every act
 //! against the identity the kernel decided on. This module is the
 //! [`RecoverHost`]: the journal wire and its admission (quarantine,
-//! stragglers, marker admission, sorting), the current-pointer reader, the
-//! destination resolution legacy recovery used (`dest_capability`, or the
-//! directory-bound parent), identity hashing, and the legacy directory
-//! domain, which still runs as delegated steps.
-//!
-//! Behaviour matches `reconcile_legacy` except for the unrestorable-entry
-//! wedge (0058 item 1): a destination that is now a directory, a special
-//! file or a non-UTF-8 symlink is refused by name with what was expected,
-//! what was found and how to repair it, instead of failing on an
-//! unexplained observation error. The journal is retained either way.
+//! stragglers, marker admission, sorting), the current-pointer reader,
+//! destination resolution, identity hashing, and delegated directory steps.
+//! An unrestorable destination (a directory, a special file or a non-UTF-8
+//! link) is refused by name with repair instructions; the journal is retained.
 use super::recover::{NoteSeverity, RecoveryNote};
 use super::storage::{Journal, RUN_MARKER};
 use super::{Entry, Intended, ObjectIdentity, PriorSerde, read_uncommitted};
@@ -446,9 +440,10 @@ fn describe_prior(prior: &PriorSerde) -> String {
     }
 }
 
-/// `reconcile` through the kernel machine. Must run under the lifecycle
-/// lock.
-pub(super) fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> {
+/// Reconcile an interrupted transaction under the lifecycle lock. A committed
+/// run only needs cleanup; for an uncommitted run the kernel decides which
+/// priors to restore and which post-crash edits to preserve.
+pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> {
     let mut host = StoreHost::new(home, home_path);
     let recovery = match recover(&mut host) {
         Ok(recovery) => recovery,

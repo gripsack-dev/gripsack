@@ -1,6 +1,6 @@
 //! Generate explicit workspace profile files and a conservative root import.
 
-use super::inspect::InventoriedFile;
+use super::inspect::Inventory;
 use std::fmt;
 use std::fs;
 use std::io::{self, Write};
@@ -158,7 +158,7 @@ impl Writes {
         repo: &Path,
         dest: &Path,
         name: &str,
-        files: &[InventoriedFile],
+        inv: &Inventory<'_>,
         mode: &str,
         is_dir: bool,
     ) -> Result<(), String> {
@@ -168,16 +168,9 @@ impl Writes {
             .and_then(|()| fs::create_dir(&payload))
             .map_err(|e| format!("cannot create configs/{name}/: {e}"))?;
         let created = self.payload_files.insert(0);
-        for file in files {
-            let nested;
-            let source = if is_dir {
-                nested = dest.join(&file.rel);
-                &nested
-            } else {
-                dest
-            };
-            copy_payload_file(source, &payload.join(&file.rel), created)
-                .map_err(|e| format!("cannot copy {}: {e}", source.display()))?;
+        for file in &inv.files {
+            copy_payload_file(&file.source, &payload.join(inv.selector(file)), created)
+                .map_err(|e| format!("cannot copy {:?}: {e}", file.source))?;
         }
 
         let profiles = repo.join("profiles");
@@ -188,7 +181,7 @@ impl Writes {
         let source = profile_source(
             name,
             &tilde(dest),
-            files.iter().map(|f| f.rel.as_str()),
+            inv.files.iter().map(|f| inv.selector(f)),
             mode,
             is_dir,
         );
@@ -227,7 +220,7 @@ impl Writes {
     pub(super) fn report<'a>(
         &'a self,
         name: &'a str,
-        files: &'a [InventoriedFile],
+        inv: &'a Inventory<'_>,
     ) -> impl fmt::Display + 'a {
         fmt::from_fn(move |out| {
             let Some(count) = self.payload_files else {
@@ -235,8 +228,8 @@ impl Writes {
             };
             writeln!(out, "  created by this adoption (remove to abandon):")?;
             writeln!(out, "    configs/{name}/")?;
-            for file in &files[..count] {
-                writeln!(out, "      {}", file.rel.escape_debug())?;
+            for file in &inv.files[..count] {
+                writeln!(out, "      {}", inv.selector(file).escape_debug())?;
             }
             if self.profile_created {
                 writeln!(out, "    profiles/{name}.ts")?;
@@ -284,21 +277,23 @@ mod tests {
         let repo = tempfile::tempdir().unwrap();
         let target = tempfile::tempdir().unwrap();
         fs::write(target.path().join("first"), b"taken").unwrap();
+        fs::write(target.path().join("gone"), b"disappeared").unwrap();
         fs::write(target.path().join("last"), b"not reached").unwrap();
-        // The middle source disappeared after inspection.
-        let files = ["first", "missing", "last"].map(|name| InventoriedFile {
-            rel: name.to_owned(),
-            size: 1,
-        });
+        let inv = crate::commands::adopt::inspect::inspect(
+            target.path(),
+            target.path().symlink_metadata().unwrap(),
+        )
+        .unwrap();
+        fs::remove_file(target.path().join("gone")).unwrap();
         let mut writes = Writes::default();
         writes
-            .generate(repo.path(), target.path(), "demo", &files, MODE_OWNED, true)
+            .generate(repo.path(), target.path(), "demo", &inv, MODE_OWNED, true)
             .unwrap_err();
-        let report = writes.report("demo", &files).to_string();
+        let report = writes.report("demo", &inv).to_string();
         let payload = repo.path().join("configs/demo");
         assert_eq!(fs::read(payload.join("first")).unwrap(), b"taken");
         assert!(report.contains("first"));
-        for absent in ["missing", "last"] {
+        for absent in ["gone", "last"] {
             assert!(!payload.join(absent).exists());
             assert!(!report.contains(absent));
         }

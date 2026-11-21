@@ -52,10 +52,17 @@ pub fn adopt(
     let home_dir = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_default();
-    if !dest.symlink_metadata().is_ok() {
-        eprintln!("grip: nothing at {target} — adopt adopts what exists");
-        return ExitCode::FAILURE;
-    }
+    let metadata = match dest.symlink_metadata() {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("grip: nothing at {target} — adopt adopts what exists");
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("grip: cannot inspect {dest:?}: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     if dest == home_dir {
         eprintln!("grip: refusing to adopt {target} — too broad");
         return ExitCode::FAILURE;
@@ -67,10 +74,7 @@ pub fn adopt(
         );
         return ExitCode::FAILURE;
     }
-    let is_dir = dest.is_dir()
-        && !dest
-            .symlink_metadata()
-            .is_ok_and(|m| m.file_type().is_symlink());
+    let is_dir = metadata.is_dir();
     let name = match name
         .map(str::to_string)
         .or_else(|| generate::default_name(&dest, is_dir))
@@ -117,14 +121,16 @@ pub fn adopt(
     }
 
     // ── inspect ────────────────────────────────────────────────────
-    let inv = inspect::inspect(&dest, is_dir);
-    if inv.files.is_empty() {
-        eprintln!("grip: {target} has no adoptable files");
-        return ExitCode::FAILURE;
-    }
+    let inv = match inspect::inspect(&dest, metadata) {
+        Ok(inv) => inv,
+        Err(error) => {
+            eprintln!("grip: incomplete adoption inventory: {error} — nothing generated");
+            return ExitCode::FAILURE;
+        }
+    };
     println!(
         "{} {target} — {} file{}, {}{}",
-        palette.good("adopting"),
+        palette.good("inspected"),
         inv.files.len(),
         if inv.files.len() == 1 { "" } else { "s" },
         inspect::fmt_kib(inv.total_bytes),
@@ -138,8 +144,16 @@ pub fn adopt(
         println!(
             "  {} {}",
             palette.warn("skip"),
-            palette.dim(&format!("{} ({})", skipped.rel, skipped.reason))
+            palette.dim(&format!(
+                "{:?} ({})",
+                inv.relative(&skipped.path),
+                skipped.reason
+            ))
         );
+    }
+    if inv.files.is_empty() {
+        eprintln!("grip: {target} has no adoptable files");
+        return ExitCode::FAILURE;
     }
     if inv.total_bytes > inspect::SIZE_WARN_BYTES {
         let largest = inspect::largest(&inv, 3)
@@ -166,12 +180,12 @@ pub fn adopt(
 
     // ── generate ───────────────────────────────────────────────────
     let mut writes = generate::Writes::default();
-    if let Err(error) = writes.generate(&repo, &dest, &name, &inv.files, &mode, is_dir) {
+    if let Err(error) = writes.generate(&repo, &dest, &name, &inv, &mode, is_dir) {
         eprintln!("grip: {error}");
-        eprint!("{}", writes.report(&name, &inv.files));
+        eprint!("{}", writes.report(&name, &inv));
         return ExitCode::FAILURE;
     }
-    print!("{}", writes.report(&name, &inv.files));
+    print!("{}", writes.report(&name, &inv));
     if !writes.workspace_edited {
         eprintln!("grip: add the generated profile to gripsack.ts manually:\n");
         eprintln!("{}", generate::workspace_snippet(&name));

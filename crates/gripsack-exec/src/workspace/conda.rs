@@ -35,7 +35,7 @@ use gripsack_ir::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::Read,
     path::{Path, PathBuf},
 };
@@ -731,6 +731,7 @@ pub(crate) fn resolve_update(
     let attempt = u64::from_le_bytes(attempt);
     let mut locked_source = source.locked();
     let mut wheel_spools = BTreeMap::new();
+    let mut retention = BTreeSet::new();
     let environment = match source {
         AcquisitionSource::CondaEnvironment(declared) => {
             if !declared.platforms.is_empty() && !declared.platforms.contains(platform) {
@@ -796,7 +797,7 @@ pub(crate) fn resolve_update(
             environment
         }
         AcquisitionSource::PixiLock(declared) => {
-            let read_input = |input_name: &str| -> Result<(Vec<u8>, String), ExecError> {
+            let mut read_input = |input_name: &str| -> Result<(Vec<u8>, String), ExecError> {
                 let declaration = workspace
                     .inputs
                     .iter()
@@ -807,7 +808,22 @@ pub(crate) fn resolve_update(
                             format!("pixi import names unknown input {input_name:?}"),
                         )
                     })?;
-                let captured = inputs::capture(ctx, session, declaration)?;
+                let captured;
+                let _stage;
+                match mode {
+                    UpdateMode::Check => {
+                        (_stage, captured) = inputs::capture_readonly(
+                            &ctx.repository,
+                            &ctx.home,
+                            declaration,
+                            ctx.fetch.limits(),
+                        )?;
+                    }
+                    UpdateMode::Publish => {
+                        captured = inputs::capture(ctx, session, declaration)?;
+                        retention.insert(captured.artifact.root.clone());
+                    }
+                }
                 let bytes = std::fs::read(captured.binding_path())?;
                 Ok((bytes, captured.identity.to_string()))
             };
@@ -848,7 +864,7 @@ pub(crate) fn resolve_update(
     // mode enforces the same policy without publishing store objects or roots.
     let objects = admit_update_archives(name, ctx, &environment, mode, &wheel_spools)?;
     if mode == UpdateMode::Publish {
-        let retention: std::collections::BTreeSet<PathBuf> = objects.into_iter().collect();
+        retention.extend(objects);
         let retention = RetentionSet::admit(session, retention)?;
         let id = RootId::from_identity(&serde_json::to_vec(&(ctx.repository.identity(), name))?);
         roots::register_output_root(session, &id, &retention)?;

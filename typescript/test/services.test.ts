@@ -61,3 +61,46 @@ Deno.test("service declarations reject ambient networking, host volumes and unbo
   }
   assert.doesNotThrow(() => service("ipv6", { ...spec, ports: [{ address: "::1", host: 5432, container: 5432 }] }));
 });
+
+Deno.test("task prerequisites and service dependencies enforce the same IR10 name limits", () => {
+  const limit = "é".repeat(32768);
+  for (const declare of [
+    (names: string[]) => service("consumer", { ...spec, depends_on: names }).ir.depends_on,
+    (names: string[]) => task("consumer", { steps: [exec({ argv: [lit("true")] })], services: names }).ir.services,
+  ]) {
+    const names = [limit, ...Array.from({ length: 127 }, (_, i) => `db-${i}`)];
+    assert.deepEqual(declare(names), names);
+    for (const invalid of [[""], ["db", "db"], ["db\n"], ["db\u0085"], [limit + "x"], [...names, "extra"]]) {
+      assert.throws(() => declare(invalid));
+    }
+  }
+});
+
+Deno.test("optional image command and required health command bound the executable and each argument", () => {
+  const limit = "é".repeat(32768);
+  assert.deepEqual(service("db", { ...spec, command: [] }).ir.command, []);
+  assert.throws(() => service("db", { ...spec, health: { ...spec.health, argv: [] } }));
+  for (const declare of [
+    (argv: string[]) => service("db", { ...spec, command: argv }).ir.command,
+    (argv: string[]) => service("db", { ...spec, health: { ...spec.health, argv } }).ir.health.argv,
+  ]) {
+    const valid = ["run", limit, ...Array<string>(1022).fill("")];
+    assert.deepEqual(declare(valid), valid);
+    for (const invalid of [[""], ["", "x"], ["run", "\0"], ["run", limit + "x"], [...valid, "x"]]) {
+      assert.throws(() => declare(invalid));
+    }
+  }
+});
+
+Deno.test("service environment keys and inherited names are bounded ASCII identifiers", () => {
+  const limit = "A".repeat(65536);
+  for (const env of [
+    (name: string) => ({ [name]: { kind: "literal" as const, value: "" } }),
+    (name: string) => ({ KEY: { kind: "inherited" as const, name } }),
+  ]) {
+    assert.doesNotThrow(() => service("db", { ...spec, env: env(limit) }));
+    for (const name of [limit + "A", "1KEY", "KÉY", "KEY\n"]) {
+      assert.throws(() => service("db", { ...spec, env: env(name) }));
+    }
+  }
+});

@@ -245,6 +245,16 @@ export function asCommand(v: unknown, where: string): WorkspaceCommand {
   throw new Error(`${where}: kind must be "exec" or "run_bash" — use exec()/runBash()`);
 }
 
+export function asSegmentPrefix(value: unknown, where: string, artifact: boolean): string {
+  const path = asRepoFilePath(value, where);
+  // Only artifacts expand tokens. Validate the spelling without changing the selector.
+  const literal = artifact ? path.replace(/\{(?:version(?:\.bare)?|os|arch(?:\.go|\.x64)?|target|system)\}/g, "") : path;
+  if (/[*?[\]{}\x00-\x1f\x7f]/.test(literal)) {
+    throw new Error(`${where} must be a normalized segment prefix, not a glob`);
+  }
+  return path;
+}
+
 export function asSource(v: unknown, where: string): WorkspaceSource {
   const rec = asRecord(v, where);
   if (rec.kind === "repo_file") {
@@ -254,19 +264,11 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
   }
   if (rec.kind === "repo_tree") {
     rejectUnknownFields(where, rec, ["kind", "path", "include", "exclude"]);
-    const path = rec.path === "." ? "." : asRepoFilePath(rec.path, `${where}.path`);
-    if (/[*?[\]{}\x00-\x1f\x7f]/.test(path)) {
-      throw new Error(`${where}.path must be normalized without controls or glob characters`);
-    }
+    if (rec.path !== ".") asSegmentPrefix(rec.path, `${where}.path`, false);
     for (const key of ["include", "exclude"] as const) {
       const patterns = rec[key];
       if (!Array.isArray(patterns)) throw new Error(`${where}.${key} must be an array`);
-      patterns.forEach((pattern, index) => {
-        const prefix = asRepoFilePath(pattern, `${where}.${key}[${index}]`);
-        if (/[*?[\]{}\x00-\x1f\x7f]/.test(prefix)) {
-          throw new Error(`${where}.${key}[${index}] must be a normalized segment prefix, not a glob`);
-        }
-      });
+      patterns.forEach((pattern, index) => asSegmentPrefix(pattern, `${where}.${key}[${index}]`, false));
     }
     return v as WorkspaceSource;
   }
@@ -280,10 +282,10 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
     rejectUnknownFields(where, rec, ["kind", "output", "include", "exclude"]);
     asName(rec.output, `${where}.output`);
     if (!Array.isArray(rec.include) || rec.include.length === 0) throw new Error(`${where}.include must be nonempty`);
-    rec.include.forEach((pattern, index) => asRepoFilePath(pattern, `${where}.include[${index}]`));
+    rec.include.forEach((pattern, index) => asSegmentPrefix(pattern, `${where}.include[${index}]`, true));
     if (rec.exclude !== undefined) {
       if (!Array.isArray(rec.exclude)) throw new Error(`${where}.exclude must be an array`);
-      rec.exclude.forEach((pattern, index) => asRepoFilePath(pattern, `${where}.exclude[${index}]`));
+      rec.exclude.forEach((pattern, index) => asSegmentPrefix(pattern, `${where}.exclude[${index}]`, true));
     }
     return v as WorkspaceSource;
   }
@@ -478,6 +480,12 @@ export function asHostRuntime(v: unknown, where: string): HostRuntimeRequirement
   return { library_directories: [...directories] };
 }
 
+// Rust str::trim uses Unicode White_Space, not ECMAScript's trim set.
+function providerText(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 &&
+    !/^\p{White_Space}|\p{White_Space}$|\p{Cc}/u.test(value);
+}
+
 /** An acquisition source for a provider-backed package. */
 export function asAcquisitionSource(v: unknown, where: string): AcquisitionSource {
   const rec = asRecord(v, where);
@@ -501,9 +509,11 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
       throw new Error(`${where}.strict must be a boolean`);
     }
     const channels = rec.channels;
-    if (!Array.isArray(channels) || channels.length === 0 ||
-      channels.some((c) => typeof c !== "string" || c === "")) {
+    if (!Array.isArray(channels) || channels.length === 0) {
       throw new Error(`${where}.channels must be a non-empty array of channel names/URLs`);
+    }
+    for (const [i, channel] of channels.entries()) {
+      if (!providerText(channel)) throw new Error(`${where}.channels[${i}] must be nonempty text without padding or controls`);
     }
     const packages = asRecord(rec.packages, `${where}.packages`);
     const entries = Object.entries(packages);
@@ -514,18 +524,25 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
       if (!/^[a-z0-9][a-z0-9._-]*$/.test(name)) {
         throw new Error(`${where}.packages: "${name}" must be a lowercase Conda package name`);
       }
-      if (typeof spec !== "string" || spec === "") {
-        throw new Error(`${where}.packages["${name}"] must be a non-empty MatchSpec string ("*" allowed)`);
+      if (!providerText(spec)) {
+        throw new Error(`${where}.packages["${name}"] must be a non-empty MatchSpec string without padding or controls ("*" allowed)`);
       }
     }
     if (rec.platforms !== undefined) {
       if (!Array.isArray(rec.platforms)) throw new Error(`${where}.platforms must be an array`);
-      rec.platforms.forEach((p, i) => {
+      const seen = new Set<string>();
+      for (const [i, p] of rec.platforms.entries()) {
         const platform = asPlatform(p, `${where}.platforms[${i}]`);
+        // Compare decoded fields, not object identity, key order, or the host's
+        // compatibility floor (an omitted patch is distinct from explicit zero).
+        const floor = platform.minimum_os;
+        const key = [platform.os, platform.arch, platform.abi, floor?.major, floor?.minor, floor?.patch].join("/");
+        if (seen.has(key)) throw new Error(`${where}.platforms[${i}]: duplicate Conda platform`);
+        seen.add(key);
         if (rec.system_requirements !== undefined && platform.os !== "linux") {
           throw new Error(`${where}.system_requirements supports only Linux platforms`);
         }
-      });
+      }
     }
     if (rec.system_requirements !== undefined) {
       asSystemRequirements(rec.system_requirements, `${where}.system_requirements`);
@@ -548,12 +565,13 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
         if (typeof request.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(request.sha256)) {
           throw new Error(`${site}.sha256 must be a lowercase 64-hex SHA256 digest`);
         }
-        if (typeof request.url !== "string" || /[\u0000-\u0020\u007f-\u009f]/.test(request.url) || !URL.canParse(request.url)) {
-          throw new Error(`${site}.url must be an HTTPS wheel URL`);
+        if (!providerText(request.url) || !request.url.startsWith("https://") || request.url.includes("\\") ||
+          request.url.includes(" ") || !URL.canParse(request.url)) {
+          throw new Error(`${site}.url must start with literal https:// and be a wheel URL without backslashes or controls`);
         }
         const url = new URL(request.url);
         const filename = url.pathname.slice(url.pathname.lastIndexOf("/") + 1);
-        if (url.protocol !== "https:" || !url.hostname || url.username || url.password ||
+        if (!url.hostname || url.username || url.password || /^https:\/\/[^/]*@/.test(request.url) ||
           request.url.includes("?") || request.url.includes("#") || !/^[A-Za-z0-9_.+-]+\.whl$/.test(filename)) {
           throw new Error(`${site}.url must be an HTTPS wheel URL without credentials, query, fragment or encoded filename`);
         }
@@ -570,9 +588,9 @@ export function asAcquisitionSource(v: unknown, where: string): AcquisitionSourc
   }
   if (rec.kind === "pixi_lock") {
     rejectUnknownFields(where, rec, ["kind", "manifest", "lock", "environment", "span"]);
-    asName(rec.manifest, `${where}.manifest`);
-    asName(rec.lock, `${where}.lock`);
-    asName(rec.environment, `${where}.environment`);
+    for (const field of ["manifest", "lock", "environment"]) {
+      if (!providerText(rec[field])) throw new Error(`${where}.${field} must be a non-empty string without padding or controls`);
+    }
     asSpan(rec.span, where);
     return v as AcquisitionSource;
   }

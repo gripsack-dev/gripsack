@@ -12,6 +12,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from conftest import grip, make_workspace_repo, native_target
 
 HOME_STATE = Path(".local/share/gripsack")
@@ -92,6 +94,71 @@ export default profile("app", { files: [
 def apply(repo: Path) -> None:
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
+
+
+def test_default_rollback_does_not_skip_a_damaged_or_absent_predecessor(sandbox):
+    repo, configs = template_repo(sandbox)
+    for version in range(1, 4):
+        (configs / "id.toml").write_text(f"version = {version}\n")
+        apply(repo)
+    current = state(sandbox) / "current"
+    selection = current.readlink()
+    dest = sandbox / ".config/app/id.toml"
+    predecessor = manifest_path(sandbox, 2)
+    predecessor.write_bytes(b"not JSON")
+
+    def refusal(*args):
+        out = grip("rollback", *args, cwd=repo)
+        assert out.returncode != 0, out.stdout
+        assert current.readlink() == selection and selected(sandbox) == 3
+        assert dest.read_text() == "version = 3\n"
+        return out.stderr
+
+    # The implicit and explicit commands report the same admission failure
+    # even when the manifest is missing inside a retained generation.
+    for damage in ("invalid JSON", "missing manifest"):
+        if damage == "missing manifest":
+            predecessor.unlink()
+        prefix = "grip: cannot admit generation 2: "
+        error = next(line for line in refusal().splitlines() if line.startswith(prefix))
+        assert len(error) > len(prefix)
+        assert error in refusal("2").splitlines()
+    predecessor.parent.rename(sandbox / "removed-generation")
+    assert "nothing to roll back to" in refusal()
+    assert manifest_path(sandbox, 1).is_file()
+
+
+@pytest.mark.parametrize("edited", [True, False], ids=["kept", "restored"])
+def test_rollback_reports_plain_text_recovery_severity(sandbox, monkeypatch, edited):
+    import signal
+
+    repo, configs = template_repo(sandbox)
+    apply(repo)
+    dest = sandbox / ".config/app/id.toml"
+    first = dest.read_bytes()
+    (configs / "id.toml").write_text('version = 2\n')
+    apply(repo)
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "after-rollback-restore")
+    crashed = grip("rollback", cwd=repo)
+    assert crashed.returncode == -signal.SIGABRT, crashed.stderr
+    assert selected(sandbox) == 2 and dest.read_bytes() == first
+
+    if edited:
+        dest.write_bytes(b"edited after the crash\n")
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+    monkeypatch.setenv("NO_COLOR", "1")
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    lines = [line.strip() for line in out.stdout.splitlines()]
+    if edited:
+        assert f"warning: kept {dest}: changed since the interrupted run — your edit stands" in lines
+        assert dest.read_bytes() == b"edited after the crash\n"
+    else:
+        assert f"recovered {dest}: prior bytes restored" in lines
+        assert not any(line.startswith("warning:") for line in lines)
+        assert dest.read_bytes() == first
+    assert lines[-1] == "rolled back to generation 1"
+    assert selected(sandbox) == 1
 
 
 def test_rollback_restores_the_rendered_bytes_after_the_template_source_changed(sandbox):

@@ -4,21 +4,33 @@ import { emitWorkspaceIr } from "../src/advanced.ts";
 import {
   artifact,
   artifactFile,
+  artifactTree,
   check,
+  conda,
   environment,
   exec,
   file,
+  hook,
   identity,
+  inputFile,
   lit,
+  literalText,
+  managedBlock,
+  outputPath,
   packageCommand,
+  pixi,
   pkg,
   profile,
   provider,
+  repoTree,
+  source,
+  sourcePath,
+  symlinkTo,
   task,
   trackedCopyTo,
   workspace,
 } from "../src/workspace.ts";
-import type { PackageLayout, WorkspaceOutput, WorkspacePlatform, WorkspaceValue } from "../src/workspace.ts";
+import type { PackageLayout, WorkspaceDestination, WorkspaceOutput, WorkspacePlatform, WorkspaceValue } from "../src/workspace.ts";
 import { thrownDiagnostic } from "./diagnostic.ts";
 
 const facts = { os: "linux", arch: "x86_64", libc: null, hostname: "builder" } as const;
@@ -132,3 +144,140 @@ Deno.test("ABI mismatch and incompatible minimum OS reject with both declaration
   }
 });
 
+function assertEmitsUnchanged(outputs: WorkspaceOutput[]): void {
+  const value = workspace({ outputs });
+  assert.deepEqual(JSON.parse(emitWorkspaceIr(value, facts)).workspace, value.ir);
+}
+
+Deno.test("source and output bindings require an owner in argv, cwd and environment data", () => {
+  const { packageValue } = built();
+  const runSpan = { file: "checks.ts", line: 11 };
+  for (const binding of [sourcePath("bin"), outputPath(".")]) {
+    const env = environment("dev", { target: linux, packages: [], env: { ROOT: binding } });
+    const error = thrownDiagnostic(() => emit([env]), "E128");
+    assert.deepEqual(error.labels.map((label) => label.span), [env.ir.span]);
+    for (const run of [
+      exec({ argv: [lit("test"), binding], span: runSpan }),
+      exec({ argv: [lit("test")], cwd: binding, span: runSpan }),
+      exec({ argv: [lit("test")], env: { ROOT: binding }, span: runSpan }),
+    ]) {
+      const taskValue = task("job", { steps: [run] });
+      const hookValue = hook("trigger", { run, trigger: "post_link" });
+      const nonArtifactCheck = check("observe", { subject: "observe", run });
+      for (const invocation of [taskValue, hookValue, nonArtifactCheck]) {
+        const rejected = thrownDiagnostic(() => emit([invocation]), "E128");
+        assert.deepEqual(rejected.labels.map((label) => label.span), [runSpan]);
+      }
+      const pkgCheck = check("observe", { subject: packageValue.ir.name, run });
+      if (binding.kind === "output") {
+        const rejected = thrownDiagnostic(() => emit([pkgCheck, packageValue]), "E128");
+        assert.deepEqual(rejected.labels[0]?.span, runSpan);
+      } else {
+        assertEmitsUnchanged([pkgCheck, packageValue]);
+      }
+    }
+  }
+});
+
+Deno.test("only the attached file itself supplies check data, never cwd", () => {
+  const home = profile("home", { files: [file({
+    content: literalText("data"), destination: trackedCopyTo("~/config"),
+    checks: [{ check: "syntax", subject: "rendered", stage: "pre_flip" }],
+  })] });
+  const root = sourcePath(".");
+  const valid = exec({ argv: [lit("test"), root], env: { SUBJECT: root } });
+  const bound = check("syntax", { subject: "home", run: valid });
+  assertEmitsUnchanged([bound, home]);
+  for (const run of [
+    exec({ argv: [lit("test")], env: { SUBJECT: sourcePath("other") } }),
+    exec({ argv: [lit("test")], cwd: root }),
+  ]) {
+    const rejected = thrownDiagnostic(() => emit([home, check("syntax", { subject: "home", run })]), "E128");
+    assert.deepEqual(rejected.labels[0]?.span, run.span);
+  }
+});
+
+Deno.test("runtime and selected packages require compatible targets; passive artifact data does not", () => {
+  const target = { ...linux, abi: "gnu", minimum_os: { major: 6, minor: 1, patch: 2 } } as const;
+  const { packageValue } = built("lib", target);
+  for (const [consumerTarget, ok] of [
+    [{ ...target, minimum_os: { major: 6, minor: 2 } }, true],
+    [{ ...target, minimum_os: { major: 6, minor: 1 } }, false],
+    [{ ...target, abi: "musl" }, false],
+  ] as const) {
+    const runtime = pkg("tool", {
+      producer: provider(tarball("https://example.invalid/tool.tgz")), commands: {},
+      target: consumerTarget, layout: relocatable, runtime: ["lib"],
+    });
+    const data = environment("dev", {
+      packages: [], env: { LIB: artifact("lib", ".") }, target: consumerTarget,
+    });
+    assertEmitsUnchanged([data, packageValue]);
+    const selected = environment("run", { packages: ["lib"], target: consumerTarget });
+    for (const consumer of [runtime, selected]) {
+      if (ok) assertEmitsUnchanged([consumer, packageValue]);
+      else {
+        const mismatch = thrownDiagnostic(() => emit([consumer, packageValue]), "E126");
+        assert.deepEqual(mismatch.labels.map((label) => label.span), [consumer.ir.span, packageValue.ir.span]);
+      }
+    }
+  }
+});
+
+Deno.test("producer layout matrix preserves imported layouts and derived Conda/Pixi prefixes", () => {
+  const inputs = [inputFile("manifest", "pixi.toml"), inputFile("lock", "pixi.lock")];
+  const layouts: PackageLayout[] = [relocatable, { kind: "fixed_prefix", prefix: "/opt/tools" }, { kind: "prefix_materialized" }];
+  for (const [producer, accepted] of [
+    [provider(tarball("https://example.invalid/tool.tgz")), [true, true, false]],
+    [provider(conda.environment({ channels: ["conda-forge"], packages: { python: "*" } })), [false, false, true]],
+    [provider(pixi.fromLock({ manifest: "manifest", lock: "lock", environment: "default" })), [false, false, true]],
+    [provider(source.package({ manifest: "a".repeat(64) })), [true, true, true]],
+  ] as const) {
+    for (const [index, layout] of layouts.entries()) {
+      const value = pkg("tools", { producer, commands: {}, target: linux, layout });
+      const compile = (...rest: WorkspaceOutput[]) => emitWorkspaceIr(workspace({ outputs: [value, ...rest], inputs }), facts);
+      if (!accepted[index]) {
+        assert.deepEqual(thrownDiagnostic(() => compile(), "E130").labels[0]?.span, value.ir.span);
+        continue;
+      }
+      assert.deepEqual(JSON.parse(compile()).workspace.outputs[0].layout, layout);
+      for (const selection of [{ packages: ["tools"] }, { packages: [], env: { TOOL: artifact("tools", ".") } }]) {
+        for (const prefix of [undefined, "/opt/tools", "/other"]) {
+          const env = environment("dev", { ...selection, target: linux, ...(prefix === undefined ? {} : { prefix }) });
+          const valid = layout.kind === "relocatable" ||
+            (layout.kind === "prefix_materialized" ? prefix === undefined : prefix === layout.prefix);
+          if (valid) assert.deepEqual(JSON.parse(compile(env)).workspace.outputs, [env.ir, value.ir]);
+          else {
+            const mismatch = thrownDiagnostic(() => compile(env), "E126");
+            assert.deepEqual(mismatch.labels.map((label) => label.span), [env.ir.span, value.ir.span]);
+          }
+        }
+      }
+    }
+  }
+});
+
+Deno.test("literal destination ownership spans profiles, but distinct blocks and tree roots coexist", () => {
+  function declaration(name: string, line: number, destination: WorkspaceDestination) {
+    return profile(name, { files: [file({ content: literalText(name), destination, span: { file: "files.ts", line } })] });
+  }
+  const first = declaration("one", 7, trackedCopyTo("~/config"));
+  const second = declaration("two", 8, symlinkTo("~/CONFIG"));
+  const block = declaration("block", 9, managedBlock("~/config", "Tool"));
+  const other = declaration("other", 10, managedBlock("~/CONFIG", "Other"));
+  const duplicate = declaration("duplicate", 11, managedBlock("~/CONFIG", "tool"));
+  for (const [owners, lines] of [
+    [[first, second], [7, 8]], [[block, first, other], [7, 9, 10]],
+    [[other, duplicate, block], [9, 11]],
+  ] as const) {
+    const diagnostic = thrownDiagnostic(() => emit([...owners]), "E111");
+    assert.deepEqual(diagnostic.labels.map((label) => label.span?.line), lines);
+    assert.ok(diagnostic.help);
+  }
+  const { packageValue } = built();
+  const trees = profile("trees", { files: [
+    file({ source: repoTree("configs"), content: identity(), destination: trackedCopyTo("~/config") }),
+    file({ source: artifactTree("tool", { include: ["etc"] }), content: identity(), destination: symlinkTo("~/config") }),
+  ] });
+  assertEmitsUnchanged([block, other, trees, packageValue]);
+});

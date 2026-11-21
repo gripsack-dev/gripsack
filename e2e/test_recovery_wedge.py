@@ -5,9 +5,6 @@ created a file; the user then puts a directory where that file was. Recovery
 refuses by name and changes nothing, `grip doctor` shows the blocking entry,
 what recovery expected and found, and the repair; once the directory is moved
 aside, the next apply recovers and deploys.
-
-The legacy engine stays behind the debug-only GRIPSACK_ENGINE switch for one
-release; an ordinary interrupted apply recovers identically on both.
 """
 import signal
 
@@ -87,8 +84,7 @@ def test_a_directory_at_an_interrupted_entry_is_refused_by_name_until_moved(
 
 
 @pytest.mark.requires_fault_controls
-@pytest.mark.parametrize("engine", ["kernel", "legacy"])
-def test_an_interrupted_apply_recovers_on_both_engines(sandbox, monkeypatch, engine):
+def test_an_interrupted_apply_restores_prior_bytes_and_mode(sandbox, monkeypatch):
     repo = sandbox / "engine-env"
     declare(repo)
     destination = sandbox / ".config/wedge/a.conf"
@@ -100,7 +96,6 @@ def test_an_interrupted_apply_recovers_on_both_engines(sandbox, monkeypatch, eng
     assert f"{destination}: the prior will be restored" in pending.stdout, pending.stdout
 
     # recovery alone restores the prior, with its mode
-    monkeypatch.setenv("GRIPSACK_ENGINE", engine)
     monkeypatch.setenv("GRIPSACK_FS_RECOVER_ONLY", "1")
     recovered = grip("apply", cwd=repo)
     assert recovered.returncode == 0, recovered.stdout + recovered.stderr

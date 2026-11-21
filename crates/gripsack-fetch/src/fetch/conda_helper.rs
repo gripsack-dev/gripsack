@@ -250,6 +250,10 @@ mod tests {
 
     #[test]
     fn conda_bootstrap_executes_only_owned_pinned_bytes() {
+        use gripsack_host::process::{
+            Control, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessRole,
+            SelectedProgram, Sha256Digest,
+        };
         use std::os::unix::fs::PermissionsExt;
         let home = tempfile::tempdir().unwrap();
         let (url, pin, _serving) = fixture(b"#!/bin/sh\nprintf bootstrap-proof\n");
@@ -266,12 +270,41 @@ mod tests {
         };
         let deadline = || Instant::now() + std::time::Duration::from_secs(5);
         let cold = acquire(&url, deadline()).unwrap();
+        let environment = OperatorEnvironment::capture().unwrap();
+        let expected = Sha256Digest::parse(&pin).unwrap();
         let run = || {
-            let output = std::process::Command::new(&cold.path).output().unwrap();
-            assert!(output.status.success());
-            assert_eq!(output.stdout, b"bootstrap-proof");
+            // Use the same pinned-image selection and launch as CondaHelper.
+            // A forked peer may still hold the cached inode open for writing.
+            let program =
+                SelectedProgram::select(&environment, &cold.path, Some(expected), deadline())
+                    .unwrap();
+            let invocation = Invocation::admit(
+                &environment,
+                ProcessRole::Plugin,
+                &program,
+                home.path(),
+                Limits::default(),
+            )
+            .unwrap();
+            let mut output = Vec::new();
+            let outcome = invocation
+                .run(&[], NativeInput::Bytes(b""), None, |bytes| {
+                    output.extend_from_slice(bytes);
+                    Control::Continue
+                })
+                .unwrap();
+            assert!(outcome.success, "{:?}", outcome.receipt);
+            assert_eq!(outcome.receipt.script_sha256, Some(expected));
+            assert_eq!(output, b"bootstrap-proof");
         };
+        // Model the lifetime of an inherited writer deterministically, without
+        // changing the bytes, retrying exec, or serializing unrelated children.
+        let writer = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&cold.path)
+            .unwrap();
         run();
+        drop(writer);
         acquire("file:///missing-origin", deadline()).unwrap();
         run();
         std::fs::write(&cold.path, b"corrupt").unwrap();

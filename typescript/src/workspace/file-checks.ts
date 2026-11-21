@@ -1,8 +1,8 @@
 import { diagnosticCodes, errorAt } from "../diagnostic.ts";
-import type { CheckNode, WorkspaceArg, WorkspaceOutputNode } from "./ir.ts";
+import type { WorkspaceOutputNode } from "./ir.ts";
 
 /** A file subject exists only at an explicit attachment to its owning profile. */
-export function checkFileBindings(catalog: ReadonlyMap<string, WorkspaceOutputNode>): void {
+export function fileCheckAttachments(catalog: ReadonlyMap<string, WorkspaceOutputNode>): ReadonlySet<string> {
   const attached = new Set<string>();
   for (const profile of catalog.values()) {
     if (profile.kind !== "profile") continue;
@@ -38,23 +38,6 @@ export function checkFileBindings(catalog: ReadonlyMap<string, WorkspaceOutputNo
         }
       }
     }
-    if (output.kind !== "check" || catalog.get(output.subject)?.kind !== "profile") continue;
-    const fileSubject = attached.has(output.name);
-    const argument = (value: WorkspaceArg): void => {
-      if (value.kind === "output" ||
-          (value.kind === "source" && (!fileSubject || value.selector !== "."))) {
-        reject(output, "a file check may use sourcePath(\".\") only for its explicitly attached file, never writable output");
-      }
-    };
-    if (output.run.kind === "exec") output.run.argv.forEach(argument);
-    else argument(output.run.interpreter);
-    Object.values(output.run.env ?? {}).forEach(argument);
-    if (output.run.cwd?.kind === "source" || output.run.cwd?.kind === "output") {
-      reject(output, "an attached file cannot supply a working directory or writable output");
-    }
   }
-}
-
-function reject(check: CheckNode, message: string): never {
-  throw errorAt(diagnosticCodes.badWorkspaceContext, message, check.run.span, "file subject used here");
+  return attached;
 }

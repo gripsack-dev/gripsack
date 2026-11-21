@@ -123,8 +123,16 @@ release or another package's version. `artifactTree` expands both include and
 exclude segment prefixes; it does not add glob matching. `grip plan` displays
 concrete paths without fetching, even before realization. Missing versions,
 unsupported tokens and unsafe expanded paths are errors with source locations.
+Since 0.57, `repoTree`, `inputDirectory` and `artifactTree` reject glob
+syntax in either filter. Use `bin` for a subtree, not `bin/*`. Only
+`artifactTree` accepts the release and platform placeholders above.
 Command names, literal arguments, shell bodies, destinations and repository selectors remain literal.
 Wrapper directories still work best with `archiveRoot: { kind: "single_directory" }`.
+
+The SDK checks execution-target compatibility for an environment's selected
+packages and a package's runtime dependencies. An `artifact(...)` environment
+value references data; it does not select that package for native execution.
+Layout and prefix constraints still apply to that reference.
 
 ## Profile files
 
@@ -223,9 +231,10 @@ scripts; use `bash` for multiline bodies so diagnostics retain their source map.
 `task` declares steps, prerequisites, optional environment, mutation locks and
 postcondition checks. `check` names a subject and command. `hook` declares a
 lifecycle command; external side effects must be idempotent across replay.
-`schedule` targets a task with `daily`/`weekly` calendar triggers. Authoring a
-declaration does not grant execution authority: the core validates references,
-platform constraints and required approvals before effects.
+`schedule` targets a task with `daily`/`weekly` calendar triggers. Declaring a
+schedule does not register or start it. Attach the schedule to a profile and
+apply that profile to register its systemd user timer. The core validates
+references, platform constraints and approvals before effects.
 
 See [workspace examples](../examples/workspaces/) for dotfiles, native tools and
 scheduled tasks. The exported TypeScript interfaces are the full field-level

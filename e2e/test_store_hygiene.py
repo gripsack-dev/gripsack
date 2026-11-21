@@ -190,13 +190,39 @@ profile("hello", {{ files: [
     user_conf.mkdir(parents=True)
     (user_conf / "config.toml").write_text("[settings]\nkeep_generations = 1\n")
     store = sandbox / ".local/share/gripsack/store"
+    # Both payloads and unused prior blobs go through the path report.
+    import hashlib
+    prior_bytes = b"unreferenced prior"
+    prior = store.parent / "prior" / hashlib.sha256(prior_bytes).hexdigest()
+    prior.parent.mkdir(exist_ok=True)
+    prior.write_bytes(prior_bytes)
+    orphan = store / "orphan"
+    orphan.mkdir()
+    (orphan / "payload").write_bytes(b"collectable")
     before = set(store.iterdir())
     out = grip("gc", "--dry-run", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert "dry run" in out.stdout
-    assert "collected" in out.stdout or "pruned" in out.stdout
+    assert "gc: would prune generations 1" in out.stdout
+    previewed = {Path(line.removeprefix("gc: would collect "))
+                 for line in out.stdout.splitlines() if line.startswith("gc: would collect ")}
+    assert {orphan, prior} <= previewed
+    size = next(line.removeprefix("would free ") for line in out.stdout.splitlines()
+                if line.startswith("would free "))
+    assert float(size.split()[0]) > 0
+    assert not any(term in out.stdout for term in ("pruned", "collected", "freed"))
     assert set(store.iterdir()) == before  # nothing deleted
+    assert prior.read_bytes() == prior_bytes
     assert (sandbox / ".local/share/gripsack/generations/1").exists()
+
+    collected = grip("gc", cwd=repo)
+    assert collected.returncode == 0, collected.stderr
+    assert "gc: pruned generations 1" in collected.stdout
+    assert all(f"gc: collected {path}" in collected.stdout for path in previewed)
+    assert f"{size} freed" in collected.stdout
+    assert before - set(store.iterdir()) == {path for path in previewed if path.parent == store}
+    assert not prior.exists()
+    assert not (sandbox / ".local/share/gripsack/generations/1").exists()
 
 
 def test_store_verify_detects_and_repairs_corruption(sandbox):

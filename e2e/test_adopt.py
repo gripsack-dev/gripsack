@@ -234,6 +234,74 @@ def test_adopt_distinguishes_an_edit_from_a_generated_file(sandbox, integration)
     assert stat.S_IMODE(root.stat().st_mode) == 0o640
 
 
+@pytest.mark.parametrize(("native", "lookalike", "reason"), [
+    (b"config\\dark.toml", "config/dark.toml", "backslash"),
+    (b"pref-\xff", "pref-\ufffd", "UTF-8"),
+])
+def test_unrepresentable_adopt_name_refuses_before_copying(sandbox, native, lookalike, reason):
+    target = sandbox / "editor"
+    target.mkdir()
+    literal = target / os.fsdecode(native)
+    literal.write_bytes(b"literal source")
+    other = target / lookalike
+    other.parent.mkdir(exist_ok=True)
+    other.write_bytes(b"different source")
+    repo = make_workspace_repo(sandbox / "repo", {})
+    original = (repo / "gripsack.ts").read_bytes()
+
+    result = grip("adopt", "~/editor", "--yes", cwd=repo)
+    assert result.returncode == 1 and reason in result.stderr, result.stderr
+    assert not (repo / "configs/editor").exists()
+    assert not (repo / "profiles/editor.ts").exists()
+    assert (repo / "gripsack.ts").read_bytes() == original
+    assert literal.read_bytes() == b"literal source" and other.read_bytes() == b"different source"
+
+
+def test_adopt_preserves_distinct_utf8_spellings(sandbox):
+    target = sandbox / "editor"
+    target.mkdir()
+    entries = {"caf\u00e9.conf": b"one", "cafe\u0301.conf": b"two"}
+    for name, data in entries.items():
+        (target / name).write_bytes(data)
+    repo = make_workspace_repo(sandbox / "repo", {})
+    result = approved_adoption("adopt", "~/editor", "--mode", "owned", "--yes", cwd=repo)
+    assert result.returncode == 0, result.stderr
+    for name, data in entries.items():
+        assert (repo / "configs/editor" / name).read_bytes() == data
+        assert (target / name).is_symlink() and (target / name).read_bytes() == data
+
+
+def test_adopt_explains_all_skipped_entries(sandbox):
+    target = sandbox / "editor"
+    target.mkdir()
+    (target / "cache").symlink_to(sandbox, target_is_directory=True)
+    (target / "dangling").symlink_to("gone")
+    os.mkfifo(target / "events")
+    repo = make_workspace_repo(sandbox / "repo", {})
+    result = grip("adopt", "~/editor", "--yes", cwd=repo)
+    assert result.returncode == 1, result.stderr
+    lines = result.stdout.splitlines()
+    for name, reason in (("cache", "directory symlink"), ("dangling", "broken symlink"),
+                         ("events", "not a regular file")):
+        assert any(name in line and reason in line for line in lines), result.stdout
+    assert not (repo / "configs/editor").exists()
+    assert not (repo / "profiles/editor.ts").exists()
+
+
+def test_adopt_refuses_incomplete_inventory_with_readable_siblings(sandbox):
+    target = sandbox / "editor"
+    target.mkdir()
+    (target / "settings").write_text("readable\n")
+    (target / "loop").symlink_to("loop")
+    repo = make_workspace_repo(sandbox / "repo", {})
+    original = (repo / "gripsack.ts").read_bytes()
+    result = grip("adopt", "~/editor", "--yes", cwd=repo)
+    assert result.returncode == 1 and "loop" in result.stderr, result.stderr
+    assert not (repo / "configs/editor").exists()
+    assert not (repo / "profiles/editor.ts").exists()
+    assert (repo / "gripsack.ts").read_bytes() == original
+
+
 def test_adopt_does_not_follow_directory_symlinks(sandbox):
     """0015 §7 S2: a dir symlink inside the adopted tree must not pull
     an arbitrary tree into the repo — it's skipped and reported."""

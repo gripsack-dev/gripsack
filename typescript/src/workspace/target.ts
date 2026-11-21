@@ -4,7 +4,9 @@
 
 import { rejectUnknownFields } from "../fields.ts";
 import type {
+  EnvironmentNode,
   PackageLayout,
+  PackageNode,
   WorkspaceOsVersion,
   WorkspaceOutputNode,
   WorkspacePlatform,
@@ -76,10 +78,11 @@ function floorAtMost(provider: WorkspaceOsVersion | undefined, consumer: Workspa
   return (provider.patch ?? 0) <= (consumer.patch ?? 0);
 }
 
-function requireCompatibleTarget(
-  relation: string,
-  consumer: WorkspaceOutputNode & { target: WorkspacePlatform },
-  provider: WorkspaceOutputNode & { target: WorkspacePlatform },
+/** Selected packages and runtime dependencies promise to run on this target.
+ * An artifact referenced only as environment data makes no such promise. */
+export function checkPackageTarget(
+  consumer: EnvironmentNode | PackageNode,
+  provider: PackageNode,
 ): void {
   const supplied = provider.target;
   const requested = consumer.target;
@@ -90,7 +93,7 @@ function requireCompatibleTarget(
       code: diagnosticCodes.unknownWorkspaceRef,
       severity: "error",
       message:
-        `workspace: ${relation} — target of '${provider.name}' (${JSON.stringify(supplied)}) ` +
+        `workspace: ${consumer.kind} '${consumer.name}' — target of '${provider.name}' (${JSON.stringify(supplied)}) ` +
         `cannot satisfy target of '${consumer.name}' (${JSON.stringify(requested)}): ` +
         `OS/arch/ABI must match and provider minimum OS must not exceed the consumer`,
       labels: [
@@ -101,51 +104,50 @@ function requireCompatibleTarget(
   }
 }
 
-/** Resolved catalog references have already passed kind/existence
- * checks. Hand-built nodes still pass every runtime shape guard here. */
-export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>): void {
-  const guard = (node: WorkspaceOutputNode, run: () => void): void => {
-    try {
-      run();
-    } catch (error) {
-      throw errorAt(
-        diagnosticCodes.invalidWorkspaceValue,
-        (error as Error).message,
-        node.span,
-        "declared here",
-      );
-    }
-  };
-  for (const node of catalog.values()) {
+/** IR10 applies placement rules to every environment/package reference,
+ * including a passive artifact path in an environment variable. */
+export function checkEnvironmentPrefix(consumer: EnvironmentNode, provider: PackageNode): void {
+  const layout = provider.layout;
+  const mismatch = layout.kind === "fixed_prefix" && consumer.prefix !== layout.prefix
+    ? `requires the matching install prefix '${layout.prefix}'`
+    : layout.kind === "prefix_materialized" && consumer.prefix !== undefined
+    ? "derives its install prefix from the frozen lock; an environment prefix cannot override it"
+    : undefined;
+  if (mismatch) {
+    throw new DiagnosticError({
+      code: diagnosticCodes.unknownWorkspaceRef,
+      severity: "error",
+      message: `workspace: environment '${consumer.name}' references package '${provider.name}' ` +
+        `with layout ${layout.kind}, which ${mismatch}`,
+      labels: [
+        { span: consumer.span, note: `environment '${consumer.name}' declared here` },
+        { span: provider.span, note: `package '${provider.name}' declared here` },
+      ],
+    });
+  }
+}
+
+/** Validate target and layout declarations before comparing resolved edges. */
+export function checkTargetAndLayout(node: WorkspaceOutputNode): void {
+  try {
     if ("target" in node) {
-      guard(node, () => void asPlatform(node.target, `${node.kind} '${node.name}' target`));
+      asPlatform(node.target, `${node.kind} '${node.name}' target`);
     }
     if (node.kind === "package") {
-      guard(node, () => void asLayout(node.layout, `package '${node.name}' layout`));
-    }
-    if (node.kind === "environment" && node.prefix !== undefined) {
-      guard(node, () => void asInstallPrefix(node.prefix, `environment '${node.name}' prefix`));
-    }
-    if (node.kind === "environment") {
-      for (const name of node.packages) {
-        const selected = catalog.get(name)!;
-        if (selected.kind !== "package") continue; // reference pass rejected this
-        requireCompatibleTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
-        const prefix = node.prefix;
-        if (selected.layout.kind === "fixed_prefix" && prefix !== selected.layout.prefix) {
-          throw new DiagnosticError({
-            code: diagnosticCodes.unknownWorkspaceRef,
-            severity: "error",
-            message:
-              `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with ` +
-              `layout fixed_prefix at '${selected.layout.prefix}' but declares no matching install prefix`,
-            labels: [
-              { span: node.span, note: `'${node.name}' declared here` },
-              { span: selected.span, note: `'${selected.name}' declared here` },
-            ],
-          });
+      const layout = asLayout(node.layout, `package '${node.name}' layout`);
+      const source = node.producer.provider.kind;
+      if (source === "conda_environment" || source === "pixi_lock") {
+        if (layout.kind !== "prefix_materialized") {
+          throw new Error(`package '${node.name}': ${source} requires the prefix_materialized layout`);
         }
+      } else if (layout.kind === "prefix_materialized" && source !== "package") {
+        throw new Error(`package '${node.name}': prefix_materialized requires a Conda/Pixi or imported package`);
       }
     }
+    if (node.kind === "environment" && node.prefix !== undefined) {
+      asInstallPrefix(node.prefix, `environment '${node.name}' prefix`);
+    }
+  } catch (error) {
+    throw errorAt(diagnosticCodes.invalidWorkspaceValue, (error as Error).message, node.span, "declared here");
   }
 }

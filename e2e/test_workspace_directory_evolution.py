@@ -167,24 +167,29 @@ def test_leaf_to_directory_plan_and_rollback_preserve_the_old_file(sandbox):
     assert (destination / "data").read_text() == "new tree data\n"
 
 
-def test_leaf_with_prior_refuses_directory_growth_before_mutation(sandbox):
+@pytest.mark.parametrize("take_over", [True, False], ids=["prior", "unreceipted"])
+def test_protected_leaf_refuses_directory_growth_before_mutation(sandbox, take_over):
     repo, destination, _ = migrated(sandbox)
     leaf = destination / "z-adopted"
     leaf.write_bytes(b"private original\n")
     leaf.chmod(0o600)
     source = repo / "tree/z-adopted"
-    source.write_bytes(b"managed replacement\n")
-    run(repo, "apply", "--take-over")
+    if take_over:
+        source.write_bytes(b"managed replacement\n")
+        run(repo, "apply", "--take-over")
     previous = manifest(sandbox)
-    entry = next(entry for entry in previous["modules"]["personal"]["entries"]
-                 if entry["key"] == str(leaf))
-    assert entry["prior"]["kind"] == "file"
+    entries = [entry for entry in previous["modules"]["personal"]["entries"]
+               if entry["key"] == str(leaf)]
+    if take_over:
+        assert len(entries) == 1 and entries[0]["prior"]["kind"] == "file"
+    else:
+        assert not entries
     for source in (repo / "tree/data", source):
-        source.unlink()
+        source.unlink(missing_ok=True)
         source.mkdir()
         (source / "child").write_bytes(b"new child\n")
 
-    # Keep both inodes alive: rejecting the later prior-carrying leaf must not
+    # Keep both inodes alive: rejecting the later protected leaf must not
     # mutate even an earlier, otherwise removable blocker.
     ordinary = destination / "data"
     with leaf.open("rb") as held, ordinary.open("rb") as ordinary_held:
@@ -196,5 +201,5 @@ def test_leaf_with_prior_refuses_directory_growth_before_mutation(sandbox):
             assert {path: (path.stat().st_ino, path.stat().st_mode, path.read_bytes())
                     for path in (ordinary, leaf)} == identities
             assert manifest(sandbox) == previous
-        assert held.read() == b"managed replacement\n"
+        assert held.read() == (b"managed replacement\n" if take_over else b"private original\n")
         assert ordinary_held.read() == b"new tree data\n"

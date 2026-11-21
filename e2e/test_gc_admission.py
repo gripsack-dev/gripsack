@@ -426,7 +426,8 @@ def test_gc_reaps_staging_left_by_a_dead_publisher(sandbox):
 
     preview = grip("gc", "--dry-run", cwd=repo)
     assert preview.returncode == 0, preview.stderr
-    assert f"removed stale staging {stale}" in preview.stdout
+    assert f"would remove stale staging {stale}" in preview.stdout
+    assert "removed stale staging" not in preview.stdout
     assert stale.is_dir()
 
     collected = grip("gc", cwd=repo)

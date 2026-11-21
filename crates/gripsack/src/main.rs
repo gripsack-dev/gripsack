@@ -274,7 +274,9 @@ fn main() -> ExitCode {
         _ => gripsack_trace::init(&gripsack_host::store::gripsack_home()),
     }
     .ok();
-    let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());
+    let _run_span = run
+        .as_ref()
+        .map(|r| gripsack_trace::run_span!(r, command_name).entered());
     match command {
         Command::Doctor => commands::doctor(palette),
         Command::Up(args) => commands::services::up(args, palette),
@@ -406,10 +408,7 @@ fn main() -> ExitCode {
             Ok(repo) => commands::shell(&repo, args, palette),
             Err(code) => code,
         },
-        Command::Task(mut args) => match args.resolve_repository() {
-            Ok(repo) => commands::task(&repo, args, palette),
-            Err(code) => code,
-        },
+        Command::Task(args) => commands::task(args, palette),
         Command::RetainedPackage(args) => commands::package_command(args, palette),
         Command::Trust { command } => commands::trust(command, palette),
         Command::Hooks { command } => commands::hooks(command, palette),

@@ -4,11 +4,25 @@ use crate::sema::workspace::span_value::{admissible_destination, admissible_repo
 use crate::{Diagnostic, codes, workspace_model::*};
 use std::collections::{BTreeMap, BTreeSet};
 
-fn segment_prefix(value: &str) -> bool {
-    admissible_repo_file(value)
-        && !value
-            .bytes()
-            .any(|byte| byte.is_ascii_control() || b"*?[]{}".contains(&byte))
+pub(super) fn segment_prefix(value: &str, artifact: bool) -> bool {
+    if !admissible_repo_file(value) {
+        return false;
+    }
+    let mut rest = value;
+    while let Some(i) = rest
+        .bytes()
+        .position(|byte| byte.is_ascii_control() || b"*?[]{}".contains(&byte))
+    {
+        let Some((token, tail)) = rest[i..].strip_prefix('{').and_then(|s| s.split_once('}'))
+        else {
+            return false;
+        };
+        if !artifact || !crate::placeholders::SUPPORTED.contains(&token) {
+            return false;
+        }
+        rest = tail;
+    }
+    true
 }
 
 pub(super) fn file(file: &WorkspaceFile, out: &mut Vec<Diagnostic>) {
@@ -17,11 +31,11 @@ pub(super) fn file(file: &WorkspaceFile, out: &mut Vec<Diagnostic>) {
         include,
         exclude,
     }) = &file.source
-        && (!(path == "." || segment_prefix(path))
+        && (!(path == "." || segment_prefix(path, false))
             || !include
                 .iter()
                 .chain(exclude)
-                .all(|value| segment_prefix(value)))
+                .all(|value| segment_prefix(value, false)))
     {
         fail(
             out,

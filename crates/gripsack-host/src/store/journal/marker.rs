@@ -1,7 +1,6 @@
-//! The run marker and the commit classifier (0019, 0026 §4, 0028):
-//! a run declares its target generation before any mutation, and
-//! recovery classifies the interrupted run by EXACT transaction
-//! identity.
+//! The durable run marker (0019, 0026 §4, 0028). A run declares its target
+//! before any destination mutation so the kernel can classify an interrupted
+//! transaction by exact selection identity.
 
 use super::mutation::StoreRunHost;
 use crate::fs::Dir;
@@ -148,25 +147,6 @@ pub fn end_run(run: JournalRun<'_>) -> io::Result<()> {
         .map_err(|error| error.into_io())
 }
 
-/// The legacy reconcile's cleanup (kept with it behind the debug-only
-/// `GRIPSACK_ENGINE=legacy` switch): every record unlinked, one barrier, the
-/// marker unlinked, a second barrier. The kernel engines decide this order.
-pub(super) fn cleanup_legacy<'a>(
-    directory: &Dir,
-    entry_paths: impl IntoIterator<Item = &'a Path>,
-) -> io::Result<()> {
-    for path in entry_paths {
-        crate::fs::remove_file(directory, path)?;
-    }
-    crate::fs::fsync_dir(directory, Path::new("."))?;
-    match crate::fs::remove_file(directory, Path::new(RUN_MARKER)) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    crate::fs::fsync_dir(directory, Path::new("."))
-}
-
 pub(super) fn run_marker(journal: &Journal) -> io::Result<Option<RunMarker>> {
     match journal.read(Path::new(RUN_MARKER)) {
         Ok(bytes) => serde_json::from_slice::<RunMarker>(&bytes)
@@ -179,10 +159,3 @@ pub(super) fn run_marker(journal: &Journal) -> io::Result<Option<RunMarker>> {
         Err(e) => Err(e),
     }
 }
-
-/// One exact-selection kernel serves recovery and the Lean proofs
-/// (plan/0056).
-pub(crate) use gripsack_kernel::{
-    Classification,
-    selection::{RecoveryFacts, classify},
-};

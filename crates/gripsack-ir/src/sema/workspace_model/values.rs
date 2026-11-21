@@ -24,12 +24,12 @@ fn invalid(out: &mut Vec<Diagnostic>, at: &Span, message: &'static str) {
 fn hash(value: &str) -> bool {
     crate::workspace_model::identity::ArtifactDigest::parse(value).is_ok()
 }
-fn globs(include: &[String], exclude: &[String]) -> bool {
+fn prefixes(include: &[String], exclude: &[String], artifact: bool) -> bool {
     !include.is_empty()
         && include
             .iter()
             .chain(exclude)
-            .all(|pattern| admissible_repo_file(pattern))
+            .all(|prefix| super::ergonomics::segment_prefix(prefix, artifact))
 }
 fn lock(value: &WorkspaceMutationLock, out: &mut Vec<Diagnostic>) {
     span(&value.span, out);
@@ -211,13 +211,13 @@ pub(super) fn check(workspace: &WorkspaceCatalog, out: &mut Vec<Diagnostic>) {
                 path,
                 include,
                 exclude,
-            } => selector(path) && globs(include, exclude),
+            } => selector(path) && prefixes(include, exclude, false),
         };
         if !valid {
             invalid(
                 out,
                 &input.span,
-                "captured input requires normalized repository-relative paths and explicit include patterns",
+                "captured input requires normalized repository-relative paths and directory segment prefixes, not globs",
             );
         }
     }
@@ -380,10 +380,10 @@ fn profile_file(file: &WorkspaceFile, out: &mut Vec<Diagnostic>) {
         }
         Some(WorkspaceSource::Tree {
             include, exclude, ..
-        }) if !globs(include, exclude) => invalid(
+        }) if !prefixes(include, exclude, true) => invalid(
             out,
             &file.span,
-            "artifact tree requires normalized relative include/exclude patterns",
+            "artifact tree requires normalized relative include/exclude segment prefixes, not globs",
         ),
         _ => {}
     }

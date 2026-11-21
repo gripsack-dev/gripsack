@@ -1,7 +1,7 @@
 /** Pure declarations: no registry, import-time effect or implicit ownership. */
 import { rejectUnknownFields } from "../fields.ts";
 import type { TaskContext, WorkspaceAction, WorkspaceInput, WorkspaceInputRef, WorkspaceMutationLock, WorkspaceStep, WorkspaceStepValue } from "./ir.ts";
-import { asCommand, asDestinationPath, asName, asRecord, asRepoFilePath, asSelector, asSpan, freezeDeep, nodeSpan } from "./validate.ts";
+import { asCommand, asDestinationPath, asName, asRecord, asRepoFilePath, asSegmentPrefix, asSelector, asSpan, freezeDeep, nodeSpan } from "./validate.ts";
 
 export function inputFile(name: string, path: string): WorkspaceInput {
   return freezeDeep({ name: asName(name, "inputFile(name)"), span: nodeSpan(undefined, "inputFile(...)"), origin: { kind: "repo_file", path: asRepoFilePath(path, "inputFile(path)") } });
@@ -19,9 +19,9 @@ export function lock(scope: "user" | "store", key: string): WorkspaceMutationLoc
 export function ensureArtifact(output: string): WorkspaceAction {
   return freezeDeep({ kind: "ensure_artifact", output: asName(output, "ensureArtifact(output)"), span: nodeSpan(undefined, "ensureArtifact(...)") });
 }
-export function asPatterns(value: unknown, where: string, required: boolean): string[] {
-  if (!Array.isArray(value) || required && value.length === 0) throw new Error(`${where}: expected ${required ? "nonempty " : ""}pattern array`);
-  return [...new Set(value.map((pattern, index) => asRepoFilePath(pattern, `${where}[${index}]`)))].sort();
+export function asPatterns(value: unknown, where: string, required: boolean, artifact = false): string[] {
+  if (!Array.isArray(value) || required && value.length === 0) throw new Error(`${where}: expected ${required ? "nonempty " : ""}segment-prefix array`);
+  return [...new Set(value.map((pattern, index) => asSegmentPrefix(pattern, `${where}[${index}]`, artifact)))].sort();
 }
 export function asInput(value: unknown, where: string): WorkspaceInput {
   const record = asRecord(value, where);

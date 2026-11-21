@@ -11,7 +11,7 @@ use crate::{
     report::{SurveyReports, UpdateReport, UpdateStatus, UpdateSurvey},
 };
 use gripsack_ir::{
-    Ir, Severity,
+    Diagnostic, Ir, Severity, codes,
     workspace_model::{
         AcquisitionSource, WorkspaceOutput, WorkspaceProducer,
         lock::{LockedPin, PlatformResolution, WORKSPACE_LOCK_VERSION, platform_key},
@@ -216,9 +216,15 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
                     super::sharing::acquire(ctx, &session, manifest, ctx.fetch.limits())
                 } else {
                     super::sharing::inspect_source(&ctx.home, manifest, ctx.fetch.limits())
-                        .and_then(|source| source.ok_or_else(|| super::file_failure(
-                            declaration.span(), "package projection is not retained; run grip update to acquire it",
-                        )))
+                        .and_then(|source| {
+                            source.map_err(|reason| {
+                                let diagnostic = Diagnostic::error(codes::EXEC_STEP, reason);
+                                ExecError::Gate(diagnostic.with_label(
+                                    Some(declaration.span().clone()),
+                                    "imported package declared here",
+                                ))
+                            })
+                        })
                 };
                 match acquired {
                     Ok(acquired) => {

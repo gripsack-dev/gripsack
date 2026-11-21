@@ -3,14 +3,16 @@
 //!
 //! ```text
 //! $GRIPSACK_HOME/runs/
-//! ├── 20260823T065501Z-a1b2c3.jsonl   one file per run
-//! └── latest -> 20260823T065501Z-a1b2c3.jsonl
+//! ├── <run-id>.jsonl   one file per run
+//! └── latest -> <run-id>.jsonl
 //! ```
 //!
 //! Causality is span ancestry (0004): an event's span chain —
 //! `run → plan → module → step` — is how "a caused b" is read back,
 //! from the console and from the JSONL alike. The debug skill for
 //! agents lives in `skills/gripsack-debug/`.
+
+mod retention;
 
 use std::io;
 use std::io::IsTerminal;
@@ -19,40 +21,23 @@ use std::sync::Arc;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::prelude::*;
 
-/// A started run: its id and the JSONL path.
-#[derive(Debug, Clone)]
+/// A started run. Keep the handle alive while the command can emit events.
+#[derive(Debug)]
 pub struct RunLog {
     pub id: String,
     pub path: PathBuf,
-}
-
-/// Timestamp + random suffix: sortable, collision-safe.
-pub fn new_run_id() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let mut entropy = [0u8; 4];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        use io::Read;
-        let _ = f.read_exact(&mut entropy);
-    }
-    let rand = u32::from_le_bytes(entropy);
-    format!("{secs}-{:06x}", rand & 0xFF_FFFF)
+    session: retention::Session,
 }
 
 /// Set up console (compact, colored on tty) + JSONL file layers.
-/// Returns the run handle; `runs/latest` points at it. Level comes from
-/// `GRIPSACK_LOG` (default `info`).
+/// The console level comes from `GRIPSACK_LOG` (default `warn`).
 pub fn init(home: &Path) -> io::Result<RunLog> {
-    let _home = gripsack_host::fs::open_or_create(home)?;
-    let id = new_run_id();
+    let (id, session) = retention::start(home)?;
     let run = RunLog {
         path: home.join("runs").join(format!("{id}.jsonl")),
         id,
+        session,
     };
-    std::fs::create_dir_all(run.path.parent().expect("runs dir"))?;
-    let file = Arc::new(std::fs::File::create(&run.path)?);
 
     // Console is warn-by-default (GRIPSACK_LOG raises it); the JSONL
     // always gets info and up — the log is the full record, the console
@@ -71,14 +56,14 @@ pub fn init(home: &Path) -> io::Result<RunLog> {
         .json()
         .with_current_span(true)
         .with_span_list(true)
-        .with_writer(FileWriter(file))
+        .with_writer(FileWriter(Arc::clone(&run.session.file)))
         .with_filter(tracing_subscriber::EnvFilter::new("info"));
-    let _ = tracing_subscriber::registry()
+    tracing_subscriber::registry()
         .with(console)
         .with(json)
-        .try_init();
-
-    gripsack_host::fs::symlink_replace_at(&home.join("runs").join("latest"), &run.path)?;
+        .try_init()
+        .map_err(io::Error::other)?;
+    tracing::info!(target: "gripsack_trace", run_id = %run.id, "run log opened");
     Ok(run)
 }
 
