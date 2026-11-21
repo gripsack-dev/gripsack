@@ -27,9 +27,9 @@ Coupled pins move as ONE proposal each:
           image's rustc must equal the native pin — proven by digest
           equality with the rust:<version>-alpine tag (identical
           manifests are identical images), not by running the image.
-  deno    Dockerfile (image digest, DENO_VERSION, DENO_SHA256), host.rs
-          DENO_RELEASE (version + supported Linux hashes), and the workflows'
-          deno-version pins. Retired platform hashes are historical only.
+  deno    Dockerfile (image tag/digest, DENO_VERSION, DENO_SHA256) and
+          host.rs DENO_RELEASE (version and Linux x86_64 asset checksum).
+          There is no hosted Deno toolchain pin.
   tools   cargo-auditable (version + both musl tarball sha256s), tla2tools
           (version + jar sha256), uv (version + both wheel hashes),
           node 22 (the setup-node pin in ci.yml).
@@ -83,7 +83,6 @@ HOST_RS = "crates/gripsack-fetch/src/host.rs"
 # linux slots — deno ships no musl build, host.rs maps them)
 DENO_TARGETS = {
     "LinuxX86_64Musl": "x86_64-unknown-linux-gnu",
-    "LinuxAarch64Musl": "aarch64-unknown-linux-gnu",
 }
 
 
@@ -213,7 +212,8 @@ class PinSites:
 
     def text(self, path: str) -> str:
         if path not in self._files:
-            self._files[path] = open(os.path.join(self.root, path)).read()
+            with open(os.path.join(self.root, path)) as source:
+                self._files[path] = source.read()
         return self._files[path]
 
     def dockerfile_arg(self, name: str) -> str | None:
@@ -237,7 +237,13 @@ class PinSites:
         an optional quote; the deno `v` prefix stays in the value)."""
         out = {}
         for p in WORKFLOW_FILES:
-            vals = re.findall(rf"^\s*{re.escape(key)}:\s*[\"']?([\w.+-]+)", self.text(p), re.M)
+            try:
+                text = self.text(p)
+            except FileNotFoundError:
+                # The hosted CI workflow was retired. Units still requiring
+                # its native pins must fail closed, not abort the whole watch.
+                continue
+            vals = re.findall(rf"^\s*{re.escape(key)}:\s*[\"']?([\w.+-]+)", text, re.M)
             if vals:
                 out[p] = vals
         return out
@@ -250,11 +256,9 @@ class PinSites:
             return None
         ver = re.search(r'version:\s*"([^"]+)"', m.group(1))
         pairs = re.findall(r"AssetTarget::(\w+),\s*\n?\s*\"([0-9a-f]{64})\"", m.group(1))
-        supported = [(target, digest) for target, digest in pairs if target in DENO_TARGETS]
-        if (not ver or {target for target, _ in supported} != set(DENO_TARGETS)
-                or len(supported) != len(DENO_TARGETS)):
+        if not ver or len(pairs) != len(DENO_TARGETS) or set(dict(pairs)) != set(DENO_TARGETS):
             return None
-        return ver.group(1), dict(supported)
+        return ver.group(1), dict(pairs)
 
 
 # --- proposals ------------------------------------------------------------
@@ -301,6 +305,9 @@ class PinUnit:
             "floating upgrade, never auto-merged — review and merge deliberately.",
             "",
         ]
+        if self.sources:
+            lines.extend(f"- {source}" for source in self.sources)
+            lines.append("")
         lines += [
             "**Review checklist**",
             "- [ ] the sources above still resolve to these exact values",
@@ -444,23 +451,26 @@ def unit_deno(sites: PinSites) -> PinUnit:
     dver = sites.dockerfile_arg("DENO_VERSION")
     dsha = sites.dockerfile_arg("DENO_SHA256")
     host = sites.host_deno()
-    wf = sites.workflow_pins("deno-version")
-    if not (dver and dsha and host and "denoland/deno" in froms and wf):
+    if not (dver and dsha and host and "denoland/deno" in froms):
         return u.sites_missing()
     hver, hashes = host
+    if dver == hver and dsha != hashes["LinuxX86_64Musl"]:
+        return u.blocked(
+            f"Dockerfile and DENO_RELEASE disagree about the Linux x86_64 asset at v{dver}",
+            "pins: deno: coupled asset checksums disagree")
     latest = (github_latest("denoland/deno") or "").lstrip("v")
     if not latest:
         u.status, u.note = "unknown", "deno upstream metadata unreachable this run"
         return u
     tag, pin_digest = froms["denoland/deno"]
-    all_sites = {dver, hver, *(v.lstrip("v") for vs in wf.values() for v in vs)}
+    all_sites = {tag, dver, hver}
 
     if all_sites == {latest}:
         if (cur := docker_hub_digest("denoland/deno", tag)) is None:
             u.status, u.note = "unknown", "deno image digest unreachable this run"
             return u
         if cur == pin_digest:
-            u.note = f"deno {latest} current everywhere (docker/runtime/workflows)"
+            u.note = f"deno {latest} current everywhere (Docker images and runtime)"
             return u
         u.status, u.summary = "ready", f"deno {latest} image digest refresh"
         u.note = f"same deno {latest}; the denoland/deno:{tag} tag was republished."
@@ -491,14 +501,14 @@ def unit_deno(sites: PinSites) -> PinUnit:
                          f"pins: deno {dver} → {latest} (docker image not published yet)")
 
     u.summary = f"deno {dver} → {latest}"
-    u.note = "image digest, Dockerfile pins, host.rs runtime table and workflow pins move together."
+    u.note = "Image tag/digest, e2e download and host runtime pin move together."
     if len(all_sites) > 1:
         u.note += f" (sites had diverged: {sorted(all_sites)} — all normalized to {latest}.)"
     u.sources = [
         f"https://api.github.com/repos/denoland/deno/releases/latest — `v{latest}`",
         f"https://registry-1.docker.io/v2/denoland/deno/manifests/{latest} — `sha256:{img}`",
-        *[f"https://github.com/denoland/deno/releases/download/v{latest}/deno-{t}.zip.sha256sum — "
-          f"`{h[:16]}…`" for t, h in new_hashes.items()],
+        *[f"https://github.com/denoland/deno/releases/download/v{latest}/deno-{DENO_TARGETS[t]}.zip.sha256sum — "
+          f"`{h}`" for t, h in new_hashes.items()],
     ]
     e = u.edits
     e.append(Edit("Dockerfile", f"denoland/deno:{tag}@sha256:{pin_digest}",
@@ -510,9 +520,6 @@ def unit_deno(sites: PinSites) -> PinUnit:
         e.append(Edit(HOST_RS, old_h, new_hashes[t]))
     if host_comment := re.search(r"Hashes from v[\d.]+", sites.text(HOST_RS)):
         e.append(Edit(HOST_RS, host_comment.group(0), f"Hashes from v{latest}"))
-    for path, vals in wf.items():
-        for old in dict.fromkeys(vals):
-            e.append(Edit(path, f"deno-version: {old}", f"deno-version: v{latest}", vals.count(old)))
     if f"CI pins {dver}," in sites.text("scripts/check_examples.py"):
         e.append(Edit("scripts/check_examples.py", f"CI pins {dver},", f"CI pins {latest},"))
     u.status = "ready"
