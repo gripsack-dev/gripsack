@@ -39,6 +39,15 @@ User-visible changes per release. Design decisions live in the
   without hiding healthy siblings or changing the lock.
   [#377](https://github.com/gripsack-dev/gripsack/issues/377)
 
+### Verification
+
+- Recovery now has a storage-level proof for retiring leaf undo records.
+  After an interrupted cleanup, a committed run cannot leave a stale undo
+  record without its marker; an uncommitted leaf is at its prior or at the
+  exact edit recovery preserved. Both guarantees cover process death and
+  modeled power loss, not arbitrary external writers or eventual recovery.
+  [#367](https://github.com/gripsack-dev/gripsack/issues/367)
+
 ## [0.58.0] — Durable journal evidence
 
 ### Fixed

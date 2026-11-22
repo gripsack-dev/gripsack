@@ -1,7 +1,9 @@
 import Lean
 import Kernel
 import Protocol.LeafExample
-import Protocol.Preservation
+import Protocol.RecoverExample
+import Protocol.RecoveryRetry
+import Protocol.LegacyRestart
 
 /-!
 # Axiom audit (plan/0056 §7)
@@ -203,6 +205,20 @@ def claims : List Name := [
   ``Gripsack.Protocol.Preservation.checked_file_settlement,
   ``Gripsack.Protocol.Preservation.checked_symlink_settlement,
   ``Gripsack.Protocol.Preservation.checked_absence_settlement,
+  ``Gripsack.Protocol.RecoverWalk.handoff,
+  ``Gripsack.Protocol.RecoverWalk.malformed_header_aborts,
+  ``Gripsack.Protocol.RecoverWalk.failure_aborts,
+  ``Gripsack.Protocol.RecoveryReplay.failure_keeps_evidence,
+  ``Gripsack.Protocol.RecoveryCleanup.leaf_cleanup_after_crash,
+  ``Gripsack.Protocol.RecoveryCleanup.finish_retires_names,
+  ``Gripsack.Protocol.RecoveryRetry.readmitted_row_step,
+  ``Gripsack.Protocol.RecoveryRetry.Authorized.reproduces,
+  ``Gripsack.Protocol.CleanupDisk.restart_cut_marked,
+  ``Gripsack.Protocol.RecoverExample.reachable_leaf_cleanup,
+  ``Gripsack.Protocol.CleanupDisk.Example.historical_0191_after_return,
+  ``Gripsack.Protocol.CleanupDisk.Example.historical_0192_before_trailing_sync,
+  ``Gripsack.Protocol.CleanupDisk.Example.before_second_barrier_marker_can_return,
+  ``Gripsack.Protocol.LegacyRestart.stale_row_authorizes_prior,
 ]
 
 /-- Every Gripsack theorem, including transitive use of the upstream library. -/
