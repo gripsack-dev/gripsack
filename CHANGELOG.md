@@ -6,6 +6,25 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+## [0.58.0] — Durable journal evidence
+
+### Fixed
+
+- On Linux, a temporary read-only reference to a page of the selected executable
+  no longer causes immediate `Resource busy` failures during commands such as
+  `grip trust inspect`. Gripsack retries sealing the same file descriptor within
+  the original deadline. It still refuses to use an unsealed executable.
+  [#388](https://github.com/gripsack-dev/gripsack/issues/388)
+
+### Verification
+
+- Before a journaled leaf mutation, the Lean proof now checks what recovery
+  can **read** after process death or modeled power loss: this transaction's
+  marker, the matching entry, and any named prior blob. Omitting either
+  publication barrier admits a lost-name or lost-bytes counterexample. This
+  is not a physical disk test or a guarantee about subsequent cleanup.
+  [#365](https://github.com/gripsack-dev/gripsack/issues/365)
+
 
 ## [0.57.0] — Reliable previews and recovery
 

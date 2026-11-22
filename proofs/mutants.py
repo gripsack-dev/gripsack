@@ -6,8 +6,8 @@ source. For each: copy the crate, apply the mutation, translate it exactly as
 the gate does (proofs/extract.sh), build the theorems against the mutated
 translation in a scratch copy of the lake project, and require the build to
 FAIL inside the named theorem(s) — no other theorem may fail, and the
-translation itself must still type-check. A proof that survives its mutant
-proves nothing; a failure anywhere else is noise, not calibration.
+translation itself must still type-check. Interpreted barrier mutants instead
+use the checked-in translation and must also exhibit the specified crash cut.
 """
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -31,6 +31,15 @@ class Mutant:
     before: str
     after: str
     fails: tuple[str, ...]
+    # Optional positive proof over the freshly translated negative Rust fixture.
+    witness: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class BarrierOmission(Mutant):
+    # Appended to the *mutated* module: Lean must accept the supplied concrete
+    # counterexample at exactly this implementation's `published` state.
+    cut: str
 
 
 MUTANTS = (
@@ -140,8 +149,9 @@ MUTANTS = (
     Mutant("journal-publication-file-barrier", "journal.rs",
            "            Self::Stage => Self::SyncFile,",
            "            Self::Stage => Self::PublishName,",
-           # the journal run issues its records' publication by `successor`
-           ("Gripsack.Kernel.PublicationAction.successor_spec", "Gripsack.Kernel.JournalRun.step_spec")),
+           # Both the journal run and the interpreted publication use this successor.
+           ("Gripsack.Kernel.PublicationAction.successor_spec", "Gripsack.Kernel.JournalRun.step_spec",
+            "Gripsack.Protocol.Publication.extracted_agrees")),
     # journal: a failed effect is never accepted
     Mutant("journal-publication-failed-ack", "journal.rs",
            "        if !succeeded || !action.same(self.next) {",
@@ -156,7 +166,7 @@ MUTANTS = (
     Mutant("run-mutates-before-entry-barrier", "journal_run.rs",
            "    let next = state.step.successor();\n    match next {\n        PublicationAction::Complete => {\n            let unit",
            "    let next = state.step.successor();\n    match next.successor() {\n        PublicationAction::Complete => {\n            let unit",
-           ("Gripsack.Kernel.JournalRun.step_spec",)),
+           ("Gripsack.Kernel.JournalRun.step_spec",), witness="RunBeforeEntryBarrier"),
     # journal run (P1): the marker's namespace barrier precedes any unit
     Mutant("run-ready-before-marker-barrier", "journal_run.rs",
            "        PublicationAction::Complete => {\n            state.phase = Phase::Ready;",
@@ -624,6 +634,17 @@ MUTANTS = (
            "            UpdateMode::Publish => self.counts.failed == 0 && self.counts.changed != 0,",
            "            UpdateMode::Publish => self.counts.failed == 0,",
            ("Gripsack.Kernel.UpdateSurvey.publishes_lock_spec",)),
+    BarrierOmission("storage-publication-file-barrier", "Protocol/Publication.lean",
+                    "  | .SyncFile => s.syncFile r.inode", "  | .SyncFile => s",
+                    ("Gripsack.Protocol.Publication.published_record",),
+                    cut="""i.link exampleRecord.dst = some exampleRecord.inode ∧
+    (i.file exampleRecord.inode).bytes = [] ∧ (i.file exampleRecord.inode).bytes ≠ exampleRecord.value.bytes :=
+  omitted_file_barrier_loses_bytes"""),
+    BarrierOmission("storage-publication-namespace-barrier", "Protocol/Publication.lean",
+                    "  | .SyncNamespace => s.syncDir r.dst.parent", "  | .SyncNamespace => s",
+                    ("Gripsack.Protocol.Publication.published_record",),
+                    cut="""i.link exampleRecord.dst = none ∧ i.file exampleRecord.inode = exampleRecord.value :=
+  omitted_directory_barrier_loses_name"""),
 )
 
 # lake reports `error: <path>.lean:<line>:<col>: <message>`
@@ -667,7 +688,7 @@ def failing_theorems(output: str, project: Path) -> tuple[set[str], list[str]]:
         except ValueError:
             unattributed.append(match.group(0))
             continue
-        if relative.parts[0] != "Kernel" or not file.exists():
+        if relative.parts[0] not in ("Kernel", "Protocol") or not file.is_file():
             unattributed.append(str(relative))
             continue
         name = attribute(file, int(match.group("line")))
@@ -691,32 +712,52 @@ class Calibration(Exception):
         self.log = log
 
 
-def calibrate(mutant: Mutant, scratch: Path) -> str:
-    """Return the calibration line, or raise `Calibration` with the evidence."""
-    crate = scratch / "crate"
-    shutil.copytree(KERNEL, crate, ignore=shutil.ignore_patterns("target"))
-    source = crate / "src" / mutant.file
+def apply_mutation(mutant: Mutant, source: Path) -> None:
     text = source.read_text()
     if text.count(mutant.before) != 1:
         raise Calibration(f"FAIL {mutant.name}: mutation site does not match exactly once")
     source.write_text(text.replace(mutant.before, mutant.after))
 
-    extraction = run(["sh", str(PROOFS / "extract.sh"), str(crate), str(scratch / "Extracted")], ROOT)
-    if extraction.returncode != 0:
-        raise Calibration(f"FAIL {mutant.name}: the mutated kernel did not translate", extraction.stdout)
 
+def calibrate(mutant: Mutant, scratch: Path) -> str:
+    """Return the calibration line, or raise `Calibration` with the evidence."""
     project = scratch / "proofs"
     project.mkdir()
     for name in ("lakefile.toml", "lean-toolchain", "lake-manifest.json", "Kernel.lean", "Audit.lean"):
         shutil.copy2(PROOFS / name, project / name)
-    shutil.copytree(PROOFS / "Kernel", project / "Kernel")
-    shutil.copytree(scratch / "Extracted", project / "Extracted")
+    for name in ("Kernel", "Protocol"):
+        shutil.copytree(PROOFS / name, project / name)
+    shutil.copy2(PROOFS / "Storage.lean", project / "Storage.lean")
     (project / ".lake").mkdir()
     os.symlink(PROOFS / ".lake" / "packages", project / ".lake" / "packages")
 
-    build = run(["lake", "build"], project)
+    if isinstance(mutant, BarrierOmission):
+        shutil.copytree(PROOFS / "Extracted", project / "Extracted")
+        source = project / mutant.file
+        apply_mutation(mutant, source)
+        with source.open("a") as handle:
+            handle.write(f"""
+namespace Gripsack.Protocol.Publication
+open Gripsack.Storage
+theorem mutant_crash_cut : ∃ i, CrashImage (published exampleRecord (FS.stable freshImage)) i ∧
+    {mutant.cut}
+end Gripsack.Protocol.Publication
+""")
+    else:
+        crate = scratch / "crate"
+        shutil.copytree(KERNEL, crate, ignore=shutil.ignore_patterns("target"))
+        apply_mutation(mutant, crate / "src" / mutant.file)
+        extraction = run(["sh", str(PROOFS / "extract.sh"), str(crate), str(project / "Extracted")], ROOT)
+        if extraction.returncode != 0:
+            raise Calibration(f"FAIL {mutant.name}: the mutated kernel did not translate", extraction.stdout)
+
+    # Rust source mutants face the ordinary full gate, including every positive
+    # target whose imports still build. Effect omissions isolate the concrete
+    # publication theorem and its independent crash-cut witness.
+    targets = ["+Protocol.Publication"] if isinstance(mutant, BarrierOmission) else []
+    build = run(["lake", "build", *targets], project)
     if build.returncode == 0:
-        raise Calibration(f"FAIL {mutant.name}: the proofs still build against the mutated kernel")
+        raise Calibration(f"FAIL {mutant.name}: the proofs still build after mutation")
     failures, unattributed = failing_theorems(build.stdout, project)
     if unattributed:
         raise Calibration(f"FAIL {mutant.name}: errors outside the theorem files: {unattributed}", build.stdout)
@@ -727,6 +768,20 @@ def calibrate(mutant: Mutant, scratch: Path) -> str:
     if failures - expected:
         raise Calibration(f"FAIL {mutant.name}: unexpected failing theorems {sorted(failures - expected)}",
                           build.stdout)
+    if mutant.witness is not None:
+        # A broken Kernel.JournalRun blocks dependent theorems. Check the actual
+        # mutant's run+image separately; a failed kernel proof cannot prove it.
+        path = Path("Mutant") / f"{mutant.witness}.lean"
+        (project / path.parent).mkdir()
+        shutil.copy2(PROOFS / path, project / path)
+        deps = run(["lake", "build", "+Protocol.Publication"], project)
+        if deps.returncode != 0:
+            raise Calibration(f"FAIL {mutant.name}: witness dependencies did not build", deps.stdout)
+        check = run(["lake", "env", "lean", "-DwarningAsError=true", str(path)], project)
+        if check.returncode != 0:
+            raise Calibration(f"FAIL {mutant.name}: {path} did not prove the crash cut", check.stdout)
+        return (f"calibration: {mutant.name} rejected by {', '.join(sorted(failures))}; "
+                f"storage counterexample proved by {path}")
     return f"calibration: {mutant.name} rejected by {', '.join(sorted(failures))}"
 
 

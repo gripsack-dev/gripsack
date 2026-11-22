@@ -92,4 +92,11 @@ COPY Cargo.toml ./Cargo.toml
 COPY crates/gripsack-kernel ./crates/gripsack-kernel
 COPY proofs ./proofs
 RUN sh proofs/extract.sh crates/gripsack-kernel /tmp/warm && rm -rf /tmp/warm
+
+# Only Tauten's generic reachability library is part of the proof toolchain.
+# Fetch the reviewed v0.0.5 source at image build, after warming dependencies;
+# neither the offline gate nor its scratch mutant projects resolve a package.
+ARG TAUTEN_COMMIT=c167c367b8ca2c9d24df07eb47c9e1f7c2782f21
+ADD --checksum=sha256:dab5259bada03ab2a035b4e8f6e4830c8e51884001131948b6efc6e52170db4e https://raw.githubusercontent.com/tauten-dev/tauten/${TAUTEN_COMMIT}/proofs/Tauten/Machine.lean /opt/tauten/proofs/Tauten/Machine.lean
+ADD --checksum=sha256:bb23cea06c1a4f205b5f6e2d4ecc5ff1c1ebf15829706f1fe366424d0919e9be https://raw.githubusercontent.com/tauten-dev/tauten/${TAUTEN_COMMIT}/LICENSE /opt/tauten/LICENSE
 CMD ["sh", "proofs/gate.sh"]

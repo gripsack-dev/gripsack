@@ -116,6 +116,8 @@ struct Faults {
     crash_at: Option<usize>,
     /// Fail the effect at this trace index once, without crashing.
     fail_at: Option<(usize, Errno)>,
+    /// Limit the next successful data write, splitting the write-all call.
+    short_write: Option<usize>,
     crashed: bool,
 }
 
@@ -152,14 +154,13 @@ impl State {
             data: write.bytes,
             permissions: write.permissions,
         });
-        for image in [&mut self.volatile, &mut self.durable] {
-            Update::Entry {
-                dir: write.dir.ino,
-                name: write.name.clone(),
-                target: Some(ino),
-            }
-            .apply(image);
-        }
+        let dir = write.dir.ino;
+        self.pending
+            .retain_mut(|p| p.update.retain_after_replacement(dir, &write.name));
+        self.volatile
+            .entries_mut(dir)
+            .insert(write.name.clone(), ino);
+        self.durable.entries_mut(dir).insert(write.name, ino);
     }
 
     fn object(ino: Ino) -> ObjectId {
@@ -275,7 +276,7 @@ impl State {
             self.stage(Update::Rename {
                 dir: from_dir,
                 from: from.clone(),
-                to: to.clone(),
+                to: Some(to.clone()),
                 ino: source,
             });
         } else {
@@ -446,6 +447,14 @@ impl MemFs {
         self.lock().faults.fail_at = Some((effect, errno));
     }
 
+    /// Limit one data syscall of the next `write` to `max_bytes`. If bytes
+    /// remain, the write-all loop attempts another syscall: `fail_at` or
+    /// `crash_at` can stop it after the first syscall's prefix has landed.
+    pub fn short_write_next(&self, max_bytes: usize) {
+        assert!(max_bytes > 0, "a short write must make progress");
+        self.lock().faults.short_write = Some(max_bytes);
+    }
+
     pub fn crashed(&self) -> bool {
         self.lock().faults.crashed
     }
@@ -605,21 +614,30 @@ impl Storage for MemFs {
         })
     }
 
-    fn write(&self, file: &mut MemFile, bytes: &[u8]) -> io::Result<()> {
-        let offset = file.offset;
-        self.effect(Boundary::Write, file.ino, None, |state| {
-            if !file.writable {
-                return Err(Errno::BADF.into());
+    fn write(&self, file: &mut MemFile, mut bytes: &[u8]) -> io::Result<()> {
+        loop {
+            let written = self.effect(Boundary::Write, file.ino, None, |state| {
+                if !file.writable {
+                    return Err(Errno::BADF.into());
+                }
+                let n = state
+                    .faults
+                    .short_write
+                    .take()
+                    .map_or(bytes.len(), |max| max.min(bytes.len()));
+                state.stage(Update::Data {
+                    ino: file.ino,
+                    offset: file.offset,
+                    bytes: bytes[..n].to_vec(),
+                });
+                Ok(n)
+            })?;
+            file.offset += written as u64;
+            bytes = &bytes[written..];
+            if bytes.is_empty() {
+                return Ok(());
             }
-            state.stage(Update::Data {
-                ino: file.ino,
-                offset,
-                bytes: bytes.to_vec(),
-            });
-            Ok(())
-        })?;
-        file.offset += bytes.len() as u64;
-        Ok(())
+        }
     }
 
     fn set_mode(&self, file: &MemFile, permissions: Permissions) -> io::Result<()> {

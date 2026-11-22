@@ -3,7 +3,7 @@
 # `aeneas` is the pinned release unpacked at /opt/aeneas (proofs/Dockerfile);
 # lake-manifest.json pins mathlib and the rest of the dependency graph.
 name = "gripsack-proofs"
-defaultTargets = ["Extracted", "Kernel", "Audit"]
+defaultTargets = ["Extracted", "Kernel", "Storage", "Protocol", "Audit"]
 
 [[require]]
 name = "aeneas"
@@ -17,6 +17,19 @@ globs = ["Extracted.+"]
 # The theorems, stated over the extracted functions.
 [[lean_lib]]
 name = "Kernel"
+
+# The proof image supplies this one upstream module by immutable source digest.
+[[lean_lib]]
+name = "Tauten"
+srcDir = "/opt/tauten/proofs"
+roots = ["Tauten.Machine"]
+
+[[lean_lib]]
+name = "Storage"
+
+[[lean_lib]]
+name = "Protocol"
+globs = ["Protocol.+"]
 
 # Every theorem's axioms, printed and checked against Lean's standard three.
 [[lean_lib]]

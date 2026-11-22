@@ -1,11 +1,12 @@
 import Lean
 import Kernel
+import Protocol.LeafExample
 
 /-!
 # Axiom audit (plan/0056 §7)
 
-Every theorem under `Gripsack.Kernel` is audited: its transitive axioms must
-be a subset of Lean's standard three. Anything else — `sorryAx`, a project
+Every theorem under `Gripsack` (kernel, storage and protocol) is audited: its
+transitive axioms must be a subset of Lean's standard three. Anything else — `sorryAx`, a project
 axiom, an Aeneas `axiom` standing in for an unmodelled external — fails the
 build. The headline claims are also required to exist, so a deleted or
 renamed theorem cannot pass silently.
@@ -177,11 +178,32 @@ def claims : List Name := [
   ``Gripsack.Kernel.UpdateSurvey.outcome_spec,
   ``Gripsack.Kernel.UpdateSurvey.publishes_lock_spec,
   ``Gripsack.Kernel.UpdateSurvey.lock_published_only_complete,
+  -- Storage S1–S3 and P1 at the leaf mutation cut (F3.1–2)
+  ``Gripsack.Storage.withinDir_rename_atomic,
+  ``Gripsack.Storage.noreplace_requires_vacant,
+  ``Gripsack.Storage.kill_example,
+  ``Gripsack.Storage.power_nonprefix_example,
+  ``Gripsack.Storage.dir_barrier_excludes_example,
+  ``Gripsack.Storage.crossDir_one_barrier_insufficient,
+  ``Gripsack.Storage.post_prefix_outcomes,
+  ``Gripsack.Storage.partial_write_never_acknowledges,
+  ``Gripsack.Protocol.Publication.reachable_record,
+  ``Gripsack.Protocol.Publication.chunked_sync_refines,
+  ``Gripsack.Protocol.Publication.checked_publication_record,
+  ``Gripsack.Protocol.Publication.fresh_reachable,
+  ``Gripsack.Protocol.Publication.stopped_never_acknowledges,
+  ``Gripsack.Protocol.Publication.omitted_file_barrier_loses_bytes,
+  ``Gripsack.Protocol.Publication.omitted_directory_barrier_loses_name,
+  ``Gripsack.Protocol.Leaf.capture_durable,
+  ``Gripsack.Protocol.Leaf.failed_never_mutates,
+  ``Gripsack.Protocol.Leaf.mutation_evidence_survives,
+  ``Gripsack.Protocol.Leaf.mutation_cut_after_crash,
+  ``Gripsack.Protocol.Leaf.Example.reachable_file_removal,
 ]
 
-/-- Every theorem under `Gripsack.Kernel`, sorted by name. -/
-def kernelTheorems (env : Environment) : Array Name :=
-  let audited : Name := `Gripsack.Kernel
+/-- Every Gripsack theorem, including transitive use of the upstream library. -/
+def auditedTheorems (env : Environment) : Array Name :=
+  let audited : Name := `Gripsack
   (env.constants.fold (init := (#[] : Array Name)) fun acc decl info =>
     if audited.isPrefixOf decl && decl.isInternal = false && info.isThm then acc.push decl
     else acc).qsort (fun a b => a.toString < b.toString)
@@ -190,9 +212,9 @@ def kernelTheorems (env : Environment) : Array Name :=
 -- syntax), so declarations are called `decl` here.
 def auditAxioms : CommandElabM Unit := do
   let env ← getEnv
-  let sorted := kernelTheorems env
+  let sorted := auditedTheorems env
   if sorted.isEmpty then
-    throwError "axiom audit: no theorems under Gripsack.Kernel"
+    throwError "axiom audit: no theorems under Gripsack"
   for decl in sorted do
     let axioms := (← collectAxioms decl).qsort (fun a b => a.toString < b.toString)
     logInfo m!"AXIOMS {decl}: {axioms.toList}"
