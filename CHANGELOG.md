@@ -6,6 +6,8 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+## [0.59.0] — Recovery checks and retained builds
+
 ### Fixed
 
 - A publishing Conda or Pixi update no longer drops the reference that keeps
