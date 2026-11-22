@@ -101,9 +101,11 @@ sections, deprecations, inline tables).
 - `cargo test -p griplint` — the pack loader gate (every pack must
   load; the shape tests bite).
 - PR against gripsack-dev/gripsack; the diff *is* the changelog review.
-- Close the linter issue (link the PR); if it was labeled
-  `good first issue`, write the PR description assuming the next
-  contributor learns the repo from it.
+- Keep one open refresh issue per pack. The weekly watcher appends newer
+  unsupported releases there without rewriting review notes. Close it when
+  the updated pack and fixtures land, not just because a new tag appeared.
+  If the issue is labeled `good first issue`, write the PR description for
+  the next contributor learning the repo.
 
 ## External plugins (exotic formats)
 
