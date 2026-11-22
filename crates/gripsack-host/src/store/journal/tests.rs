@@ -876,7 +876,10 @@ fn a_directory_at_an_entry_is_refused_by_name_until_moved_aside() {
         .blocked()
         .expect("the view names the blocking entry");
     assert_eq!(blocked.dest, fresh.to_str().unwrap());
-    assert_eq!(blocked.found, crate::recover::Found::Directory);
+    assert_eq!(
+        blocked.outlook,
+        EntryOutlook::Decided(Decision::Refuse, crate::recover::Found::Directory)
+    );
 
     std::fs::rename(&fresh, home.path().join("fresh.aside")).unwrap();
     reconcile(&cap(&home), home.path()).unwrap();
