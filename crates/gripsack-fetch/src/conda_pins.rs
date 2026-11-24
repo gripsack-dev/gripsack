@@ -4,8 +4,8 @@ use crate::host::AssetTarget;
 pub const CONDA_VERSION: &str = "0.60.0";
 // PLATFORM-LINUX-X64-2026-10-09: only Linux/WSL x86_64 is supported.
 // Measured in two independent pinned native release builds; source-input SHA-256
-// b3708a4e565d34f528a37513a71428fc25af8f0e91a1c5b1f65fe50a50c10692.
+// 45ea6e18e394e5cd1c843ecaa2c2d6a58bd94fb2a8f3ee4b6a756570a3d2c0ad.
 pub const CONDA_SHA256: &[(AssetTarget, &str)] = &[(
     AssetTarget::LinuxX86_64Musl,
-    "bedc978281b61283118fbaf31b8eec931a2f212e08698c60ea1098ce1681e20b",
+    "4878a88510bae8f1a56ce670cfd2871b0bb103935bd0e14078f0443e2875136e",
 )];
