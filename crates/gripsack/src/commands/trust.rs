@@ -1,311 +1,63 @@
-//! Non-evaluating source/policy inspection, explicit approval and revocation.
-use super::{
-    expand_home,
-    prepared::{PreparedEvaluation, operational},
-};
-use crate::render::{DiagnosticSink, Palette};
+//! Remote repos are trusted on first use, by origin URL (#409). This lists and
+//! revokes those records; there is no approval to grant here — running grip on
+//! a local repo is consent, and a remote asks once when it is first used.
+use super::remote;
+use crate::render::Palette;
 use clap::Subcommand;
-use gripsack_exec::{
-    source_bundle::{SourceBundleDigest, SourceInventory},
-    trust::{
-        self, ApprovalInspection, EvaluationPolicy, EvaluationPolicyDigest, GitProvenance,
-        evaluation::EvaluationId,
-    },
-};
-use std::{
-    io::{self, IsTerminal, Write},
-    path::{Path, PathBuf},
-    process::ExitCode,
-};
+use std::process::ExitCode;
 
 #[derive(Debug, Subcommand)]
 pub enum TrustCommand {
-    /// List recorded source approvals and legacy entries requiring renewal.
+    /// List remote origins trusted on first use.
     List {
         #[arg(long)]
         json: bool,
     },
-    /// Capture source and show its exact digest, policy and inventory changes.
-    /// `--focus` narrows only the displayed change list, never what is approved.
-    Inspect {
-        path: Option<String>,
-        #[arg(long)]
-        json: bool,
-        /// Inspect one existing private evaluation receipt without recapturing.
-        #[arg(long, conflicts_with = "path")]
-        receipt: Option<String>,
-        /// Show only changed-inventory paths under this prefix; approval still
-        /// binds the exact whole bundle and policy digests.
-        #[arg(long, conflicts_with = "receipt")]
-        focus: Option<String>,
+    /// Forget a trusted remote; its next use asks again.
+    Remove {
+        /// The origin URL as given to `--repo`.
+        url: String,
     },
-    /// Approve captured source and policy. Both expected digests are required
-    /// without a terminal; edits or grant/runtime changes require new approval.
-    Add {
-        path: Option<String>,
-        #[arg(long, requires = "policy")]
-        bundle: Option<String>,
-        #[arg(long, requires = "bundle")]
-        policy: Option<String>,
-        /// Echo this prefix during interactive review and narrow only the
-        /// displayed change list; the approval still records the whole bundle.
-        #[arg(long)]
-        focus: Option<String>,
-    },
-    /// Revoke recorded approvals, including old path-only entries.
-    Remove { path: String },
 }
 
-pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
+pub fn trust(command: TrustCommand, _palette: Palette) -> ExitCode {
     let home = gripsack_host::store::gripsack_home();
     match command {
-        TrustCommand::List { json } => list(&home, json),
-        TrustCommand::Inspect {
-            path,
-            json,
-            receipt,
-            focus,
-        } => {
-            if let Some(receipt) = receipt {
-                return inspect_receipt(&home, &receipt, json);
-            }
-            if let Some(code) = check_focus(focus.as_deref()) {
-                return code;
-            }
-            let path = match repo_path(path) {
-                Ok(path) => path,
-                Err(code) => return code,
-            };
-            let mut sink = DiagnosticSink::terminal(palette, &path);
-            let prepared = match PreparedEvaluation::capture(&path, None, &mut sink) {
-                Ok(prepared) => prepared,
-                Err(code) => return code,
-            };
+        TrustCommand::List { json } => {
+            let remotes = remote::list(&home);
             if json {
-                inspect_json(&prepared, focus.as_deref())
+                match serde_json::to_string_pretty(&serde_json::json!({ "remotes": remotes })) {
+                    Ok(text) => println!("{text}"),
+                    Err(error) => {
+                        eprintln!("grip: {error}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            } else if remotes.is_empty() {
+                println!("no trusted remotes");
             } else {
-                match prepared.show_approval(focus.as_deref()) {
-                    Ok(()) => ExitCode::SUCCESS,
-                    Err(code) => code,
+                for entry in remotes {
+                    println!("{}", gripsack_host::process::terminal::tame(entry));
                 }
             }
-        }
-        TrustCommand::Add {
-            path,
-            bundle,
-            policy,
-            focus,
-        } => {
-            if let Some(code) = check_focus(focus.as_deref()) {
-                return code;
-            }
-            if bundle.is_none() && !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
-                eprintln!(
-                    "grip: non-interactive approval requires --bundle and --policy from `grip trust inspect --json`; path-only approval is no longer supported"
-                );
-                return ExitCode::FAILURE;
-            }
-            let expected = match (bundle, policy) {
-                (Some(bundle), Some(policy)) => match (
-                    SourceBundleDigest::parse(&bundle),
-                    EvaluationPolicyDigest::parse(&policy),
-                ) {
-                    (Ok(bundle), Ok(policy)) => Some((bundle, policy)),
-                    (Err(error), _) | (_, Err(error)) => return operational(error),
-                },
-                (None, None) => None,
-                _ => return operational("both --bundle and --policy are required"),
-            };
-            let path = match repo_path(path) {
-                Ok(path) => path,
-                Err(code) => return code,
-            };
-            let mut sink = DiagnosticSink::terminal(palette, &path);
-            let prepared = match PreparedEvaluation::capture(&path, None, &mut sink) {
-                Ok(prepared) => prepared,
-                Err(code) => return code,
-            };
-            if let Some((bundle, policy)) = expected {
-                if let Err(error) = trust::approve(
-                    prepared.home(),
-                    prepared.sources(),
-                    prepared.policy(),
-                    bundle,
-                    policy,
-                    prepared.provenance(),
-                ) {
-                    return operational(error);
-                }
-            } else if let Err(code) = prepared.authorize(true, focus.as_deref()) {
-                return code;
-            }
-            println!(
-                "approved source {} policy {} for {}",
-                prepared.sources().digest(),
-                match prepared.policy().digest() {
-                    Ok(policy) => policy,
-                    Err(error) => return operational(error),
-                },
-                gripsack_host::process::terminal::tame(
-                    prepared
-                        .sources()
-                        .repository_identity()
-                        .display()
-                        .to_string()
-                )
-            );
             ExitCode::SUCCESS
         }
-        TrustCommand::Remove { path } => match trust::remove(&home, &expand_home(&path)) {
+        TrustCommand::Remove { url } => match remote::forget(&home, &url) {
             Ok(true) => {
                 println!(
-                    "revoked approval for {}",
-                    gripsack_host::process::terminal::tame(path)
+                    "forgot {}",
+                    gripsack_host::process::terminal::tame(remote::normalize(&url))
                 );
                 ExitCode::SUCCESS
             }
-            Ok(false) => operational("no recorded approval for that repository"),
-            Err(error) => operational(error),
+            Ok(false) => {
+                eprintln!("grip: that remote is not trusted");
+                ExitCode::FAILURE
+            }
+            Err(error) => {
+                eprintln!("grip: {error}");
+                ExitCode::FAILURE
+            }
         },
     }
-}
-
-fn repo_path(value: Option<String>) -> Result<PathBuf, ExitCode> {
-    let value = value
-        .map(|value| {
-            if value.starts_with('~') {
-                expand_home(&value)
-                    .into_os_string()
-                    .into_string()
-                    .map_err(|_| operational("repository path is not UTF-8"))
-            } else {
-                Ok(value)
-            }
-        })
-        .transpose()?;
-    super::resolve_repo(value.as_deref())
-}
-
-fn list(home: &Path, json: bool) -> ExitCode {
-    let listing = match trust::list(home) {
-        Ok(listing) => listing,
-        Err(error) => return operational(error),
-    };
-    if json {
-        return print_json(&listing);
-    }
-    if listing.approved.is_empty() && listing.legacy.is_empty() {
-        println!("no recorded source approvals");
-    }
-    for entry in &listing.approved {
-        println!(
-            "{}",
-            gripsack_host::process::terminal::tame(entry.repository.clone())
-        );
-        println!(
-            "  bundle: {}  policy: {}",
-            entry.bundle, entry.policy_digest
-        );
-        println!(
-            "  {:?}  roots: {:?}  native configuration: {}",
-            entry.policy.profile, entry.policy.read_roots, entry.policy.native_configuration_sha256
-        );
-    }
-    for entry in &listing.legacy {
-        println!(
-            "{} — legacy path-only approval; renewal required",
-            gripsack_host::process::terminal::tame(entry.path.clone())
-        );
-    }
-    ExitCode::SUCCESS
-}
-
-#[derive(serde::Serialize)]
-struct Inspection<'a> {
-    version: u32,
-    repository: &'a Path,
-    bundle_digest: SourceBundleDigest,
-    policy_digest: EvaluationPolicyDigest,
-    policy: &'a EvaluationPolicy,
-    provenance: &'a GitProvenance,
-    inventory: &'a SourceInventory,
-    capture_exclusions: &'a [String],
-    runtime_access: &'a gripsack_host::process::RuntimeAccess,
-    approval: ApprovalInspection,
-    focus: Option<&'a str>,
-}
-
-fn check_focus(focus: Option<&str>) -> Option<ExitCode> {
-    focus
-        .filter(|value| {
-            value.is_empty()
-                || Path::new(value).is_absolute()
-                || Path::new(value)
-                    .components()
-                    .any(|component| component == std::path::Component::ParentDir)
-        })
-        .map(|_| operational("focus must be a repository-relative path without parent traversal"))
-}
-
-fn inspect_json(prepared: &PreparedEvaluation, focus: Option<&str>) -> ExitCode {
-    let approval = match trust::inspect(prepared.home(), prepared.sources(), prepared.policy()) {
-        Ok(approval) => approval,
-        Err(error) => return operational(error),
-    };
-    let policy_digest = match prepared.policy().digest() {
-        Ok(digest) => digest,
-        Err(error) => return operational(error),
-    };
-    print_json(&Inspection {
-        version: 2,
-        repository: prepared.sources().repository_identity(),
-        bundle_digest: prepared.sources().digest(),
-        policy_digest,
-        policy: prepared.policy(),
-        provenance: prepared.provenance(),
-        inventory: prepared.sources().inventory(),
-        capture_exclusions: prepared.sources().capture_policy().exclusions(),
-        runtime_access: prepared.runtime_access(),
-        approval,
-        focus,
-    })
-}
-
-fn inspect_receipt(home: &Path, id: &str, json: bool) -> ExitCode {
-    let receipt = EvaluationId::parse(id).and_then(|id| trust::evaluation::read(home, id));
-    match receipt {
-        Err(error) => operational(error),
-        Ok(receipt) if json => print_json(&receipt),
-        Ok(receipt) => {
-            println!("evaluation {}: {:?}", receipt.id, receipt.outcome);
-            println!(
-                "  repository: {}",
-                gripsack_host::process::terminal::tame(receipt.repository)
-            );
-            println!(
-                "  bundle: {}  policy: {}",
-                receipt.source, receipt.policy_digest
-            );
-            for round in &receipt.rounds {
-                println!(
-                    "  round {}: input {} process {:?}",
-                    round.number,
-                    round.input_sha256,
-                    round.process.as_ref().map(|process| &process.disposition)
-                );
-            }
-            ExitCode::SUCCESS
-        }
-    }
-}
-
-fn print_json(value: &impl serde::Serialize) -> ExitCode {
-    let mut output = io::stdout().lock();
-    if let Err(error) = serde_json::to_writer_pretty(&mut output, value) {
-        return operational(error);
-    }
-    if let Err(error) = writeln!(output) {
-        return operational(error);
-    }
-    ExitCode::SUCCESS
 }

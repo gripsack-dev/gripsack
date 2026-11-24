@@ -1,8 +1,8 @@
 mod contracts;
 
 use super::*;
-use std::path::Path;
 use gripsack_host::process::{Limits, OperatorEnvironment, SelectedProgram};
+use std::path::Path;
 use std::{ffi::OsString, fs, path::PathBuf, time::Instant};
 
 struct Fixture {

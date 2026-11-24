@@ -1,4 +1,4 @@
-//! One captured source/runtime/policy owner spans approval and all eval rounds.
+//! One captured source/runtime/policy owner spans all eval rounds.
 mod configuration;
 mod provenance;
 mod runtime;
@@ -6,12 +6,12 @@ mod runtime;
 use crate::render::DiagnosticSink;
 use gripsack_exec::{
     source_bundle::{SourceBundle, SourceCapturePolicy},
-    trust::{self, ApprovalStatus, EvaluationPolicy, GitProvenance},
+    trust::{EvaluationPolicy, GitProvenance},
 };
 use gripsack_host::process::{Limits, OperatorEnvironment, SelectedProgram};
 use gripsack_ir::HostName;
 use std::{
-    io::{self, IsTerminal, Write},
+    io::{self},
     path::{Path, PathBuf},
     process::ExitCode,
     sync::Arc,
@@ -34,7 +34,7 @@ pub(super) struct PreparedEvaluation {
     evaluator_tmp: PathBuf,
 }
 
-/// Only a completed source/policy gate constructs this borrowing authority.
+/// The captured evaluation inputs, borrowed for the evaluator run.
 pub(super) struct ApprovedEvaluation<'a> {
     prepared: &'a PreparedEvaluation,
 }
@@ -64,7 +64,6 @@ impl PreparedEvaluation {
         sink: &mut DiagnosticSink,
         existing_only: bool,
     ) -> Result<Self, ExitCode> {
-        reject_blanket_bypass()?;
         // Preserve host admission before provisioning or host-derived IO. This
         // preliminary live read grants nothing; all effective config is read
         // again from the captured tree below, before approval.
@@ -243,9 +242,6 @@ impl PreparedEvaluation {
     pub(super) fn policy(&self) -> &EvaluationPolicy {
         &self.policy
     }
-    pub(super) fn runtime_access(&self) -> &gripsack_host::process::RuntimeAccess {
-        &self.runtime_access
-    }
     pub(super) fn provenance(&self) -> &GitProvenance {
         &self.provenance
     }
@@ -253,210 +249,15 @@ impl PreparedEvaluation {
         &self.home
     }
 
-    pub(super) fn authorize(
-        &self,
-        interactive: bool,
-        focus: Option<&str>,
-    ) -> Result<ApprovedEvaluation<'_>, ExitCode> {
-        let status = trust::status(&self.home, &self.sources, &self.policy).map_err(operational)?;
-        if status == ApprovalStatus::Approved {
-            return Ok(ApprovedEvaluation { prepared: self });
-        }
-        let policy = self.policy.digest().map_err(operational)?;
-        if !interactive || !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-            let migration = if status == ApprovalStatus::Legacy {
-                "legacy path-only approval requires renewal"
-            } else {
-                "captured source/policy is not approved"
-            };
-            eprintln!(
-                "grip: {migration} for {}",
-                gripsack_host::process::terminal::tame(
-                    self.sources.repository_identity().display().to_string()
-                )
-            );
-            eprintln!(
-                "hint: inspect with `grip trust inspect --json`, then approve with `grip trust add --bundle {} --policy {policy}`",
-                self.sources.digest()
-            );
-            return Err(ExitCode::FAILURE);
-        }
-        self.show_approval(focus)?;
-        let mut output = io::stdout().lock();
-        let prompt = match focus {
-            Some(focus) => format!(
-                "approve these captured bytes and this policy? focus `{}` is display only; the whole bundle is approved [y/N] ",
-                gripsack_host::process::terminal::tame(focus.to_string())
-            ),
-            None => "approve these captured bytes and this policy? [y/N] ".to_string(),
-        };
-        write!(output, "{prompt}").map_err(operational)?;
-        output.flush().map_err(operational)?;
-        let mut answer = String::new();
-        io::stdin().read_line(&mut answer).map_err(operational)?;
-        if !answer.trim().eq_ignore_ascii_case("y") {
-            eprintln!("grip: source approval declined — no repository code was evaluated");
-            return Err(ExitCode::FAILURE);
-        }
-        trust::approve(
-            &self.home,
-            &self.sources,
-            &self.policy,
-            self.sources.digest(),
-            policy,
-            &self.provenance,
-        )
-        .map_err(operational)?;
-        Ok(ApprovedEvaluation { prepared: self })
-    }
-
-    pub(super) fn show_approval(&self, focus: Option<&str>) -> Result<(), ExitCode> {
-        let inspection =
-            trust::inspect(&self.home, &self.sources, &self.policy).map_err(operational)?;
-        println!(
-            "repository: {}",
-            gripsack_host::process::terminal::tame(
-                self.sources.repository_identity().display().to_string()
-            )
-        );
-        println!("bundle: {}", self.sources.digest());
-        println!("policy: {}", self.policy.digest().map_err(operational)?);
-        println!(
-            "runtime: {} ({:?})",
-            self.policy.runtime.executable_sha256, self.policy.runtime.byte_binding
-        );
-        for file in self.runtime_access.files() {
-            println!(
-                "runtime read file: {}",
-                gripsack_host::process::terminal::tame(file.display().to_string())
-            );
-        }
-        for directory in self.runtime_access.directories() {
-            println!(
-                "interpreter/platform data root: {}",
-                gripsack_host::process::terminal::tame(directory.display().to_string())
-            );
-        }
-        println!(
-            "frontend implementation: {}",
-            if self.sources.pinned_frontend().is_some() {
-                "pinned SDK"
-            } else {
-                "embedded SDK"
-            }
-        );
-        for excluded in self.sources.capture_policy().exclusions() {
-            println!(
-                "capture exclude: {}",
-                gripsack_host::process::terminal::tame(excluded.clone())
-            );
-        }
-        println!(
-            "evaluator: captured source and one immutable input file; no env, network, subprocess, FFI or system grants"
-        );
-        println!(
-            "native policy: executable/file probes; declared fetch/build/verify/hooks only through explicit commands"
-        );
-        println!(
-            "native configuration: {}",
-            self.policy.native_configuration_sha256
-        );
-        println!(
-            "inventory: {} objects, {} changes",
-            self.sources.inventory().entries().len(),
-            inspection.changes.len()
-        );
-        match focus {
-            None => {
-                for change in inspection.changes.iter().take(20) {
-                    println!(
-                        "  {:?} {}",
-                        change.change,
-                        gripsack_host::process::terminal::tame(change.path.clone())
-                    );
-                }
-                if inspection.changes.len() > 20 {
-                    println!("  use --json to inspect every inventory change");
-                }
-            }
-            Some(focus) => {
-                // A focus prefix filters only this listing. Policy, runtime and
-                // native lines stay above, the unhidden summary below discloses
-                // every out-of-focus change, and the recorded approval still
-                // binds the exact whole bundle and policy digests printed here.
-                println!(
-                    "focus: {} (display only; approval binds the whole bundle and policy)",
-                    gripsack_host::process::terminal::tame(focus.to_string())
-                );
-                let (within, without) = self.partition_changes(&inspection.changes, focus);
-                if within.is_empty() {
-                    println!("  no inventory changes under focus");
-                }
-                for change in within.iter().take(20) {
-                    println!(
-                        "  {:?} {}",
-                        change.change,
-                        gripsack_host::process::terminal::tame(change.path.clone())
-                    );
-                }
-                if within.len() > 20 {
-                    println!("  use --json to inspect every inventory change");
-                }
-                if !without.is_empty() {
-                    println!(
-                        "unhidden: {} out-of-focus changes (digest {}); approval covers them too",
-                        without.len(),
-                        out_of_focus_digest(&without)
-                    );
-                }
-            }
-        }
-        for excluded in self.sources.inventory().exclusions() {
-            println!(
-                "  unavailable: {}",
-                gripsack_host::process::terminal::tame(excluded.clone())
-            );
-        }
-        Ok(())
-    }
-
-    fn partition_changes<'a>(
-        &self,
-        changes: &'a [trust::InventoryChange],
-        focus: &str,
-    ) -> (
-        Vec<&'a trust::InventoryChange>,
-        Vec<&'a trust::InventoryChange>,
-    ) {
-        // Focus is a repository subtree, not a lexical string prefix or an SDK
-        // capture-root selector. The complete inventory stays in JSON/approval.
-        let focus = Path::new(focus);
-        let focus = focus.strip_prefix(".").unwrap_or(focus);
-        changes.iter().partition(|change| {
-            let relative = if change.path == "repo" {
-                Some("")
-            } else {
-                change.path.strip_prefix("repo/")
-            };
-            relative.is_some_and(|path| Path::new(path).starts_with(focus))
-        })
+    /// Running grip on a repo is consent (#409): there is no approval gate.
+    /// Remote origins are confirmed once, after evaluation, by `remote`.
+    pub(super) fn authorize(&self) -> ApprovedEvaluation<'_> {
+        ApprovedEvaluation { prepared: self }
     }
 
     pub(super) fn map_diagnostics(&self, diagnostics: &mut [gripsack_ir::Diagnostic]) {
         map_diagnostics(&self.sources, diagnostics);
     }
-}
-
-/// Deterministic digest of the elided listing so a focused review can still
-/// record what it did not read line by line.
-fn out_of_focus_digest(
-    changes: &[&trust::InventoryChange],
-) -> gripsack_host::process::Sha256Digest {
-    let mut input = String::new();
-    for change in changes {
-        input.push_str(&format!("{:?} {}\n", change.change, change.path));
-    }
-    gripsack_host::process::Sha256Digest::of(input.as_bytes())
 }
 
 impl ApprovedEvaluation<'_> {
@@ -505,16 +306,6 @@ fn map_diagnostics(sources: &SourceBundle, diagnostics: &mut [gripsack_ir::Diagn
             map(sources, &mut label.note);
         }
     }
-}
-
-pub(super) fn reject_blanket_bypass() -> Result<(), ExitCode> {
-    if std::env::var_os("GRIPSACK_TRUST_ALL").is_some_and(|value| value == "1") {
-        eprintln!(
-            "grip: GRIPSACK_TRUST_ALL no longer grants approval; unset it, inspect the captured bundle and use `grip trust add --bundle <digest> --policy <digest>`"
-        );
-        return Err(ExitCode::FAILURE);
-    }
-    Ok(())
 }
 
 pub(super) fn operational(error: impl std::fmt::Display) -> ExitCode {

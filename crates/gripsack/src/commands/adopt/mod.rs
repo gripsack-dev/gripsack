@@ -35,7 +35,6 @@ pub fn adopt(
         );
         return ExitCode::FAILURE;
     }
-    // --yes bypasses confirmation, not source-bound approval.
     let mut sink = crate::render::DiagnosticSink::terminal(palette, &repo);
     let prepared = match super::prepared::PreparedEvaluation::capture(
         &repo,
@@ -45,9 +44,7 @@ pub fn adopt(
         Ok(prepared) => prepared,
         Err(code) => return code,
     };
-    if let Err(code) = prepared.authorize(true, None) {
-        return code;
-    }
+    let _ = prepared.authorize();
     let dest = expand_home(target);
     let home_dir = std::env::var_os("HOME")
         .map(PathBuf::from)
