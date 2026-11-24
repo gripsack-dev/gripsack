@@ -282,7 +282,7 @@ class Consumer:
                   "--deno", self.env["GRIPSACK_DENO"], "--selfcheck", "--keep"])
         junit = self.work / "installed-flows.xml"
         cases = ["test_journey_contracts.py", "test_generation_history.py", "test_workspace_packages.py",
-                 "test_source_approval.py", "test_capture_policy.py",
+                 "test_trust_flow.py", "test_capture_policy.py",
                  "test_workspace_captured_files.py", "test_workspace_archive_roots.py",
                  "test_workspace_managed_launchers.py", "test_workspace_file_checks.py",
                  "test_workspace_migration.py", "test_workspace_directory_evolution.py",
