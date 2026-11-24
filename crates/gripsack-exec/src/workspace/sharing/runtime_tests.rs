@@ -1893,7 +1893,8 @@ fn retained_snapshot_walks_wide_trees_without_pinning_sibling_directories() {
         fs::create_dir(root.join(format!("member-{index}"))).unwrap();
     }
     let snapshot =
-        super::super::RetainedInputSnapshot::capture(home, &root, FetchLimits::default()).unwrap();
+        super::super::RetainedInputSnapshot::capture(home, &root, FetchLimits::default(), false)
+            .unwrap();
     snapshot.check(home, &root).unwrap();
     fs::write(root.join("member-2047/changed"), b"changed").unwrap();
     assert!(snapshot.check(home, &root).is_err());

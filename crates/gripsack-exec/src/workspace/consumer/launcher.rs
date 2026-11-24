@@ -150,7 +150,13 @@ pub(in crate::workspace) fn admit_imported_environment(
     projection
         .activation
         .ok_or_else(|| super::failure("imported environment requires exact activation"))?
-        .admit(home, context, span, &mut BTreeSet::new())
+        .admit(
+            home,
+            context,
+            span,
+            &mut BTreeSet::new(),
+            artifact::hook::PayloadCheck::Hash,
+        )
 }
 
 pub(in crate::workspace) fn imported_entries(
@@ -418,7 +424,12 @@ pub fn run_package_command(
                 home,
                 gripsack_fetch::FetchLimits::default(),
             );
-            activation.restore(&mut admission, package, receipt)?
+            activation.restore(
+                &mut admission,
+                package,
+                receipt,
+                artifact::hook::PayloadCheck::Published,
+            )?
         }
         None => match projection
             .as_ref()
@@ -435,6 +446,7 @@ pub fn run_package_command(
                     gripsack_fetch::FetchLimits::default(),
                 );
                 artifact::hook::ReceiptRestoration::new(&value.receipts, &mut admission)
+                    .with_payload_check(artifact::hook::PayloadCheck::Published)
                     .restore(package)?
             }
             None => artifact::hook::restore_launcher(home, package, receipt)?,
@@ -481,7 +493,13 @@ pub fn run_package_command(
         .as_ref()
         .and_then(|projection| projection.activation.as_ref())
     {
-        activation.admit(home, &host, &span, &mut closure)?;
+        activation.admit(
+            home,
+            &host,
+            &span,
+            &mut closure,
+            artifact::hook::PayloadCheck::Published,
+        )?;
     }
     host.readmission(home)?
         .readmit_roots(closure.iter().map(PathBuf::as_path))?;

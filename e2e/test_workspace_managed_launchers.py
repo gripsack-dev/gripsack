@@ -247,3 +247,26 @@ def test_managed_launch_restores_policy_free_runtime_graph_and_other_environment
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout == "retained-runtime-graph"
     assert not (destination / "peer").exists(), "only requested commands become public entries"
+
+
+def test_launch_trusts_published_payload_while_store_verify_detects_tampering(sandbox):
+    """#402: exec re-checks the invoked command, not every payload byte;
+    payload integrity belongs to `grip store-verify`."""
+    files = shell_payload()
+    files["share/note.txt"] = b"original\n"
+    repo, command = declare(sandbox, files=files)
+    run(repo, "apply")
+    assert launch(command, "-c", "printf ok").stdout == "ok"
+    assert run(repo, "store-verify").returncode == 0
+    notes = list((sandbox / ".local/share/gripsack/store").glob("*/payload/share/note.txt"))
+    notes += list((sandbox / ".local/share/gripsack/store").glob("*/share/note.txt"))
+    assert len(notes) == 1, notes
+    note = notes[0]
+    note.parent.chmod(0o755)
+    note.chmod(0o644)
+    note.write_bytes(b"tampered\n")
+    assert launch(command, "-c", "printf still-launches").stdout == "still-launches"
+    verified = grip("store-verify", cwd=repo)
+    assert verified.returncode != 0 or "corrupt" in (verified.stdout + verified.stderr).lower(), (
+        verified.stdout + verified.stderr
+    )
