@@ -174,7 +174,12 @@ impl Activation {
             .ok_or_else(|| super::super::failure("imported activation has no selected receipt"))?;
         let package = {
             let mut admission = context.readmission(home)?;
-            self.restore(&mut admission, *identity, *receipt)?
+            self.restore(
+                &mut admission,
+                *identity,
+                *receipt,
+                artifact::hook::PayloadCheck::Hash,
+            )?
         };
         let provided = package.commands.get(name).ok_or_else(|| {
             super::super::failure("imported activation command differs from package")
@@ -202,13 +207,16 @@ impl Activation {
         admission: &mut crate::workspace::sharing::ReadmissionScope,
         package: PackageDigest,
         receipt: Sha256Digest,
+        payload: artifact::hook::PayloadCheck,
     ) -> Result<Arc<artifact::Package>, ExecError> {
         if self.receipts.get(&package) != Some(&receipt) {
             return Err(super::super::failure(
                 "managed launcher receipt differs from its activation binding",
             ));
         }
-        artifact::hook::ReceiptRestoration::new(&self.receipts, admission).restore(package)
+        artifact::hook::ReceiptRestoration::new(&self.receipts, admission)
+            .with_payload_check(payload)
+            .restore(package)
     }
 
     pub(super) fn admit(
@@ -217,11 +225,13 @@ impl Activation {
         context: &admit::NativeContext<'_>,
         span: &Span,
         closure: &mut BTreeSet<PathBuf>,
+        payload: artifact::hook::PayloadCheck,
     ) -> Result<(), ExecError> {
         let loaded = {
             let mut admission = context.readmission(home)?;
             let mut restoration =
-                artifact::hook::ReceiptRestoration::new(&self.receipts, &mut admission);
+                artifact::hook::ReceiptRestoration::new(&self.receipts, &mut admission)
+                    .with_payload_check(payload);
             for (name, identity) in &self.commands {
                 if !crate::workspace::profile_launchers::valid_command_name(name) {
                     return Err(super::super::failure(
@@ -241,15 +251,21 @@ impl Activation {
             let command = package.commands.get(name).ok_or_else(|| {
                 super::super::failure("managed activation export differs from its retained package")
             })?;
-            admit::admit_command_in_scope(
-                package,
-                &command.selector,
-                &command.executable,
-                context,
-                span,
-                None,
-                admit::EnvironmentResolution::DeferToEnclosing,
-            )?;
+            // Each exported command is admitted by the invocation that runs it
+            // (nested exports re-enter the launcher). A published-payload hot
+            // path therefore only retains siblings instead of re-parsing every
+            // export's loader plan on each exec.
+            if payload == artifact::hook::PayloadCheck::Hash {
+                admit::admit_command_in_scope(
+                    package,
+                    &command.selector,
+                    &command.executable,
+                    context,
+                    span,
+                    None,
+                    admit::EnvironmentResolution::DeferToEnclosing,
+                )?;
+            }
         }
         closure.extend(self.retention.iter().cloned());
         Ok(())

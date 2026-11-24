@@ -40,6 +40,32 @@ GRIP = Path(os.environ.get("GRIPSACK_BIN", str(_REPO_ROOT / "target/debug/grip")
 _fixture_root: Path | None = None
 
 
+def _unseal_and_retry(function, path, _error):
+    """Published store directories are read-only (#404); restore owner write
+    access on the directory that blocks removal, like `chmod -R u+w` before rm."""
+    parent = os.path.dirname(path)
+    for target in (path, parent):
+        try:
+            if os.path.isdir(target) and not os.path.islink(target):
+                os.chmod(target, os.stat(target).st_mode | 0o700)
+        except OSError:
+            pass
+    function(path)
+
+
+_rmtree = shutil.rmtree
+
+
+def _sealed_rmtree(path, *args, **kwargs):
+    """`shutil.rmtree` that copes with sealed (read-only) store trees."""
+    if "onerror" not in kwargs and "onexc" not in kwargs:
+        kwargs["onexc"] = _unseal_and_retry
+    return _rmtree(path, *args, **kwargs)
+
+
+shutil.rmtree = _sealed_rmtree
+
+
 def native_target() -> str:
     """A TypeScript object literal matching this offline fixture's native host."""
     machine = platform.machine()

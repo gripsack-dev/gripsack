@@ -445,7 +445,7 @@ pub fn import_bundle(
                     return Err(failure("existing portable payload is corrupt"));
                 }
             } else {
-                crate::source::publish(ctx, "portable payload", &aggregate, &payload)?;
+                crate::source::publish_unsealed(ctx, "portable payload", &aggregate, &payload)?;
             }
             (payload, tree, None, None)
         };
@@ -466,7 +466,7 @@ pub fn import_bundle(
         environment,
     };
     receipt::write_record(&retained, &record)?;
-    crate::source::publish(ctx, "portable receipt", &retained, &destination)?;
+    crate::source::publish_unsealed(ctx, "portable receipt", &retained, &destination)?;
     let loaded = load(&ctx.home, &identity, ctx.fetch.limits())?
         .ok_or_else(|| failure("published receipt is absent"))?;
     register(session, &identity, &loaded.source.prepared)?;
