@@ -49,15 +49,18 @@ pub fn ensure_deno(home: &Path, context: &gripsack_fetch::FetchContext) -> io::R
     ))
 }
 
+/// Installation directory for the pinned evaluator, whether provisioned or not.
+pub fn deno_install_directory(home: &Path) -> PathBuf {
+    home.join("tools")
+        .join(format!("deno-{}", DENO_RELEASE.version))
+}
+
 /// Select an already-present runtime without downloading or executing it.
 pub(crate) fn existing_deno(home: &Path) -> io::Result<PathBuf> {
     if let Some(path) = std::env::var_os("GRIPSACK_DENO") {
         return Ok(PathBuf::from(path));
     }
-    let pinned = home
-        .join("tools")
-        .join(format!("deno-{}", DENO_RELEASE.version))
-        .join("deno");
+    let pinned = deno_install_directory(home).join("deno");
     if pinned.is_file() {
         return Ok(pinned);
     }
@@ -88,9 +91,7 @@ fn pinned_deno(home: &Path, context: &gripsack_fetch::FetchContext) -> io::Resul
             "the eval sandbox requires glibc Linux x86_64 (see `grip doctor`)",
         ));
     }
-    let dir = home
-        .join("tools")
-        .join(format!("deno-{}", DENO_RELEASE.version));
+    let dir = deno_install_directory(home);
     let deno = dir.join("deno");
     if deno.exists() {
         return Ok(Some(deno));
@@ -169,6 +170,11 @@ fn deno_on_path() -> Option<(PathBuf, String)> {
     (major >= DENO_MIN_MAJOR).then_some((PathBuf::from("deno"), version))
 }
 
+/// Can this build supply the TypeScript sources without a repository install?
+pub fn has_embedded_frontend() -> bool {
+    !embedded::FRONTEND_FILES.is_empty()
+}
+
 /// The embedded frontend, materialized under
 /// `$GRIPSACK_HOME/frontend/ts-<version>/` — the typescript source
 /// tree (driver + @gripsack/core) compiled into the binary, plus the
@@ -178,7 +184,7 @@ fn deno_on_path() -> Option<(PathBuf, String)> {
 /// landing last: two concurrent grips can interleave, but never
 /// observe a torn file; a partial materialization is redone next run.
 pub fn ensure_ts_frontend(home: &Path, core_version: &str) -> io::Result<Option<PathBuf>> {
-    if embedded::FRONTEND_FILES.is_empty() {
+    if !has_embedded_frontend() {
         return Ok(None);
     }
     let frontend = home.join("frontend");

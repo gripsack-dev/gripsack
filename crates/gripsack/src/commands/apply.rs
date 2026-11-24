@@ -45,7 +45,8 @@ pub fn apply_scoped(
     let mut sink =
         crate::render::DiagnosticSink::terminal(palette, outcome.sources.repository_identity());
     sink.bind_captured_source(std::sync::Arc::clone(&outcome.sources));
-    apply_evaluated(outcome, opts, palette, &mut sink)
+    // `grip adopt` already confirmed exactly what it generated.
+    apply_evaluated(outcome, opts, palette, &mut sink, false)
 }
 
 fn apply_inner(repo: &Path, mut opts: ApplyOptions, palette: Palette) -> ExitCode {
@@ -56,7 +57,7 @@ fn apply_inner(repo: &Path, mut opts: ApplyOptions, palette: Palette) -> ExitCod
         Ok(o) => o,
         Err(code) => return code,
     };
-    apply_evaluated(outcome, opts, palette, &mut sink)
+    apply_evaluated(outcome, opts, palette, &mut sink, true)
 }
 
 fn apply_evaluated(
@@ -64,6 +65,7 @@ fn apply_evaluated(
     opts: ApplyOptions,
     palette: Palette,
     sink: &mut crate::render::DiagnosticSink,
+    guarded: bool,
 ) -> ExitCode {
     let ir = match crate::commands::validated_ir(&outcome, sink) {
         Ok(ir) => ir,
@@ -75,6 +77,16 @@ fn apply_evaluated(
         sink,
     ) {
         return code;
+    }
+    // The plan is the guardrail (#409): new hooks, fetch domains and
+    // destinations outside ~ are shown and confirmed before anything runs.
+    let home = store::gripsack_home();
+    let repository = outcome.sources.repository_identity().display().to_string();
+    let found = crate::commands::guard::scan(
+        &serde_json::from_str(&outcome.ir_json).unwrap_or(serde_json::Value::Null),
+    );
+    if guarded && !crate::commands::guard::gate_apply(&home, &repository, &found) {
+        return ExitCode::FAILURE;
     }
     let live = std::sync::Arc::new(LiveRenderer::new(palette, opts.detail, &ir));
     let ctx = Ctx {
@@ -102,6 +114,9 @@ fn apply_evaluated(
     live.finish();
     match result {
         Ok(result) => {
+            if let Err(error) = crate::commands::guard::record(&home, &repository, &found) {
+                tracing::warn!(%error, "could not record the reviewed items");
+            }
             // every step and verification already streamed as it happened
             let elapsed = palette.dim(&format!("{:.1}s", started.elapsed().as_secs_f32()));
             match result.outcome {

@@ -52,6 +52,21 @@ def block(stdout, header):
     return lines[start:end + 1]
 
 
+def without_review(stdout):
+    """Drop the #409 "new since the last apply" review block.
+
+    It lists the new hooks (with their command bodies) before anything runs,
+    by design; the leak checks below are about tool output, not that listing."""
+    lines = stdout.splitlines()
+    for start, line in enumerate(lines):
+        if line.startswith("new since the last apply"):
+            end = start + 1
+            while end < len(lines) and re.match(r"^\s+\w+ [\w.-]+: ", lines[end]):
+                end += 1
+            return "\n".join(lines[:start] + lines[end:])
+    return stdout
+
+
 def test_progress_streams_while_a_hook_is_still_running(sandbox):
     """Every line before the blocked hook arrives while grip is still alive."""
     started, release = sandbox / "hook-started", sandbox / "hook-release"
@@ -110,7 +125,8 @@ def test_success_collapses_and_failure_expands_each_block(sandbox):
     assert ok[0].strip() == "personal ▸ hook ok $ /bin/sh -c 'echo ok-first; echo ok-second; echo ok-third'", ok
     assert len(ok) == 2, ok
     assert "✓ passed in" in ok[1] and "ok-first (+2 more lines, --verbose shows all)" in ok[1], ok
-    assert not any("ok-second" in line for line in out.splitlines() if "▸" not in line), out
+    reviewed = without_review(out)
+    assert not any("ok-second" in line for line in reviewed.splitlines() if "▸" not in line), out
     bad = block(out, "▸ hook bad")
     assert [line.strip() for line in bad[1:-1]] == ["│ bad-out", "┆ bad-err"], bad
     assert "✗ FAILED after" in bad[-1] and "exit 4" in bad[-1], bad
@@ -119,7 +135,7 @@ def test_success_collapses_and_failure_expands_each_block(sandbox):
     assert len(quiet) == 2 and quiet[1].rstrip().endswith("· no output"), quiet
     # raw tool output never escapes its block
     assert all(line.startswith(" ") or line.startswith("applied")
-               for line in out.splitlines()), out
+               for line in reviewed.splitlines()), out
     # the run log keeps every line the terminal collapsed
     log = (sandbox / ".local/share/gripsack/runs/latest").read_text()
     records = [json.loads(line)["fields"] for line in log.splitlines()

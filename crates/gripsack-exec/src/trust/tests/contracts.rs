@@ -7,11 +7,7 @@ use gripsack_host::process::{Control, Invocation, NativeInput, ProcessRole, Sha2
 use serde_json::{Value, json};
 use std::ffi::OsStr;
 
-fn schemas() -> (
-    jsonschema::Validator,
-    jsonschema::Validator,
-    jsonschema::Validator,
-) {
+fn schemas() -> (jsonschema::Validator, jsonschema::Validator) {
     let source: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/schema-source-bundle-v1.json"
@@ -28,7 +24,6 @@ fn schemas() -> (
     )))
     .unwrap();
     let source_validator = jsonschema::validator_for(&source).unwrap();
-    let trust_validator = jsonschema::validator_for(&trust).unwrap();
     let registry = jsonschema::Registry::new()
         .add("https://gripsack.dev/schema/trust/v2.json", trust)
         .unwrap()
@@ -38,7 +33,7 @@ fn schemas() -> (
         .with_registry(&registry)
         .build(&evaluation)
         .unwrap();
-    (source_validator, trust_validator, evaluation_validator)
+    (source_validator, evaluation_validator)
 }
 
 fn completed(fixture: &Fixture) -> (evaluation::EvaluationId, Value) {
@@ -86,16 +81,12 @@ fn completed(fixture: &Fixture) -> (evaluation::EvaluationId, Value) {
 }
 
 #[test]
-fn emitted_source_and_approval_shapes_reject_unknown_versions_fields_and_units() {
+fn emitted_source_inventory_shapes_reject_unknown_versions_fields_and_units() {
     let fixture = Fixture::new();
     let bundle = fixture.capture();
-    let policy = fixture.policy(&bundle, &());
-    fixture.approve(&bundle, &policy);
-    let (source_schema, trust_schema, _) = schemas();
+    let (source_schema, _) = schemas();
     let inventory: Value = serde_json::from_slice(bundle.inventory_bytes()).unwrap();
-    let approval = serde_json::to_value(list(&fixture.home).unwrap()).unwrap();
     source_schema.validate(&inventory).unwrap();
-    trust_schema.validate(&approval).unwrap();
     let mut inventories = Vec::new();
     let mut version = inventory.clone();
     version["version"] = json!(2);
@@ -125,36 +116,13 @@ fn emitted_source_and_approval_shapes_reject_unknown_versions_fields_and_units()
             SourceBundleDigest::parse(&gripsack_host::store::hash::hex_sha256(&bytes)).unwrap();
         assert!(SourceInventory::decode(&bytes, digest).is_err());
     }
-    let mut approvals = Vec::new();
-    let mut version = approval.clone();
-    version["version"] = json!(3);
-    approvals.push(version);
-    let mut extra = approval.clone();
-    extra["approved"][0]["future_authority"] = json!(true);
-    approvals.push(extra);
-    let mut missing = approval.clone();
-    missing["approved"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("bundle");
-    approvals.push(missing);
-    let mut grants = approval;
-    grants["approved"][0]["policy"]["read_roots"] = json!(["repository", "outside"]);
-    approvals.push(grants);
-    for document in approvals {
-        assert!(!trust_schema.is_valid(&document), "{document}");
-        let admitted = serde_json::from_value::<TrustListing>(document)
-            .ok()
-            .and_then(|value| value.validate().ok());
-        assert!(admitted.is_none());
-    }
 }
 
 #[test]
 fn persisted_receipt_admission_checks_shape_and_bound_execution_not_just_json() {
     let fixture = Fixture::new();
     let (id, receipt) = completed(&fixture);
-    let (_, _, schema) = schemas();
+    let (_, schema) = schemas();
     schema.validate(&receipt).unwrap();
     let path = fixture.home.join("evaluations").join(format!("{id}.json"));
     let mut malformed = Vec::new();

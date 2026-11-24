@@ -556,3 +556,22 @@ def test_unallocated_frontend_diagnostic_cannot_masquerade_as_core_error(sandbox
     assert "frontend eval failed" in machine.stderr
     assert "error[E999]:" not in terminal.stderr
     assert json.loads(machine.stdout)["diagnostics"] == []
+
+
+def test_abi_agnostic_environment_admits_gnu_package(sandbox):
+    """#407: an environment whose target omits the ABI admits abi: "gnu" members."""
+    repo = write_repo(
+        sandbox,
+        "agnostic",
+        'import { defineWorkspace, workspace, pkg, provider, fileFetch, environment, '
+        'targetPlatform } from "@gripsack/core";\n'
+        'const tool = pkg("tool", { producer: provider(fileFetch("tool.bin")),\n'
+        '  commands: { tool: "bin/tool" },\n'
+        '  target: targetPlatform({ os: "linux", arch: "x86_64", abi: "gnu" }),\n'
+        '  layout: { kind: "relocatable" } });\n'
+        'const env = environment("myenv", { packages: ["tool"], '
+        'target: targetPlatform({ os: "linux", arch: "x86_64" }) });\n'
+        "export default defineWorkspace(() => workspace({ outputs: [tool, env] }));\n",
+    )
+    terminal, _doc = check_both(repo)
+    assert "E126" not in terminal.stderr, terminal.stderr

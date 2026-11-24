@@ -1,5 +1,5 @@
 //! Exact-credit persistence with explicit migration from legacy floating tokens.
-use super::Bucket;
+use super::{Bucket, Quota};
 use crate::throttle::rate_limit::{BinaryTokenRate, CREDIT_WORDS, RatePeriod, TokenBucket};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
@@ -16,6 +16,11 @@ struct SavedBucket<Credits> {
     credits: Credits,
     updated_seconds: u64,
     updated_nanoseconds: u32,
+    /// Last server-reported quota (x-ratelimit-*), when one was observed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    quota_remaining: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    quota_reset: Option<u64>,
 }
 
 fn period(nanoseconds: u64) -> Option<RatePeriod> {
@@ -37,28 +42,35 @@ fn timestamp(seconds: u64, nanoseconds: u32) -> Option<SystemTime> {
 fn decode(
     state: serde_json::Value,
     rate: BinaryTokenRate,
+    burst: u64,
     now: SystemTime,
-) -> Option<(TokenBucket, SystemTime)> {
+) -> Option<(TokenBucket, SystemTime, Option<Quota>)> {
     if state.get("version").is_some() {
         let saved: SavedBucket<[u64; CREDIT_WORDS]> = serde_json::from_value(state).ok()?;
         if saved.version != CREDIT_FORMAT_VERSION {
             return None;
         }
         let period = period(saved.period_ns)?;
-        let tokens = TokenBucket::restored(rate, period, saved.credits);
+        let tokens = TokenBucket::restored(rate, burst, period, saved.credits);
         let updated = timestamp(saved.updated_seconds, saved.updated_nanoseconds).unwrap_or(now);
-        Some((tokens, updated))
+        let quota = match (saved.quota_remaining, saved.quota_reset) {
+            (Some(remaining), Some(reset)) => {
+                timestamp(reset, 0).map(|reset| Quota { remaining, reset })
+            }
+            _ => None,
+        };
+        Some((tokens, updated, quota))
     } else {
         let tokens = match state.get("tokens").and_then(serde_json::Value::as_f64) {
-            Some(tokens) => TokenBucket::from_legacy(rate, tokens.to_bits())?,
-            None => TokenBucket::full(rate),
+            Some(tokens) => TokenBucket::from_legacy(rate, burst, tokens.to_bits())?,
+            None => TokenBucket::full_with_burst(rate, burst),
         };
         let updated = state
             .get("updated")
             .and_then(serde_json::Value::as_u64)
             .and_then(|seconds| timestamp(seconds, 0))
             .unwrap_or(now);
-        Some((tokens, updated))
+        Some((tokens, updated, None))
     }
 }
 
@@ -71,10 +83,15 @@ pub(super) fn restore(text: &str, buckets: &mut BTreeMap<String, Bucket>) {
         let Some(bucket) = buckets.get_mut(&domain) else {
             continue;
         };
-        match decode(state, bucket.tokens.declared_rate(), now) {
-            Some((tokens, updated)) => {
+        let (rate, burst) = (
+            bucket.tokens.declared_rate(),
+            bucket.tokens.declared_burst(),
+        );
+        match decode(state, rate, burst, now) {
+            Some((tokens, updated, quota)) => {
                 bucket.tokens = tokens;
                 bucket.updated = updated;
+                bucket.quota = quota;
             }
             None => tracing::warn!(
                 "ignoring invalid persisted throttle state for {}",
@@ -103,6 +120,14 @@ impl Serialize for SavedBuckets<'_> {
                     credits: bucket.tokens.credit_words(),
                     updated_seconds: updated.as_secs(),
                     updated_nanoseconds: updated.subsec_nanos(),
+                    quota_remaining: bucket.quota.map(|quota| quota.remaining),
+                    quota_reset: bucket.quota.and_then(|quota| {
+                        quota
+                            .reset
+                            .duration_since(UNIX_EPOCH)
+                            .ok()
+                            .map(|reset| reset.as_secs())
+                    }),
                 },
             )?;
         }

@@ -58,12 +58,8 @@ def main():
             tar.add(binary, arcname="bin/grip", recursive=False)
 
     def command(*arguments, expected=0, approve=True, timeout=120):
-        if approve and arguments[0] in {"check", "plan", "apply", "update", "task"}:
-            inspection = command("trust", "inspect", str(repo), "--json", approve=False)
-            facts = json.loads(inspection.stdout)
-            if facts["approval"]["status"]["status"] != "approved":
-                command("trust", "add", str(repo), "--bundle", facts["bundle_digest"],
-                        "--policy", facts["policy_digest"], approve=False)
+        if approve and arguments[0] == "apply":
+            arguments = (arguments[0], "--yes", *arguments[1:])
         result = subprocess.run([str(binary), *arguments], cwd=repo, env=env,
                                 capture_output=True, text=True, timeout=timeout)
         if expected is not None and result.returncode != expected:

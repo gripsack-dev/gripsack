@@ -5,7 +5,7 @@ status: "accepted"
 implementation: "in-progress"
 authors: ["tknawara"]
 created: "2026-11-08"
-updated: "2026-11-21"
+updated: "2026-11-22"
 issue: "https://github.com/gripsack-dev/gripsack/issues/306"
 milestone: "Later"
 supersedes: ["2026-09-10-verified-policy-kernels", "2026-09-24-handover-bundle-import"]
@@ -61,6 +61,38 @@ still owns cleanup, repeated-crash recovery and hook replay, in that order.
 In particular, seeing a foreign edit is not proof it is durable
 ([#364](https://github.com/gripsack-dev/gripsack/issues/364)). Directory
 premise D, OS/hardware behavior and liveness remain outside leaf P1.
+
+**0.59 implementation note: F3 leaf cleanup P3 ([#367](https://github.com/gripsack-dev/gripsack/issues/367)).**
+[`leaf_cleanup_after_crash`](../../proofs/Protocol/RecoveryCleanup.lean)
+starts at `RecoverState::new`. The translated `recover_step` must account
+for every admitted leaf before starting uncommitted cleanup. Each successful
+restore, unchanged seal or foreign preserve is [interpreted](../../proofs/Protocol/RecoverLeaf.lean)
+over the checked storage effects: a file's exact bytes, mode and name, a
+symlink's immutable target and name, or an absence sealed at the parent.
+A subsequent private unlink cannot invalidate that settlement. A preserved
+edit was not assumed durable at observation.
+
+On the committed route, the selection read admits the manifest and the
+selection barrier seals `current`. At each cleanup cut the reader can still
+classify the committed run from the same marker, or all its admitted record
+names are gone. The record-name barrier precedes marker removal; the second
+barrier makes the absence of the marker durable on successful return. The
+[historical controls](../../proofs/Protocol/CleanupDisk.lean) distinguish
+power loss **after** 0.19.1 returned from power loss **before** 0.19.2's
+single trailing sync. Kill alone does not recreate either failure.
+
+The scope is an admitted leaf inventory, truthful codecs and original blob
+selection, a durable root and selected manifest/ancestor chain, S1–S7 as
+above, and disjoint names/inodes for later edits. The directory callbacks
+retain premise D. The reader may secure a prior, restrict private permissions
+or quarantine bad metadata before reporting failure; none of these authorizes
+a destination write. A failed fsync can have taken effect but is not a success
+reply. The proof covers stopping anywhere in cleanup, restart after kill or
+power loss, and a rescan with an interrupted second retirement on the marked
+route. A [surviving legacy undo row](../../proofs/Protocol/RecoveryRetry.lean)
+can be renumbered; its bytes and destination, not its previous ordinal, must
+agree. This is not general repeated-crash convergence, hook replay, a directory
+theorem or a physical power-cut qualification. No TLC/TLAPS checks are retired.
 
 - Status: approved by the owner 2026-11-08; F0 and F1 landed in 0.52.0 (F1: GO); F2 in progress (step 1 done)
 - Date: 2026-11-08

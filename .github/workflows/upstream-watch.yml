@@ -1,5 +1,5 @@
 # Weekly freshness: each data pack's supported set vs the tool's latest
-# upstream release; an issue per laggard (idempotent by title).
+# upstream release; keep one open refresh issue per shipped pack.
 #
 # The second job is the pin-update proposer (RFC 0042 F): every pinned
 # toolchain/image digest/tool version vs official metadata — where a
@@ -23,6 +23,10 @@ on:
 jobs:
   watch:
     runs-on: ubuntu-latest
+    # Serialize lookup + write across both scheduled and manual runs.
+    concurrency:
+      group: griplint-pack-watch
+      cancel-in-progress: false
     permissions:
       contents: read
       issues: write

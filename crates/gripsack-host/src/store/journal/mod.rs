@@ -406,14 +406,18 @@ pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<Obje
 /// The prior's identity in the same terms (recomputed from the blob;
 /// the blob's own hash is the raw sha256 used for addressing).
 fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<ObjectIdentity>> {
+    prior_identity_with(prior, |hash| crate::store::prior::read_blob(home, hash))
+}
+
+fn prior_identity_with(
+    prior: &PriorSerde,
+    read: impl FnOnce(&crate::store::prior::PriorBlobId) -> io::Result<Vec<u8>>,
+) -> io::Result<Option<ObjectIdentity>> {
     match prior {
         PriorSerde::Absent => Ok(None),
         PriorSerde::Symlink { target } => Ok(Some(ObjectIdentity::Link(target.clone()))),
         PriorSerde::File { hash, mode } => Ok(Some(ObjectIdentity::File(
-            crate::store::hash::canonical_bytes_identity(
-                &crate::store::prior::read_blob(home, hash)?,
-                mode.bits(),
-            ),
+            crate::store::hash::canonical_bytes_identity(&read(hash)?, mode.bits()),
         ))),
     }
 }

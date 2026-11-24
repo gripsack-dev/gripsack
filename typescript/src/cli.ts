@@ -73,7 +73,7 @@ async function main(): Promise<void> {
         die("gripsack.ts must synchronously return a workspace({...}) value (got a promise)");
       }
       const payload = {
-        ir: JSON.parse(core.emitWorkspaceIr(value as never, inputs.facts, inputs.tags)),
+        ir: JSON.parse(core.emitWorkspaceIr(value as never, inputs.facts, inputs.tags, requests)),
         diagnostics: [],
         probe_requests: requests,
       };

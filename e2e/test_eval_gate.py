@@ -16,7 +16,6 @@ import pytest
 
 from conftest import (
     GRIP,
-    approve_fixture,
     grip,
     make_workspace_repo,
     make_tarball,
@@ -69,62 +68,113 @@ def test_binary_exists_and_runs():
 
 
 def test_doctor_reports_environment(sandbox):
-    out = grip("doctor")
-    # exit code depends on the sandbox's runtime being acceptable to
-    # doctor; the report itself is the contract.
-    assert "deno:" in out.stdout
+    out = grip("doctor", cwd=sandbox, approve=False)
+    assert out.returncode == 0, out.stderr + out.stdout
+    assert re.search(r"ok\s+deno: deno \d+\.\d+\.\d+\S* \(GRIPSACK_DENO\)", out.stdout)
     assert "frontend:" in out.stdout
     assert "home:" in out.stdout
     assert str(sandbox) in out.stdout
+    assert not (sandbox / ".local/share/gripsack").exists()
 
 
-def test_untrusted_repo_fails_closed_without_tty(sandbox):
-    """No repository code runs before explicit captured-source approval."""
+def test_doctor_only_probes_version_without_workspace_or_credentials(sandbox, monkeypatch):
+    # A working intentional wrapper sees only --version and closed stdin.
+    # Neither its environment nor its readable files include operator secrets.
+    secret = sandbox / "token"
+    secret.write_text("private\n")
+    monkeypatch.setenv("GITHUB_TOKEN", "not-for-probes")
+    wrapper = sandbox / "selected-deno"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        '[ "$#" = 1 ] && [ "$1" = --version ] || exit 41\n'
+        'test -z "${GITHUB_TOKEN-}" || exit 42\n'
+        "if read -r unexpected; then exit 43; fi\n"
+        f"if (read -r secret < '{secret}'); then exit 44; fi\n"
+        "printf 'deno 2.9.6 (release)\\n'\n"
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("GRIPSACK_DENO", str(wrapper))
+    repo = sandbox / "repo"
+    repo.mkdir()
+    (repo / "gripsack.ts").write_text('throw new Error("must never evaluate");\n')
+    report = grip("doctor", cwd=repo, approve=False)
+    assert report.returncode == 0, report.stdout + report.stderr
+    assert "deno: deno 2.9.6 (GRIPSACK_DENO)" in report.stdout
+    assert not (sandbox / ".local/share/gripsack").exists()
+
+
+@pytest.mark.parametrize(("kind", "reason"), [
+    ("missing", "No such file"),
+    ("directory", "not an executable regular file"),
+    ("nonexec", "not an executable regular file"),
+    ("nonzero", "status 17"),
+    ("slow", "Deadline"),
+    ("noisy", "StdoutLimit"),
+    ("noisy-stderr", "StderrLimit"),
+    ("wrong-version", "did not report a supported deno"),
+])
+def test_doctor_refuses_unusable_override(sandbox, monkeypatch, kind, reason):
+    override = sandbox / "selected-deno"
+    bodies = {
+        "nonexec": "exit 0",
+        "nonzero": "exit 17",
+        "slow": "while :; do :; done",
+        "noisy": "while :; do printf '%0256d\\n' 0; done",
+        "noisy-stderr": "while :; do printf '%0256d\\n' 0 >&2; done",
+        "wrong-version": "printf 'not deno\\n'",
+    }
+    if kind == "directory":
+        override.mkdir()
+    elif kind != "missing":
+        override.write_text("#!/bin/sh\n" + bodies[kind] + "\n")
+        override.chmod(0o644 if kind == "nonexec" else 0o755)
+    original = (override.stat().st_mode, override.read_bytes()) if override.is_file() else None
+    monkeypatch.setenv("GRIPSACK_DENO", str(override))
+    out = grip("doctor", cwd=sandbox, approve=False)
+    assert out.returncode != 0, out.stdout + out.stderr
+    assert f"MISS  deno: GRIPSACK_DENO {override}:" in out.stdout
+    assert reason in out.stdout
+    assert "frontend: embedded TypeScript" in out.stdout
+    assert not (sandbox / ".local/share/gripsack").exists()
+    if original is not None:
+        assert (override.stat().st_mode, override.read_bytes()) == original
+
+
+def test_doctor_neither_provisions_nor_implicitly_executes_path_deno(sandbox, monkeypatch):
+    decoy = sandbox / "deno"
+    decoy.write_text("#!/bin/sh\nprintf 'deno 2.9.6\\n'\n")
+    decoy.chmod(0o755)
+    monkeypatch.setenv("PATH", str(sandbox))
+    monkeypatch.delenv("GRIPSACK_DENO")
+    out = grip("doctor", cwd=sandbox, approve=False)
+    assert out.returncode != 0 and "MISS  deno:" in out.stdout
+    assert not (sandbox / ".local/share/gripsack").exists()
+
+
+def test_local_repo_needs_no_approval_and_keeps_no_trust_state(sandbox):
+    """Running grip on a repo on disk is consent (#409): no gate, no state."""
     repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     (repo / "configs" / "demo").mkdir(parents=True)
     (repo / "configs" / "demo" / "a").write_text("a\n")
     out = grip("check", "--host", "testhost", cwd=repo, approve=False)
-    assert out.returncode != 0
+    assert out.returncode == 0, out.stderr
     receipts = [json.loads(path.read_text()) for path in
                 (sandbox / ".local/share/gripsack/evaluations").glob("*.json")]
-    assert [(receipt["outcome"], receipt["rounds"]) for receipt in receipts] == [("rejected", [])]
-    assert not (sandbox / ".local/share/gripsack/generations").exists()
+    assert [receipt["outcome"] for receipt in receipts] == ["completed"]
+    home = sandbox / ".local/share/gripsack"
+    assert not (home / "trust.toml").exists()
+    assert not (home / "known-remotes").exists()
+    # Editing the repo needs nothing either.
+    (repo / "configs" / "demo" / "a").write_text("b\n")
+    again = grip("check", "--host", "testhost", cwd=repo, approve=False)
+    assert again.returncode == 0, again.stderr
 
 
-def test_trust_add_records_and_unblocks_eval(sandbox):
-    """Explicit source/policy approval permits eval; revocation re-arms it."""
-    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
-    (repo / "configs" / "demo").mkdir(parents=True)
-    (repo / "configs" / "demo" / "a").write_text("a\n")
-
-    inspected = grip("trust", "inspect", str(repo), "--json", approve=False)
-    assert inspected.returncode == 0, inspected.stderr
-    source = json.loads(inspected.stdout)
-    out = grip("trust", "add", str(repo), "--bundle", source["bundle_digest"],
-               "--policy", source["policy_digest"], approve=False)
-    assert out.returncode == 0, out.stderr
-    listing = grip("trust", "list", "--json", approve=False)
-    assert listing.returncode == 0, listing.stderr
-    document = json.loads(listing.stdout)
-    assert document["version"] == 2
-    assert [(entry["repository"], entry["bundle"], entry["policy_digest"]) for entry in document["approved"]] == [
-        (str(repo), source["bundle_digest"], source["policy_digest"])
-    ]
-
-    out = grip("check", "--host", "testhost", cwd=repo, approve=False)
-    assert out.returncode == 0, out.stderr
-
-    out = grip("trust", "remove", str(repo))
-    assert out.returncode == 0, out.stderr
-    out = grip("check", "--host", "testhost", cwd=repo, approve=False)
-    assert out.returncode != 0
-    assert not json.loads(grip("trust", "list", "--json", approve=False).stdout)["approved"]
-
-
-
-
-
-
+def test_digest_approval_commands_are_gone(sandbox):
+    for arguments in (("trust", "add", "."), ("trust", "inspect", ".", "--json")):
+        out = grip(*arguments, approve=False)
+        assert out.returncode != 0
+        assert "unrecognized subcommand" in out.stderr
 
 
 def test_repo_build_path_does_not_choose_core_fact_detector(sandbox):
@@ -186,14 +236,17 @@ def test_repo_build_env_does_not_reach_frontend_runtime(sandbox, monkeypatch):
     assert not marker.exists(), "Deno must not inherit repo build env"
 
 
-def test_probe_fixpoint_converges_in_two_rounds(sandbox):
+@pytest.mark.parametrize("present", [True, False])
+def test_probe_fixpoint_converges_in_two_rounds(sandbox, present):
     """The probe loop (0013 D6) is bounded demand-driven re-eval: a
     healthy frontend requests its probes in round 1, sees them bound
     in round 2, and requests nothing new — exactly 2 frontend runs.
     More means probe caching broke (every eval paying 4 rounds would
     be a silent 2x slowdown); the round cap is for non-convergence,
     not the happy path."""
-    import json
+    reference = sandbox / "vendor-tool"
+    if present:
+        reference.touch()
 
     repo = make_workspace_repo(sandbox / "myenv",
     {
@@ -205,15 +258,20 @@ def test_probe_fixpoint_converges_in_two_rounds(sandbox):
     },)
     # The root declaration actually requests a core-bound probe.
     (repo / "gripsack.ts").write_text(
-        'import { defineWorkspace, workspace, profile } from "@gripsack/core";\n'
+        'import { defineWorkspace, workspace } from "@gripsack/core";\n'
         'import hosted from "./outputs/hosted.ts";\n'
         "export default defineWorkspace((ctx) => workspace({\n"
-        '  outputs: [profile("baseline", {files: []}), '
-        '...(ctx.probe.executable("sh") ? [hosted] : [])],\n'
+        f'  outputs: [ctx.probe.file_exists({json.dumps(str(reference))}) && hosted],\n'
         "}));\n"
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
+    if present:
+        assert out.returncode == 0, out.stderr
+        assert "hosted" in out.stdout
+    else:
+        assert out.returncode != 0
+        assert "outputs must declare at least one output" in out.stderr
+        assert "gripsack.ts:3" in out.stderr
     runs = sandbox / ".local/share/gripsack/runs"
     latest = (runs / "latest").resolve()
     rounds = []
@@ -371,8 +429,6 @@ def test_init_printed_next_steps_apply_the_selected_workspace(sandbox, monkeypat
     decoy = sandbox / "decoy"
     (decoy / name).mkdir(parents=True)
     monkeypatch.setenv("CDPATH", str(decoy))
-    approve_fixture([str(GRIP.resolve()), "check"], cwd=repo)
-
     ran = subprocess.run(
         ["/bin/sh", "-ec", commands], cwd=caller,
         capture_output=True, text=True, timeout=120,

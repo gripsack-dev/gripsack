@@ -91,11 +91,12 @@ impl WorkspacePins {
         }
     }
 
-    pub fn publish(
+    pub(super) fn publish(
         self,
         ctx: &Ctx,
         session: &LifecycleSession,
-        mut lock: WorkspaceLock,
+        lock: Option<WorkspaceLock>,
+        roots: Option<super::update::LockRoots>,
     ) -> Result<(), ExecError> {
         if session.home() != ctx.home {
             return Err(failure(
@@ -103,23 +104,28 @@ impl WorkspacePins {
                 "lock publication has another home's lifecycle authority",
             ));
         }
-        lock.validate()
-            .map_err(|error| failure("workspace", error.to_string()))?;
-        for resolution in lock.resolutions.values_mut() {
-            resolution
-                .pins
-                .sort_unstable_by(|left, right| left.output.cmp(&right.output));
-            resolution
-                .transitive
-                .sort_unstable_by(|left, right| left.name.cmp(&right.name));
-        }
-        let bytes = serde_json::to_vec_pretty(&lock)?;
-        if bytes.len() as u64 > MAX_WORKSPACE_LOCK_BYTES {
-            return Err(failure(
-                "workspace",
-                "updated lock exceeds its metadata byte bound",
-            ));
-        }
+        let bytes = if let Some(mut lock) = lock {
+            lock.validate()
+                .map_err(|error| failure("workspace", error.to_string()))?;
+            for resolution in lock.resolutions.values_mut() {
+                resolution
+                    .pins
+                    .sort_unstable_by(|left, right| left.output.cmp(&right.output));
+                resolution
+                    .transitive
+                    .sort_unstable_by(|left, right| left.name.cmp(&right.name));
+            }
+            let bytes = serde_json::to_vec_pretty(&lock)?;
+            if bytes.len() as u64 > MAX_WORKSPACE_LOCK_BYTES {
+                return Err(failure(
+                    "workspace",
+                    "updated lock exceeds its metadata byte bound",
+                ));
+            }
+            Some(bytes)
+        } else {
+            None
+        };
         let repository = gripsack_host::fs::open(ctx.repository.identity())?;
         gripsack_host::fs::create_dir_all(&repository, Path::new("locks"))?;
         let locks = gripsack_host::fs::open_dir_nofollow(&repository, Path::new("locks"))?;
@@ -137,7 +143,19 @@ impl WorkspacePins {
                 "lock changed after source capture; refusing to overwrite another update",
             ));
         }
-        gripsack_host::fs::atomic_write(&repository, Path::new(WORKSPACE_LOCK), &bytes)?;
+        if let Some(roots) = &roots {
+            roots.protect(session)?;
+        }
+        if let Some(bytes) = bytes {
+            gripsack_host::fs::atomic_write(&repository, Path::new(WORKSPACE_LOCK), &bytes)?;
+        } else {
+            // A prior rename could have become visible before its directory
+            // barrier failed. Seal the observed name before trimming its roots.
+            gripsack_host::fs::fsync_pinned_dir(&repository, Path::new("."))?;
+        }
+        if let Some(roots) = roots {
+            roots.finish(session)?;
+        }
         Ok(())
     }
 }

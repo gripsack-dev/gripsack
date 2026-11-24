@@ -15,19 +15,18 @@ Run the gates in containers, not on the host. The host has no toolchain
 contract; the image does. Images build with BuildKit.
 
 ```
-docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
+python3 scripts/local_ci.py test          # compose test (fmt/clippy/Rust tests) + Python script tests
 docker compose run --build --rm ts-test   # typescript frontend tests (deno)
 docker compose run --build --rm e2e       # offline flow tests (real binary + real frontend)
 docker compose run --build --rm audit     # cargo audit, core + helper locks
-docker compose run --build --rm proofs    # Lean proofs of the kernel (RFC 0056 F1)
+docker compose run --build --rm proofs    # extraction drift, Lean, axiom audit and source mutants
 python3 scripts/release.py prepare        # release assets → ./dist/
 python3 scripts/release.py verify         # artifact checks + installed-consumer smoke
 docker compose run --build --rm diagram   # render docs/diagrams/*.d2
 ```
 
-The required gates are `.ci/pilot.json` (test, ts-test, e2e, audit,
-package, smoke), run by the local Buildbot (see Workflow). Optional and only
-when asked: `model` (TLC), `tlaps`, `fuzz`,
+The local Buildbot runs the required gates declared in [`.ci/pilot.json`](.ci/pilot.json)
+via `scripts/local_ci.py` (see Workflow). Optional and only when asked: `model` (TLC), `tlaps`, `fuzz`,
 `scripts/check_reproducible.sh`. `tlaps` is being retired by RFC 0056 as
 the Lean proofs replace it; don't extend it. Never dispatch fuzz without an
 owner request.
@@ -160,7 +159,9 @@ stored data needed for rollback and integrity retains its original meaning.
 - [Sourcing](docs/rfcs/2026-08-22-sourcing.md) — resolver/transport split, fetcher protocol,
   hash verification rules.
 - [Constrained evaluation](docs/rfcs/2026-08-28-constrained-evaluation.md) — the eval boundary: one
-  frontend, sandboxed Deno, injected facts, probes, trust gate.
+  frontend, sandboxed Deno, injected facts, probes. Approval is not a gate (#409): local repos are
+  trusted, remotes are trusted on first use, and `grip plan`/`apply` flag new hooks, fetch domains
+  and destinations outside `~`.
 - [Repository and tooling](docs/rfcs/2026-08-22-repo-and-tooling.md) — this file's details: gates, releases,
   versioning, IR compatibility policy.
 - `.agents/skills/gripsack-ir/` — how to evolve the IR safely.

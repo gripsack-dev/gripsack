@@ -67,7 +67,7 @@ export default defineWorkspace(() => workspace({ outputs: [dotfiles] }));
 ```
 
 ```sh
-grip check            # validate; approve the captured source when prompted
+grip check            # validate
 grip plan dotfiles    # read the exact changes
 grip apply dotfiles   # generation 1
 grip generations      # what you can return to

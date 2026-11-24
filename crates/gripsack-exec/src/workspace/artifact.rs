@@ -8,6 +8,7 @@ pub(super) mod integrity;
 #[path = "artifact/runtime_tests.rs"]
 mod runtime_tests;
 use gripsack_host::store;
+use gripsack_ir::{Diagnostic, codes};
 use gripsack_ir::{
     workspace::{RecipeOutputKind, WorkspacePlatform},
     workspace_model::{
@@ -21,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io::Read,
+    io::{self, Read},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -459,27 +460,45 @@ fn inspect_selected_commands(
     payload: &Path,
     version: Option<&str>,
 ) -> Result<BTreeMap<String, ProvidedCommand>, ExecError> {
-    let canonical_payload = payload.canonicalize()?;
-    let directory = gripsack_host::fs::open(&canonical_payload)?;
+    let canonical_payload = payload
+        .canonicalize()
+        .map_err(|error| command_io(declaration, None, payload, &error))?;
+    let directory = gripsack_host::fs::open(&canonical_payload)
+        .map_err(|error| command_io(declaration, None, payload, &error))?;
     let mut commands = BTreeMap::new();
     for (name, selector) in &declaration.commands {
         let selector = super::paths::expand(selector, version, &declaration.span)?;
-        let path = payload.join(selector.as_ref()).canonicalize()?;
-        let relative = path
-            .strip_prefix(&canonical_payload)
-            .map_err(|_| failure("exported command escapes its admitted payload"))?;
-        let mut file = gripsack_host::fs::open_file_nofollow(&directory, relative)?;
-        let metadata = file.metadata()?;
+        let joined = payload.join(selector.as_ref());
+        let path = match joined.canonicalize() {
+            Ok(path) => path,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Err(missing_command(declaration, name, &selector, payload));
+            }
+            Err(error) => return Err(command_io(declaration, Some(name), &joined, &error)),
+        };
+        let relative = path.strip_prefix(&canonical_payload).map_err(|_| {
+            command_failure(declaration, name, &selector, "escapes its admitted payload")
+        })?;
+        let mut file = gripsack_host::fs::open_file_nofollow(&directory, relative)
+            .map_err(|error| command_io(declaration, Some(name), &joined, &error))?;
+        let metadata = file
+            .metadata()
+            .map_err(|error| command_io(declaration, Some(name), &joined, &error))?;
         use gripsack_host::fs::cap_std::fs::PermissionsExt;
         if metadata.permissions().mode() & 0o111 == 0 {
-            return Err(failure(format!(
-                "exported command {name:?} is not executable"
-            )));
+            return Err(command_failure(
+                declaration,
+                name,
+                &selector,
+                "is not executable",
+            ));
         }
         let mut digest = Sha256::new();
         let mut buffer = [0; 64 * 1024];
         loop {
-            let count = file.read(&mut buffer)?;
+            let count = file
+                .read(&mut buffer)
+                .map_err(|error| command_io(declaration, Some(name), &joined, &error))?;
             if count == 0 {
                 break;
             }
@@ -494,6 +513,101 @@ fn inspect_selected_commands(
         );
     }
     Ok(commands)
+}
+
+fn command_diagnostic(declaration: &PackageOutput, detail: String) -> ExecError {
+    ExecError::Gate(
+        Diagnostic::error(codes::EXEC_STEP, detail)
+            .with_label(Some(declaration.span.clone()), "package declared here"),
+    )
+}
+
+fn command_failure(
+    declaration: &PackageOutput,
+    name: &str,
+    selector: &str,
+    what: &str,
+) -> ExecError {
+    command_diagnostic(
+        declaration,
+        format!(
+            "package {:?}: command {name:?} → {selector:?} {what}",
+            declaration.name
+        ),
+    )
+}
+
+/// A declared command that the artifact does not contain, with what it does
+/// contain at the top level (a forgotten `archiveRoot` shows as one wrapper
+/// directory; an installer-made symlink as a missing name).
+fn missing_command(
+    declaration: &PackageOutput,
+    name: &str,
+    selector: &str,
+    payload: &Path,
+) -> ExecError {
+    let mut top: Vec<String> = std::fs::read_dir(payload)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| {
+            let mut name = entry.file_name().to_string_lossy().into_owned();
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                name.push('/');
+            }
+            name
+        })
+        .collect();
+    top.sort();
+    let more = top.len().saturating_sub(8);
+    top.truncate(8);
+    let listing = if top.is_empty() {
+        "empty".to_owned()
+    } else {
+        top.join(", ")
+            + &if more > 0 {
+                format!(", … {more} more")
+            } else {
+                String::new()
+            }
+    };
+    let dangling = payload
+        .join(selector)
+        .symlink_metadata()
+        .is_ok_and(|meta| meta.file_type().is_symlink());
+    command_failure(
+        declaration,
+        name,
+        selector,
+        &format!(
+            "{} in artifact (archive top level: {listing})",
+            if dangling {
+                "is a dangling symlink, not found"
+            } else {
+                "not found"
+            }
+        ),
+    )
+}
+
+/// An I/O failure while inspecting the payload, carrying the path and output.
+fn command_io(
+    declaration: &PackageOutput,
+    name: Option<&str>,
+    path: &Path,
+    error: &io::Error,
+) -> ExecError {
+    let command = name
+        .map(|name| format!(" command {name:?}"))
+        .unwrap_or_default();
+    command_diagnostic(
+        declaration,
+        format!(
+            "package {:?}:{command} {}: {error}",
+            declaration.name,
+            path.display()
+        ),
+    )
 }
 
 pub(super) fn authority(ctx: &Ctx, session: &LifecycleSession) -> Result<(), ExecError> {

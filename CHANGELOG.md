@@ -6,6 +6,112 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+## [0.59.0] — Dogfooding: no approval step, fast launchers, wider Conda
+
+### Changed
+
+- Digest-bound source/policy approval is gone. Running grip on a repository on
+  your disk is consent, so editing it no longer invalidates anything and
+  `grip trust add`/`inspect`, `trust.toml` and `GRIPSACK_TRUST_ALL` handling are
+  removed (stale trust files are ignored). `grip plan` now lists new hook
+  bodies, new fetch domains and destinations outside `~`; `grip apply`
+  confirms on a terminal only when such items appear, and the global `--yes`
+  covers scripts and CI. A `--repo <git url>` is trusted on first use, once per
+  origin URL; `grip trust list`/`remove <url>` manage those records.
+  [#409](https://github.com/gripsack-dev/gripsack/issues/409)
+- Managed launchers no longer re-hash every package payload or stat-walk every
+  file on each exec; they admit only the invoked command against its sealed,
+  hash-addressed payload. About 190 ms → 55 ms per exec for a 30-package
+  environment. Tamper detection for the rest of a payload moved to
+  `grip store-verify`; a tampered invoked executable is still refused.
+  [#402](https://github.com/gripsack-dev/gripsack/issues/402)
+- `symlinkTo` over an `artifactFile`/`artifactTree` selector now links into the
+  realized package instead of publishing a copy, so `$ORIGIN` rpaths and
+  prefix-relative runtime directories keep working (conda `tmux`, `helix`).
+  The package stays retained by the generation; tracked copies still copy.
+  [#403](https://github.com/gripsack-dev/gripsack/issues/403)
+
+### Added
+
+- Conda packages that ship `etc/conda/activate.d/*.sh` scripts (libxml2-16 via
+  clang/llvm and lxml, libglib via matplotlib) are admitted. The scripts are
+  never executed: a deterministic shell-subset interpreter evaluates their
+  exports from the verified installed prefix, ambient variables unset. The
+  variables apply in profile activation, `grip run`/tasks and command wrappers
+  (the declaring environment overrides them) and are named when the package is
+  built. Scripts outside the subset, `pre-link`/`post-link`/`pre-unlink`
+  scripts, and non-`.sh` activation files are still refused, naming the script
+  and the packages that require it.
+  [#405](https://github.com/gripsack-dev/gripsack/issues/405)
+- An environment whose target omits `abi` admits ABI-specific members such as an
+  `abi: "gnu"` package that needs `hostRuntime`; an environment that declares an
+  ABI still requires it exactly.
+  [#407](https://github.com/gripsack-dev/gripsack/issues/407)
+
+### Fixed
+
+- A conda `gcc`/`gxx` environment no longer fails with E128 on
+  `libselinux.so.1`: files under a `sysroot/` target tree are not scanned as host
+  executables, and a refused system library names the file that needs it.
+  [#406](https://github.com/gripsack-dev/gripsack/issues/406)
+- Published store directories are sealed read-only, so running a tool from the
+  store (Python writing `__pycache__`) can no longer corrupt an entry and fail
+  the next apply. `grip gc` and `store-verify` repair remove sealed trees.
+  [#404](https://github.com/gripsack-dev/gripsack/issues/404)
+- I/O failures name the path, the output and its declaration: a command path
+  missing from an artifact, a dangling symlink above a destination (now a
+  conflict) and raw filesystem errors. Diagnostics are logged with their code
+  and span, and `grip check --json` carries their labels.
+  [#401](https://github.com/gripsack-dev/gripsack/issues/401)
+- Diagnostics name the output they belong to, and spans point at the caller of
+  an authoring helper (`release("hunk", …)`) instead of inside the helper. A
+  conda closure refusal names the file that needs the missing library.
+  [#408](https://github.com/gripsack-dev/gripsack/issues/408)
+- The `api.github.com` fetch budget depends on authentication (anonymous: 1/min
+  with a burst of 5, matching GitHub's 60/h; authenticated: 30/min), every
+  response's `x-ratelimit-*` headers feed the persisted budget, `grip update`
+  skips settled tag-pinned releases, and release metadata is cached per run.
+  [#411](https://github.com/gripsack-dev/gripsack/issues/411)
+- `hostPath("~/…")` expands like file destinations instead of failing at apply.
+  [#410](https://github.com/gripsack-dev/gripsack/issues/410)
+- A publishing Conda or Pixi update no longer drops the reference that keeps
+  a previously built output usable after `grip gc`. If a multi-output update
+  fails, the old lock's retained archives remain available offline. A successful
+  update protects the new lock without making superseded archives permanent.
+  [#375](https://github.com/gripsack-dev/gripsack/issues/375)
+- Recovery no longer treats seeing a foreign edit as proof that it survived
+  power loss. Before discarding a leaf's undo record it seals the observed
+  file or symlink and its name. A failed barrier or changed identity keeps
+  the evidence for another recovery attempt. [#364](https://github.com/gripsack-dev/gripsack/issues/364)
+- A legal destination name at the filesystem's component limit no longer
+  prevents journaled file or symlink installation and restoration. The
+  temporary name stays in the same directory without embedding the basename.
+  [#363](https://github.com/gripsack-dev/gripsack/issues/363)
+- A workspace can declare its only output conditionally on a read-only
+  probe. A provisional empty round waits for the answer; a genuinely empty
+  final workspace still fails. [#371](https://github.com/gripsack-dev/gripsack/issues/371)
+- `grip check` diagnoses missing or wrong-kind captured task inputs at their
+  declarations, including in JSON output. It does not build packages or run
+  the task to check those paths. [#372](https://github.com/gripsack-dev/gripsack/issues/372)
+- `grip doctor` leaves recovery evidence untouched. It reports an unreadable
+  prior, invalid current manifest or unusable Deno as a blocker instead of
+  saying the workspace is ready. It does not fetch Deno, materialize the
+  editor SDK or create a run log to make that diagnosis.
+  [#362](https://github.com/gripsack-dev/gripsack/issues/362), [#382](https://github.com/gripsack-dev/gripsack/issues/382)
+- `grip update --check` reports every selected output even when a captured
+  source is missing. The failed row makes the survey incomplete (exit 2)
+  without hiding healthy siblings or changing the lock.
+  [#377](https://github.com/gripsack-dev/gripsack/issues/377)
+
+### Verification
+
+- Recovery now has a storage-level proof for retiring leaf undo records.
+  After an interrupted cleanup, a committed run cannot leave a stale undo
+  record without its marker; an uncommitted leaf is at its prior or at the
+  exact edit recovery preserved. Both guarantees cover process death and
+  modeled power loss, not arbitrary external writers or eventual recovery.
+  [#367](https://github.com/gripsack-dev/gripsack/issues/367)
+
 ## [0.58.0] — Durable journal evidence
 
 ### Fixed

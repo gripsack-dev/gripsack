@@ -31,8 +31,8 @@ class Mutant:
     before: str
     after: str
     fails: tuple[str, ...]
-    # Optional positive proof over the freshly translated negative Rust fixture.
-    witness: str | None = None
+    # A positive proof over the mutant, and the independent module it imports.
+    witness: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -166,7 +166,7 @@ MUTANTS = (
     Mutant("run-mutates-before-entry-barrier", "journal_run.rs",
            "    let next = state.step.successor();\n    match next {\n        PublicationAction::Complete => {\n            let unit",
            "    let next = state.step.successor();\n    match next.successor() {\n        PublicationAction::Complete => {\n            let unit",
-           ("Gripsack.Kernel.JournalRun.step_spec",), witness="RunBeforeEntryBarrier"),
+           ("Gripsack.Kernel.JournalRun.step_spec",), witness=("RunBeforeEntryBarrier", "+Protocol.Publication")),
     # journal run (P1): the marker's namespace barrier precedes any unit
     Mutant("run-ready-before-marker-barrier", "journal_run.rs",
            "        PublicationAction::Complete => {\n            state.phase = Phase::Ready;",
@@ -216,7 +216,19 @@ MUTANTS = (
     Mutant("recover-cleanup-barrier-swapped", "recover.rs",
            "        state.phase = Phase::SyncingRecords;\n        (state, Command::Barrier(Scope::Journal))",
            "        state.phase = Phase::UnlinkingMarker;\n        (state, Command::Unlink(JournalName::Marker))",
-           ("Gripsack.Kernel.next_unlink_spec",)),
+           ("Gripsack.Kernel.next_unlink_spec",),
+           witness=("RecoverBeforeRecordBarrier", "+Protocol.CleanupDisk")),
+    # P3: off by one on the leaf count, entering cleanup without its last settlement.
+    Mutant("recover-skips-final-leaf", "recover.rs",
+           "    } else if state.index < state.journal.entries {",
+           "    } else if state.index < state.journal.entries.saturating_sub(1) {",
+           ("Gripsack.Kernel.proceed_spec",)),
+    # P3: return after unlinking the marker, without making its name durably absent.
+    Mutant("recover-returns-before-marker-sync", "recover.rs",
+           "                next.phase = Phase::SyncingMarker;\n                (next, Command::Barrier(Scope::Journal))",
+           "                next.phase = Phase::SyncingMarker;\n                finish(next)",
+           ("Gripsack.Kernel.step_spec",),
+           witness=("RecoverBeforeMarkerSync", "+Protocol.CleanupDisk")),
     # recover (c): an object without a journal identity is mutated instead of refused
     Mutant("recover-mutates-unrestorable", "recover.rs",
            "        Live::Unsupported => Decision::Refuse,",
@@ -769,12 +781,12 @@ end Gripsack.Protocol.Publication
         raise Calibration(f"FAIL {mutant.name}: unexpected failing theorems {sorted(failures - expected)}",
                           build.stdout)
     if mutant.witness is not None:
-        # A broken Kernel.JournalRun blocks dependent theorems. Check the actual
-        # mutant's run+image separately; a failed kernel proof cannot prove it.
-        path = Path("Mutant") / f"{mutant.witness}.lean"
+        # A failed ordering theorem cannot prove an inhabited bad storage image.
+        module, dependency = mutant.witness
+        path = Path("Mutant") / f"{module}.lean"
         (project / path.parent).mkdir()
         shutil.copy2(PROOFS / path, project / path)
-        deps = run(["lake", "build", "+Protocol.Publication"], project)
+        deps = run(["lake", "build", dependency], project)
         if deps.returncode != 0:
             raise Calibration(f"FAIL {mutant.name}: witness dependencies did not build", deps.stdout)
         check = run(["lake", "env", "lean", "-DwarningAsError=true", str(path)], project)

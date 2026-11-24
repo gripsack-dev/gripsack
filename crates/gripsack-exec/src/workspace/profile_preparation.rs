@@ -300,10 +300,14 @@ impl NativeProfiles {
             } else {
                 Vec::new()
             };
-            let build_closure = prepared_jobs
+            // Links into realized packages must stay alive with the generation.
+            let mut build_closure: Vec<_> = prepared_jobs
                 .iter()
                 .flat_map(|job| job.closure.iter().cloned())
+                .chain(capture.take_linked_roots(home))
                 .collect();
+            build_closure.sort();
+            build_closure.dedup();
             let tree = store::canonical_tree_hash(&stage)?;
             let store_path = store::content_path(home, "workspace-files", tree.as_str());
             let labels = prepared_hooks

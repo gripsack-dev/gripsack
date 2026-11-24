@@ -8,6 +8,7 @@ mod consumer;
 pub(crate) mod hooks;
 mod image;
 mod inputs;
+pub use inputs::check_command_inputs;
 pub(crate) mod integrity;
 mod paths;
 pub use paths::{ResolvedPayloadPath, preview_payload_paths};

@@ -63,6 +63,25 @@ fn label(name: &Name) -> &Path {
     name.as_path()
 }
 
+fn metadata(stat: rustix::fs::Stat) -> Metadata {
+    let kind = match FileType::from_raw_mode(stat.st_mode) {
+        FileType::RegularFile => ObjectKind::File,
+        FileType::Directory => ObjectKind::Dir,
+        FileType::Symlink => ObjectKind::Symlink,
+        _ => ObjectKind::Other,
+    };
+    #[allow(clippy::unnecessary_cast, clippy::useless_conversion)]
+    Metadata {
+        kind,
+        len: stat.st_size as u64,
+        permissions: Permissions::new(u32::from(stat.st_mode)),
+        object: ObjectId {
+            filesystem: stat.st_dev as u64,
+            inode: stat.st_ino as u64,
+        },
+    }
+}
+
 impl Storage for RealFs {
     type Dir = RealDir;
     type File = RealFile;
@@ -129,7 +148,11 @@ impl Storage for RealFs {
         })
     }
 
-    fn open_file(&self, parent: &RealDir, name: &Name) -> io::Result<RealFile> {
+    fn open_file_with_metadata(
+        &self,
+        parent: &RealDir,
+        name: &Name,
+    ) -> io::Result<(RealFile, Metadata)> {
         operation(Boundary::Read, label(name), || {
             // O_NONBLOCK: a FIFO at `name` is refused below instead of
             // blocking the open until a writer appears (as `crate::fs`
@@ -140,9 +163,10 @@ impl Storage for RealFs {
                 OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
                 Mode::empty(),
             )?;
-            match FileType::from_raw_mode(rustix::fs::fstat(&fd)?.st_mode) {
-                FileType::RegularFile => Ok(RealFile(fd)),
-                FileType::Directory => Err(Errno::ISDIR.into()),
+            let meta = metadata(rustix::fs::fstat(&fd)?);
+            match meta.kind {
+                ObjectKind::File => Ok((RealFile(fd), meta)),
+                ObjectKind::Dir => Err(Errno::ISDIR.into()),
                 _ => Err(Errno::INVAL.into()),
             }
         })
@@ -256,22 +280,7 @@ impl Storage for RealFs {
     fn metadata(&self, parent: &RealDir, name: &Name) -> io::Result<Metadata> {
         operation(Boundary::Read, label(name), || {
             let stat = rustix::fs::statat(&parent.0, name.as_os_str(), AtFlags::SYMLINK_NOFOLLOW)?;
-            let kind = match FileType::from_raw_mode(stat.st_mode) {
-                FileType::RegularFile => ObjectKind::File,
-                FileType::Directory => ObjectKind::Dir,
-                FileType::Symlink => ObjectKind::Symlink,
-                _ => ObjectKind::Other,
-            };
-            #[allow(clippy::unnecessary_cast, clippy::useless_conversion)]
-            Ok(Metadata {
-                kind,
-                len: stat.st_size as u64,
-                permissions: Permissions::new(u32::from(stat.st_mode)),
-                object: ObjectId {
-                    filesystem: stat.st_dev as u64,
-                    inode: stat.st_ino as u64,
-                },
-            })
+            Ok(metadata(stat))
         })
     }
 

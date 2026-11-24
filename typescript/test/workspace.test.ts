@@ -668,7 +668,7 @@ Deno.test("stray objects and empty catalogs are rejected", () => {
     /outputs entries must be pkg\(\).* values — got "object"/,
   );
   assert.throws(
-    () => workspace({ outputs: [false, null, undefined] }),
+    () => emitWorkspaceIr(workspace({ outputs: [false, null, undefined] }), facts),
     /outputs must declare at least one output/,
   );
   assert.throws(

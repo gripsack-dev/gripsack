@@ -1,13 +1,13 @@
-"""0048 R1: real Deno consumes approved copies, never later worktree bytes.
+"""0048 R1: real Deno consumes captured copies, never later worktree bytes.
 
-These gate cases deliberately bypass conftest's disposable-fixture approval.
-Git operations are local; every source, runtime wrapper and receipt is sandboxed.
+There is no approval step (#409): a changed repo is simply evaluated again, and
+the receipt records which captured bytes ran. Git operations are local; every
+source, runtime wrapper and receipt is sandboxed.
 """
 import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import time
@@ -27,20 +27,6 @@ def git(repo, *arguments):
     return result.stdout.strip()
 
 
-def inspect_source(repo):
-    result = grip("trust", "inspect", str(repo), "--json", approve=False)
-    assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout)
-
-
-def approve_source(repo):
-    source = inspect_source(repo)
-    result = grip("trust", "add", str(repo), "--bundle", source["bundle_digest"],
-                  "--policy", source["policy_digest"], approve=False)
-    assert result.returncode == 0, result.stderr
-    return source
-
-
 def receipt_paths():
     return set((Path(os.environ["GRIPSACK_HOME"]) / "evaluations").glob("*.json"))
 
@@ -50,34 +36,17 @@ def new_receipt(before):
     assert len(added) == 1, added
     path, = added
     assert path.stat().st_mode & 0o777 == 0o600
-    receipt = json.loads(path.read_text())
-    inspected = grip("trust", "inspect", "--receipt", receipt["id"], "--json", approve=False)
-    assert inspected.returncode == 0, inspected.stderr
-    assert json.loads(inspected.stdout) == receipt
-    return receipt
+    return json.loads(path.read_text())
 
 
-def checked(repo, expected, source):
+def checked(repo, expected):
     before = receipt_paths()
-    result = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
+    result = grip("check", "--host", "testhost", "--json", cwd=repo)
     assert result.returncode == 0, result.stdout + result.stderr
     assert [output["name"] for output in json.loads(result.stdout)["outputs"]] == [expected]
     receipt = new_receipt(before)
     assert receipt["outcome"] == "completed"
-    assert receipt["source"] == source["bundle_digest"]
-    assert receipt["policy_digest"] == source["policy_digest"]
-    assert receipt["policy"] == source["policy"]
     assert [(r["number"], r["process"]["exit_code"]) for r in receipt["rounds"]] == [(1, 0)]
-    return receipt
-
-
-def rejected(repo):
-    before = receipt_paths()
-    result = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
-    assert result.returncode == 1, result.stdout + result.stderr
-    receipt = new_receipt(before)
-    assert receipt["outcome"] == "rejected"
-    assert receipt["rounds"] == []
     return receipt
 
 
@@ -95,7 +64,7 @@ def value_repo(root, imported="../value.ts"):
 
 
 @pytest.mark.parametrize("change", ["staged", "unstaged", "untracked", "ignored", "symlink", "submodule"])
-def test_every_admitted_git_source_change_requires_renewal(sandbox, change):
+def test_every_admitted_git_source_change_is_evaluated_without_renewal(sandbox, change):
     imported = "../dependency/value.ts" if change == "submodule" else "../value.ts"
     repo = value_repo(sandbox / "repo", imported)
     git(repo, "init", "-q")
@@ -122,8 +91,7 @@ def test_every_admitted_git_source_change_requires_renewal(sandbox, change):
         git(repo, "rm", "--cached", "value.ts")
     git(repo, "commit", "-qm", "reviewed")
     parent = git(repo, "rev-parse", "HEAD")
-    source = approve_source(repo)
-    checked(repo, "before", source)
+    first = checked(repo, "before")
 
     if change == "symlink":
         value.unlink()
@@ -133,43 +101,37 @@ def test_every_admitted_git_source_change_requires_renewal(sandbox, change):
     if change == "staged":
         git(repo, "add", "value.ts")
     assert git(repo, "rev-parse", "HEAD") == parent
-    if change == "submodule":
-        assert git(repo, "rev-parse", "HEAD:dependency") == git(repo / "dependency", "rev-parse", "HEAD")
-    denied = rejected(repo)
-    assert denied["source"] != source["bundle_digest"]
-    renewed = approve_source(repo)
-    assert renewed["bundle_digest"] == denied["source"]
-    checked(repo, "after", renewed)
+    # The edit needs no `trust add`: the next run captures and evaluates it.
+    second = checked(repo, "after")
+    assert second["source"] != first["source"]
 
 
-def test_branch_names_do_not_authorize_bytes_or_force_identical_renewal(sandbox):
+def test_branch_names_do_not_change_captured_bytes_and_new_bytes_just_run(sandbox):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "before")
     git(repo, "init", "-q")
     git(repo, "add", ".")
     git(repo, "commit", "-qm", "reviewed")
-    source = approve_source(repo)
+    first = checked(repo, "before")
     git(repo, "switch", "-qc", "same-bytes")
-    checked(repo, "before", source)
+    assert checked(repo, "before")["source"] == first["source"]
     value_file(repo / "value.ts", "after")
     git(repo, "commit", "-qam", "changed bytes")
-    rejected(repo)
-    checked(repo, "after", approve_source(repo))
+    assert checked(repo, "after")["source"] != first["source"]
 
 
-def test_alternate_worktree_has_distinct_repository_authority(sandbox):
+def test_alternate_worktree_evaluates_without_a_separate_grant(sandbox):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "before")
     git(repo, "init", "-q")
     git(repo, "add", ".")
     git(repo, "commit", "-qm", "reviewed")
-    original = approve_source(repo)
+    original = checked(repo, "before")
     alternate = sandbox / "alternate"
     git(repo, "worktree", "add", "-qb", "alternate", str(alternate))
-    denied = rejected(alternate)
-    assert denied["repository"] != original["repository"]
-    assert denied["source"] == original["bundle_digest"]
-    checked(alternate, "before", approve_source(alternate))
+    second = checked(alternate, "before")
+    assert second["repository"] != original["repository"]
+    assert second["source"] == original["source"]
 
 
 def test_reclone_at_same_path_tracks_bytes_not_git_metadata(sandbox):
@@ -180,21 +142,24 @@ def test_reclone_at_same_path_tracks_bytes_not_git_metadata(sandbox):
     git(origin, "commit", "-qm", "reviewed")
     repo = sandbox / "clone"
     git(sandbox, "clone", "-q", str(origin), str(repo))
-    approved = approve_source(repo)
+    first = checked(repo, "before")
     shutil.rmtree(repo)
     git(sandbox, "clone", "-q", str(origin), str(repo))
-    checked(repo, "before", approved)
+    assert checked(repo, "before")["source"] == first["source"]
     value_file(origin / "value.ts", "after")
     git(origin, "commit", "-qam", "new content")
     shutil.rmtree(repo)
     git(sandbox, "clone", "-q", str(origin), str(repo))
-    rejected(repo)
-    checked(repo, "after", approve_source(repo))
+    assert checked(repo, "after")["source"] != first["source"]
+
+
+def checked_profile(repo, expected):
+    return checked(repo, expected)
 
 
 def pinned_value_repo(sandbox):
     repo = value_repo(sandbox / "repo", "../node_modules/@gripsack/core/canary.ts")
-    inspect_source(repo)  # provisions the core-owned SDK, but executes no repo code
+    grip("check", "--host", "testhost", cwd=repo)  # provisions the core-owned SDK; the import still fails
     frontend = Path(os.environ["GRIPSACK_HOME"]) / "frontend/current"
     pin = sandbox / "external-sdk"
     shutil.copytree(frontend.resolve(), pin)
@@ -205,43 +170,27 @@ def pinned_value_repo(sandbox):
     return repo, pin / "canary.ts"
 
 
-def test_pinned_frontend_content_and_added_native_policy_require_renewal(sandbox):
+def test_pinned_frontend_content_changes_are_evaluated_without_renewal(sandbox):
     repo, value = pinned_value_repo(sandbox)
-    source = approve_source(repo)
-    checked(repo, "before", source)
+    first = checked(repo, "before")
     value_file(value, "after")
-    rejected(repo)
-    checked(repo, "after", approve_source(repo))
-    # Operator policy is outside source capture; even unchanged source cannot
-    # retain approval when the effective native action configuration expands.
-    user_config = sandbox / ".config/gripsack/config.toml"
-    user_config.parent.mkdir(parents=True)
-    before = inspect_source(repo)
-    user_config.write_text('[settings]\ndownload_limit_bytes = 1099511627776\n')
-    after = inspect_source(repo)
-    assert after["bundle_digest"] == before["bundle_digest"]
-    assert after["policy_digest"] != before["policy_digest"]
-    rejected(repo)
-    checked(repo, "after", approve_source(repo))
+    assert checked(repo, "after")["source"] != first["source"]
 
 
 @pytest.mark.parametrize("generated", [False, True])
-def test_outside_imports_are_unavailable_but_generated_in_root_imports_are_reviewable(sandbox, generated):
+def test_outside_imports_are_unavailable_but_generated_in_root_imports_run(sandbox, generated):
     outside = sandbox / "outside.ts"
     value_file(outside, "outside")
     imported = "../generated.ts" if generated else outside.as_uri()
     repo = value_repo(sandbox / "repo", imported)
-    source = approve_source(repo)
     if generated:
         value_file(repo / "generated.ts", "generated")
-        rejected(repo)
-        checked(repo, "generated", approve_source(repo))
+        checked(repo, "generated")
     else:
         before = receipt_paths()
-        result = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
+        result = grip("check", "--host", "testhost", "--json", cwd=repo)
         assert result.returncode == 1
         receipt = new_receipt(before)
-        assert receipt["source"] == source["bundle_digest"]
         assert receipt["outcome"] == "failed"
         assert receipt["rounds"][0]["process"]["exit_code"] != 0
 
@@ -290,7 +239,7 @@ def wait_ready(control, round, process):
 
 @pytest.mark.parametrize("kind", ["repository", "pin", "symlink"])
 @pytest.mark.parametrize("rounds", [1, 2])
-def test_source_mutation_after_approval_and_between_rounds_cannot_change_evaluation(sandbox, monkeypatch, kind, rounds):
+def test_source_mutation_after_capture_and_between_rounds_cannot_change_evaluation(sandbox, monkeypatch, kind, rounds):
     if kind == "pin":
         repo, value = pinned_value_repo(sandbox)
     else:
@@ -310,10 +259,10 @@ def test_source_mutation_after_approval_and_between_rounds_cannot_change_evaluat
             '[profile("baseline", {files: []}), '
             '...(ctx.probe.executable("sh") ? [selected] : [])]}));\n'
         )
+    original_runtime = os.environ.get("GRIPSACK_DENO")
     control = pause_runtime(sandbox, monkeypatch)
-    source = approve_source(repo)
     before = receipt_paths()
-    process = subprocess.Popen([str(GRIP), "check", "--host", "testhost", "--json"],
+    process = subprocess.Popen([str(GRIP), "check", "--host", "testhost", "--json", "--yes"],
                                cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     observed = []
     try:
@@ -334,8 +283,6 @@ def test_source_mutation_after_approval_and_between_rounds_cannot_change_evaluat
             process.kill()
             process.communicate()
     receipt = new_receipt(before)
-    assert receipt["source"] == source["bundle_digest"]
-    assert receipt["policy_digest"] == source["policy_digest"]
     assert receipt["outcome"] == "completed"
     assert [r["input_sha256"] for r in receipt["rounds"]] == [r["input_sha256"] for r in observed]
     assert [r["number"] for r in receipt["rounds"]] == list(range(1, rounds + 1))
@@ -345,23 +292,30 @@ def test_source_mutation_after_approval_and_between_rounds_cannot_change_evaluat
         grant, = [arg for arg in round["arguments"] if arg.startswith("--allow-read=")]
         assert str(repo) not in grant
         assert str(Path(os.environ["GRIPSACK_HOME"])) not in grant
-    rejected(repo)
+    # The mutation is picked up by the next run, which captures it afresh.
+    expected_after = f"after-{rounds}" if kind != "symlink" else "after"
+    if original_runtime is None:
+        monkeypatch.delenv("GRIPSACK_DENO")
+    else:
+        monkeypatch.setenv("GRIPSACK_DENO", original_runtime)
+    before_again = receipt_paths()
+    rerun = grip("check", "--host", "testhost", "--json", cwd=repo)
+    assert rerun.returncode == 0, rerun.stdout + rerun.stderr
+    names = [output["name"] for output in json.loads(rerun.stdout)["outputs"]]
+    # outputs are reported sorted by name ("after-2" < "baseline")
+    assert names == sorted(["baseline", expected_after] if rounds == 2 else [expected_after])
+    assert new_receipt(before_again)["source"] != receipt["source"]
 
 
-def test_legacy_trust_and_ambient_bypass_never_authorize_new_bytes(sandbox, monkeypatch):
+def test_stale_trust_files_and_the_removed_bypass_variable_are_ignored(sandbox, monkeypatch):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "before")
     home = Path(os.environ["GRIPSACK_HOME"])
     home.mkdir(parents=True)
-    (home / "trust.toml").write_text(f'[[repos]]\npath = {json.dumps(str(repo))}\ntrusted_at = "2026-09-29T00:00:00Z"\n')
-    rejected(repo)
+    (home / "trust.toml").write_text("this is not even toml {{{\n")
     monkeypatch.setenv("GRIPSACK_TRUST_ALL", "1")
-    before = receipt_paths()
-    result = grip("check", "--host", "testhost", cwd=repo, approve=False)
-    assert result.returncode == 1
-    assert receipt_paths() == before
-    monkeypatch.delenv("GRIPSACK_TRUST_ALL")
-    checked(repo, "before", approve_source(repo))
+    checked(repo, "before")
+    assert (home / "trust.toml").read_text() == "this is not even toml {{{\n"
 
 
 @pytest.mark.requires_fault_controls
@@ -369,7 +323,7 @@ def test_legacy_trust_and_ambient_bypass_never_authorize_new_bytes(sandbox, monk
 def test_capture_read_errors_never_become_missing_or_empty_source(sandbox, fault):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "before")
-    source = approve_source(repo)
+    checked(repo, "before")  # warm run: fault points must index a steady-state process
     trace = sandbox / "source-read.tsv"
     environment = dict(os.environ, GRIPSACK_FS_TRACE=str(trace), GRIPSACK_FS_INCLUDE_READS="1")
     command = [str(GRIP), "check", "--host", "testhost", "--json"]
@@ -386,32 +340,7 @@ def test_capture_read_errors_never_become_missing_or_empty_source(sandbox, fault
     emitted = [line.split("\t", 3) for line in trace.read_text().splitlines()]
     assert emitted[-1] == point
     assert (repo / "value.ts").read_text() == 'export default "before";\n'
-    checked(repo, "before", source)
-
-
-def test_stale_noninteractive_approval_cannot_authorize_changed_source_or_runtime(sandbox, monkeypatch):
-    repo = value_repo(sandbox / "repo")
-    value_file(repo / "value.ts", "before")
-    reviewed = inspect_source(repo)
-    value_file(repo / "value.ts", "after")
-    stale = grip("trust", "add", str(repo), "--bundle", reviewed["bundle_digest"],
-                 "--policy", reviewed["policy_digest"], approve=False)
-    assert stale.returncode == 1
-    rejected(repo)
-    current = approve_source(repo)
-    real_deno = shutil.which("deno")
-    wrapper = sandbox / "selected-runtime"
-    wrapper.write_text(f'#!/bin/sh\nexec "{real_deno}" "$@"\n')
-    wrapper.chmod(0o700)
-    monkeypatch.setenv("GRIPSACK_DENO", str(wrapper))
-    changed = inspect_source(repo)
-    assert changed["bundle_digest"] == current["bundle_digest"]
-    assert changed["policy_digest"] != current["policy_digest"]
-    stale = grip("trust", "add", str(repo), "--bundle", current["bundle_digest"],
-                 "--policy", current["policy_digest"], approve=False)
-    assert stale.returncode == 1
-    rejected(repo)
-    checked(repo, "after", approve_source(repo))
+    checked(repo, "before")
 
 
 @pytest.mark.parametrize("alias_kind", ["relative", "absolute", "directory"])
@@ -431,29 +360,24 @@ def test_native_overlay_materializes_captured_alias_targets(sandbox, alias_kind)
         alias.symlink_to("original", target_is_directory=True)
     else:
         alias.symlink_to(original if alias_kind == "absolute" else "original/file")
-    approved = approve_source(repo)
-    first = grip("apply", "--host", "testhost", cwd=repo, approve=False)
+    first = grip("apply", "--host", "testhost", cwd=repo)
     assert first.returncode == 0, first.stdout + first.stderr
     installed = sandbox / ".aliased/file"
     assert installed.is_symlink()
     assert installed.read_text() == "captured\n"
     generation = (Path(os.environ["GRIPSACK_HOME"]) / "current").readlink()
-    # Published lock bytes can renew the read set; this is explicit fixture
-    # approval, not a blanket exemption for core-written repository content.
-    approve_source(repo)
-    preview = grip("plan", "--host", "testhost", cwd=repo, approve=False)
+    preview = grip("plan", "--host", "testhost", cwd=repo)
     assert preview.returncode == 0, preview.stderr
     assert "(satisfied)" in preview.stdout, preview.stdout
-    second = grip("apply", "--host", "testhost", cwd=repo, approve=False)
+    second = grip("apply", "--host", "testhost", cwd=repo)
     assert second.returncode == 0, second.stderr
     assert (Path(os.environ["GRIPSACK_HOME"]) / "current").readlink() == generation
     original.write_text("later live bytes\n")
     assert installed.read_text() == "captured\n"
-    denied = rejected(repo)
-    assert denied["source"] != approved["bundle_digest"]
+    assert checked_profile(repo, "aliased")["source"]
 
 
-def test_takeover_cannot_replace_a_directory_entry_inside_approved_source(sandbox):
+def test_takeover_cannot_replace_a_directory_entry_inside_captured_source(sandbox):
     repo = make_workspace_repo(sandbox / "repo", {})
     (repo / "original").write_text("source bytes\n")
     (repo / "destination").symlink_to("original")
@@ -462,8 +386,7 @@ def test_takeover_cannot_replace_a_directory_entry_inside_approved_source(sandbo
         'import {defineWorkspace,workspace,profile,file,repoFile,identity,symlinkTo} from "@gripsack/core";\n'
         f'export default defineWorkspace(() => workspace({{outputs:[profile("guard",{{files:[file({{source:repoFile("payload"),content:identity(),destination:symlinkTo({json.dumps(str(repo / "destination"))})}})]}})]}}));\n'
     )
-    approve_source(repo)
-    result = grip("apply", "--host", "testhost", "--take-over", cwd=repo, approve=False)
+    result = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
     assert result.returncode == 1
     assert (repo / "destination").readlink() == Path("original")
     assert (repo / "original").read_text() == "source bytes\n"
@@ -478,13 +401,12 @@ def test_hoisted_node_modules_never_become_ambient_evaluation_sources(sandbox, m
     (package / "index.js").write_text('export default "admitted-package";\n')
     repo = value_repo(sandbox / "repo", "ambient-fixture")
     (repo / "package.json").write_text('{"type":"module","dependencies":{"ambient-fixture":"1.0.0"}}')
-    approve_source(repo)
     before = receipt_paths()
-    denied = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
+    denied = grip("check", "--host", "testhost", "--json", cwd=repo)
     assert denied.returncode == 1
     assert new_receipt(before)["outcome"] == "failed"
     shutil.copytree(package, repo / "node_modules/ambient-fixture")
-    checked(repo, "admitted-package", approve_source(repo))
+    checked(repo, "admitted-package")
 
 
 def test_round_file_grant_does_not_grant_its_parent_directory(sandbox):
@@ -497,72 +419,14 @@ def test_round_file_grant_does_not_grant_its_parent_directory(sandbox):
     repo = make_workspace_repo(sandbox / "repo", {
         "selected": prelude + 'export default profile("input-file", {files: []});\n',
     })
-    checked(repo, "input-file", approve_source(repo))
+    checked(repo, "input-file")
     (repo / "outputs/selected.ts").write_text(
         prelude + 'Array.from(Deno.readDirSync(input.slice(0, input.lastIndexOf("/"))));\n'
         'export default profile("parent-directory-leak", {files: []});\n'
     )
-    approve_source(repo)
     before = receipt_paths()
-    denied = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
+    denied = grip("check", "--host", "testhost", "--json", cwd=repo)
     assert denied.returncode == 1
     receipt = new_receipt(before)
     assert receipt["outcome"] == "failed"
     assert receipt["rounds"][0]["process"]["exit_code"] != 0
-
-
-def test_focus_filters_display_but_approval_binds_whole_bundle(sandbox):
-    repo = value_repo(sandbox / "repo")
-    value_file(repo / "value.ts", "before")
-    sibling = repo / "outputs-extra/note.txt"
-    sibling.parent.mkdir()
-    sibling.write_text("before\n")
-    approved = approve_source(repo)
-    checked(repo, "before", approved)
-    # Focused output edits must not hide authority changes elsewhere.
-    (repo / "outputs/selected.ts").write_text(
-        'import { profile } from "@gripsack/core";\n'
-        'import value from "../value.ts";\n'
-        'export default profile(value, { files: [] });\n'
-        '// focused edit\n'
-    )
-    value_file(repo / "value.ts", "changed")
-    sibling.write_text("outside the selected subtree\n")
-    focused = grip("trust", "inspect", str(repo), "--focus", "outputs", approve=False)
-    assert focused.returncode == 0, focused.stderr
-    text = focused.stdout
-    assert "focus: outputs" in text
-    assert "outputs/selected.ts" in text
-    assert "value.ts" not in text, "focused view must not list out-of-focus paths"
-    assert "outputs-extra/note.txt" not in text
-    assert re.search(r"unhidden: 2 out-of-focus changes \(digest [0-9a-f]{64}\)", text)
-    # Policy, runtime and native disclosure survives the focused view.
-    assert "runtime: " in text and "native policy: " in text
-    assert "native configuration: " in text
-    # JSON stays complete; focus is an added field only, digests unchanged.
-    plain = inspect_source(repo)
-    narrowed = json.loads(grip("trust", "inspect", str(repo), "--focus", "outputs",
-                               "--json", approve=False).stdout)
-    assert narrowed["focus"] == "outputs" and plain["focus"] is None
-    assert narrowed["bundle_digest"] == plain["bundle_digest"]
-    assert narrowed["policy_digest"] == plain["policy_digest"]
-    assert narrowed["approval"]["changes"] == plain["approval"]["changes"]
-    root_focus = grip("trust", "inspect", str(repo), "--focus", ".", approve=False)
-    assert root_focus.returncode == 0, root_focus.stderr
-    assert "repo/outputs/selected.ts" in root_focus.stdout
-    assert "repo/outputs-extra/note.txt" in root_focus.stdout
-    for invalid_focus in ("../outputs", "/outputs"):
-        refused = grip("trust", "inspect", str(repo), "--focus", invalid_focus, approve=False)
-        assert refused.returncode != 0
-    # Stale digests are refused with --focus exactly as without it.
-    stale = grip("trust", "add", str(repo), "--focus", "outputs",
-                 "--bundle", approved["bundle_digest"], "--policy", approved["policy_digest"],
-                 approve=False)
-    assert stale.returncode == 1
-    rejected(repo)
-    # A focused one-step approval records the whole bundle: a later
-    # out-of-focus edit still forces renewal.
-    current = approve_source(repo)
-    checked(repo, "changed", current)
-    value_file(repo / "value.ts", "changed-again")
-    rejected(repo)

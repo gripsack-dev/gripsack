@@ -79,12 +79,20 @@ impl Snapshot {
         home: &Path,
         root: &Path,
         limits: FetchLimits,
+        shallow: bool,
     ) -> Result<Self, ExecError> {
         let directory = artifact::retained_directory(home, root)?
             .ok_or_else(|| failure("retained admission input missing"))?;
         let mut entries =
             BTreeMap::from([(PathBuf::from("."), Stamp::of(&directory.metadata(".")?))]);
-        let mut pending = vec![PathBuf::new()];
+        // A shallow pin keeps the root inode and its stamp only. Published store
+        // entries are immutable and read-only, so launch-time admission need not
+        // stat every payload file (cost would scale with environment size).
+        let mut pending = if shallow {
+            Vec::new()
+        } else {
+            vec![PathBuf::new()]
+        };
         // Original records accompany, rather than consume, the payload-entry
         // budget. Production load remains the authority for all exact budgets.
         let bound = limits
@@ -172,6 +180,18 @@ impl ReadmissionScope {
         &mut self,
         root: &Path,
     ) -> Result<Arc<Snapshot>, ExecError> {
+        self.pin(root, false)
+    }
+
+    /// Pin only the root inode of an immutable published store entry.
+    pub(in crate::workspace) fn pin_published_input(
+        &mut self,
+        root: &Path,
+    ) -> Result<Arc<Snapshot>, ExecError> {
+        self.pin(root, true)
+    }
+
+    fn pin(&mut self, root: &Path, shallow: bool) -> Result<Arc<Snapshot>, ExecError> {
         if self.failed {
             return Err(failure(
                 "readmission scope previously failed; start a new operation",
@@ -182,7 +202,7 @@ impl ReadmissionScope {
                 .check(&self.home, root)
                 .map(|()| Arc::clone(snapshot))
         } else {
-            Snapshot::capture(&self.home, root, self.limits).map(|snapshot| {
+            Snapshot::capture(&self.home, root, self.limits, shallow).map(|snapshot| {
                 let snapshot = Arc::new(snapshot);
                 self.snapshots
                     .insert(root.to_path_buf(), Arc::clone(&snapshot));

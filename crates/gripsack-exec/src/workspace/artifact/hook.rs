@@ -53,6 +53,19 @@ pub(in crate::workspace) struct ReceiptRestoration<'a> {
     loaded: BTreeMap<PackageDigest, Arc<Package>>,
     evidence: BTreeMap<PackageDigest, (Arc<RetainedInputSnapshot>, Arc<RetainedInputSnapshot>)>,
     visiting: BTreeSet<PackageDigest>,
+    payload: PayloadCheck,
+}
+
+/// How a restoration authenticates a published payload tree against its receipt.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::workspace) enum PayloadCheck {
+    /// Re-hash the whole canonical tree (cost scales with package size).
+    Hash,
+    /// The payload is hash-addressed, read-only after publication and was
+    /// verified when it was published, applied and by `store-verify`. Hot paths
+    /// such as managed launchers rely on that and re-check only receipts,
+    /// roots and mutable host inputs.
+    Published,
 }
 
 impl<'a> ReceiptRestoration<'a> {
@@ -66,7 +79,13 @@ impl<'a> ReceiptRestoration<'a> {
             loaded: BTreeMap::new(),
             evidence: BTreeMap::new(),
             visiting: BTreeSet::new(),
+            payload: PayloadCheck::Hash,
         }
+    }
+
+    pub(in crate::workspace) fn with_payload_check(mut self, payload: PayloadCheck) -> Self {
+        self.payload = payload;
+        self
     }
 
     pub(in crate::workspace) fn restore(
@@ -101,6 +120,16 @@ impl<'a> ReceiptRestoration<'a> {
         result
     }
 
+    fn pin(
+        &mut self,
+        root: &Path,
+    ) -> Result<Arc<crate::workspace::sharing::RetainedInputSnapshot>, ExecError> {
+        match self.payload {
+            PayloadCheck::Hash => self.admission.pin_input(root),
+            PayloadCheck::Published => self.admission.pin_published_input(root),
+        }
+    }
+
     fn restore_uncached(&mut self, identity: PackageDigest) -> Result<Arc<Package>, ExecError> {
         let expected = self
             .receipts
@@ -111,7 +140,7 @@ impl<'a> ReceiptRestoration<'a> {
             "workspace-package",
             &identity.to_string(),
         );
-        let receipt_evidence = self.admission.pin_input(&root)?;
+        let receipt_evidence = self.pin(&root)?;
         let home = self.admission.home();
         let receipt: PackageReceipt = read_receipt_readonly(home, &root, PACKAGE_RECEIPT)?
             .ok_or_else(|| failure("retained hook package receipt is missing"))?;
@@ -124,10 +153,11 @@ impl<'a> ReceiptRestoration<'a> {
             ));
         }
         store::paths::validate_store_root(home, &receipt.producer_root)?;
-        let producer_evidence = self.admission.pin_input(&receipt.producer_root)?;
+        let producer_evidence = self.pin(&receipt.producer_root)?;
         let payload = receipt.producer_payload.canonicalize()?;
         if !payload.starts_with(&receipt.producer_root)
-            || store::canonical_tree_hash(&payload)? != receipt.tree
+            || (self.payload == PayloadCheck::Hash
+                && store::canonical_tree_hash(&payload)? != receipt.tree)
         {
             return Err(failure(
                 "retained hook package payload differs from its frozen receipt",
@@ -217,7 +247,9 @@ pub(in crate::workspace) fn restore_launcher(
         home,
         gripsack_fetch::FetchLimits::default(),
     );
-    let package = ReceiptRestoration::new(&receipts, &mut admission).restore(identity)?;
+    let package = ReceiptRestoration::new(&receipts, &mut admission)
+        .with_payload_check(PayloadCheck::Published)
+        .restore(identity)?;
     if !package.host_dependent() && !package.portable() {
         return Err(failure(
             "retained launcher package has no host runtime policy",

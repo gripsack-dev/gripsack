@@ -45,6 +45,7 @@ pub fn plan_ir(path: &Path, selected: &[String], palette: Palette, structured: b
             selected,
             Default::default(),
             true,
+            None,
         );
     }
     native_preview(&ir, ir_source_root(path), selected, palette)

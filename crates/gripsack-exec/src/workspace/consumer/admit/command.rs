@@ -130,7 +130,7 @@ pub(in crate::workspace::consumer) fn admit_command_in_scope(
             .transpose()?,
         interpreter: runtime.interpreter,
         bytecode,
-        entries: Vec::new(),
+        entries: super::activation::entries(package, span)?,
         arguments: Vec::new(),
         imported: None,
     })

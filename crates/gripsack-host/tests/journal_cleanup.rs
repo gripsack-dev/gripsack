@@ -24,6 +24,8 @@
 //! the oracle. S5: an external write the driver's re-check can see is never
 //! overwritten; the window after it is measured, not assumed.
 
+#[path = "journal_cleanup/settlement.rs"]
+mod settlement;
 mod support;
 
 use gripsack_host::journal_run::{

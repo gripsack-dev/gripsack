@@ -20,7 +20,7 @@ is manual, unsigned and GitHub-asset-only; no npm/crates.io publication.
    `scripts/test_release.py` fails if they drift), and regenerate the embedded
    frontend (`python3 scripts/gen_frontend_embed.py`; it embeds
    `typescript/package.json`, so the `test` gate fails on a stale copy).
-   Merge through a PR.
+   Open a release PR. Its head must be the commit you qualify.
 2. Qualify a clean checkout of the release commit on a local branch:
    ```sh
    cd /home/tarek/workspace/ci-infra
@@ -28,9 +28,13 @@ is manual, unsigned and GitHub-asset-only; no npm/crates.io publication.
    python3 -m ci_infra qualify /home/tarek/workspace/ci-checkouts/gripsack
    python3 -m ci_infra watch <candidate_id>
    ```
-   Gates: test, ts-test, e2e, audit, package (`release.py prepare`), smoke
-   (`release.py verify`). A failed gate means fix and re-qualify; never relabel.
-3. On the host (uses your `gh` login):
+   [`.ci/pilot.json`](../../../.ci/pilot.json) defines the required gates and
+   their order. `python3 scripts/local_ci.py test` runs both the Rust container
+   checks and the Python script tests. `proofs` checks translation drift, Lean,
+   axioms and mutants; `smoke` runs `scripts/release.py verify` on the packaged
+   artifacts. A failed required gate blocks publication.
+3. On the host, post the candidate's status, merge the PR normally (preserving
+   the qualified commit on `origin/main`), then publish with your `gh` login:
    ```sh
    python3 scripts/release.py status <candidate_id>     # local-practical-qualification=success
    python3 scripts/release.py publish <candidate_id> --notes NOTES.md          # dry run
@@ -48,8 +52,8 @@ reproduces the package and smoke gates in any checkout (a dry run; nothing is pu
 ## Notes
 
 - Release notes lead with product changes. Installer and self-update verify the published SHA-256 sidecar; nothing is signed.
-- Existing tags and assets are immutable. Optional campaigns (model, tlaps,
-  verify, fuzz, two-build repro) are not part of a release unless run and
-  reported; never dispatch fuzz without an owner request.
+- Existing tags and assets are immutable. `model` (TLC), `tlaps`, manual fuzz
+  and the two-build reproducibility check are optional, not required gates.
+  Never start fuzz or replay its corpus without an owner request.
 - The website lives in `gripsack-dev/gripsack-dev.github.io`; build it locally
   from the release commit and publish with its `website/publish.py`.

@@ -47,9 +47,13 @@ fn suite<S: Storage>(fs: &S) {
 
     // replacing rename keeps the source inode under the target name (S1)
     let b_object = meta.object;
+    let (old_file, old_meta) = fs.open_file_with_metadata(&d, &name("a")).unwrap();
+    assert_eq!(old_meta, fs.metadata(&d, &name("a")).unwrap());
     fs.rename(&d, &name("b"), &d, &name("a")).unwrap();
     assert_eq!(fs.read(&d, &name("a")).unwrap(), b"beta");
     assert_eq!(fs.metadata(&d, &name("a")).unwrap().object, b_object);
+    assert_ne!(old_meta.object, b_object);
+    assert_eq!(fs.read_file(&old_file).unwrap(), b"alpha");
     assert_eq!(
         fs.metadata(&d, &name("b")).unwrap_err().kind(),
         ErrorKind::NotFound

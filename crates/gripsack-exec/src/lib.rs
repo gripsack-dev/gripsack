@@ -57,7 +57,9 @@ pub use workspace::{
     TaskPlan, TaskReport, TaskRevision, TaskRunPolicy, TaskStatus, TaskStdin, plan_task,
     read_task_log, read_task_report, run_task,
 };
-pub use workspace::{BuildOptions, BuildResult, BuiltOutput, build_workspace};
+pub use workspace::{
+    BuildOptions, BuildResult, BuiltOutput, build_workspace, check_command_inputs,
+};
 pub use workspace::{ConsumerOutcome, ConsumerRequest, consume, run_package_command};
 pub use workspace::{ResolvedPayloadPath, preview_payload_paths};
 pub use workspace::{schedules, sharing};

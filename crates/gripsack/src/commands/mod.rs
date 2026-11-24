@@ -1,5 +1,5 @@
 //! Command implementations, one file per command group. Shared helpers:
-//! `eval` (frontend wiring), `trust_gate` (the eval gate), and
+//! `eval` (frontend wiring), `guard` (the plan/apply guardrail), `remote` (first-use trust), and
 //! `expand_home`.
 
 pub mod adopt;
@@ -11,6 +11,7 @@ pub mod eval;
 pub mod frontend;
 pub mod gc;
 pub mod generations;
+pub mod guard;
 pub mod hooks;
 pub mod init;
 pub mod jobs;
@@ -18,6 +19,7 @@ pub mod package;
 pub mod plan;
 mod prepared;
 pub mod probe;
+pub mod remote;
 pub mod repo;
 pub mod review;
 pub mod rollback;

@@ -172,7 +172,18 @@ pub trait Storage {
 
     /// Open an existing regular file without following a symlink, for
     /// reading and syncing. A directory or other kind is an error.
-    fn open_file(&self, parent: &Self::Dir, name: &Name) -> io::Result<Self::File>;
+    fn open_file(&self, parent: &Self::Dir, name: &Name) -> io::Result<Self::File> {
+        self.open_file_with_metadata(parent, name)
+            .map(|(file, _)| file)
+    }
+
+    /// Like `open_file`, with metadata of the **opened inode**, not a
+    /// separate lookup by name. A later replacing rename cannot retarget it.
+    fn open_file_with_metadata(
+        &self,
+        parent: &Self::Dir,
+        name: &Name,
+    ) -> io::Result<(Self::File, Metadata)>;
 
     /// Append all of `bytes` at the handle's position.
     fn write(&self, file: &mut Self::File, bytes: &[u8]) -> io::Result<()>;

@@ -147,12 +147,7 @@ fn document(archive: &CondaArchive, name: &str) -> Result<Option<Vec<u8>>, Strin
         .map_err(|error| error.to_string())
 }
 
-const ACTIVATION_DIRECTORIES: [&str; 4] = [
-    "etc/conda/activate.d",
-    "etc/conda/deactivate.d",
-    "etc/activate.d",
-    "etc/deactivate.d",
-];
+use crate::workspace::conda::activation::{ACTIVATE_DIRECTORIES, DEACTIVATE_DIRECTORIES};
 
 fn script_paths(name: &str) -> impl Iterator<Item = String> + '_ {
     ["pre-link", "post-link", "pre-unlink"]
@@ -167,23 +162,86 @@ fn script_paths(name: &str) -> impl Iterator<Item = String> + '_ {
         })
 }
 
-/// Shared archive admission; existence, not executable mode or entry kind,
-/// determines whether a package requires unsupported lifecycle behavior.
+fn within<'a>(path: &'a str, directory: &str) -> Option<&'a str> {
+    path.strip_prefix(directory)
+        .and_then(|rest| rest.strip_prefix('/'))
+}
+
+/// Shared archive admission. Link scripts (`pre-link`/`post-link`/`pre-unlink`)
+/// run arbitrary commands at install time and stay refused whatever their
+/// mode or entry kind. Activation scripts are admitted only when every
+/// `activate.d/*.sh` is an interpretable export-only script (#405).
 pub(super) fn admit_scripts(
     record: &LockedCondaPackage,
     archive: &CondaArchive,
 ) -> Result<(), String> {
     let scripts: Vec<_> = script_paths(&record.name).collect();
     for path in archive.info.keys().chain(archive.payload.keys()) {
-        if scripts.contains(path)
-            || ACTIVATION_DIRECTORIES.iter().any(|prefix| {
-                path.as_str() == *prefix
-                    || path
-                        .strip_prefix(*prefix)
-                        .is_some_and(|rest| rest.starts_with('/'))
-            })
+        if scripts.contains(path) {
+            return Err(format!(
+                "unsupported link script {path:?}: link scripts run arbitrary commands at install time"
+            ));
+        }
+    }
+    for (path, entry) in &archive.payload {
+        let activate = ACTIVATE_DIRECTORIES
+            .iter()
+            .find_map(|directory| within(path, directory).map(|rest| (directory, rest)));
+        let deactivate = DEACTIVATE_DIRECTORIES
+            .iter()
+            .any(|directory| within(path, directory).is_some());
+        let is_directory = ACTIVATE_DIRECTORIES
+            .iter()
+            .chain(&DEACTIVATE_DIRECTORIES)
+            .any(|directory| path == directory);
+        if (is_directory || deactivate) && matches!(entry.kind, EntryKind::Symlink { .. }) {
+            return Err(format!(
+                "unsupported activation path {path:?}: aliases are not admitted"
+            ));
+        }
+        if let Some((_, rest)) = activate {
+            let EntryKind::File { size, .. } = entry.kind else {
+                if matches!(entry.kind, EntryKind::Directory) && !rest.contains('/') {
+                    return Err(format!(
+                        "unsupported activation path {path:?}: nested directories are not admitted"
+                    ));
+                }
+                return Err(format!(
+                    "unsupported activation path {path:?}: aliases are not admitted"
+                ));
+            };
+            if rest.contains('/') || !rest.ends_with(".sh") {
+                return Err(format!(
+                    "unsupported activation script {path:?}: only top-level `*.sh` scripts are admitted"
+                ));
+            }
+            if size > gripsack_conda::activation::MAX_SCRIPT_BYTES as u64 {
+                return Err(format!("unsupported activation script {path:?}: too large"));
+            }
+            let bytes = archive
+                .payload_bytes(path)
+                .map_err(|error| format!("activation script {path:?}: {error}"))?;
+            let text = std::str::from_utf8(&bytes)
+                .map_err(|_| format!("unsupported activation script {path:?}: not UTF-8"))?;
+            gripsack_conda::activation::evaluate([(path.as_str(), text)], "/gripsack-admission")
+                .map_err(|error| format!("unsupported activation script {error}"))?;
+        }
+    }
+    // A symlinked ancestor of an activation directory would hide scripts from
+    // the checks above and from the installed-tree scan.
+    for path in archive.info.keys().chain(archive.payload.keys()) {
+        if matches!(
+            archive
+                .info
+                .get(path)
+                .or_else(|| archive.payload.get(path))
+                .map(|entry| &entry.kind),
+            Some(EntryKind::Symlink { .. })
+        ) && ["etc", "etc/conda"].contains(&path.as_str())
         {
-            return Err(format!("unsupported link/activation script {path:?}"));
+            return Err(format!(
+                "unsupported activation path {path:?}: aliases are not admitted"
+            ));
         }
     }
     // Parent directory aliases also expose lifecycle paths to the helper's
@@ -195,11 +253,7 @@ pub(super) fn admit_scripts(
         .chain(archive.payload.values())
         .any(|entry| matches!(entry.kind, EntryKind::Symlink { .. }))
     {
-        for suspect in ACTIVATION_DIRECTORIES
-            .iter()
-            .copied()
-            .chain(scripts.iter().map(String::as_str))
-        {
+        for suspect in scripts.iter().map(String::as_str) {
             let exists = super::links::resolve(suspect, None, false, |path| {
                 let entry = archive.info.get(path).or_else(|| archive.payload.get(path));
                 match entry.map(|entry| &entry.kind) {
@@ -228,7 +282,7 @@ pub(super) fn admit_scripts(
             })?;
             if exists {
                 return Err(format!(
-                    "unsupported link/activation script {suspect:?} via archive alias"
+                    "unsupported link script {suspect:?} via archive alias"
                 ));
             }
         }

@@ -8,19 +8,17 @@
 //! the original archives before admission. Materialization only publishes
 //! native fixed-prefix packages; historical image receipts remain data-only.
 
+mod activation;
 mod archive;
 mod prefix;
 mod runtime;
 mod validate;
 
+pub(super) use activation::activation_environment;
 pub(super) use runtime::{admit_host_requirements, admit_native};
 pub(crate) use validate::{AdmissionBudget, AdmittedArchives, SystemRuntime};
 
-use super::{
-    artifact::Artifact,
-    inputs,
-    roots::{self, RetentionSet, RootId},
-};
+use super::{artifact::Artifact, inputs};
 use crate::{Ctx, ExecError, LifecycleSession, UpdateMode};
 use gripsack_conda::CondaHelper;
 use gripsack_host::store;
@@ -647,15 +645,15 @@ fn materialize_with_inputs(
     ))
 }
 
-/// Complete archive admission before update can register roots or return a pin.
+/// Complete archive admission before returning a pin. The caller holds GC
+/// exclusion until the repository lock and its consumer root agree.
 fn admit_update_archives(
     name: &str,
     ctx: &Ctx,
     environment: &LockedCondaEnvironment,
     mode: UpdateMode,
     wheel_spools: &BTreeMap<String, tempfile::NamedTempFile>,
-) -> Result<Vec<PathBuf>, ExecError> {
-    let mut objects = Vec::with_capacity(environment.packages.len() + environment.wheels.len());
+) -> Result<(), ExecError> {
     let mut archives = BTreeMap::new();
     // Check mode must keep its private originals alive until cross-format
     // ownership, dependency and aggregate expansion admission has completed.
@@ -671,7 +669,6 @@ fn admit_update_archives(
                 record.size,
             )?;
             archives.insert(record.sha256.clone(), object.join("archive"));
-            objects.push(object);
         } else {
             let download = ctx
                 .fetch
@@ -694,7 +691,6 @@ fn admit_update_archives(
                 wheel.size,
             )?;
             archives.insert(wheel.sha256.clone(), object.join("archive"));
-            objects.push(object);
         } else if let Some(spool) = wheel_spools.get(&wheel.sha256) {
             archives.insert(wheel.sha256.clone(), spool.path().to_path_buf());
         } else {
@@ -709,13 +705,11 @@ fn admit_update_archives(
         }
     }
     validate::admit_archives(name, environment, &archives)?;
-    Ok(objects)
+    Ok(())
 }
 
-/// Explicit update: solve/import through the helper, retain every
-/// archive as a verified store object, and return the current lock pin. The
-/// caller upserts and publishes the lock; roots protect the archives
-/// from that moment (no GC window before the first realization).
+/// Explicit update solves/imports and admits a candidate. Nothing here can
+/// replace the consumer root of a built output or of the published lock.
 pub(crate) fn resolve_update(
     ctx: &Ctx,
     session: &LifecycleSession,
@@ -724,7 +718,7 @@ pub(crate) fn resolve_update(
     platform: &WorkspacePlatform,
     workspace: &WorkspaceCatalog,
     mode: UpdateMode,
-) -> Result<LockedPin, ExecError> {
+) -> Result<(LockedPin, BTreeSet<PathBuf>), ExecError> {
     let subdir = subdir(name, platform)?;
     let mut attempt = [0u8; 8];
     getrandom::fill(&mut attempt).map_err(std::io::Error::other)?;
@@ -862,23 +856,20 @@ pub(crate) fn resolve_update(
     admit_frozen(name, source, &environment)?;
     // Retain and admit every exact archive before the pin can name it. Check
     // mode enforces the same policy without publishing store objects or roots.
-    let objects = admit_update_archives(name, ctx, &environment, mode, &wheel_spools)?;
-    if mode == UpdateMode::Publish {
-        retention.extend(objects);
-        let retention = RetentionSet::admit(session, retention)?;
-        let id = RootId::from_identity(&serde_json::to_vec(&(ctx.repository.identity(), name))?);
-        roots::register_output_root(session, &id, &retention)?;
-    }
+    admit_update_archives(name, ctx, &environment, mode, &wheel_spools)?;
     let digest = conda_closure_digest(&environment).to_string();
-    Ok(LockedPin {
-        output: name.into(),
-        source: locked_source,
-        resolved: ResolvedPinFields {
-            sha256: Some(digest),
-            ..Default::default()
+    Ok((
+        LockedPin {
+            output: name.into(),
+            source: locked_source,
+            resolved: ResolvedPinFields {
+                sha256: Some(digest),
+                ..Default::default()
+            },
+            conda: Some(environment),
         },
-        conda: Some(environment),
-    })
+        retention,
+    ))
 }
 
 /// Frozen pixi freshness: re-capture the declared inputs and compare

@@ -133,8 +133,9 @@ def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):
     repo.mkdir()
     (repo / "gripsack.ts").write_text(
         'import { defineWorkspace, workspace, pkg, provider, fileFetch, '
-        'targetPlatform, task, bash, packageCommand, exec, lit, profile } '
+        'targetPlatform, task, bash, packageCommand, exec, lit, profile, inputFile, input } '
         'from "@gripsack/core";\n'
+        'const source = inputFile("source", "gripsack.ts");\n'
         'const shell = pkg("shell", { producer: provider(fileFetch("shell.bin")), '
         'commands: { bash: "bin/bash" }, '
         'target: targetPlatform({ os: "linux", arch: "x86_64" }), '
@@ -143,14 +144,17 @@ def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):
         '.interpreter(packageCommand("shell", "bash"))'
         '.env("INPUT", lit("two words")).build()] });\n'
         'const argv = task("argv", { steps: [exec(lit("echo"))'
-        '.arg(lit("two words")).build()] });\n'
-        'export default defineWorkspace(() => workspace({ outputs: [shell, script, argv, profile("personal", {})] }));\n'
+        '.arg(lit("two words")).arg(input(source)).build()] });\n'
+        'export default defineWorkspace(() => workspace({ inputs: [source], outputs: [shell, script, argv, profile("personal", {})] }));\n'
     )
     checked = grip("check", cwd=repo)
     assert checked.returncode == 0, checked.stdout + checked.stderr
     assert "shell (package)" in checked.stdout
     assert "script (task)" in checked.stdout
     assert "argv (task)" in checked.stdout
+    # Check validates the input without trying to acquire the absent shell.bin.
+    assert not (repo / "gripsack.lock").exists()
+    assert not (sandbox / ".local/share/gripsack/store").exists()
     result = grip("plan", cwd=repo)
     assert result.returncode == 0, result.stdout + result.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
@@ -195,7 +199,7 @@ def test_literal_bash_task_and_postcondition_execute_with_pinned_interpreter(san
       printf '%s\\n' "\\${MESSAGE:-missing}" > result
     `.interpreter(interpreter)
       .env("MESSAGE", lit("two words; $(must-not-execute)"))
-      .cwd(hostPath(''' + json.dumps(str(directory)) + ''')).build();
+      .cwd(hostPath("~/working directory")).build();
     const verify = bash`
       [[ $(< "$RESULT") == 'two words; $(must-not-execute)' ]]
     `.interpreter(interpreter).env("RESULT", lit(''' + json.dumps(str(effect)) + ''')).build();
@@ -425,10 +429,17 @@ def test_minimum_os_and_abi_compare_declared_targets_not_checking_host(sandbox):
     assert "E128" in wrong_abi.stderr, wrong_abi.stderr
     assert "gripsack.ts:3" in wrong_abi.stderr and "gripsack.ts:6" in wrong_abi.stderr
     environment["target"].pop("abi")
-    missing_abi = run_plan_ir(sandbox, workspace_ir(package, environment))
-    assert missing_abi.returncode != 0
-    assert "E128" in missing_abi.stderr, missing_abi.stderr
-    assert "gripsack.ts:3" in missing_abi.stderr and "gripsack.ts:6" in missing_abi.stderr
+    # #407: an environment that omits the ABI admits ABI-specific members.
+    missing_abi = run_plan_ir(sandbox, workspace_ir(package, environment, dotfile_profile()))
+    assert missing_abi.returncode == 0, missing_abi.stdout + missing_abi.stderr
+    # ...but an environment that declares an ABI still requires an exact match
+    # from a package that omits it.
+    agnostic = copy.deepcopy(package)
+    agnostic["target"].pop("abi")
+    environment["target"] = copy.deepcopy(target)
+    strict = run_plan_ir(sandbox, workspace_ir(agnostic, environment))
+    assert strict.returncode != 0
+    assert "E128" in strict.stderr, strict.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 

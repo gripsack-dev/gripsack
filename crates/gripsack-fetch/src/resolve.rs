@@ -44,13 +44,13 @@ pub struct ResolvedRelease {
 }
 
 #[derive(Deserialize)]
-struct Release {
+pub(crate) struct Release {
     tag_name: String,
     assets: Vec<Asset>,
 }
 
 #[derive(Deserialize)]
-struct Asset {
+pub(crate) struct Asset {
     name: String,
     browser_download_url: String,
     /// The API asset endpoint — the only download path that honors a
@@ -232,11 +232,31 @@ pub(crate) fn resolve_latest(
         Some(tag) => format!("{base}/repos/{repo}/releases/tags/{tag}"),
         None => format!("{base}/repos/{repo}/releases/latest"),
     };
-    let release: Release = context.json(&url, RequestKind::GithubMetadata)?;
+    // One release document per URL per run: several outputs often name the
+    // same repository, and every fetch spends API quota.
+    let cached = context.release_cache.lock().get(&url).cloned();
+    let release = match cached {
+        Some(release) => release,
+        None => {
+            let release: Release = context.json(&url, RequestKind::GithubMetadata)?;
+            let release = std::sync::Arc::new(release);
+            context
+                .release_cache
+                .lock()
+                .insert(url.clone(), std::sync::Arc::clone(&release));
+            release
+        }
+    };
     let assets: Vec<(String, String, String)> = release
         .assets
-        .into_iter()
-        .map(|a| (a.name, a.browser_download_url, a.url))
+        .iter()
+        .map(|a| {
+            (
+                a.name.clone(),
+                a.browser_download_url.clone(),
+                a.url.clone(),
+            )
+        })
         .collect();
     pick_asset(repo, asset_pattern, &release.tag_name, &assets)
 }
@@ -244,6 +264,30 @@ pub(crate) fn resolve_latest(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cached_release_document_is_not_fetched_again() {
+        // No network: an uncached lookup would fail, a cached one resolves.
+        let context = crate::FetchContext::default();
+        let url = "https://api.github.com/repos/o/r/releases/latest".to_string();
+        let release = Release {
+            tag_name: "v1.0".into(),
+            assets: vec![Asset {
+                name: "tool-1.0-linux.tar.gz".into(),
+                browser_download_url: "https://x/linux".into(),
+                url: "https://api.x/assets/1".into(),
+            }],
+        };
+        context
+            .release_cache
+            .lock()
+            .insert(url, std::sync::Arc::new(release));
+        for _ in 0..2 {
+            let resolved =
+                resolve_latest(&context, "o/r", "tool-{version}-linux.tar.gz", None, None).unwrap();
+            assert_eq!(resolved.url, "https://x/linux");
+        }
+    }
 
     fn assets() -> Vec<(String, String, String)> {
         vec![

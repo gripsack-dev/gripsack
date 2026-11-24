@@ -3,7 +3,7 @@
 use super::{
     artifact::{self, Package, ProducerIdentity},
     prepare::Prepared,
-    roots::{self, RetentionSet, RootId},
+    roots::{self, RetentionSet},
 };
 use crate::{Ctx, ExecError, LifecycleSession};
 use gripsack_host::process::OperatorEnvironment;
@@ -117,7 +117,7 @@ pub fn build_workspace(
         closures,
     } = realize_held(ir, ctx, options, &ctx.only)?;
     for (name, paths) in closures {
-        let id = RootId::from_identity(&serde_json::to_vec(&(ctx.repository.identity(), &name))?);
+        let id = roots::built_output_id(ctx.repository.identity(), &name)?;
         let consumer = RetentionSet::admit(&session, paths)?;
         roots::register_output_root(&session, &id, &consumer)?;
     }
@@ -291,6 +291,17 @@ fn publish_packages<'a>(
                     let note = format!(
                         "uses host {} (conda-forge platform libraries; strict: true refuses)",
                         host.join(", ")
+                    );
+                    ctx.reporter().started(name, &note);
+                }
+                // #405: export-only activate.d scripts are evaluated, never
+                // run; name the variables they contribute.
+                let activation = super::conda::activation_environment(receipt).map_err(failure)?;
+                if !activation.is_empty() {
+                    let names: Vec<_> = activation.keys().map(String::as_str).collect();
+                    let note = format!(
+                        "sets {} (export-only conda activate.d scripts, evaluated not executed)",
+                        names.join(", ")
                     );
                     ctx.reporter().started(name, &note);
                 }

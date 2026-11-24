@@ -2,6 +2,7 @@
 //! verification and environment composition. Everything in this module runs
 //! before any process launches; unsupported shapes fail with named reasons
 //! and both declaration spans where two declarations collide.
+pub(super) mod activation;
 pub(super) mod bytecode;
 mod command;
 pub(in crate::workspace) use command::EnvironmentResolution;
@@ -319,6 +320,26 @@ impl EnvironmentPlan<CapturedCommand> {
         }
         let profile_entries_start = imported_entries.len();
         let mut entries = imported_entries;
+        // Conda activation scripts' exports come first so the declared
+        // environment overrides them.
+        let mut activation = BTreeMap::new();
+        for name in &declaration.packages {
+            let package = realization.packages[name.as_str()].as_ref();
+            for (key, value) in activation::entries(package, &declaration.span)? {
+                if let Some(previous) = activation.insert(key.clone(), value.clone())
+                    && previous != value
+                {
+                    return Err(gate(
+                        &declaration.span,
+                        format!(
+                            "two selected packages activate {} with different values",
+                            key.to_string_lossy()
+                        ),
+                    ));
+                }
+            }
+        }
+        entries.extend(activation);
         let mut declared_path = Vec::new();
         let mut declared_library_path = Vec::new();
         for (key, argument) in &declaration.env {
@@ -538,6 +559,16 @@ impl EnvironmentPlan {
             writeln!(file, "#!/bin/sh").map_err(operational)?;
             if let Some(BytecodePolicy::Suppress) = command.bytecode {
                 writeln!(file, "export PYTHONDONTWRITEBYTECODE=1").map_err(operational)?;
+            }
+            for (key, value) in &command.entries {
+                let (Some(key), Some(value)) = (key.to_str(), value.to_str()) else {
+                    return Err(failure("command variable is not UTF-8"));
+                };
+                if !crate::env::is_identifier(key) {
+                    return Err(failure("command variable name is not a POSIX identifier"));
+                }
+                writeln!(file, "export {key}={}", crate::env::ShellLiteral(value))
+                    .map_err(operational)?;
             }
             if !libraries.is_empty() {
                 write!(

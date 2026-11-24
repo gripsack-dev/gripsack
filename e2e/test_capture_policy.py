@@ -1,4 +1,4 @@
-"""Explicit source exclusions use the real capture, approval and Deno paths."""
+"""Explicit source exclusions use the real capture and Deno paths."""
 import json
 import os
 from pathlib import Path
@@ -7,9 +7,9 @@ import subprocess
 
 import pytest
 from conftest import GRIP, grip, make_workspace_repo
-from test_source_approval import (
-    approve_source, checked, inspect_source, new_receipt, pause_runtime, pinned_value_repo,
-    receipt_paths, rejected, value_file, value_repo, wait_ready,
+from test_source_capture import (
+    checked, new_receipt, pause_runtime, pinned_value_repo,
+    receipt_paths, value_file, value_repo, wait_ready,
 )
 
 
@@ -25,29 +25,24 @@ def test_ignored_outbound_venv_is_explicitly_excluded_and_names_failure(sandbox)
     (repo / ".venv/bin").mkdir(parents=True)
     (repo / ".venv/bin/python3").symlink_to("/usr/bin/python3")
     before = receipt_paths()
-    failed = grip("trust", "inspect", str(repo), "--json", approve=False)
+    failed = grip("check", "--repo", str(repo), "--json", approve=False)
     assert failed.returncode != 0
     assert "repo/.venv/bin/python3" in failed.stderr, failed.stderr
     assert "escapes its admitted roots" in failed.stderr, failed.stderr
     assert receipt_paths() == before
 
     exclude(repo, ".venv")
-    reviewed = approve_source(repo)
-    assert reviewed["version"] == 2
-    assert reviewed["capture_exclusions"] == [".venv"]
-    assert "repo/.venv" in reviewed["inventory"]["exclusions"]
-    assert any(entry["path"] == "repo/value.ts" for entry in reviewed["inventory"]["entries"])
-    checked(repo, "legitimate", reviewed)
+    first = checked(repo, "legitimate")
     # Unavailable content is not part of the admitted read set; changing it
-    # alone cannot force approval or alter the evaluator's result.
+    # alone cannot alter the captured bytes or the evaluator's result.
     value_file(repo / ".venv/private.ts", "not admitted")
-    checked(repo, "legitimate", reviewed)
+    assert checked(repo, "legitimate")["source"] == first["source"]
 
 
 def test_editor_only_sdk_is_never_admitted_as_a_pin(sandbox):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "embedded")
-    inspect_source(repo)
+    checked(repo, "embedded")
     editor = sandbox / "editor-sdk"
     frontend = Path(os.environ["GRIPSACK_HOME"]) / "frontend/current"
     shutil.copytree(frontend.resolve(), editor)
@@ -56,18 +51,16 @@ def test_editor_only_sdk_is_never_admitted_as_a_pin(sandbox):
     (repo / "node_modules/@gripsack").mkdir(parents=True)
     (repo / "node_modules/@gripsack/core").symlink_to(editor, target_is_directory=True)
     exclude(repo, "node_modules/@gripsack/core")
-    reviewed = approve_source(repo)
+    reviewed = checked(repo, "embedded")
     assert reviewed["policy"]["frontend"]["implementation"] == "frontend"
-    assert reviewed["inventory"]["roots"] == ["repository", "frontend"]
-    assert not any(entry["path"].startswith("pin/") for entry in reviewed["inventory"]["entries"])
-    checked(repo, "embedded", reviewed)
+    assert reviewed["policy"]["read_roots"] == ["repository", "frontend"]
     # Both a changed and a dangling excluded editor pin remain outside capture.
-    value_file(editor / "private.ts", "changed outside approval")
-    checked(repo, "embedded", reviewed)
+    value_file(editor / "private.ts", "changed outside capture")
+    assert checked(repo, "embedded")["source"] == reviewed["source"]
     link = repo / "node_modules/@gripsack/core"
     link.unlink()
     link.symlink_to(sandbox / "missing-editor-sdk")
-    checked(repo, "embedded", reviewed)
+    assert checked(repo, "embedded")["source"] == reviewed["source"]
 
 
 @pytest.mark.parametrize("route", ["relative_read", "absolute_read", "relative_import", "absolute_import"])
@@ -91,8 +84,7 @@ def test_excluded_bytes_are_unavailable_through_live_and_captured_paths(sandbox,
         'if (!denied) throw new Error("excluded bytes became readable");\n'
         'export default defineWorkspace(() => workspace({outputs:[profile("denied", {files:[]})]}));\n'
     )
-    reviewed = approve_source(repo)
-    checked(repo, "denied", reviewed)
+    checked(repo, "denied")
 
 
 @pytest.mark.parametrize("target", [".venv/private.ts", ".venv", ".venv/../value.ts"])
@@ -103,7 +95,7 @@ def test_alias_into_an_exclusion_fails_before_evaluation(sandbox, target):
     exclude(repo, ".venv")
     (repo / "alternate").symlink_to(target)
     before = receipt_paths()
-    failed = grip("trust", "inspect", str(repo), "--json", approve=False)
+    failed = grip("check", "--repo", str(repo), "--json", approve=False)
     assert failed.returncode != 0
     assert "repo/alternate" in failed.stderr, failed.stderr
     assert "excluded subtree repo/.venv" in failed.stderr, failed.stderr
@@ -118,39 +110,24 @@ def test_excluded_sdk_bytes_cannot_return_via_explicit_import(sandbox):
     (repo / "node_modules/@gripsack").mkdir(parents=True)
     (repo / "node_modules/@gripsack/core").symlink_to(external)
     exclude(repo, "node_modules/@gripsack/core")
-    reviewed = approve_source(repo)
-    assert reviewed["policy"]["frontend"]["implementation"] == "frontend"
     failed = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
     assert failed.returncode != 0, failed.stdout + failed.stderr
     assert "EXCLUDED_SDK" not in failed.stdout
 
 
-def test_policy_changes_and_selected_source_invalidate_exact_approval(sandbox):
+def test_exclusion_policy_changes_take_effect_without_renewal(sandbox):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "before")
     exclude(repo, ".venv")
-    reviewed = approve_source(repo)
-    checked(repo, "before", reviewed)
-    # Even an absent subtree is a policy change, authenticated by env.toml.
+    first = checked(repo, "before")
+    assert first["policy"]["frontend"]["implementation"] == "frontend"
+    # env.toml is captured source, so even an absent excluded subtree changes
+    # the captured bytes; there is simply nothing to approve.
     exclude(repo, ".venv", "editor-cache")
-    current = inspect_source(repo)
-    assert current["capture_exclusions"] == [".venv", "editor-cache"]
-    assert "repo/editor-cache" not in current["inventory"]["exclusions"]
-    text = grip("trust", "inspect", str(repo), approve=False)
-    assert text.returncode == 0, text.stderr
-    assert "capture exclude: editor-cache" in text.stdout
-    assert "frontend implementation: embedded SDK" in text.stdout
-    assert current["bundle_digest"] != reviewed["bundle_digest"]
-    assert current["policy_digest"] != reviewed["policy_digest"]
-    stale = grip("trust", "add", str(repo), "--bundle", reviewed["bundle_digest"],
-                 "--policy", reviewed["policy_digest"], approve=False)
-    assert stale.returncode != 0
-    rejected(repo)
-    renewed = approve_source(repo)
-    checked(repo, "before", renewed)
+    second = checked(repo, "before")
+    assert second["source"] != first["source"]
     value_file(repo / "value.ts", "after")
-    rejected(repo)
-    checked(repo, "after", approve_source(repo))
+    checked(repo, "after")
 
 
 @pytest.mark.parametrize("path", ["", ".", "..", "/", "/tmp", "../outside", "a/../b", "a//b", "a/", "a\\b", "*.ts/", "a**", "**", "**/**", "**b", "[a-z]/*", "env.toml", "gripsack.ts", "gripsack.lock", "locks", "locks/testhost.lock", "Gripsack.Lock", "LOCKS/testhost.lock", "**/env.toml", "**/locks/**"])
@@ -159,13 +136,13 @@ def test_malformed_outside_root_and_entrypoint_exclusions_fail(sandbox, path):
     value_file(repo / "value.ts", "unused")
     exclude(repo, path)
     before = receipt_paths()
-    result = grip("trust", "inspect", str(repo), "--json", approve=False)
+    result = grip("check", "--repo", str(repo), "--json", approve=False)
     assert result.returncode != 0
     assert "capture exclusion" in result.stderr, result.stderr
     assert receipt_paths() == before
 
 
-def test_glob_exclusions_cover_nested_caches_and_stay_reviewable(sandbox):
+def test_glob_exclusions_cover_nested_caches(sandbox):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "legitimate")
     for nested in ["pkg/sub/__pycache__", "tools/__pycache__"]:
@@ -174,51 +151,23 @@ def test_glob_exclusions_cover_nested_caches_and_stay_reviewable(sandbox):
     (repo / ".ruff_cache").mkdir()
     value_file(repo / ".ruff_cache/entry.json", "cache bytes")
     exclude(repo, "**/__pycache__", ".ruff_cache/**")
-    reviewed = approve_source(repo)
-    assert reviewed["capture_exclusions"] == ["**/__pycache__", ".ruff_cache/**"]
-    exclusions = reviewed["inventory"]["exclusions"]
-    assert "repo/pkg/sub/__pycache__" not in exclusions
-    assert "repo/tools/__pycache__" not in exclusions
-    assert "repo/.ruff_cache" not in exclusions
-    assert not any(
-        entry["path"].startswith(
-            ("repo/pkg/sub/__pycache__", "repo/tools/__pycache__", "repo/.ruff_cache")
-        )
-        for entry in reviewed["inventory"]["entries"]
-    )
-    text = grip("trust", "inspect", str(repo), approve=False)
-    assert text.returncode == 0, text.stderr
-    assert "capture exclude: **/__pycache__" in text.stdout
-    assert "capture exclude: .ruff_cache/**" in text.stdout
-    checked(repo, "legitimate", reviewed)
-    # The exclusion set is identity: changing it renews approval, exactly as
-    # for literal entries, because env.toml itself is captured source.
-    exclude(repo, "**/__pycache__")
-    current = inspect_source(repo)
-    assert current["capture_exclusions"] == ["**/__pycache__"]
-    assert current["bundle_digest"] != reviewed["bundle_digest"]
-    assert current["policy_digest"] != reviewed["policy_digest"]
-    stale = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
-    assert stale.returncode != 0
-    rejected(repo)
-    checked(repo, "legitimate", approve_source(repo))
+    first = checked(repo, "legitimate")
+    # Excluded caches are not captured: changing them cannot move the source.
+    value_file(repo / "pkg/sub/__pycache__/cache.pyc", "changed cache")
+    value_file(repo / ".ruff_cache/entry.json", "changed cache")
+    assert checked(repo, "legitimate")["source"] == first["source"]
 
 
-def test_new_glob_cache_lifecycle_keeps_exact_approval(sandbox):
+def test_new_glob_cache_lifecycle_keeps_the_captured_source(sandbox):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "legitimate")
     (repo / "pkg/sub").mkdir(parents=True)
     (repo / "tools").mkdir()
     exclude(repo, "**/__pycache__")
-    reviewed = approve_source(repo)
-    checked(repo, "legitimate", reviewed)
+    reviewed = checked(repo, "legitimate")
 
     def unchanged():
-        current = inspect_source(repo)
-        assert current["inventory"] == reviewed["inventory"]
-        assert current["bundle_digest"] == reviewed["bundle_digest"]
-        assert current["policy_digest"] == reviewed["policy_digest"]
-        checked(repo, "legitimate", reviewed)
+        assert checked(repo, "legitimate")["source"] == reviewed["source"]
 
     cache = repo / "pkg/sub/__pycache__"
     cache.mkdir()
@@ -237,14 +186,7 @@ def test_new_glob_cache_lifecycle_keeps_exact_approval(sandbox):
 
     # The pattern does not excuse adding an ordinary captured parent.
     (repo / "new-package/__pycache__").mkdir(parents=True)
-    current = inspect_source(repo)
-    assert current["bundle_digest"] != reviewed["bundle_digest"]
-    assert any(entry["path"] == "repo/new-package" for entry in current["inventory"]["entries"])
-    rejected(repo)
-    renewed = approve_source(repo)
-    checked(repo, "legitimate", renewed)
-    (repo / "new-package/__pycache__").rmdir()
-    checked(repo, "legitimate", renewed)
+    assert checked(repo, "legitimate")["source"] != reviewed["source"]
 
 
 @pytest.mark.parametrize("target", [
@@ -256,11 +198,10 @@ def test_glob_aliases_cannot_reexpose_excluded_bytes(sandbox, target):
     value_file(repo / "pkg/value.ts", "legitimate")
     value_file(repo / "pkg/__pycache__/private.ts", "EXCLUDED_SECRET")
     exclude(repo, "**/__pycache__")
-    reviewed = approve_source(repo)
-    checked(repo, "legitimate", reviewed)
+    checked(repo, "legitimate")
     (repo / "alternate").symlink_to(target)
     before = receipt_paths()
-    failed = grip("trust", "inspect", str(repo), "--json", approve=False)
+    failed = grip("check", "--repo", str(repo), "--json", approve=False)
     assert failed.returncode != 0
     assert "excluded subtree repo/pkg/__pycache__" in failed.stderr, failed.stderr
     assert receipt_paths() == before
@@ -275,7 +216,7 @@ def test_glob_exclusions_still_refuse_required_roots_and_pins(sandbox):
     # Wildcard heads parse; the walk itself refuses the authority match.
     for pattern in ["lo*", "**/*.lock"]:
         exclude(repo, pattern)
-        failed = grip("trust", "inspect", str(repo), "--json", approve=False)
+        failed = grip("check", "--repo", str(repo), "--json", approve=False)
         assert failed.returncode != 0, pattern
         assert "capture exclusion" in failed.stderr, failed.stderr
         assert "required configuration" in failed.stderr, failed.stderr
@@ -287,9 +228,8 @@ def test_glob_exclusions_still_refuse_required_roots_and_pins(sandbox):
     shutil.copytree(frontend.resolve(), editor)
     (repo / "node_modules/@gripsack").mkdir(parents=True)
     (repo / "node_modules/@gripsack/core").symlink_to(editor, target_is_directory=True)
-    reviewed = approve_source(repo)
+    reviewed = checked(repo, "unused")
     assert reviewed["policy"]["frontend"]["implementation"] == "frontend"
-    assert not any(entry["path"].startswith("pin/") for entry in reviewed["inventory"]["entries"])
 
 
 @pytest.mark.parametrize("kind", ["symlink", "oversized"])
@@ -304,7 +244,7 @@ def test_configuration_bootstrap_is_bounded_and_never_follows_aliases(sandbox, k
     else:
         with config.open("wb") as output:
             output.truncate(1024 * 1024 + 1)
-    result = grip("trust", "inspect", str(repo), "--json", approve=False)
+    result = grip("check", "--repo", str(repo), "--json", approve=False)
     assert result.returncode != 0
     assert "env.toml must be a regular non-symlink file" in result.stderr, result.stderr
 
@@ -322,8 +262,7 @@ def test_excluded_repository_file_cannot_be_materialized_from_live_tree(sandbox)
     (repo / ".venv").mkdir()
     (repo / ".venv/private.txt").write_text("EXCLUDED_PAYLOAD")
     exclude(repo, ".venv")
-    approve_source(repo)
-    result = grip("apply", cwd=repo, approve=False)
+    result = grip("apply", cwd=repo)
     assert result.returncode != 0, result.stdout + result.stderr
     assert not (sandbox / ".excluded-copy").exists()
     assert not (Path(os.environ["GRIPSACK_HOME"]) / "current").exists()
@@ -351,17 +290,86 @@ def test_excluded_declared_input_has_no_live_tree_fallback(sandbox, kind, alias)
         exclude(repo, ".venv/private.txt")
     else:
         exclude(repo, ".venv")
-    approve_source(repo)
-    result = grip("task", "run", "consume", cwd=repo, approve=False)
+    result = grip("task", "run", "consume", cwd=repo)
     assert result.returncode != 0, result.stdout + result.stderr
     assert "excluded by capture policy" in result.stderr, result.stdout + result.stderr
     assert "EXCLUDED_INPUT" not in result.stdout
 
 
+def test_check_validates_task_input_kinds_in_the_approved_capture(sandbox, monkeypatch):
+    repo = make_workspace_repo(sandbox / "inputs", {})
+    effect = sandbox / "task-ran"
+    (repo / "gripsack.ts").write_text(
+        'import {defineWorkspace, workspace, inputFile, inputDirectory, input, task, exec, lit} from "@gripsack/core";\n'
+        'const manifest = inputFile("manifest", "manifest.txt");\n'
+        'const config = inputFile("config", "config.txt");\n'
+        'const assets = inputDirectory("assets", "assets", {include:["version"]});\n'
+        'export default defineWorkspace(() => workspace({inputs:[manifest, config, assets],\n'
+        '  outputs:[task("consume", {steps:[exec({argv:[lit("/usr/bin/touch"), '
+        f'lit({json.dumps(str(effect))}), input(manifest), input(config), input(assets)]'
+        '})]})]}));\n'
+    )
+    (repo / "manifest.txt").touch()
+    (repo / "config.txt").touch()
+    (repo / "assets").mkdir()
+    (repo / "assets/version").touch()
+
+    # Change all three roots after approval and capture. This invocation must
+    # pass using the old types, not the now-missing or wrong-kind live paths.
+    with monkeypatch.context() as patched:
+        control = pause_runtime(sandbox, patched)
+        process = subprocess.Popen(
+            [str(GRIP), "check", "--json"], cwd=repo,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        try:
+            wait_ready(control, 1, process)
+            (repo / "manifest.txt").unlink()
+            (repo / "config.txt").unlink()
+            (repo / "config.txt").mkdir()
+            shutil.rmtree(repo / "assets")
+            (repo / "assets").touch()
+            (control / "release-1").touch()
+            stdout, stderr = process.communicate(timeout=30)
+            assert process.returncode == 0, stdout + stderr
+            assert [o["name"] for o in json.loads(stdout)["outputs"]] == ["consume"]
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+
+    # The changed tree now has three independent failures, each pointing at
+    # the input declaration, not the reference in the task.
+    expected = {
+        2: ("E110", "manifest.txt", "no such captured repository source"),
+        3: ("E301", "config.txt", "inputFile must select a captured regular file"),
+        4: ("E301", "assets", "inputDirectory must select a captured directory"),
+    }
+    terminal = grip("check", cwd=repo)
+    assert terminal.returncode != 0
+    for line, (code, path, reason) in expected.items():
+        for text in (code, path, reason, f"gripsack.ts:{line}"):
+            assert text in terminal.stderr, terminal.stderr
+    structured = grip("check", "--json", cwd=repo)
+    assert structured.returncode != 0
+    document = json.loads(structured.stdout)
+    assert not document["ok"]
+    assert len(document["diagnostics"]) == len(expected)
+    for diagnostic in document["diagnostics"]:
+        label, = diagnostic["labels"]
+        assert label["span"]["file"].endswith("/gripsack.ts")
+        code, path, reason = expected.pop(label["span"]["line"])
+        assert diagnostic["code"] == code
+        assert path in diagnostic["message"] and reason in diagnostic["message"]
+    assert not effect.exists()
+    assert not (repo / "gripsack.lock").exists()
+    assert not (Path(os.environ["GRIPSACK_HOME"]) / "store").exists()
+
+
 def test_capture_policy_cannot_add_ambient_roots(sandbox):
     repo = value_repo(sandbox / "repo")
     (repo / "env.toml").write_text('[capture]\nroots = ["/usr"]\n')
-    result = grip("trust", "inspect", str(repo), "--json", approve=False)
+    result = grip("check", "--repo", str(repo), "--json", approve=False)
     assert result.returncode != 0
     assert "roots" in result.stderr, result.stderr
 
@@ -369,19 +377,17 @@ def test_capture_policy_cannot_add_ambient_roots(sandbox):
 def test_ordinary_external_sdk_pin_still_wins_with_unrelated_exclusion(sandbox):
     repo, _ = pinned_value_repo(sandbox)
     exclude(repo, ".venv")
-    reviewed = approve_source(repo)
+    reviewed = checked(repo, "before")
     assert reviewed["policy"]["frontend"]["implementation"] == "pinned_frontend"
-    checked(repo, "before", reviewed)
 
 
-def test_policy_edit_after_capture_cannot_change_approved_evaluation(sandbox, monkeypatch):
+def test_policy_edit_after_capture_cannot_change_the_running_evaluation(sandbox, monkeypatch):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "captured")
     (repo / ".venv/bin").mkdir(parents=True)
     (repo / ".venv/bin/python3").symlink_to("/usr/bin/python3")
     exclude(repo, ".venv")
     control = pause_runtime(sandbox, monkeypatch)
-    reviewed = approve_source(repo)
     before = receipt_paths()
     process = subprocess.Popen(
         [str(GRIP), "check", "--host", "testhost", "--json"], cwd=repo,
@@ -399,8 +405,7 @@ def test_policy_edit_after_capture_cannot_change_approved_evaluation(sandbox, mo
             process.kill()
             process.communicate()
     receipt = new_receipt(before)
-    assert receipt["source"] == reviewed["bundle_digest"]
-    assert receipt["policy_digest"] == reviewed["policy_digest"]
-    failed = grip("trust", "inspect", str(repo), "--json", approve=False)
+    assert receipt["outcome"] == "completed"
+    failed = grip("check", "--repo", str(repo), "--json", approve=False)
     assert failed.returncode != 0
     assert "repo/.venv/bin/python3" in failed.stderr, failed.stderr

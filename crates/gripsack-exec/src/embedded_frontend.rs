@@ -99,7 +99,7 @@ async function main(): Promise<void> {
         die("gripsack.ts must synchronously return a workspace({...}) value (got a promise)");
       }
       const payload = {
-        ir: JSON.parse(core.emitWorkspaceIr(value as never, inputs.facts, inputs.tags)),
+        ir: JSON.parse(core.emitWorkspaceIr(value as never, inputs.facts, inputs.tags, requests)),
         diagnostics: [],
         probe_requests: requests,
       };
@@ -174,7 +174,7 @@ export function hasTag(tag: string, view: FactView): boolean {
  * Codes are generated from schema/diagnostics.json for core and
  * frontend together, never allocated in this module. */
 
-import type { Span } from "./span.ts"
+import { declarationSite, type Span } from "./span.ts"
 import { diagnosticCodes, frontendDiagnosticCodeRegistry } from "./diagnostic_codes.ts";
 
 export { diagnosticCodes };
@@ -286,16 +286,7 @@ function isPackageFrame(path: string, selfDir: string): boolean {
 }
 
 function spanFromStack(stack: string | undefined, selfDir: string): Span | undefined {
-  if (!stack) return undefined;
-  for (const line of stack.split("\n").slice(1)) {
-    const match = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
-    if (!match || !match[1]) continue;
-    const file = match[1].replace(/^file:\/\//, "");
-    if (!isPackageFrame(file, selfDir)) {
-      return { file, line: Number(match[2]), col: Number(match[3]) };
-    }
-  }
-  return undefined;
+  return declarationSite(stack, (file) => isPackageFrame(file, selfDir));
 }
 
 /** Wrap a plain authoring-guard Error as E130 with the user's
@@ -946,19 +937,60 @@ export interface Span {
   col?: number;
 }
 
-/** Capture the first V8 frame outside this package. */
+const FRAME = /\(?([^()\s]+):(\d+):(\d+)\)?$/;
+const NAMED_FRAME = /^\s*at (?:async )?(?:new )?([^\s(]+) \(/;
+
+interface Frame extends Span {
+  /** Called through a named function (`release`), not an anonymous callback. */
+  named: boolean;
+}
+
+/** Frames with an absolute source path; engine frames (`ext:`, `node:`,
+ *  `<anonymous>`) never name user code. */
+function sourceFrames(stack: string | undefined): Frame[] {
+  const frames: Frame[] = [];
+  for (const line of (stack ?? "").split("\n").slice(1)) {
+    const m = line.match(FRAME);
+    if (!m || !m[1]) continue;
+    const file = m[1].replace(/^file:\/\//, "");
+    if (!file.startsWith("/")) continue;
+    const name = line.match(NAMED_FRAME)?.[1];
+    frames.push({
+      file,
+      line: Number(m[2]),
+      col: Number(m[3]),
+      named: name !== undefined && !name.includes("<anonymous>") && !name.startsWith("file:"),
+    });
+  }
+  return frames;
+}
+
+/** The declaration site within a stack, given which files are the SDK's.
+ *
+ *  The first frame outside the SDK is the module that called the
+ *  constructor. When it was reached through a named helper function (a
+ *  `release()` in lib.ts wrapping `pkg(...)`), every output would point at
+ *  that one line, so prefer the first frame in a different module: the
+ *  call the user wrote. Declarations written inline, in an anonymous
+ *  callback such as `defineWorkspace(() => ...)`, keep their own site. */
+export function declarationSite(
+  stack: string | undefined,
+  isPackageFrame: (file: string) => boolean,
+): Span | undefined {
+  const outside = sourceFrames(stack).filter((frame) => !isPackageFrame(frame.file));
+  const first = outside[0];
+  if (!first) return undefined;
+  const site = first.named ? outside.find((frame) => frame.file !== first.file) ?? first : first;
+  return { file: site.file, line: site.line, ...(site.col === undefined ? {} : { col: site.col }) };
+}
+
+/** Capture the declaration site of an SDK constructor call. */
 export function callerSpan(): Span | undefined {
   const pkgDir = new URL(".", import.meta.url).pathname;
-  const stack = new Error().stack;
-  if (!stack) return undefined;
-  for (const line of stack.split("\n").slice(1)) {
-    const m = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
-    if (m && m[1] && !m[1].replace(/^file:\/\//, "").startsWith(pkgDir)) {
-      const file = m[1].replace(/^file:\/\//, "");
-      return { file, line: Number(m[2]), col: Number(m[3]) };
-    }
-  }
-  return undefined;
+  return declarationSite(
+    new Error().stack,
+    (file) => file.startsWith(pkgDir) || file.includes("/node_modules/@gripsack/core/"),
+  );
 }
 "#),
     ("src/workspace/bindings.ts", r#"/** Pure declarations: no registry, import-time effect or implicit ownership. */
@@ -1378,6 +1410,7 @@ function conflict(path: string, owners: WorkspaceFile[], marker?: string): never
 import type { HostFacts } from "../facts.ts";
 export const IR_VERSION = 10;
 import type { Span } from "../span.ts"
+import type { ProbeRequest } from "../probe.ts";
 import type {
   EnvironmentNode,
   PackageNode,
@@ -1597,11 +1630,13 @@ function orList(kinds: readonly string[]): string {
  *  command bindings require an owning subject, and literal destinations
  *  cannot have conflicting owners. The core independently admits the IR.
  *  Host facts are injected for the envelope only, never used to select
- *  target outputs; the hostname never crosses into the IR. */
+ *  target outputs; the hostname never crosses into the IR. A provisional
+ *  empty workspace has no IR (`null`) until its requested probes are bound. */
 export function emitWorkspaceIr(
   value: WorkspaceValue,
   facts: HostFacts,
   tags: string[] = [],
+  pendingProbes?: readonly ProbeRequest[],
 ): string {
   if (
     typeof value !== "object" || value === null ||
@@ -1614,11 +1649,8 @@ export function emitWorkspaceIr(
     );
   }
   const ir = value.ir;
-  if (
-    typeof ir !== "object" || ir === null || !Array.isArray(ir.outputs) ||
-    ir.outputs.length === 0
-  ) {
-    throw new Error("emitWorkspaceIr: workspace value must carry at least one output");
+  if (typeof ir !== "object" || ir === null || !Array.isArray(ir.outputs)) {
+    throw new Error("emitWorkspaceIr: workspace value must carry an outputs array");
   }
   asSpan(ir.span, "emitWorkspaceIr: workspace");
   rejectUnknownFields("emitWorkspaceIr: workspace", ir, ["span", "name", "outputs", "inputs", "mutation_locks"]);
@@ -1628,6 +1660,11 @@ export function emitWorkspaceIr(
     const previous = inputCatalog.get(input.name);
     if (previous) throw duplicateError(input.name, previous.span, input.span);
     inputCatalog.set(input.name, input);
+  }
+  if (ir.outputs.length === 0) {
+    if (pendingProbes?.length) return "null";
+    throw errorAt(diagnosticCodes.invalidWorkspaceValue,
+      "workspace(...): outputs must declare at least one output", ir.span, "in this declaration");
   }
 
   const catalog = new Map<string, WorkspaceOutputNode>();
@@ -2932,9 +2969,6 @@ export function workspace(spec: WorkspaceSpec): WorkspaceValue {
     seen.set(o.ir.name, o.ir.span);
     outputs.push(o.ir);
   }
-  if (outputs.length === 0) {
-    throw new Error(`${what}: outputs must declare at least one output`);
-  }
   outputs.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
   if (spec.inputs !== undefined && !Array.isArray(spec.inputs)) throw new Error(`${what}: inputs must be an array`);
   const inputs = spec.inputs?.map((input, index) => asInput(input, `${what}: inputs[${index}]`)) ?? [];
@@ -3197,7 +3231,9 @@ export function checkPackageTarget(
   const supplied = provider.target;
   const requested = consumer.target;
   if (supplied.os !== requested.os || supplied.arch !== requested.arch ||
-    (supplied.abi ?? null) !== (requested.abi ?? null) ||
+    // An environment that omits the ABI is unspecified, not musl: it admits
+    // ABI-specific members. A consumer that names an ABI requires it exactly.
+    ((requested.abi ?? null) !== null && (supplied.abi ?? null) !== requested.abi) ||
     !floorAtMost(supplied.minimum_os, requested.minimum_os)) {
     throw new DiagnosticError({
       code: diagnosticCodes.unknownWorkspaceRef,
@@ -3205,7 +3241,7 @@ export function checkPackageTarget(
       message:
         `workspace: ${consumer.kind} '${consumer.name}' — target of '${provider.name}' (${JSON.stringify(supplied)}) ` +
         `cannot satisfy target of '${consumer.name}' (${JSON.stringify(requested)}): ` +
-        `OS/arch/ABI must match and provider minimum OS must not exceed the consumer`,
+        `OS/arch must match, a declared ABI must match and provider minimum OS must not exceed the consumer`,
       labels: [
         { span: consumer.span, note: `consumer '${consumer.name}' declared here` },
         { span: provider.span, note: `provider '${provider.name}' declared here` },
@@ -4026,7 +4062,7 @@ export const source = { package: packageSource };
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.58.0",
+  "version": "0.59.0",
   "description": "gripsack TypeScript workspace SDK — typed declarations, emits IR10",
   "license": "MIT",
   "type": "module",

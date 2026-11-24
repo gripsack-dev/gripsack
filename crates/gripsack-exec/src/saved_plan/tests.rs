@@ -60,7 +60,7 @@ fn binding() -> Binding {
         "host": "host", "selected": [], "frontend": "/frontend",
         "pinned_frontend": null, "exclusions": [], "ir": ir.to_string(),
         "facts": {}, "probes": {},
-        "state": {"base": null, "manifest": null, "trust": null,
+        "state": {"base": null, "manifest": null,
             "sharing_trust": null, "activation": null, "operations": [],
             "packages": [], "schedules": null}
     }))
@@ -68,7 +68,7 @@ fn binding() -> Binding {
 }
 
 #[test]
-fn digest_admission_rejects_tampered_source_lock_base_scope_and_trust() {
+fn digest_admission_rejects_tampered_source_lock_base_scope_and_package_trust() {
     let binding = binding();
     let envelope = Envelope {
         version: FORMAT_VERSION,
@@ -81,7 +81,7 @@ fn digest_admission_rejects_tampered_source_lock_base_scope_and_trust() {
         "/binding/source",
         "/binding/policy",
         "/binding/state/base",
-        "/binding/state/trust",
+        "/binding/state/sharing_trust",
         "/binding/host",
         "/binding/ir",
     ] {

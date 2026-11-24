@@ -16,11 +16,15 @@ pub fn run(ir: &Ir) -> Vec<Diagnostic> {
 
 pub fn check(json: &str) -> Result<Ir, Vec<Diagnostic>> {
     let ir = crate::parse(json).map_err(|diagnostic| vec![diagnostic])?;
-    let diagnostics = run(&ir);
+    let mut diagnostics = run(&ir);
     if diagnostics
         .iter()
         .any(|diagnostic| diagnostic.severity == Severity::Error)
     {
+        let owners = ir.output_owners();
+        for diagnostic in &mut diagnostics {
+            owners.attribute(diagnostic);
+        }
         return Err(diagnostics);
     }
     Ok(ir)

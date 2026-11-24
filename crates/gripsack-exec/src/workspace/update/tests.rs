@@ -244,3 +244,204 @@ fn selected_survey_preserves_every_result_and_only_complete_publish_changes_lock
     assert_eq!(current.summary().unchanged(), 3);
     assert_eq!(current.summary().skipped(), 1);
 }
+
+#[test]
+fn scoped_update_migrates_large_legacy_rows_and_resumes_segment_compaction() {
+    use crate::workspace::{conda, roots};
+    use gripsack_ir::workspace_model::{
+        identity::conda_closure_digest,
+        lock::{LockedCondaEnvironment, ResolvedPinFields},
+    };
+    use serde_json::json;
+
+    let mut fixture = Fixture::new();
+    // Long but ordinary home paths reach the real 1-MiB metadata boundary
+    // with a small lock. GC admits references to absent/repaired store bytes;
+    // this tests that same persisted-root contract, not a mock GC.
+    for _ in 0..5 {
+        fixture.home.push("h".repeat(160));
+    }
+    fs::create_dir_all(&fixture.home).unwrap();
+    let names = ["anchor", "old-a", "old-b", "old-c", "survives"];
+    let sources = names.map(|name| (name, PathBuf::from("source")));
+    let ir = workspace(&sources);
+    let scoped = |names: &[&str]| {
+        let mut ctx = fixture.context();
+        ctx.only = names.iter().map(|s| s.to_string()).collect();
+        ctx
+    };
+    update(&ir, &scoped(&["anchor"]), UpdateMode::Publish).unwrap();
+    let mut lock: WorkspaceLock = serde_json::from_slice(&fixture.lock_bytes()).unwrap();
+    let resolution = lock
+        .resolutions
+        .entry("linux-x86_64".into())
+        .or_insert(PlatformResolution {
+            pins: Vec::new(),
+            transitive: Vec::new(),
+        });
+    let session = LifecycleSession::acquire(&fixture.home).unwrap();
+    let mut members = BTreeSet::new();
+    let mut survivor = BTreeSet::new();
+    for (group, name) in names[1..].iter().enumerate() {
+        let mut paths = BTreeSet::new();
+        let packages: Vec<_> = (0..850)
+            .map(|n| {
+                let digest = format!("{group:02x}{n:030x}{n:032x}");
+                paths.insert(conda::archive_object(&fixture.home, &digest));
+                json!({
+                    "name": format!("pkg-{n:04}"), "version":"1.0", "build":"0", "build_number":0,
+                    "subdir":"linux-64", "channel":"https://example.invalid", "sha256":digest,
+                    "url":format!("https://example.invalid/linux-64/pkg-{n:04}-1.0-0.conda"),
+                })
+            })
+            .collect();
+        let frozen: LockedCondaEnvironment = serde_json::from_value(json!({
+            "platform":"linux-64", "channels":["https://example.invalid"], "channel_priority":"strict",
+            "system_requirements":{}, "packages":packages,
+            "materializer":{"bytecode":"suppress","receipt":"normalized_conda_meta"}
+        })).unwrap();
+        resolution.pins.push(LockedPin {
+            output: name.to_string(),
+            source: serde_json::from_value(json!({
+                "kind":"conda_environment", "channels":["https://example.invalid"], "packages":{"pkg-0000":"*"},
+                "platforms":[]
+            })).unwrap(),
+            resolved: ResolvedPinFields { sha256: Some(conda_closure_digest(&frozen).to_string()), ..Default::default() },
+            conda: Some(frozen),
+        });
+        members.extend(paths.iter().map(|p| p.to_str().unwrap().to_owned()));
+        if *name == "survives" {
+            survivor = paths
+                .iter()
+                .map(|p| p.to_str().unwrap().to_owned())
+                .collect();
+        }
+        let closure = roots::RetentionSet::admit(&session, paths).unwrap();
+        roots::register_output_root(
+            &session,
+            &roots::built_output_id(&fixture.repo, name).unwrap(),
+            &closure,
+        )
+        .unwrap();
+    }
+    drop(session);
+    lock.validate().unwrap();
+    fs::write(
+        fixture.repo.join("gripsack.lock"),
+        serde_json::to_vec(&lock).unwrap(),
+    )
+    .unwrap();
+    let original = fixture.lock_bytes();
+    update(&ir, &scoped(&["anchor"]), UpdateMode::Publish).unwrap();
+    assert_eq!(
+        fixture.lock_bytes(),
+        original,
+        "root-only migration rewrote the lock"
+    );
+    let home = gripsack_host::fs::open(&fixture.home).unwrap();
+    assert_eq!(roots::inventory(&home, &fixture.home).unwrap(), members);
+    let directory = fixture.home.join("roots/outputs");
+    let mut segments = Vec::new();
+    for index in 0.. {
+        let id = roots::RootId::from_identity(
+            &serde_json::to_vec(&(&fixture.repo, "conda-lock", index)).unwrap(),
+        );
+        let path = directory.join(format!("{}.json", id.as_str()));
+        if !path.exists() {
+            break;
+        }
+        segments.push((path.clone(), fs::read(path).unwrap()));
+    }
+    assert!(
+        segments.len() >= 3,
+        "fixture must cross multiple root bounds"
+    );
+    assert_eq!(fs::read_dir(&directory).unwrap().count(), segments.len());
+    update(
+        &ir,
+        &scoped(&["old-a", "old-b", "old-c"]),
+        UpdateMode::Publish,
+    )
+    .unwrap();
+    assert_eq!(roots::inventory(&home, &fixture.home).unwrap(), survivor);
+    assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+    let settled = fixture.lock_bytes();
+
+    // The durable replacement of slot zero precedes each highest-first tail
+    // unlink. Reconstruct every observable remaining tail from its real bytes;
+    // an unchanged scoped retry must find and trim it without losing survivors.
+    for tail in 1..segments.len() {
+        for (path, bytes) in &segments[1..=tail] {
+            fs::write(path, bytes).unwrap();
+        }
+        assert!(survivor.is_subset(&roots::inventory(&home, &fixture.home).unwrap()));
+        update(&ir, &scoped(&["anchor"]), UpdateMode::Publish).unwrap();
+        assert_eq!(fixture.lock_bytes(), settled);
+        assert_eq!(roots::inventory(&home, &fixture.home).unwrap(), survivor);
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+    }
+}
+
+mod settled_release {
+    use super::super::*;
+    use gripsack_ir::{
+        FetchSpec, Span, workspace::WorkspaceFetch, workspace_model::lock::ResolvedPinFields,
+    };
+
+    fn provider(version: Option<&str>) -> AcquisitionSource {
+        AcquisitionSource::Fetch(WorkspaceFetch {
+            fetch: FetchSpec::GithubRelease {
+                repo: "o/r".into(),
+                asset: "a".into(),
+                version: version.map(str::to_owned),
+                sha256: None,
+                base_url: None,
+            },
+            span: Span {
+                file: "gripsack.ts".into(),
+                line: 1,
+                col: None,
+            },
+        })
+    }
+
+    fn resolution(provider: &AcquisitionSource) -> PlatformResolution {
+        PlatformResolution {
+            pins: vec![LockedPin {
+                output: "tool".into(),
+                source: provider.locked(),
+                resolved: ResolvedPinFields {
+                    url: Some("https://x/tool.tar.gz".into()),
+                    ..Default::default()
+                },
+                conda: None,
+            }],
+            transitive: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn only_tagged_unchanged_releases_skip_resolution() {
+        let tagged = provider(Some("v1"));
+        assert!(is_settled_release(
+            &tagged,
+            Some(&resolution(&tagged)),
+            "tool"
+        ));
+        // declaration changed since the lock
+        assert!(!is_settled_release(
+            &provider(Some("v2")),
+            Some(&resolution(&tagged)),
+            "tool"
+        ));
+        // no lock entry yet
+        assert!(!is_settled_release(&tagged, None, "tool"));
+        // `latest` is what update exists to bump
+        let latest = provider(None);
+        assert!(!is_settled_release(
+            &latest,
+            Some(&resolution(&latest)),
+            "tool"
+        ));
+    }
+}
