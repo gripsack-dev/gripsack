@@ -159,7 +159,9 @@ stored data needed for rollback and integrity retains its original meaning.
 - [Sourcing](docs/rfcs/2026-08-22-sourcing.md) — resolver/transport split, fetcher protocol,
   hash verification rules.
 - [Constrained evaluation](docs/rfcs/2026-08-28-constrained-evaluation.md) — the eval boundary: one
-  frontend, sandboxed Deno, injected facts, probes, trust gate.
+  frontend, sandboxed Deno, injected facts, probes. Approval is not a gate (#409): local repos are
+  trusted, remotes are trusted on first use, and `grip plan`/`apply` flag new hooks, fetch domains
+  and destinations outside `~`.
 - [Repository and tooling](docs/rfcs/2026-08-22-repo-and-tooling.md) — this file's details: gates, releases,
   versioning, IR compatibility policy.
 - `.agents/skills/gripsack-ir/` — how to evolve the IR safely.

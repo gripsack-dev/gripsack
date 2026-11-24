@@ -7,8 +7,8 @@
 //! ├── generations/<N>/            one complete profile tree per apply
 //! ├── current -> generations/<N>  THE symlink — flipping it is activation
 //! ├── locks/                      flock files for named resources (0007 §4)
-//! └── trust.toml                  repo trust list — the gate before eval
-//!                                 (0013 D7; its codec is `gripsack_exec::trust`)
+//! └── known-remotes               remote origins trusted on first use (#409)
+//!                                 (a stale trust.toml is ignored)
 //! ```
 //!
 //! The modules divide the concerns:
