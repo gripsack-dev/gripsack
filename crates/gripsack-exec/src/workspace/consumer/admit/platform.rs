@@ -52,6 +52,7 @@ pub(super) fn admit(
     policy: PlatformLibraries,
     host: &HostTarget,
     span: &Span,
+    prefix: Option<&Path>,
 ) -> Result<(), ExecError> {
     for loader in &system.loaders {
         let expected = host
@@ -76,19 +77,16 @@ pub(super) fn admit(
                 span,
                 if platform_library {
                     format!(
-                        "Conda prefix requires host platform library {name:?} and declares \
+                        "Conda prefix requires host platform library {name:?}{} and declares \
                          strict: true; include that library in the frozen package closure \
-                         or drop strict"
+                         or drop strict",
+                        requirer(system, prefix, name)
                     )
                 } else {
                     format!(
                         "Conda prefix requires {name:?}{} outside the explicit OS runtime; \
                          include that library in the frozen package closure",
-                        system
-                            .required_by
-                            .get(name)
-                            .map(|file| format!(" (needed by {file:?})"))
-                            .unwrap_or_default()
+                        requirer(system, prefix, name)
                     )
                 },
             )
@@ -106,6 +104,58 @@ pub(super) fn admit(
         elf::header(&metadata, host, false, span)?;
     }
     Ok(())
+}
+
+/// The file that needs `library`: the one recorded during the closure scan
+/// (`SystemRuntime::required_by`), else found by scanning the prefix.
+fn requirer(system: &SystemRuntime, prefix: Option<&Path>, library: &str) -> String {
+    system
+        .required_by
+        .get(library)
+        .map(|file| format!(" (needed by {file:?})"))
+        .unwrap_or_else(|| needed_by(prefix, library))
+}
+
+/// ` (needed by bin/foo)`: the first ELF file in the prefix whose dynamic
+/// section names `library`. Only run on the failure path; bounded.
+fn needed_by(prefix: Option<&Path>, library: &str) -> String {
+    const VISIT_LIMIT: usize = 200_000;
+    let Some(prefix) = prefix else {
+        return String::new();
+    };
+    let mut pending = vec![prefix.to_path_buf()];
+    let mut visited = 0usize;
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&directory) else {
+            continue;
+        };
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries.into_iter().rev() {
+            visited += 1;
+            if visited > VISIT_LIMIT {
+                return String::new();
+            }
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                pending.push(path);
+            } else if kind.is_file()
+                && let Ok(mut file) = std::fs::File::open(&path)
+                && let Ok(metadata) = gripsack_host::process::executable::classify(&mut file)
+                && metadata
+                    .needed_libraries
+                    .iter()
+                    .any(|needed| needed.to_str() == Some(library))
+            {
+                let relative = path.strip_prefix(prefix).unwrap_or(&path);
+                return format!(" (needed by {})", relative.display());
+            }
+        }
+    }
+    String::new()
 }
 
 pub(super) fn library(

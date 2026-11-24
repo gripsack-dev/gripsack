@@ -24,4 +24,4 @@ pub use parse::{IR_VERSION, parse};
 pub use sema::{check, run};
 pub use span::Span;
 pub use workspace::*;
-pub use workspace_catalog::CatalogOutput;
+pub use workspace_catalog::{CatalogOutput, OutputOwners};

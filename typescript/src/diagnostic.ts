@@ -7,7 +7,7 @@
  * Codes are generated from schema/diagnostics.json for core and
  * frontend together, never allocated in this module. */
 
-import type { Span } from "./span.ts"
+import { declarationSite, type Span } from "./span.ts"
 import { diagnosticCodes, frontendDiagnosticCodeRegistry } from "./diagnostic_codes.ts";
 
 export { diagnosticCodes };
@@ -119,16 +119,7 @@ function isPackageFrame(path: string, selfDir: string): boolean {
 }
 
 function spanFromStack(stack: string | undefined, selfDir: string): Span | undefined {
-  if (!stack) return undefined;
-  for (const line of stack.split("\n").slice(1)) {
-    const match = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
-    if (!match || !match[1]) continue;
-    const file = match[1].replace(/^file:\/\//, "");
-    if (!isPackageFrame(file, selfDir)) {
-      return { file, line: Number(match[2]), col: Number(match[3]) };
-    }
-  }
-  return undefined;
+  return declarationSite(stack, (file) => isPackageFrame(file, selfDir));
 }
 
 /** Wrap a plain authoring-guard Error as E130 with the user's

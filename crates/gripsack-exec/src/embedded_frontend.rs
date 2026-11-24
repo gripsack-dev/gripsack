@@ -174,7 +174,7 @@ export function hasTag(tag: string, view: FactView): boolean {
  * Codes are generated from schema/diagnostics.json for core and
  * frontend together, never allocated in this module. */
 
-import type { Span } from "./span.ts"
+import { declarationSite, type Span } from "./span.ts"
 import { diagnosticCodes, frontendDiagnosticCodeRegistry } from "./diagnostic_codes.ts";
 
 export { diagnosticCodes };
@@ -286,16 +286,7 @@ function isPackageFrame(path: string, selfDir: string): boolean {
 }
 
 function spanFromStack(stack: string | undefined, selfDir: string): Span | undefined {
-  if (!stack) return undefined;
-  for (const line of stack.split("\n").slice(1)) {
-    const match = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
-    if (!match || !match[1]) continue;
-    const file = match[1].replace(/^file:\/\//, "");
-    if (!isPackageFrame(file, selfDir)) {
-      return { file, line: Number(match[2]), col: Number(match[3]) };
-    }
-  }
-  return undefined;
+  return declarationSite(stack, (file) => isPackageFrame(file, selfDir));
 }
 
 /** Wrap a plain authoring-guard Error as E130 with the user's
@@ -946,19 +937,60 @@ export interface Span {
   col?: number;
 }
 
-/** Capture the first V8 frame outside this package. */
+const FRAME = /\(?([^()\s]+):(\d+):(\d+)\)?$/;
+const NAMED_FRAME = /^\s*at (?:async )?(?:new )?([^\s(]+) \(/;
+
+interface Frame extends Span {
+  /** Called through a named function (`release`), not an anonymous callback. */
+  named: boolean;
+}
+
+/** Frames with an absolute source path; engine frames (`ext:`, `node:`,
+ *  `<anonymous>`) never name user code. */
+function sourceFrames(stack: string | undefined): Frame[] {
+  const frames: Frame[] = [];
+  for (const line of (stack ?? "").split("\n").slice(1)) {
+    const m = line.match(FRAME);
+    if (!m || !m[1]) continue;
+    const file = m[1].replace(/^file:\/\//, "");
+    if (!file.startsWith("/")) continue;
+    const name = line.match(NAMED_FRAME)?.[1];
+    frames.push({
+      file,
+      line: Number(m[2]),
+      col: Number(m[3]),
+      named: name !== undefined && !name.includes("<anonymous>") && !name.startsWith("file:"),
+    });
+  }
+  return frames;
+}
+
+/** The declaration site within a stack, given which files are the SDK's.
+ *
+ *  The first frame outside the SDK is the module that called the
+ *  constructor. When it was reached through a named helper function (a
+ *  `release()` in lib.ts wrapping `pkg(...)`), every output would point at
+ *  that one line, so prefer the first frame in a different module: the
+ *  call the user wrote. Declarations written inline, in an anonymous
+ *  callback such as `defineWorkspace(() => ...)`, keep their own site. */
+export function declarationSite(
+  stack: string | undefined,
+  isPackageFrame: (file: string) => boolean,
+): Span | undefined {
+  const outside = sourceFrames(stack).filter((frame) => !isPackageFrame(frame.file));
+  const first = outside[0];
+  if (!first) return undefined;
+  const site = first.named ? outside.find((frame) => frame.file !== first.file) ?? first : first;
+  return { file: site.file, line: site.line, ...(site.col === undefined ? {} : { col: site.col }) };
+}
+
+/** Capture the declaration site of an SDK constructor call. */
 export function callerSpan(): Span | undefined {
   const pkgDir = new URL(".", import.meta.url).pathname;
-  const stack = new Error().stack;
-  if (!stack) return undefined;
-  for (const line of stack.split("\n").slice(1)) {
-    const m = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
-    if (m && m[1] && !m[1].replace(/^file:\/\//, "").startsWith(pkgDir)) {
-      const file = m[1].replace(/^file:\/\//, "");
-      return { file, line: Number(m[2]), col: Number(m[3]) };
-    }
-  }
-  return undefined;
+  return declarationSite(
+    new Error().stack,
+    (file) => file.startsWith(pkgDir) || file.includes("/node_modules/@gripsack/core/"),
+  );
 }
 "#),
     ("src/workspace/bindings.ts", r#"/** Pure declarations: no registry, import-time effect or implicit ownership. */

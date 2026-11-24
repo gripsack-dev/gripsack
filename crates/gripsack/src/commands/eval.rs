@@ -163,19 +163,19 @@ pub(super) fn eval_prepared(
 pub fn validated_ir(outcome: &EvalOutcome, sink: &mut DiagnosticSink) -> Result<Ir, ExitCode> {
     let mut ir = check_ir(&outcome.ir_json, sink)?;
     gripsack_exec::rebind_captured_ir(&mut ir, &outcome.sources).map_err(operational)?;
+    sink.bind_outputs(&ir);
     crate::commands::validate_sources(&ir, outcome.sources.repository(), sink)?;
     Ok(ir)
 }
 
 /// Parse + validate IR, rendering diagnostics on failure.
 pub fn check_ir(json: &str, sink: &mut DiagnosticSink) -> Result<Ir, ExitCode> {
-    gripsack_ir::check(json).map_err(|diagnostics| {
-        for d in &diagnostics {
-            tracing::error!(code = d.code.as_ref(), "{}", d.message);
-        }
+    let ir = gripsack_ir::check(json).map_err(|diagnostics| {
         sink.report(&diagnostics);
         ExitCode::FAILURE
-    })
+    })?;
+    sink.bind_outputs(&ir);
+    Ok(ir)
 }
 
 /// Reject workspace capabilities that the selected operation cannot execute.
