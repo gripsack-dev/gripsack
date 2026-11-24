@@ -122,17 +122,6 @@ class Consumer:
                 f"command {number}: expected {expected}, got {process.returncode}; {stderr.decode(errors='replace')[-4000:]}")
         return stdout.decode()
 
-    def approve(self, repo: Path, env=None):
-        require(repo.resolve().is_relative_to(self.work), "approval outside disposable reviewed fixture")
-        inspected = json.loads(self.run([self.grip, "trust", "inspect", str(repo), "--json"], cwd=repo, env=env))
-        require(Path(inspected["repository"]).resolve() == repo.resolve(), "inspection repository mismatch")
-        self.run([self.grip, "trust", "add", str(repo), "--bundle", inspected["bundle_digest"],
-                  "--policy", inspected["policy_digest"]], cwd=repo, env=env)
-        self.receipt.setdefault("approvals", []).append({
-            "repository": str(repo), "bundle_digest": inspected["bundle_digest"],
-            "policy_digest": inspected["policy_digest"],
-        })
-
     def source_identity(self):
         require(platform.system() == "Linux" and platform.machine() == "x86_64", "Linux x86_64 required")
         commit = os.environ.get("GRIPSACK_CANDIDATE_COMMIT")
@@ -320,9 +309,7 @@ class Consumer:
         # and offline reuse never rewrite that lock or the retained prefix.
         conda = self.work / "consumer-conda"
         shutil.copytree(ROOT / "e2e/fixtures/consumer-conda", conda)
-        self.approve(conda)
         self.run([self.grip, "update"], cwd=conda)
-        self.approve(conda)
         lock = conda / "gripsack.lock"
         frozen = lock.read_bytes()
         conda_before = snapshot(conda)

@@ -12,7 +12,6 @@ import subprocess
 import pytest
 from conftest import (
     GRIP,
-    approve_fixture,
     grip,
     make_workspace_repo,
 )
@@ -97,8 +96,7 @@ def test_adopt_menu_selects_on_a_tty(sandbox):
         "GRIPSACK_HOME": str(sandbox / ".local/share/gripsack"),
         "PATH": f"{grip_bin.parent}:{os.environ['PATH']}",
     })
-    approve_fixture([str(grip_bin), "adopt", "~/.config/helix"], cwd=repo, env=env)
-    # The menu chooses policy only; generated source must be approved separately.
+    # The menu chooses policy only; generated source is reviewed before resume.
     out = subprocess.run(
         script_tty("grip adopt ~/.config/helix --host testhost"),
         input=b"\n", capture_output=True, env=env, cwd=repo, timeout=90,
@@ -133,25 +131,6 @@ def test_adopt_rejects_invalid_host_before_generating_repo_files(sandbox):
     assert out.returncode != 0
     assert "E132" in out.stderr, out.stderr
     assert entrypoint.read_bytes() == before_entrypoint
-    assert not (repo / "profiles" / "demo.ts").exists()
-    assert not (repo / "configs" / "demo").exists()
-    assert (target / "settings.conf").read_text() == "untouched\n"
-
-
-def test_untrusted_adopt_never_inspects_or_generates_repo_files(sandbox):
-    """Missing captured-source approval precedes target reads and repo writes."""
-    target = sandbox / ".config" / "demo"
-    target.mkdir(parents=True)
-    (target / "settings.conf").write_text("untouched\n")
-    repo = make_workspace_repo(sandbox / "myenv", {})
-    entrypoint = repo / "gripsack.ts"
-    original_entrypoint = entrypoint.read_bytes()
-    out = grip(
-        "adopt", "~/.config/demo", "--mode", "tracked_copy",
-        "--host", "testhost", "--yes", cwd=repo, approve=False,
-    )
-    assert out.returncode != 0
-    assert entrypoint.read_bytes() == original_entrypoint
     assert not (repo / "profiles" / "demo.ts").exists()
     assert not (repo / "configs" / "demo").exists()
     assert (target / "settings.conf").read_text() == "untouched\n"

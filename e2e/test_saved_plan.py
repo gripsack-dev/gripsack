@@ -53,7 +53,7 @@ def test_unchanged_saved_plan_executes_captured_declaration(sandbox):
     assert current(sandbox) == generation
 
 
-@pytest.mark.parametrize("change", ["source", "lock", "trust", "foreign_destination", "parent_identity", "tamper", "version"])
+@pytest.mark.parametrize("change", ["source", "lock", "foreign_destination", "parent_identity", "tamper", "version"])
 def test_stale_or_tampered_saved_plan_refuses_before_deployment(sandbox, change):
     repo = fixture(sandbox)
     destination = sandbox / ".reviewed-config"
@@ -62,8 +62,6 @@ def test_stale_or_tampered_saved_plan_refuses_before_deployment(sandbox, change)
         (repo / "config.txt").write_text("NOT REVIEWED\n")
     elif change == "lock":
         (repo / "gripsack.lock").write_text('{"lock_version":3,"hosts":{}}\n')
-    elif change == "trust":
-        (sandbox / ".local/share/gripsack/trust.toml").unlink()
     elif change == "foreign_destination":
         destination.write_text("foreign\n")
     elif change == "parent_identity":

@@ -6,6 +6,18 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+### Changed
+
+- Digest-bound source/policy approval is gone. Running grip on a repository on
+  your disk is consent, so editing it no longer invalidates anything and
+  `grip trust add`/`inspect`, `trust.toml` and `GRIPSACK_TRUST_ALL` handling are
+  removed (stale trust files are ignored). `grip plan` now lists new hook
+  bodies, new fetch domains and destinations outside `~`; `grip apply`
+  confirms on a terminal only when such items appear, and the global `--yes`
+  covers scripts and CI. A `--repo <git url>` is trusted on first use, once per
+  origin URL; `grip trust list`/`remove <url>` manage those records.
+  [#409](https://github.com/gripsack-dev/gripsack/issues/409)
+
 ## [0.59.0] — Recovery checks and retained builds
 
 ### Fixed

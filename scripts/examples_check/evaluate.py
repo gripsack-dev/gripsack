@@ -4,7 +4,7 @@ harness honest.
 
   frontend level — the SDK driver runs each disposable scaffold with
   deny-by-default flags. This SDK-only harness does not claim the core's
-  captured-source approval or runtime receipt guarantees. @gripsack/core
+  runtime receipt guarantees. @gripsack/core
   resolves to the installed package, exercising its public export surface.
 
   core level — the real `grip check` (embedded frontend and sandboxed
@@ -81,20 +81,6 @@ def core_check(grip, deno, repo, home, expect_outputs: dict) -> int:
         "GRIPSACK_HOME": str(home / ".local/share/gripsack"),
         "GRIPSACK_DENO": str(deno),
     })
-    inspected = subprocess.run(
-        [str(grip), "trust", "inspect", str(repo), "--json"],
-        cwd=repo, env=env, capture_output=True, text=True, timeout=STEP_TIMEOUT,
-    )
-    if inspected.returncode:
-        raise CheckFailure(f"fixture source inspection failed:\n{inspected.stderr[-2000:]}")
-    source = json.loads(inspected.stdout)
-    approved = subprocess.run(
-        [str(grip), "trust", "add", str(repo),
-         "--bundle", source["bundle_digest"], "--policy", source["policy_digest"]],
-        cwd=repo, env=env, capture_output=True, text=True, timeout=STEP_TIMEOUT,
-    )
-    if approved.returncode:
-        raise CheckFailure(f"fixture source approval failed:\n{approved.stderr[-2000:]}")
     cmd = [str(grip), "check", "--json"]
     res = subprocess.run(
         cmd, cwd=repo, env=env,

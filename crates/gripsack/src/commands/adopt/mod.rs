@@ -189,7 +189,7 @@ pub fn adopt(
     }
 
     eprintln!(
-        "grip: review the generated files, approve the changed snapshot with `grip trust add .`, then resume:"
+        "grip: review the generated files, then resume:"
     );
     eprintln!(
         "  grip adopt {} --name {} --resume{}",

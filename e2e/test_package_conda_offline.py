@@ -753,15 +753,8 @@ export default defineWorkspace(() => workspace({outputs:[pkg("runtime", {
 })]}));
 ''')
 
-    def approve():
-        inspected = json.loads(workspace_command(env, repo, "trust", "inspect", str(repo), "--json").stdout)
-        workspace_command(env, repo, "trust", "add", str(repo),
-                          "--bundle", inspected["bundle_digest"], "--policy", inspected["policy_digest"])
-
     try:
-        approve()
         workspace_command(env, repo, "update")
-        approve()
         workspace_command(env, repo, "build", "runtime", "--json")
     finally:
         server.close()

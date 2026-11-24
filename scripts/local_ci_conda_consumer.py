@@ -130,9 +130,7 @@ export default defineWorkspace(() => workspace({
   })],
 }));
 ''')
-            consumer.approve(repo, env)
             consumer.run([consumer.grip, "update"], cwd=repo, env=env)
-            consumer.approve(repo, env)
             lock = repo / "gripsack.lock"
             frozen = lock.read_bytes()
             parsed = json.loads(frozen)
@@ -160,25 +158,20 @@ export default defineWorkspace(() => workspace({
             (mirror / consumer.helper.name).write_bytes(b"not the candidate helper\n")
             wrong_helper = isolated_env(consumer, base / "wrong-helper")
             wrong_helper["GRIPSACK_CONDA_HELPER_MIRROR"] = str(mirror)
-            consumer.approve(repo, wrong_helper)
             refused_build(consumer, repo, wrong_helper, "sha256 mismatch")
 
             # Fresh state cannot acquire a changed archive under the frozen hash.
             bad_archive = isolated_env(consumer, base / "wrong-archive")
-            consumer.approve(repo, bad_archive)
             server.archive = b"changed archive bytes\n"
             refused_build(consumer, repo, bad_archive, "archive download: sha256 mismatch")
             server.archive = archive.read_bytes()
 
-            # Source approval and frozen input identity are distinct gates.
+            # A changed input is refused by the frozen-lock gate alone; there is no source approval (#409).
             (repo / "pixi.toml").write_text(manifest + "\n# changed reviewed input\n")
-            consumer.run([consumer.grip, "check"], cwd=repo, env=env, expected=1)
-            consumer.approve(repo, env)
             refused_build(consumer, repo, env, "changed after its lock")
             require(lock.read_bytes() == frozen and snapshot(prefix) == original,
                     "stale Pixi refusal changed prior lock/prefix")
             (repo / "pixi.toml").write_text(manifest)
-            consumer.approve(repo, env)
 
             # Closing the only acquisition origin proves retained offline reuse.
             requests = list(server.requests)

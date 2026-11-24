@@ -8,8 +8,8 @@ import subprocess
 import pytest
 from conftest import GRIP, grip
 from test_capture_policy import exclude
-from test_source_approval import (
-    approve_source, checked, inspect_source, new_receipt, pause_runtime, receipt_paths,
+from test_source_capture import (
+    checked, new_receipt, pause_runtime, receipt_paths,
     value_file, value_repo, wait_ready,
 )
 
@@ -39,12 +39,8 @@ def test_activated_venv_path_cannot_restore_excluded_static_import(sandbox, monk
     activated_path(sandbox, repo, spelling, monkeypatch)
     live.write_text('export default "EXCLUDED_FIRST";\n')
     exclude(repo, ".venv")
-    reviewed = approve_source(repo)
     for value in ["EXCLUDED_FIRST", "EXCLUDED_CHANGED"]:
         live.write_text(f'export default "{value}";\n')
-        inspected = inspect_source(repo)
-        assert inspected["bundle_digest"] == reviewed["bundle_digest"]
-        assert inspected["policy_digest"] == reviewed["policy_digest"]
         before = receipt_paths()
         denied = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
         assert denied.returncode != 0, denied.stdout + denied.stderr
@@ -60,7 +56,7 @@ def test_unused_activated_path_does_not_break_native_captured_evaluation(sandbox
     value_file(repo / "value.ts", "captured")
     activated_path(sandbox, repo, spelling, monkeypatch)
     exclude(repo, ".venv")
-    checked(repo, "captured", approve_source(repo))
+    checked(repo, "captured")
 
 
 @pytest.mark.parametrize("spelling", ["direct", "alias", "ancestor"])
@@ -73,7 +69,7 @@ def test_script_runtime_cannot_grant_live_source_via_path(sandbox, monkeypatch, 
     runtime.write_text('#!/bin/sh\nexec "' + shutil.which("deno") + '" "$@"\n')
     runtime.chmod(0o700)
     monkeypatch.setenv("GRIPSACK_DENO", str(runtime))
-    checked(repo, "captured", approve_source(repo))
+    checked(repo, "captured")
     live = repo / ".venv/bin/live.js"
     value_file(live, "EXCLUDED_PATH_MODULE")
     (repo / "outputs/selected.ts").write_text(
@@ -81,7 +77,6 @@ def test_script_runtime_cannot_grant_live_source_via_path(sandbox, monkeypatch, 
         f'import value from {json.dumps(live.as_uri())};\n'
         'export default profile(value, {files:[]});\n'
     )
-    approve_source(repo)
     before = receipt_paths()
     refused = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
     assert refused.returncode != 0, refused.stdout + refused.stderr
@@ -98,7 +93,7 @@ def test_evaluator_cache_or_scratch_alias_cannot_grant_excluded_source(sandbox, 
     home = Path(os.environ["GRIPSACK_HOME"])
     home.mkdir(parents=True, exist_ok=True)
     (home / name).symlink_to(repo / ".venv/cache", target_is_directory=True)
-    refused = grip("trust", "inspect", str(repo), "--json", approve=False)
+    refused = grip("check", "--repo", str(repo), "--json", approve=False)
     assert refused.returncode != 0
     assert "overlaps live source" in refused.stderr, refused.stdout + refused.stderr
 
@@ -135,7 +130,6 @@ def test_declared_repository_alias_file_fetch_cannot_read_excluded_source(sandbo
         anchor = sandbox / "anchor"
         anchor.mkdir()
         alias = anchor / ".." / alias.name
-    approve_source(alias)
     refused = grip(*arguments, "--repo", str(alias), cwd=sandbox, approve=False)
     assert refused.returncode != 0, refused.stdout + refused.stderr
     assert "excluded by capture policy" in refused.stdout + refused.stderr
@@ -147,7 +141,6 @@ def test_declared_repository_alias_file_fetch_cannot_read_excluded_source(sandbo
 def test_declared_repository_alias_file_fetch_uses_captured_not_later_live_bytes(sandbox, monkeypatch):
     repo, alias = file_workspace(sandbox, excluded=False)
     control = pause_runtime(sandbox, monkeypatch)
-    reviewed = approve_source(alias)
     before = receipt_paths()
     process = subprocess.Popen(
         [str(GRIP), "build", "data", "--repo", str(alias), "--json"], cwd=sandbox,
@@ -166,9 +159,7 @@ def test_declared_repository_alias_file_fetch_uses_captured_not_later_live_bytes
         if process.poll() is None:
             process.kill()
             process.communicate()
-    receipt = new_receipt(before)
-    assert receipt["source"] == reviewed["bundle_digest"]
-    assert receipt["policy_digest"] == reviewed["policy_digest"]
+    assert new_receipt(before)["outcome"] == "completed"
 
 
 @pytest.mark.parametrize("runtime_kind", ["native", "script", "source_spelled", "source_path_name"])
@@ -215,17 +206,13 @@ def test_excluded_outbound_alias_cannot_import_mutable_runtime_neighbor(sandbox,
     assert unconfined.stdout.strip() == "OUTBOUND_RUNTIME_FIRST"
     if runtime_kind in {"source_spelled", "source_path_name"}:
         before = receipt_paths()
-        refused = grip("trust", "inspect", str(repo), "--json", approve=False)
+        refused = grip("check", "--repo", str(repo), "--json", approve=False)
         assert refused.returncode != 0
         assert "overlaps live source" in refused.stderr, refused.stdout + refused.stderr
         assert receipt_paths() == before
         return
-    reviewed = approve_source(repo)
     for value in ["OUTBOUND_RUNTIME_FIRST", "OUTBOUND_RUNTIME_CHANGED"]:
         canary.write_text(f'export default "{value}";\n')
-        inspected = inspect_source(repo)
-        assert inspected["bundle_digest"] == reviewed["bundle_digest"]
-        assert inspected["policy_digest"] == reviewed["policy_digest"]
         before = receipt_paths()
         refused = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
         assert refused.returncode != 0, refused.stdout + refused.stderr
@@ -247,13 +234,12 @@ def test_runtime_dependency_discovery_never_executes_a_path_shadow_ldd(sandbox, 
     helper.chmod(0o700)
     monkeypatch.setenv("GRIPSACK_DENO", selected)
     monkeypatch.setenv("PATH", str(helpers) + os.pathsep + os.environ["PATH"])
-    inspected = inspect_source(repo)
-    assert inspected["runtime_access"]["files"]
+    checked(repo, "captured")
     assert not marker.exists(), "operator PATH selected a repository-unbound ldd helper"
 
 
 @pytest.mark.skipif(os.uname().sysname != "Linux", reason="ELF trailing-byte identity mutation")
-def test_path_selected_script_interpreter_bytes_require_exact_reapproval(sandbox, monkeypatch):
+def test_path_selected_script_interpreter_byte_changes_move_the_policy_identity(sandbox, monkeypatch):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "captured")
     engine = shutil.which("deno")
@@ -267,20 +253,15 @@ def test_path_selected_script_interpreter_bytes_require_exact_reapproval(sandbox
     wrapper.chmod(0o700)
     monkeypatch.setenv("PATH", str(directory) + os.pathsep + os.environ["PATH"])
     monkeypatch.setenv("GRIPSACK_DENO", str(wrapper))
-    reviewed = approve_source(repo)
-    checked(repo, "captured", reviewed)
+    reviewed = checked(repo, "captured")
     with interpreter.open("ab") as output:
         output.write(b"\nchanged executable identity, outside ELF load segments\n")
-    current = inspect_source(repo)
-    assert current["bundle_digest"] == reviewed["bundle_digest"]
+    current = checked(repo, "captured")
+    assert current["source"] == reviewed["source"]
     assert current["policy"]["runtime"] == reviewed["policy"]["runtime"], "env + wrapper remain unchanged"
+    # No renewal is needed, but the receipt still records that the runtime
+    # closure the evaluator ran under is different.
     assert current["policy_digest"] != reviewed["policy_digest"]
-    prior = next(program for program in reviewed["runtime_access"]["programs"] if program["declared"] == str(interpreter))
-    changed = next(program for program in current["runtime_access"]["programs"] if program["declared"] == str(interpreter))
-    assert changed["sha256"] != prior["sha256"]
-    refused = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
-    assert refused.returncode != 0, refused.stdout + refused.stderr
-    checked(repo, "captured", approve_source(repo))
 
 
 @pytest.mark.parametrize("reject_after_discovery", [False, True])
@@ -292,23 +273,17 @@ def test_python_runtime_metadata_never_imports_repository_sysconfig(sandbox, mon
         f'open({json.dumps(str(marker))}, "w").write("executed")\n'
         'raise RuntimeError("unapproved repository sysconfig")\n'
     )
-    pause_runtime(sandbox, monkeypatch)
     if reject_after_discovery:
         forbidden = repo / "forbidden-cache"
         forbidden.mkdir()
         (Path(os.environ["GRIPSACK_HOME"]) / "deno-cache").symlink_to(forbidden, target_is_directory=True)
-    inspected = grip("trust", "inspect", str(repo), "--json", cwd=repo, approve=False)
+    run = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
     if reject_after_discovery:
-        assert inspected.returncode != 0
-        assert "overlaps live source" in inspected.stderr, inspected.stdout + inspected.stderr
+        assert run.returncode != 0
+        assert "overlaps live source" in run.stderr, run.stdout + run.stderr
     else:
-        assert inspected.returncode == 0, inspected.stdout + inspected.stderr
-        assert json.loads(inspected.stdout)["runtime_access"]["directories"]
+        assert run.returncode == 0, run.stdout + run.stderr
     assert not marker.exists()
-    refused = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
-    assert refused.returncode != 0, refused.stdout + refused.stderr
-    assert not marker.exists()
-    assert not (Path(os.environ["GRIPSACK_HOME"]) / "eval-tmp/runtime-control/ready-1.json").exists()
     assert not (Path(os.environ["GRIPSACK_HOME"]) / "current").exists()
 
 
@@ -340,11 +315,6 @@ def test_isolated_runtime_discovery_preserves_a_real_external_python_venv(sandbo
     wrapper.chmod(0o700)
     monkeypatch.setenv("PATH", str(venv / "bin") + os.pathsep + os.environ["PATH"])
     monkeypatch.setenv("GRIPSACK_DENO", str(wrapper))
-    inspected = approve_source(repo)
-    access = inspected["runtime_access"]
-    assert str((venv / "pyvenv.cfg").resolve()) in access["files"]
-    assert str(Path(installation["purelib"]).resolve()) in access["directories"]
-    assert str(Path(installation["stdlib"]).resolve()) in access["directories"]
-    assert str(venv.resolve()) not in access["directories"]
-    assert any(program["declared"] == str(interpreter) for program in access["programs"])
-    checked(repo, "real-venv", inspected)
+    # Discovery reaches the venv's own runtime roots; evaluating under
+    # confinement is the observable contract (grants are not introspectable).
+    checked(repo, "real-venv")
