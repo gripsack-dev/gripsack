@@ -429,10 +429,17 @@ def test_minimum_os_and_abi_compare_declared_targets_not_checking_host(sandbox):
     assert "E128" in wrong_abi.stderr, wrong_abi.stderr
     assert "gripsack.ts:3" in wrong_abi.stderr and "gripsack.ts:6" in wrong_abi.stderr
     environment["target"].pop("abi")
-    missing_abi = run_plan_ir(sandbox, workspace_ir(package, environment))
-    assert missing_abi.returncode != 0
-    assert "E128" in missing_abi.stderr, missing_abi.stderr
-    assert "gripsack.ts:3" in missing_abi.stderr and "gripsack.ts:6" in missing_abi.stderr
+    # #407: an environment that omits the ABI admits ABI-specific members.
+    missing_abi = run_plan_ir(sandbox, workspace_ir(package, environment, dotfile_profile()))
+    assert missing_abi.returncode == 0, missing_abi.stdout + missing_abi.stderr
+    # ...but an environment that declares an ABI still requires an exact match
+    # from a package that omits it.
+    agnostic = copy.deepcopy(package)
+    agnostic["target"].pop("abi")
+    environment["target"] = copy.deepcopy(target)
+    strict = run_plan_ir(sandbox, workspace_ir(agnostic, environment))
+    assert strict.returncode != 0
+    assert "E128" in strict.stderr, strict.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
