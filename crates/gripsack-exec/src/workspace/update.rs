@@ -239,6 +239,9 @@ fn resolve_output(
                             }
                         });
                     }
+                    if is_settled_release(provider, lock.resolutions.get(&key), name) {
+                        return Ok(UpdateStatus::Unchanged);
+                    }
                     let source = acquire::acquire(ctx, name, fetch, ResolutionMode::Update)?;
                     if mode == UpdateMode::Publish {
                         source.publish(ctx, session, name)?.resolved
@@ -279,6 +282,30 @@ fn resolve_output(
         }
     };
     Ok(upsert(lock, key, next))
+}
+
+/// A GitHub release that names its tag cannot resolve differently while the
+/// declaration and its lock pin are unchanged, so update spends no API quota
+/// on it. Unpinned (`latest`) releases are the thing update exists to bump.
+fn is_settled_release(
+    provider: &AcquisitionSource,
+    resolution: Option<&PlatformResolution>,
+    name: &str,
+) -> bool {
+    let AcquisitionSource::Fetch(fetch) = provider else {
+        return false;
+    };
+    let gripsack_ir::FetchSpec::GithubRelease {
+        version: Some(_), ..
+    } = &fetch.fetch
+    else {
+        return false;
+    };
+    resolution
+        .and_then(|resolution| resolution.pins.iter().find(|pin| pin.output == name))
+        .is_some_and(|pin| {
+            pin.conda.is_none() && pin.source == provider.locked() && pin.resolved.url.is_some()
+        })
 }
 
 fn remove_conda(lock: &mut WorkspaceLock, name: &str) -> bool {

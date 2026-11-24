@@ -22,7 +22,41 @@ struct DeadlineExpired;
 /// Built-in budgets for the registries the internal fetchers call.
 /// Downloads (release CDNs, tarball mirrors) are deliberately not
 /// throttled — rate limits live on API endpoints.
-const DEFAULTS: &[(&str, &str)] = &[("api.github.com", "30/min")];
+///
+/// `api.github.com` is auth-aware: authenticated clients get 5000/h
+/// (about 83/min), so 30/min is safe; anonymous clients get 60/h, so
+/// they are paced at 1/min with a small burst for a short session. The
+/// server's own `x-ratelimit-*` headers refine either (see
+/// [`Throttle::observe_quota`]).
+fn defaults(github_authenticated: bool) -> [(&'static str, &'static str, u64); 1] {
+    if github_authenticated {
+        [("api.github.com", "30/min", 1)]
+    } else {
+        [("api.github.com", "1/min", ANONYMOUS_GITHUB_BURST)]
+    }
+}
+
+/// Requests an anonymous client may make back to back before pacing.
+const ANONYMOUS_GITHUB_BURST: u64 = 5;
+
+/// Whether a GitHub token is bound (the same variables the http
+/// client's credential policy reads).
+fn github_authenticated_from_env() -> bool {
+    ["GITHUB_TOKEN", "GH_TOKEN"].iter().any(|name| {
+        std::env::var(name)
+            .ok()
+            .is_some_and(|token| !token.trim().is_empty())
+    })
+}
+
+/// The server's last word on a domain's quota (`x-ratelimit-remaining`
+/// and `-reset`). Authoritative over the local token estimate: at zero
+/// no request is admitted before `reset`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Quota {
+    pub(crate) remaining: u64,
+    pub(crate) reset: SystemTime,
+}
 
 /// Admit "N/unit" once; units are seconds, minutes or hours.
 fn parse_budget(s: &str) -> Option<rate_limit::BinaryTokenRate> {
@@ -40,13 +74,33 @@ fn parse_budget(s: &str) -> Option<rate_limit::BinaryTokenRate> {
 struct Bucket {
     tokens: rate_limit::TokenBucket,
     updated: SystemTime,
+    quota: Option<Quota>,
 }
 
 impl Bucket {
     fn new(budget: rate_limit::BinaryTokenRate) -> Self {
+        Self::with_burst(budget, 1)
+    }
+
+    fn with_burst(budget: rate_limit::BinaryTokenRate, burst: u64) -> Self {
         Bucket {
-            tokens: rate_limit::TokenBucket::full(budget),
+            tokens: rate_limit::TokenBucket::full_with_burst(budget, burst),
             updated: SystemTime::now(),
+            quota: None,
+        }
+    }
+
+    /// Time until the server-reported quota admits a request; expired
+    /// quotas are forgotten.
+    fn quota_wait(&mut self, now: SystemTime) -> Option<Duration> {
+        let quota = self.quota?;
+        match quota.reset.duration_since(now) {
+            Ok(wait) if quota.remaining == 0 && !wait.is_zero() => Some(wait),
+            Ok(_) => None,
+            Err(_) => {
+                self.quota = None;
+                None
+            }
         }
     }
 
@@ -74,10 +128,20 @@ pub struct Throttle {
 
 impl Throttle {
     pub fn new(overrides: &BTreeMap<String, String>, persist: Option<PathBuf>) -> Self {
+        Self::with_auth(overrides, persist, github_authenticated_from_env())
+    }
+
+    /// `new` with the GitHub credential state given instead of read
+    /// from the environment.
+    pub fn with_auth(
+        overrides: &BTreeMap<String, String>,
+        persist: Option<PathBuf>,
+        github_authenticated: bool,
+    ) -> Self {
         let mut buckets = BTreeMap::new();
-        for (domain, budget) in DEFAULTS {
+        for (domain, budget, burst) in defaults(github_authenticated) {
             if let Some(budget) = parse_budget(budget) {
-                buckets.insert(domain.to_string(), Bucket::new(budget));
+                buckets.insert(domain.to_string(), Bucket::with_burst(budget, burst));
             }
         }
         let mut user_declared = BTreeSet::new();
@@ -176,13 +240,21 @@ impl Throttle {
                 match buckets.get_mut(domain) {
                     None => return ThrottleAdmission::Granted,
                     Some(bucket) => {
-                        bucket.refill(SystemTime::now());
-                        match bucket.tokens.take() {
-                            rate_limit::TokenAdmission::Granted => {
-                                return ThrottleAdmission::Granted;
-                            }
-                            rate_limit::TokenAdmission::Wait { nanoseconds } => {
-                                Duration::from_nanos(nanoseconds)
+                        let now = SystemTime::now();
+                        bucket.refill(now);
+                        if let Some(wait) = bucket.quota_wait(now) {
+                            wait
+                        } else {
+                            match bucket.tokens.take() {
+                                rate_limit::TokenAdmission::Granted => {
+                                    if let Some(quota) = &mut bucket.quota {
+                                        quota.remaining = quota.remaining.saturating_sub(1);
+                                    }
+                                    return ThrottleAdmission::Granted;
+                                }
+                                rate_limit::TokenAdmission::Wait { nanoseconds } => {
+                                    Duration::from_nanos(nanoseconds)
+                                }
                             }
                         }
                     }
@@ -202,6 +274,16 @@ impl Throttle {
     pub fn acquire_url(&self, url: &str) {
         if let Some(host) = url_host(url) {
             self.acquire(&host);
+        }
+    }
+
+    /// Learn a domain's real quota from a response's `x-ratelimit-*`
+    /// headers. Domains without a bucket are ignored. The observation
+    /// replaces any earlier one (the server counts every client sharing
+    /// the address/token) and is persisted with the bucket.
+    pub fn observe_quota(&self, domain: &str, remaining: u64, reset: SystemTime) {
+        if let Some(bucket) = self.buckets.lock().get_mut(domain) {
+            bucket.quota = Some(Quota { remaining, reset });
         }
     }
 
@@ -268,6 +350,24 @@ pub(crate) fn acquire_url_until(url: &str, deadline: Instant) -> ThrottleAdmissi
         (Some(throttle), Some(host)) => throttle.acquire_before(&host, Some(deadline)),
         _ => ThrottleAdmission::Granted,
     }
+}
+
+/// Feed one response's rate-limit headers (`x-ratelimit-remaining`,
+/// `x-ratelimit-reset` as epoch seconds) into the installed throttle.
+pub(crate) fn observe_response(url: &str, remaining: Option<&str>, reset: Option<&str>) {
+    let (Some(throttle), Some(host)) = (global(), url_host(url)) else {
+        return;
+    };
+    if let Some((remaining, reset)) = parse_quota_headers(remaining, reset) {
+        throttle.observe_quota(&host, remaining, reset);
+    }
+}
+
+fn parse_quota_headers(remaining: Option<&str>, reset: Option<&str>) -> Option<(u64, SystemTime)> {
+    let remaining = remaining?.trim().parse::<u64>().ok()?;
+    let reset = reset?.trim().parse::<u64>().ok()?;
+    let reset = SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(reset))?;
+    Some((remaining, reset))
 }
 
 /// Persist bucket state for the next run (call at command end).
@@ -528,5 +628,125 @@ mod tests {
             Some("ghcr.io".into())
         );
         assert_eq!(url_host("not a url"), None);
+    }
+
+    #[test]
+    fn github_budget_is_auth_aware() {
+        let take = |authenticated: bool| {
+            let t = Throttle::with_auth(&BTreeMap::new(), None, authenticated);
+            let mut buckets = t.buckets.lock();
+            let bucket = buckets.get_mut("api.github.com").unwrap();
+            let mut granted = 0;
+            while bucket.tokens.take() == rate_limit::TokenAdmission::Granted {
+                granted += 1;
+            }
+            let wait = match bucket.tokens.take() {
+                rate_limit::TokenAdmission::Wait { nanoseconds } => nanoseconds,
+                other => panic!("{other:?}"),
+            };
+            (granted, wait)
+        };
+        let (granted, wait) = take(false);
+        assert_eq!(granted, ANONYMOUS_GITHUB_BURST, "anonymous burst");
+        assert_eq!(wait, 60_000_000_000, "anonymous refill is 1/min");
+        let (granted, wait) = take(true);
+        assert_eq!(granted, 30);
+        assert_eq!(wait, 2_000_000_000, "authenticated refill is 30/min");
+    }
+
+    #[test]
+    fn a_burst_refills_at_the_rate_not_all_at_once() {
+        let rate = parse_budget("1/min").unwrap();
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(4_000_000_000);
+        let mut bucket = Bucket::with_burst(rate, 5);
+        bucket.updated = start;
+        while bucket.tokens.take() == rate_limit::TokenAdmission::Granted {}
+        bucket.refill(start + Duration::from_secs(60));
+        assert_eq!(bucket.tokens.take(), rate_limit::TokenAdmission::Granted);
+        assert!(matches!(
+            bucket.tokens.take(),
+            rate_limit::TokenAdmission::Wait { .. }
+        ));
+    }
+
+    #[test]
+    fn quota_headers_parse_only_when_complete() {
+        let (remaining, reset) = parse_quota_headers(Some("12"), Some("1800000000")).unwrap();
+        assert_eq!(remaining, 12);
+        assert_eq!(
+            reset,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)
+        );
+        assert!(parse_quota_headers(Some("12"), None).is_none());
+        assert!(parse_quota_headers(None, Some("1")).is_none());
+        assert!(parse_quota_headers(Some("x"), Some("1")).is_none());
+    }
+
+    #[test]
+    fn an_exhausted_server_quota_blocks_until_reset_even_with_local_tokens() {
+        let t = Throttle::with_auth(&BTreeMap::new(), None, true);
+        t.observe_quota(
+            "api.github.com",
+            0,
+            SystemTime::now() + Duration::from_secs(3600),
+        );
+        let deadline = Instant::now() + Duration::from_secs(60);
+        assert_eq!(
+            t.acquire_before("api.github.com", Some(deadline)),
+            ThrottleAdmission::DeadlineExpired
+        );
+        // an unrelated domain is unaffected, and an elapsed reset forgets the quota
+        t.observe_quota(
+            "api.github.com",
+            0,
+            SystemTime::now() - Duration::from_secs(1),
+        );
+        assert_eq!(
+            t.acquire_before("api.github.com", Some(deadline)),
+            ThrottleAdmission::Granted
+        );
+    }
+
+    #[test]
+    fn remaining_quota_counts_down_per_grant_and_unknown_domains_are_ignored() {
+        let t = Throttle::with_auth(&BTreeMap::new(), None, true);
+        t.observe_quota(
+            "api.github.com",
+            2,
+            SystemTime::now() + Duration::from_secs(3600),
+        );
+        t.observe_quota("nowhere.example", 0, SystemTime::now());
+        assert!(!t.buckets.lock().contains_key("nowhere.example"));
+        let deadline = Instant::now() + Duration::from_secs(60);
+        for _ in 0..2 {
+            assert_eq!(
+                t.acquire_before("api.github.com", Some(deadline)),
+                ThrottleAdmission::Granted
+            );
+        }
+        assert_eq!(
+            t.acquire_before("api.github.com", Some(deadline)),
+            ThrottleAdmission::DeadlineExpired
+        );
+    }
+
+    #[test]
+    fn learned_quota_persists_across_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("throttle.json");
+        let reset = SystemTime::now() + Duration::from_secs(3600);
+        let first = Throttle::with_auth(&BTreeMap::new(), Some(path.clone()), false);
+        first.observe_quota("api.github.com", 0, reset);
+        first.save();
+        let second = Throttle::with_auth(&BTreeMap::new(), Some(path), false);
+        let quota = second.buckets.lock()["api.github.com"].quota.unwrap();
+        assert_eq!(quota.remaining, 0);
+        let secs = |t: SystemTime| t.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+        assert_eq!(secs(quota.reset), secs(reset));
+        let deadline = Instant::now() + Duration::from_secs(60);
+        assert_eq!(
+            second.acquire_before("api.github.com", Some(deadline)),
+            ThrottleAdmission::DeadlineExpired
+        );
     }
 }

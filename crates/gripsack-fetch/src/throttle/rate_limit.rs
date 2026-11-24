@@ -21,26 +21,38 @@ fn deficit_wait(deficit: u128, credits_per_ns: u128) -> u64 {
     quotient as u64 + 1
 }
 
-fn capacity_for(rate: BinaryTokenRate) -> CreditBalance {
+/// Largest accepted burst multiplier; keeps `amount * burst` far below u128.
+pub const MAX_BURST: u64 = 1024;
+
+fn capacity_for(rate: BinaryTokenRate, burst: u64) -> CreditBalance {
     let parts = rate.components();
     let period = parts.2.nanoseconds();
-    let amount = (parts.0 as u128) * (period as u128);
+    let amount = (parts.0 as u128) * (period as u128) * (burst.clamp(1, MAX_BURST) as u128);
 
     CreditBalance::from_shifted(amount, parts.1)
 }
 
 pub struct TokenBucket {
     rate: BinaryTokenRate,
+    /// Capacity as a multiple of one period's admissions (>= 1).
+    burst: u64,
     capacity: CreditBalance,
     available: CreditBalance,
 }
 
 impl TokenBucket {
     pub fn full(rate: BinaryTokenRate) -> Self {
-        let cap = capacity_for(rate);
+        Self::full_with_burst(rate, 1)
+    }
+
+    /// A full bucket holding `burst` periods' worth of tokens, refilling at `rate`.
+    pub fn full_with_burst(rate: BinaryTokenRate, burst: u64) -> Self {
+        let burst = burst.clamp(1, MAX_BURST);
+        let cap = capacity_for(rate, burst);
         let available = cap.copy();
         Self {
             rate,
+            burst,
             capacity: cap,
             available,
         }
@@ -50,49 +62,65 @@ impl TokenBucket {
         self.rate
     }
 
+    pub fn declared_burst(&self) -> u64 {
+        self.burst
+    }
+
     pub fn credit_words(&self) -> &[u64; CREDIT_WORDS] {
         self.available.words()
     }
 
     pub fn restored(
         rate: BinaryTokenRate,
+        burst: u64,
         saved_period: RatePeriod,
         words: [u64; CREDIT_WORDS],
     ) -> Self {
-        let cap = capacity_for(rate);
+        let burst = burst.clamp(1, MAX_BURST);
+        let cap = capacity_for(rate, burst);
         let mut available = CreditBalance::from_words(words);
         let parts = rate.components();
         available.rescale_capped(saved_period.nanoseconds(), parts.2.nanoseconds(), &cap);
         Self {
             rate,
+            burst,
             capacity: cap,
             available,
         }
     }
 
-    pub fn from_legacy(rate: BinaryTokenRate, bits: u64) -> Option<Self> {
+    pub fn from_legacy(rate: BinaryTokenRate, burst: u64, bits: u64) -> Option<Self> {
+        let burst = burst.clamp(1, MAX_BURST);
         let parts = rate.components();
         let mut available = legacy_credits::admit_legacy_credits(bits, parts.2)?;
-        let cap = capacity_for(rate);
+        let cap = capacity_for(rate, burst);
         available.clamp(&cap);
         Some(Self {
             rate,
+            burst,
             capacity: cap,
             available,
         })
     }
 
+    /// Adopt a declared `rate` with a one-period capacity (a declaration
+    /// replaces any built-in burst).
     pub fn reconfigure(&mut self, rate: BinaryTokenRate) {
+        if self.burst != 1 {
+            *self = Self::full(rate);
+            return;
+        }
         if self.rate == rate {
             return;
         }
         let previous = self.rate.components();
         let next = rate.components();
-        let cap = capacity_for(rate);
+        let cap = capacity_for(rate, self.burst);
         let mut available = self.available.copy();
         available.rescale_capped(previous.2.nanoseconds(), next.2.nanoseconds(), &cap);
         *self = Self {
             rate,
+            burst: self.burst,
             capacity: cap,
             available,
         };
@@ -101,7 +129,7 @@ impl TokenBucket {
     pub fn refill(&mut self, elapsed_ns: u128) {
         let parts = self.rate.components();
         let period = parts.2.nanoseconds();
-        if elapsed_ns >= period as u128 {
+        if elapsed_ns >= (period as u128) * (self.burst as u128) {
             self.available = self.capacity.copy();
         } else {
             let elapsed = elapsed_ns as u64;
