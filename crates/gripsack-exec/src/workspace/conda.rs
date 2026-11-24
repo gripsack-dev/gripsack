@@ -63,6 +63,29 @@ pub(crate) struct CondaRuntimeReceipt {
     pub platform_libraries: PlatformLibraries,
 }
 
+impl CondaRuntimeReceipt {
+    /// Whether two receipts bind the same prefix. `system` is excluded: it is
+    /// evidence measured from the hash-pinned tree on every realization, so a
+    /// newer scanner (more detail, different exclusions) may describe the same
+    /// prefix differently without it being a different package (#414).
+    pub(crate) fn binds_same_prefix(&self, other: &Self) -> bool {
+        self.platform == other.platform
+            && self.materialization == other.materialization
+            && self.final_prefix == other.final_prefix
+            && self.closure == other.closure
+            && self.platform_libraries == other.platform_libraries
+    }
+
+    /// `binds_same_prefix` over optional receipts: both absent, or both bind
+    /// the same prefix.
+    pub(crate) fn bind_same(left: Option<&Self>, right: Option<&Self>) -> bool {
+        match (left, right) {
+            (Some(left), Some(right)) => left.binds_same_prefix(right),
+            (left, right) => left.is_none() && right.is_none(),
+        }
+    }
+}
+
 /// A validated materialization: artifact plus receipt authority.
 pub(super) struct CondaMaterialization {
     pub artifact: Artifact,
@@ -1026,5 +1049,49 @@ mod baseline_tests {
         assert!(admit_frozen("python", &removed, &locked).is_err());
         locked.wheels.clear();
         assert!(admit_frozen("python", &source, &locked).is_err());
+    }
+}
+
+#[cfg(test)]
+mod receipt_upgrade_tests {
+    use super::CondaRuntimeReceipt;
+
+    // Real `cli-conda` receipts for the same prefix, written by core 0.58 and
+    // 0.59 (home path sanitized). 0.59 added `system.required_by`; the prefix
+    // is the same package, so reuse must not depend on that evidence (#414).
+    const RELEASED_0_58: &str = include_str!("conda/fixtures/receipt-0.58.json");
+    const RELEASED_0_59: &str = include_str!("conda/fixtures/receipt-0.59.json");
+
+    fn parse(json: &str) -> CondaRuntimeReceipt {
+        serde_json::from_str(json).expect("released receipt bytes still deserialize")
+    }
+
+    #[test]
+    fn receipt_written_by_previous_release_binds_the_same_prefix() {
+        let old = parse(RELEASED_0_58);
+        let new = parse(RELEASED_0_59);
+        assert_ne!(
+            old, new,
+            "fixture must exercise differing measured evidence"
+        );
+        assert!(old.binds_same_prefix(&new));
+        assert!(new.binds_same_prefix(&old));
+    }
+
+    #[test]
+    fn binding_fields_still_distinguish_prefixes() {
+        let old = parse(RELEASED_0_58);
+        let mut other = old.clone();
+        other.materialization = "0".repeat(64);
+        assert!(!old.binds_same_prefix(&other));
+        let mut other = old.clone();
+        other.final_prefix.push("elsewhere");
+        assert!(!old.binds_same_prefix(&other));
+        let mut other = old.clone();
+        other
+            .closure
+            .channels
+            .push("https://example.invalid/channel".into());
+        assert!(!old.binds_same_prefix(&other));
     }
 }

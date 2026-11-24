@@ -6,6 +6,28 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+## [0.60.0] — Upgrading from 0.58 works again
+
+### Fixed
+
+- A store written by an earlier release no longer blocks `grip check`, `plan`
+  or `apply` after upgrading to 0.59. Conda and Pixi packages were refused with
+  "same package identity names a different producer/runtime/command receipt"
+  because 0.59 records more detail about the system libraries a prefix needs.
+  That detail is measured again from the hash-pinned prefix on every run, so
+  package reuse now compares only the fields that define the package (platform,
+  materialization, prefix, closure, platform-library policy). No store cleanup
+  is needed. [#414](https://github.com/gripsack-dev/gripsack/issues/414),
+  [#413](https://github.com/gripsack-dev/gripsack/issues/413)
+- A refused package receipt names the output, its store path and the fields
+  that differ, instead of a bare `workspace` error with no span.
+  [#415](https://github.com/gripsack-dev/gripsack/issues/415)
+
+### Verification
+
+- Receipts written by 0.58 for a real Conda environment are checked in as test
+  fixtures; reuse must accept them and still tell different prefixes apart.
+
 ## [0.59.0] — Dogfooding: no approval step, fast launchers, wider Conda
 
 ### Changed
