@@ -82,8 +82,13 @@ pub(super) fn admit(
                     )
                 } else {
                     format!(
-                        "Conda prefix requires {name:?} outside the explicit OS runtime; \
-                         include that library in the frozen package closure"
+                        "Conda prefix requires {name:?}{} outside the explicit OS runtime; \
+                         include that library in the frozen package closure",
+                        system
+                            .required_by
+                            .get(name)
+                            .map(|file| format!(" (needed by {file:?})"))
+                            .unwrap_or_default()
                     )
                 },
             )

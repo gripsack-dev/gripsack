@@ -694,3 +694,35 @@ fn lifecycle_paths_cannot_hide_behind_directory_aliases() {
         admit_archive("fixture", record, &fixture.archives[&record.sha256]).unwrap();
     }
 }
+
+/// #406: a compiler's target sysroot is build payload, not host closure; its
+/// ELF files are not scanned, while the same file elsewhere is, and is named.
+#[test]
+fn target_sysroot_elf_files_stay_out_of_the_host_closure_scan() {
+    let elf = fs::read("/bin/true").unwrap();
+    let executable = |path| {
+        let mut member = Member::file(path, &elf);
+        member.mode = 0o755;
+        member
+    };
+    let sysroot = Fixture::new(
+        vec![
+            Member::directory("t"),
+            Member::directory("t/sysroot"),
+            Member::directory("t/sysroot/usr"),
+            Member::directory("t/sysroot/usr/bin"),
+            executable("t/sysroot/usr/bin/makedb"),
+        ],
+        true,
+        false,
+    );
+    assert!(sysroot.validate().unwrap().system.is_empty());
+    let host = Fixture::new(
+        vec![Member::directory("bin"), executable("bin/tool")],
+        true,
+        false,
+    );
+    let system = host.validate().unwrap().system;
+    assert!(!system.libraries.is_empty());
+    assert_eq!(system.required_by["libc.so.6"], "bin/tool");
+}
