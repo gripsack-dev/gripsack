@@ -106,6 +106,11 @@ pub fn observe_readonly(dest: &Path) -> std::io::Result<Option<Observation>> {
     }
 }
 
+/// Keep the kind, name the path: a bare errno is useless in a diagnostic.
+fn with_path(error: std::io::Error, action: &str, path: &Path) -> std::io::Error {
+    std::io::Error::new(error.kind(), format!("{action} {}: {error}", path.display()))
+}
+
 /// Open a destination's parent as a capability, creating parents for
 /// a fresh destination first. Deploy's check-then-write paths pin
 /// THIS inode: the drift hash, the journal capture, and the write
@@ -116,8 +121,8 @@ pub(crate) fn dest_capability(
     dest: &Path,
 ) -> std::io::Result<(gripsack_host::fs::Dir, std::path::PathBuf)> {
     let parent = dest.parent().unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    let dir = gripsack_host::fs::open(parent)?;
+    std::fs::create_dir_all(parent).map_err(|error| with_path(error, "create", parent))?;
+    let dir = gripsack_host::fs::open(parent).map_err(|error| with_path(error, "open", parent))?;
     Ok((
         dir,
         std::path::PathBuf::from(dest.file_name().unwrap_or_default()),

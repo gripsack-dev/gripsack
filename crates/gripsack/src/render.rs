@@ -231,6 +231,8 @@ pub struct DiagnosticSink {
     captured: Option<std::sync::Arc<gripsack_exec::source_bundle::SourceBundle>>,
     /// Some(collected) under --json; None prints as raised.
     json: Option<Vec<Diagnostic>>,
+    /// Declaration spans by owning output, once the IR is known.
+    owners: gripsack_ir::OutputOwners,
 }
 
 impl DiagnosticSink {
@@ -241,6 +243,7 @@ impl DiagnosticSink {
             json: None,
             source: SourceRoot::open(repo),
             captured: None,
+            owners: Default::default(),
         }
     }
 
@@ -252,6 +255,7 @@ impl DiagnosticSink {
             json: Some(Vec::new()),
             source: None,
             captured: None,
+            owners: Default::default(),
         }
     }
 
@@ -272,6 +276,12 @@ impl DiagnosticSink {
         self.captured = Some(sources);
     }
 
+    /// Learn which output owns which declaration span, so later diagnostics
+    /// can name their output however deep in the core they were raised.
+    pub fn bind_outputs(&mut self, ir: &Ir) {
+        self.owners.extend(ir.output_owners());
+    }
+
     /// Styling for non-diagnostic lines; disabled under --json (the
     /// document is never colored).
     pub fn palette(&self) -> Palette {
@@ -286,6 +296,15 @@ impl DiagnosticSink {
     /// collected for the JSON document on the machine surface.
     pub fn report(&mut self, diagnostics: &[Diagnostic]) {
         for (index, diagnostic) in diagnostics.iter().enumerate() {
+            let mut attributed = diagnostic.clone();
+            self.owners.attribute(&mut attributed);
+            tracing::error!(
+                code = attributed.code.as_ref(),
+                span = ?attributed.labels.iter().find_map(|label| label.span.as_ref().map(ToString::to_string)),
+                "{}",
+                attributed.message
+            );
+            let diagnostic = &attributed;
             let diagnostic = match &self.captured {
                 Some(sources) => logical_diagnostic(sources, diagnostic),
                 None => std::borrow::Cow::Borrowed(diagnostic),

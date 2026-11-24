@@ -23,6 +23,24 @@ pub(crate) fn check_destinations_with<'a>(
                 .with_label(declaration.span.cloned(), "destination declared here"),
             )
         })?;
+        if let Some((link, target)) = dangling_parent(&path) {
+            return Err(crate::ctx::ExecError::Gate(
+                gripsack_ir::Diagnostic::error(
+                    gripsack_ir::codes::BAD_DESTINATION,
+                    format!(
+                        "destination {:?} conflicts with a dangling symlink: parent {} points to {}, which does not exist",
+                        declaration.path,
+                        link.display(),
+                        target.display()
+                    ),
+                )
+                .with_label(declaration.span.cloned(), "destination declared here")
+                .with_help(format!(
+                    "restore the link target or remove {} so the directory can be created",
+                    link.display()
+                )),
+            ));
+        }
         let key = path.to_string_lossy().to_lowercase();
         let previous = owners.entry(key).or_default();
         if let Some(other) = previous.iter().find(|other| {
@@ -42,4 +60,21 @@ pub(crate) fn check_destinations_with<'a>(
         previous.push(declaration);
     }
     Ok(())
+}
+
+/// The nearest ancestor of `path` that is a symlink whose target is gone.
+/// Creating the destination's parent through it fails with a bare `EEXIST`.
+fn dangling_parent(path: &std::path::Path) -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    path.ancestors().skip(1).find_map(|ancestor| {
+        let meta = std::fs::symlink_metadata(ancestor).ok()?;
+        if !meta.file_type().is_symlink() || std::fs::metadata(ancestor).is_ok() {
+            return None;
+        }
+        let target = std::fs::read_link(ancestor).ok()?;
+        let target = match ancestor.parent() {
+            Some(parent) => parent.join(target),
+            None => target,
+        };
+        Some((ancestor.to_path_buf(), target))
+    })
 }
