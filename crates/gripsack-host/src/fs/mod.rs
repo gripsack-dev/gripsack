@@ -30,6 +30,8 @@ pub use identity::{DirectoryObjectIdentity, directory_object_identity};
 mod publication;
 pub use publication::{DurableFileWrite, StagedFileWrite, SyncedFileWrite, VisibleFileWrite};
 mod scoped;
+mod seal;
+pub use seal::{remove_sealed_tree, seal_tree, unseal_tree};
 mod streamed;
 pub use streamed::{atomic_copy_with_mode, publication_occurred};
 pub mod fault;

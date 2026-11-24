@@ -2,6 +2,6 @@
 
 mod acquire;
 pub(crate) mod preflight;
-pub(crate) use acquire::publish;
+pub(crate) use acquire::{publish, publish_unsealed};
 mod resolve;
 pub(crate) use resolve::resolve_spec;

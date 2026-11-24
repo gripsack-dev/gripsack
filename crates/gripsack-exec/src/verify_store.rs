@@ -295,7 +295,7 @@ fn return_corrupt(
             ));
             return Ok(());
         }
-        store.remove_dir_all(object)?;
+        gripsack_host::fs::remove_sealed_tree(&store, object)?;
         out.push((
             name.to_string(),
             Tone::Done,

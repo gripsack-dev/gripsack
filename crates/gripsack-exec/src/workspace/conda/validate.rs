@@ -473,15 +473,10 @@ pub(super) fn validate_admitted_tree(
                     if !matches!(want.content, Content::Directory) {
                         return Err(failure(output, format!("{relative:?} has wrong type")));
                     }
-                    check_mode(
-                        output,
-                        &relative,
-                        &metadata,
-                        modes.expected(want.mode, false),
-                    )?;
+                    check_directory_mode(output, &relative, &metadata, want.mode, modes)?;
                     seen.insert(relative.clone());
                 } else if !locked.wheels.is_empty() && !conda_directories.contains(&relative) {
-                    check_mode(output, &relative, &metadata, 0o755)?;
+                    check_directory_mode(output, &relative, &metadata, 0o755, modes)?;
                 }
                 stack.push((
                     gripsack_host::fs::open_dir_nofollow(&directory, Path::new(&name))?,
@@ -718,6 +713,24 @@ fn merge_inventory(
         }
     }
     Ok(())
+}
+
+/// Published directories are sealed read-only after publication. A crash between
+/// the rename and the seal leaves the staged mode, which is equally admissible:
+/// directory mode is not part of tree identity and files stay strictly checked.
+fn check_directory_mode(
+    output: &str,
+    path: &str,
+    metadata: &gripsack_host::fs::cap_std::fs::Metadata,
+    mode: u32,
+    modes: FileModes,
+) -> Result<(), ExecError> {
+    use gripsack_host::fs::cap_std::fs::PermissionsExt;
+    let actual = metadata.permissions().mode() & 0o7777;
+    match modes {
+        FileModes::Published if actual == mode & !0o222 => Ok(()),
+        _ => check_mode(output, path, metadata, mode),
+    }
 }
 
 fn check_mode(

@@ -99,7 +99,7 @@ impl Collectable {
             return Ok(false);
         }
         if metadata.is_dir() {
-            directory.remove_dir_all(&entry.name)?;
+            gripsack_host::fs::remove_sealed_tree(directory, Path::new(&entry.name))?;
         } else {
             // Includes symlinks: unlink the entry, never its target.
             gripsack_host::fs::remove_file(directory, Path::new(&entry.name))?;
