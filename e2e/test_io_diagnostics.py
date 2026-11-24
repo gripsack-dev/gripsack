@@ -96,3 +96,20 @@ def test_duplicate_helper_outputs_label_each_call_site_in_json(sandbox):
     assert labels, doc
     spans = {(label["span"]["file"].rsplit("/", 1)[-1], label["span"]["line"]) for label in labels}
     assert spans == {("gripsack.ts", 4), ("gripsack.ts", 5)}, spans
+
+
+def test_same_file_helper_never_points_into_the_driver(sandbox):
+    repo = sandbox / "inline"
+    repo.mkdir()
+    (repo / "gripsack.ts").write_text(
+        'import {defineWorkspace, workspace, pkg, provider, tarball} from "@gripsack/core";\n'
+        "function tool(name: string) {\n"
+        '  return pkg(name, {producer: provider(tarball("file:///nonexistent.tar.gz")), commands: {[name]: name},\n'
+        '    target: {os: "linux", arch: "x86_64"}, layout: {kind: "relocatable"}});\n'
+        "}\n"
+        'export default defineWorkspace(() => workspace({outputs:[tool("a"), tool("a")]}));\n'
+    )
+    doc = json.loads(grip("check", "--json", cwd=repo).stdout)
+    files = {label["span"]["file"].rsplit("/", 1)[-1]
+             for d in doc["diagnostics"] for label in d["labels"] if label["span"]}
+    assert files == {"gripsack.ts"}, doc
