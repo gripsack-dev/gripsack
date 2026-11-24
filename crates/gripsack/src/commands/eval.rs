@@ -90,15 +90,7 @@ pub(super) fn eval_prepared(
     )
     .map_err(operational)?;
     let receipt_id = receipt.id();
-    let approved = match prepared.authorize(!sink.is_json(), None) {
-        Ok(approved) => approved,
-        Err(code) => {
-            receipt
-                .finish(EvaluationOutcome::Rejected)
-                .map_err(operational)?;
-            return Err(code);
-        }
-    };
+    let approved = prepared.authorize();
     let result: Result<_, ExitCode> = (|| {
         // Host facts precede the artifact/build overlay and are not part of
         // source approval. Only the core binds subsequent explicit probes.
@@ -133,6 +125,20 @@ pub(super) fn eval_prepared(
             },
         ))
     })();
+    // A remote origin is confirmed once, after the sandboxed evaluation has
+    // produced what the repo declares. Evaluation itself is unchanged.
+    let result = result.and_then(|evaluated| {
+        let home = prepared.home();
+        match super::remote::origin_of(home, prepared.sources().repository_identity()) {
+            Some(origin) if !super::remote::is_trusted(home, &origin) => {
+                let ir: serde_json::Value =
+                    serde_json::from_str(&evaluated.0).map_err(operational)?;
+                super::remote::confirm_first_use(home, &origin, &super::guard::scan(&ir))?;
+                Ok(evaluated)
+            }
+            _ => Ok(evaluated),
+        }
+    });
     receipt
         .finish(if result.is_ok() {
             EvaluationOutcome::Completed

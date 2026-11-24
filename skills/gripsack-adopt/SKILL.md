@@ -103,29 +103,27 @@ attempt. A failed copy can leave a partial payload. Keep `gripsack.ts`: if
 adopt edited it, remove the import and the `outputs` entry named in the
 report. If it printed a manual-integration snippet, it did not edit the root.
 
-Generation deliberately stops with exit status 1 for source review, including
-with `--yes`; it does not apply unapproved source. After reviewing, approve and
-resume the same target and profile:
+Generation deliberately stops with exit status 1 so you can review the generated
+source and plan. After reviewing, resume the same target and profile:
 
 ```sh
-grip trust add .
 grip adopt ~/.config/helix --name helix --resume
 ```
 
 If the first invocation used `--host`, keep that identity on resume. Resume
 selects the evaluated profile and rejects destinations outside the adopted
-target; it applies only that profile. `--yes` skips confirmation, never source
-approval.
+target; it applies only that profile. `--yes` skips confirmation.
 
 ## 4. Prove it
 
-Inspect `grip trust inspect --json`, review changed source and policy, then
-approve that exact snapshot. Interactive `grip trust add` supports review;
-automation supplies reviewed `--bundle` and `--policy` digests. Never approve
-whatever an unreviewed script captures or use `GRIPSACK_TRUST_ALL`.
+There is no approval step for a repository on your disk: running grip on it is
+consent, and `grip plan` is the review. Read the "needs review" section it
+prints for new hook bodies, fetch domains and destinations outside `~`; `grip
+apply` confirms on a terminal only when such items appear. Scripts and CI pass
+`--yes`. A `--repo <git url>` is trusted on first use, once per origin URL.
 
-When source/frontend pins change, run `grip update`, review the resulting lock,
-and approve the changed snapshot before execution. Declare cache exclusions in
+When source/frontend pins change, run `grip update`, review the resulting lock
+with `grip plan`. Declare cache exclusions in
 `env.toml`; Git ignore files do not define captured authority. Global globs must
 not carve an admitted SDK pin. An editor-only SDK can be excluded explicitly to
 select the embedded frontend.

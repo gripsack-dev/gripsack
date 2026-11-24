@@ -53,6 +53,9 @@ struct PlanReport<'a> {
     changes: &'a semantic::ChangeSet,
     operations: &'a [semantic::operations::OperationExplanation],
     resolved_paths: &'a [gripsack_exec::ResolvedPayloadPath<'a>],
+    /// New hooks, fetch domains and destinations outside ~ since the last apply.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    needs_review: Option<&'a super::guard::Findings>,
 }
 
 /// Explicit live planning supplies already evaluated IR; this function itself
@@ -63,6 +66,7 @@ pub fn plan(
     selected: &[String],
     limits: gripsack_fetch::FetchLimits,
     json: bool,
+    needs_review: Option<&super::guard::Findings>,
 ) -> ExitCode {
     finish((|| {
         let home = gripsack_host::store::gripsack_home();
@@ -105,6 +109,7 @@ pub fn plan(
             changes: &changes,
             operations: &operations,
             resolved_paths: &paths,
+            needs_review,
         };
         emit(
             &report,

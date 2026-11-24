@@ -3,8 +3,9 @@
 Rules:
 - everything under tmp_path; HOME and GRIPSACK_HOME are redirected there —
   a test can never touch the developer's real profile;
-- disposable reviewed fixtures use explicit source/policy digest approval;
-  gate tests disable fixture approval rather than an application bypass;
+- local repos need no approval (#409); disposable fixtures pass `--yes` so the
+  apply guardrail and remote trust-on-first-use never block a script, and
+  tests of those gates disable it with approve=False;
 - offline only: sources are file:// fixture tarballs built here, or local
   git repos. Network in e2e is a bug;
 - the binary comes from GRIPSACK_BIN (set in docker; the gate stage has
@@ -156,7 +157,6 @@ def sandbox(tmp_path, monkeypatch, request, confined_runtime):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("GRIPSACK_HOME", str(tmp_path / ".local/share/gripsack"))
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
-    monkeypatch.delenv("GRIPSACK_TRUST_ALL", raising=False)
     monkeypatch.setattr(sys.modules[__name__], "_fixture_root", tmp_path.resolve())
     yield tmp_path
     rep = getattr(request.node, "rep_call", None)
@@ -210,19 +210,14 @@ def outcome_hint(result):
     facts = [f"exit={result.returncode}"]
     if match := re.search(r"\(os error ([0-9]{1,4})\)", text):
         facts.append(f"errno={match[1]}")
-    if "captured source/policy is not approved" in text:
-        facts.append("unapproved")
-        facts.extend(f"{key}={value}" for key, value in
-                     re.findall(r"--(bundle|policy) ([0-9a-f]{64})\b", text))
     return " ".join(facts)
 
 
-def approve_fixture(command, *, cwd=None, env=None):
-    """Explicitly approve only reviewed disposable fixtures, never real HOME.
+def confirm_fixture(command, *, cwd=None, env=None):
+    """Return `command` with `--yes` for disposable fixtures, never real HOME.
 
-    Inspection does not evaluate source. Its exact two fingerprints are passed
-    to add; a concurrent source/policy change is a failure, not a blanket grant.
-    Fault-injection controls belong to the tested command, not fixture setup.
+    `--yes` goes right after the subcommand so a trailing `-- cmd args` is
+    never altered. Only commands that evaluate a repo are touched.
     """
     if _fixture_root is None or len(command) < 2:
         return
@@ -251,44 +246,19 @@ def approve_fixture(command, *, cwd=None, env=None):
         candidate = Path(specification)
         candidate = candidate if candidate.is_absolute() else root / candidate
         assert candidate.resolve().is_relative_to(_fixture_root)
-    for key in list(environment):
-        if key.startswith(("GRIPSACK_FS_", "GRIPSACK_CRASH_", "GRIPSACK_EVAL_PAUSE_")):
-            environment.pop(key)
-    inspect = subprocess.run(
-        [str(command[0]), "trust", "inspect", specification, "--json"],
-        cwd=cwd, env=environment, capture_output=True, text=True, timeout=120,
-    )
-    if inspect.returncode:
-        # Invalid config/source/runtime cases must reach the tested command's
-        # actual diagnostic, not turn setup into a successful authorization.
-        print(f"fixture trust inspect: {outcome_hint(inspect)}; no approval granted",
-              file=sys.stderr)
-        return
-    inspected = json.loads(inspect.stdout)
-    assert Path(inspected["repository"]).is_relative_to(_fixture_root)
-    reviewed = f"bundle={inspected['bundle_digest']} policy={inspected['policy_digest']}"
-    if inspected["approval"]["status"]["status"] == "approved":
-        return reviewed
-    added = subprocess.run(
-        [str(command[0]), "trust", "add", specification,
-         "--bundle", inspected["bundle_digest"], "--policy", inspected["policy_digest"]],
-        cwd=cwd, env=environment, capture_output=True, text=True, timeout=120,
-    )
-    assert added.returncode == 0, f"fixture trust add: {outcome_hint(added)}; inspected {reviewed}"
-    return reviewed
+    command = list(map(str, command))
+    return command if "--yes" in arguments else [command[0], command[1], "--yes", *command[2:]]
 
 
 def run_grip(command, *, cwd=None, env=None, approve=True, **options):
-    reviewed = approve_fixture(command, cwd=cwd, env=env) if approve else None
-    result = subprocess.run(command, cwd=cwd, env=env, **options)
-    if reviewed and result.returncode:
-        print(f"fixture command: {outcome_hint(result)}; inspected {reviewed}", file=sys.stderr)
-    return result
+    if approve:
+        command = confirm_fixture(command, cwd=cwd, env=env) or command
+    return subprocess.run(command, cwd=cwd, env=env, **options)
 
 
 def start_grip(command, *, cwd=None, env=None, approve=True, **options):
     if approve:
-        approve_fixture(command, cwd=cwd, env=env)
+        command = confirm_fixture(command, cwd=cwd, env=env) or command
     return subprocess.Popen(command, cwd=cwd, env=env, **options)
 
 

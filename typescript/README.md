@@ -39,7 +39,7 @@ TypeScript filename. IR10 emits exactly `{ ir_version: 10, host, workspace }`.
 Declaration spans capture the caller's file, line and column for diagnostics.
 Use matching core and SDK versions. A deliberate repository-local SDK pin must
 export both `@gripsack/core` and `@gripsack/core/advanced`; changing frontend identity
-can require a lock update and renewed exact-digest source approval.
+can require a lock update.
 
 ## Packages and environments
 
@@ -106,8 +106,8 @@ configuration remain core-owned; consuming the package requires current trust.
 
 Run `grip update` to record selections, then `grip build tools` or
 `grip run --env dev -- rg --version`. Frozen consumers use the recorded selection
-without re-solving. Review changed captured source and policy digests before
-approving them; lock updates do not bypass approval.
+without re-solving. Review the lock change and `grip plan` before applying; lock
+updates never skip the plan guardrail.
 
 Since core 0.55, package command paths and `artifactFile`/`artifactTree`
 selectors accept the release asset tokens: `{version}` is the exact locked tag,

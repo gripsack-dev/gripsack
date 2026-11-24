@@ -20,7 +20,6 @@ const MAX_OBSERVATION_BYTES: u64 = 16 * 1024 * 1024;
 pub(super) struct State {
     base: Option<String>,
     manifest: Option<String>,
-    trust: Option<String>,
     sharing_trust: Option<String>,
     activation: Option<String>,
     operations: Vec<Operation>,
@@ -206,7 +205,6 @@ impl State {
                 .as_ref()
                 .map(|manifest| serde_json::to_vec(manifest).map(|bytes| digest(&bytes)))
                 .transpose()?,
-            trust: file_digest(&ctx.home.join("trust.toml"))?,
             sharing_trust: if packages.is_empty() {
                 None
             } else {
@@ -231,7 +229,6 @@ impl State {
             &current.manifest,
             "ownership or installed job revision",
         )?;
-        require_equal(&self.trust, &current.trust, "repository trust")?;
         require_equal(&self.sharing_trust, &current.sharing_trust, "package trust")?;
         require_equal(&self.activation, &current.activation, "activation state")?;
         require_equal(

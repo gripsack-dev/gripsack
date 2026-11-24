@@ -16,7 +16,6 @@ import pytest
 
 from conftest import (
     GRIP,
-    approve_fixture,
     grip,
     make_workspace_repo,
     make_tarball,
@@ -152,53 +151,30 @@ def test_doctor_neither_provisions_nor_implicitly_executes_path_deno(sandbox, mo
     assert not (sandbox / ".local/share/gripsack").exists()
 
 
-def test_untrusted_repo_fails_closed_without_tty(sandbox):
-    """No repository code runs before explicit captured-source approval."""
+def test_local_repo_needs_no_approval_and_keeps_no_trust_state(sandbox):
+    """Running grip on a repo on disk is consent (#409): no gate, no state."""
     repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
     (repo / "configs" / "demo").mkdir(parents=True)
     (repo / "configs" / "demo" / "a").write_text("a\n")
     out = grip("check", "--host", "testhost", cwd=repo, approve=False)
-    assert out.returncode != 0
+    assert out.returncode == 0, out.stderr
     receipts = [json.loads(path.read_text()) for path in
                 (sandbox / ".local/share/gripsack/evaluations").glob("*.json")]
-    assert [(receipt["outcome"], receipt["rounds"]) for receipt in receipts] == [("rejected", [])]
-    assert not (sandbox / ".local/share/gripsack/generations").exists()
+    assert [receipt["outcome"] for receipt in receipts] == ["completed"]
+    home = sandbox / ".local/share/gripsack"
+    assert not (home / "trust.toml").exists()
+    assert not (home / "known-remotes").exists()
+    # Editing the repo needs nothing either.
+    (repo / "configs" / "demo" / "a").write_text("b\n")
+    again = grip("check", "--host", "testhost", cwd=repo, approve=False)
+    assert again.returncode == 0, again.stderr
 
 
-def test_trust_add_records_and_unblocks_eval(sandbox):
-    """Explicit source/policy approval permits eval; revocation re-arms it."""
-    repo = make_workspace_repo(sandbox / "myenv", HELLO_PROFILE)
-    (repo / "configs" / "demo").mkdir(parents=True)
-    (repo / "configs" / "demo" / "a").write_text("a\n")
-
-    inspected = grip("trust", "inspect", str(repo), "--json", approve=False)
-    assert inspected.returncode == 0, inspected.stderr
-    source = json.loads(inspected.stdout)
-    out = grip("trust", "add", str(repo), "--bundle", source["bundle_digest"],
-               "--policy", source["policy_digest"], approve=False)
-    assert out.returncode == 0, out.stderr
-    listing = grip("trust", "list", "--json", approve=False)
-    assert listing.returncode == 0, listing.stderr
-    document = json.loads(listing.stdout)
-    assert document["version"] == 2
-    assert [(entry["repository"], entry["bundle"], entry["policy_digest"]) for entry in document["approved"]] == [
-        (str(repo), source["bundle_digest"], source["policy_digest"])
-    ]
-
-    out = grip("check", "--host", "testhost", cwd=repo, approve=False)
-    assert out.returncode == 0, out.stderr
-
-    out = grip("trust", "remove", str(repo))
-    assert out.returncode == 0, out.stderr
-    out = grip("check", "--host", "testhost", cwd=repo, approve=False)
-    assert out.returncode != 0
-    assert not json.loads(grip("trust", "list", "--json", approve=False).stdout)["approved"]
-
-
-
-
-
-
+def test_digest_approval_commands_are_gone(sandbox):
+    for arguments in (("trust", "add", "."), ("trust", "inspect", ".", "--json")):
+        out = grip(*arguments, approve=False)
+        assert out.returncode != 0
+        assert "unrecognized subcommand" in out.stderr
 
 
 def test_repo_build_path_does_not_choose_core_fact_detector(sandbox):
@@ -453,8 +429,6 @@ def test_init_printed_next_steps_apply_the_selected_workspace(sandbox, monkeypat
     decoy = sandbox / "decoy"
     (decoy / name).mkdir(parents=True)
     monkeypatch.setenv("CDPATH", str(decoy))
-    approve_fixture([str(GRIP.resolve()), "check"], cwd=repo)
-
     ran = subprocess.run(
         ["/bin/sh", "-ec", commands], cwd=caller,
         capture_output=True, text=True, timeout=120,

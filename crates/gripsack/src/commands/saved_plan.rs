@@ -61,7 +61,7 @@ pub fn apply(repo: &Path, path: &Path, palette: Palette) -> ExitCode {
         Err(error) => return failure(error),
     };
     let mut sink = DiagnosticSink::terminal(palette, repo);
-    // Capture and authorize current source/policy, but do not evaluate it. The
+    // Capture the current source/policy, but do not evaluate it. The
     // captured IR is the sole declaration input to execution.
     if let Err(error) = plan.preflight(repo, &gripsack_host::store::gripsack_home()) {
         return failure(error);
@@ -74,9 +74,7 @@ pub fn apply(repo: &Path, path: &Path, palette: Palette) -> ExitCode {
         Ok(prepared) => prepared,
         Err(code) => return code,
     };
-    if let Err(code) = prepared.authorize(false, None) {
-        return code;
-    }
+    let _ = prepared.authorize();
     let result = (|| -> Result<_, gripsack_exec::ExecError> {
         let policy = prepared.policy().digest()?.to_string();
         let facts = serde_json::to_value(gripsack_exec::facts::detect())?;

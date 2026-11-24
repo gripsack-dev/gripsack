@@ -15,11 +15,11 @@ sandboxed Deno eval ([RFC 0013](../../../docs/rfcs/2026-08-28-constrained-evalua
 - Everything under a `tmp_path`: `HOME` is redirected there (plus
   `GRIPSACK_HOME`), so a test can never touch the developer's real
   profile. Assert against the filesystem, not stdout snapshots.
-- **Trust gate**: `grip`, `run_grip` and `start_grip` explicitly inspect and
-  approve the source/policy digests of disposable fixtures under the sandbox.
-  They never infer authority from CI or use an application bypass. Gate tests
-  pass `approve=False` and perform their own inspect/add steps. Fault controls
-  are stripped only from fixture approval, not the command under test.
+- **Trust flow** (#409): local repos need no approval. `grip`, `run_grip` and
+  `start_grip` add `--yes` to `apply` of disposable fixtures so the plan
+  guardrail (new hooks, fetch domains, destinations outside `~`) never blocks
+  a non-interactive run. Tests of the guardrail or of remote trust on first use
+  pass `approve=False` and supply (or withhold) `--yes` themselves.
 - **Offline only.** Sources are `file://` fixture tarballs built in the
   test (`tarfile` module) or tiny local git repos (`git init`). Network
   in e2e is a bug — CI has no credentials and flakes are unacceptable.

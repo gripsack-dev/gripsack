@@ -7,7 +7,7 @@
 //! grip rollback|generations|gc|why-owns
 //!                      generations, instant rollback, store hygiene
 //! grip update          re-resolve pins into the lockfile
-//! grip trust           repo trust list — the gate before any eval (0013 D7)
+//! grip trust           list/revoke remote repos trusted on first use (#409)
 //! ```
 //!
 //! Colors and source snippets live in [`render`]; they follow the
@@ -31,6 +31,10 @@ use std::process::ExitCode;
     about = "gripsack — your whole environment in one bag"
 )]
 struct Cli {
+    /// Answer yes to confirmations: trust a remote repo on first use, and
+    /// apply new hooks, fetch domains or destinations outside ~ (scripts/CI)
+    #[arg(long, short = 'y', global = true)]
+    yes: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -52,9 +56,6 @@ enum Command {
         /// Workspace lock identity (default: configured host or hostname)
         #[arg(long)]
         host: Option<String>,
-        /// Apply without the confirmation prompt
-        #[arg(long)]
-        yes: bool,
         /// Apply an already-generated, newly approved profile without writing repo files
         #[arg(long, conflicts_with = "mode")]
         resume: bool,
@@ -209,8 +210,7 @@ enum Command {
         #[command(subcommand)]
         command: commands::HooksCommand,
     },
-    /// Inspect and approve captured source bytes and their evaluation policy.
-    /// Source or grant changes require renewed digest-bound approval.
+    /// List or revoke remote repos trusted on first use (local repos need none)
     Trust {
         #[command(subcommand)]
         command: commands::TrustCommand,
@@ -229,7 +229,9 @@ fn main() -> ExitCode {
         }
         return ExitCode::SUCCESS;
     }
-    let command = match Cli::parse().command {
+    let cli = Cli::parse();
+    commands::guard::set_assume_yes(cli.yes);
+    let command = match cli.command {
         // Fixture simulations must not even create a diagnostic run in the
         // user's real home; their workers also start before any tracing thread.
         Command::Hooks { command } if command.fixture_only() => {
@@ -326,14 +328,13 @@ fn main() -> ExitCode {
             name,
             mode,
             host,
-            yes,
             resume,
         } => commands::adopt(
             &path,
             name.as_deref(),
             mode.as_deref(),
             host.as_deref(),
-            yes,
+            commands::guard::assume_yes(),
             resume,
             palette,
         ),
@@ -455,6 +456,13 @@ fn main() -> ExitCode {
             ) {
                 return code;
             }
+            let found = commands::guard::scan(
+                &serde_json::from_str(&outcome.ir_json).unwrap_or(serde_json::Value::Null),
+            );
+            let fresh = found.new_since(&commands::guard::seen(
+                &gripsack_host::store::gripsack_home(),
+                &outcome.sources.repository_identity().display().to_string(),
+            ));
             if json {
                 return commands::review::plan(
                     &ir,
@@ -462,6 +470,7 @@ fn main() -> ExitCode {
                     &profiles,
                     outcome.fetch.limits(),
                     true,
+                    Some(&fresh),
                 );
             }
             // host-inputs header (0013 D6): the facts that went in and
@@ -488,6 +497,12 @@ fn main() -> ExitCode {
                     eprintln!("grip: cannot compute the preview: {error}");
                     return ExitCode::FAILURE;
                 }
+            }
+            if !fresh.is_empty() {
+                println!(
+                    "\n{}",
+                    palette.bold(&fresh.render("needs review — new since the last apply:"))
+                );
             }
             let selected = ir.workspace_outputs().filter(|output| {
                 profiles.is_empty() || profiles.iter().any(|name| name == output.name)

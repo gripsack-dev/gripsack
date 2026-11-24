@@ -292,14 +292,8 @@ impl SavedPlan {
             return Err(invalid("saved execution has no take-over grant"));
         }
         let ir = admit_ir(&self.binding.ir)?;
-        let receipt = crate::trust::evaluation::read(&ctx.home, self.binding.evaluation)?;
-        if crate::trust::status(&ctx.home, sources, &receipt.policy)?
-            != crate::trust::ApprovalStatus::Approved
-        {
-            return Err(invalid(
-                "stale saved plan: source approval is no longer current",
-            ));
-        }
+        // The captured evaluation receipt must still exist and be admissible.
+        crate::trust::evaluation::read(&ctx.home, self.binding.evaluation)?;
         self.binding.state.revalidate(&ir, ctx)
     }
 
