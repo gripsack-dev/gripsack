@@ -188,9 +188,7 @@ pub fn adopt(
         eprintln!("{}", generate::workspace_snippet(&name));
     }
 
-    eprintln!(
-        "grip: review the generated files, then resume:"
-    );
+    eprintln!("grip: review the generated files, then resume:");
     eprintln!(
         "  grip adopt {} --name {} --resume{}",
         serde_json::to_string(target).expect("string"),
