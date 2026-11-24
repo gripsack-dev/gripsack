@@ -174,6 +174,44 @@ struct PackageReceipt {
 }
 
 impl PackageReceipt {
+    /// Binding fields that differ between a retained receipt and the one this
+    /// binary computes. Measured evidence (conda `system`) is not binding, so
+    /// a receipt written by an earlier release is reused when only that
+    /// evidence was described differently (#414). Names feed diagnostics (#415).
+    fn binding_differences(&self, other: &Self) -> Vec<&'static str> {
+        let conda =
+            super::conda::CondaRuntimeReceipt::bind_same(self.conda.as_ref(), other.conda.as_ref());
+        [
+            ("version", self.version == other.version),
+            ("package", self.package == other.package),
+            ("producer_root", self.producer_root == other.producer_root),
+            (
+                "producer_payload",
+                self.producer_payload == other.producer_payload,
+            ),
+            ("tree", self.tree == other.tree),
+            ("commands", self.commands == other.commands),
+            ("runtime", self.runtime == other.runtime),
+            ("target", self.target == other.target),
+            ("layout", self.layout == other.layout),
+            ("conda", conda),
+            ("host_runtime", self.host_runtime == other.host_runtime),
+            (
+                "runtime_receipts",
+                self.runtime_receipts == other.runtime_receipts,
+            ),
+            ("archive_root", self.archive_root == other.archive_root),
+            ("selected_root", self.selected_root == other.selected_root),
+            (
+                "producer_retention",
+                self.producer_retention == other.producer_retention,
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(name, same)| (!same).then_some(name))
+        .collect()
+    }
+
     // Keep policy-free v1 receipts byte-for-byte serializable for retained hooks.
     fn supported_version(&self) -> bool {
         if !self.producer_retention.is_empty() {
@@ -303,12 +341,17 @@ pub(super) fn publish_package_with_context(
         producer_retention,
     };
     match read_receipt::<PackageReceipt>(ctx, &root, PACKAGE_RECEIPT)? {
-        Some(existing) if existing != receipt => {
-            return Err(failure(
-                "same package identity names a different producer/runtime/command receipt",
-            ));
+        Some(existing) => {
+            let differs = existing.binding_differences(&receipt);
+            if !differs.is_empty() {
+                return Err(receipt_conflict(
+                    declaration,
+                    &root,
+                    "its retained receipt",
+                    &differs,
+                ));
+            }
         }
-        Some(_) => {}
         None => {
             let temporary = tempfile::Builder::new()
                 .prefix("grip-workspace-package-")
@@ -370,25 +413,53 @@ pub(super) fn retained_package(
         .map(|package| (package.identity, package.root.clone()))
         .collect();
     let runtime_receipts = runtime_receipts(home, declaration, &runtime)?;
-    if !receipt.supported_version()
-        || receipt.package != identity
-        || receipt.producer_root != producer.root
-        || receipt.producer_payload != producer.payload
-        || receipt.tree != producer.tree
-        || receipt.commands != commands
-        || receipt.runtime != expected_runtime
-        || receipt.target != declaration.target
-        || receipt.layout != declaration.layout
-        || receipt.conda != conda
-        || receipt.host_runtime != declaration.host_runtime
-        || receipt.runtime_receipts != runtime_receipts
-        || receipt.archive_root != declaration.archive_root
-        || receipt.selected_root != selected_root
-        || receipt.producer_retention != portable_retention(&producer)
-        || (receipt.archive_root.is_some() && conda.is_some())
-    {
-        return Err(failure(
-            "retained package differs from its frozen identity/producer/runtime receipt",
+    let mut differs: Vec<&'static str> = [
+        ("version", receipt.supported_version()),
+        ("package", receipt.package == identity),
+        ("producer_root", receipt.producer_root == producer.root),
+        (
+            "producer_payload",
+            receipt.producer_payload == producer.payload,
+        ),
+        ("tree", receipt.tree == producer.tree),
+        ("commands", receipt.commands == commands),
+        ("runtime", receipt.runtime == expected_runtime),
+        ("target", receipt.target == declaration.target),
+        ("layout", receipt.layout == declaration.layout),
+        (
+            "conda",
+            super::conda::CondaRuntimeReceipt::bind_same(receipt.conda.as_ref(), conda.as_ref()),
+        ),
+        (
+            "host_runtime",
+            receipt.host_runtime == declaration.host_runtime,
+        ),
+        (
+            "runtime_receipts",
+            receipt.runtime_receipts == runtime_receipts,
+        ),
+        (
+            "archive_root",
+            receipt.archive_root == declaration.archive_root,
+        ),
+        ("selected_root", receipt.selected_root == selected_root),
+        (
+            "producer_retention",
+            receipt.producer_retention == portable_retention(&producer),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(name, same)| (!same).then_some(name))
+    .collect();
+    if receipt.archive_root.is_some() && conda.is_some() {
+        differs.push("archive_root+conda");
+    }
+    if !differs.is_empty() {
+        return Err(receipt_conflict(
+            declaration,
+            &root,
+            "its frozen inputs",
+            &differs,
         ));
     }
     Ok(Some(Arc::new(Package {
@@ -690,6 +761,26 @@ pub(super) fn write_receipt(
     )?;
     Ok(())
 }
+/// A retained package receipt that cannot be reused, named by output, store
+/// path and the binding fields that differ (#415).
+fn receipt_conflict(
+    declaration: &PackageOutput,
+    root: &Path,
+    against: &str,
+    fields: &[&'static str],
+) -> ExecError {
+    ExecError::Step {
+        output: declaration.name.clone(),
+        step: "artifact".into(),
+        detail: format!(
+            "retained package {} differs from {against} in {}; remove that store entry to \
+             republish it",
+            root.display(),
+            fields.join(", ")
+        ),
+    }
+}
+
 fn failure(detail: impl Into<String>) -> ExecError {
     ExecError::Step {
         output: "workspace".into(),

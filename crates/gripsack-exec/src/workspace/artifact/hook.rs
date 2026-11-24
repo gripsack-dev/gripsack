@@ -22,7 +22,10 @@ pub(in crate::workspace) fn capture(
         || receipt.commands != package.commands
         || receipt.target != package.target
         || receipt.layout != package.layout
-        || receipt.conda != package.conda
+        || !crate::workspace::conda::CondaRuntimeReceipt::bind_same(
+            receipt.conda.as_ref(),
+            package.conda.as_ref(),
+        )
         || receipt.host_runtime != package.host_runtime
         || receipt.archive_root != package.archive_root
         || receipt.selected_root != package.selected_root
@@ -33,7 +36,10 @@ pub(in crate::workspace) fn capture(
             .iter()
             .any(|runtime| receipt.runtime.get(&runtime.identity) != Some(&runtime.root))
     {
-        return Err(failure("hook package receipt identity differs"));
+        return Err(failure(format!(
+            "hook package receipt {} differs from the package it runs",
+            package.root.display()
+        )));
     }
     receipts.insert(
         package.identity,
@@ -305,6 +311,24 @@ mod tests {
         let bytes = serde_json::to_vec(receipt).unwrap();
         std::fs::write(root.join(PACKAGE_RECEIPT), &bytes).unwrap();
         Sha256Digest::of(&bytes)
+    }
+
+    #[test]
+    fn receipt_from_previous_release_is_reused_and_conflicts_are_named() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut old = receipt(temporary.path());
+        old.conda = Some(
+            serde_json::from_str(include_str!("../conda/fixtures/receipt-0.58.json")).unwrap(),
+        );
+        let mut new = receipt(temporary.path());
+        new.conda = Some(
+            serde_json::from_str(include_str!("../conda/fixtures/receipt-0.59.json")).unwrap(),
+        );
+        assert_ne!(old, new);
+        assert!(old.binding_differences(&new).is_empty());
+        new.tree = serde_json::from_value(serde_json::json!("1".repeat(64))).unwrap();
+        new.conda.as_mut().unwrap().materialization = "0".repeat(64);
+        assert_eq!(old.binding_differences(&new), ["tree", "conda"]);
     }
 
     #[test]
