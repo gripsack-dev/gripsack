@@ -506,6 +506,7 @@ fn conda_platform_libraries_are_host_provided_by_default() {
     let system = crate::workspace::conda::SystemRuntime {
         libraries: vec!["libX11.so.6".into(), "libGL.so.1".into()],
         loaders: Vec::new(),
+        required_by: Default::default(),
     };
     let policy = PlatformLibraries::HostProvided;
     assert!(platform::admit(&system, policy, &gnu_host(), &span()).is_ok());
@@ -522,6 +523,33 @@ fn conda_platform_libraries_are_host_provided_by_default() {
     let ambient = crate::workspace::conda::SystemRuntime {
         libraries: vec!["libstdc++.so.6".into()],
         loaders: Vec::new(),
+        required_by: Default::default(),
     };
     assert!(platform::admit(&ambient, policy, &gnu_host(), &span()).is_err());
+}
+
+/// #406: a refused system library names the file that requires it.
+#[test]
+fn conda_system_library_refusal_names_the_requiring_file() {
+    use gripsack_ir::workspace_model::PlatformLibraries;
+    let system = crate::workspace::conda::SystemRuntime {
+        libraries: vec!["libselinux.so.1".into()],
+        loaders: Vec::new(),
+        required_by: [(
+            "libselinux.so.1".to_string(),
+            "bin/needs-selinux".to_string(),
+        )]
+        .into(),
+    };
+    let refused = platform::admit(
+        &system,
+        PlatformLibraries::HostProvided,
+        &gnu_host(),
+        &span(),
+    )
+    .unwrap_err();
+    assert!(
+        refused.to_string().contains("bin/needs-selinux"),
+        "{refused}"
+    );
 }

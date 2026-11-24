@@ -294,6 +294,17 @@ fn publish_packages<'a>(
                     );
                     ctx.reporter().started(name, &note);
                 }
+                // #405: export-only activate.d scripts are evaluated, never
+                // run; name the variables they contribute.
+                let activation = super::conda::activation_environment(receipt).map_err(failure)?;
+                if !activation.is_empty() {
+                    let names: Vec<_> = activation.keys().map(String::as_str).collect();
+                    let note = format!(
+                        "sets {} (export-only conda activate.d scripts, evaluated not executed)",
+                        names.join(", ")
+                    );
+                    ctx.reporter().started(name, &note);
+                }
             }
             packages.insert(
                 name,

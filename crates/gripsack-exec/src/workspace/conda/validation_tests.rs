@@ -402,10 +402,9 @@ fn lifecycle_admission_rejects_all_policy_paths_in_both_formats() {
             "Scripts/.fixture-pre-link.bat",
             "Scripts/.fixture-post-link.bat",
             "Scripts/.fixture-pre-unlink.bat",
+            // Not `*.sh`: an activation directory admits nothing but scripts.
             "etc/conda/activate.d/hook",
-            "etc/conda/deactivate.d/hook",
             "etc/activate.d/hook",
-            "etc/deactivate.d/hook",
         ] {
             // A non-executable empty file still requires refusal. A symlink
             // (including a dangling alias) must not bypass existence policy.
@@ -433,15 +432,57 @@ fn lifecycle_admission_rejects_all_policy_paths_in_both_formats() {
                 fixture.refused(path);
             }
         }
-        for path in [
-            "etc/conda/activate.d",
-            "etc/conda/deactivate.d",
-            "etc/activate.d",
-            "etc/deactivate.d",
+    }
+}
+
+/// #405: activation directories and export-only `activate.d/*.sh` scripts are
+/// admitted (never executed); anything the hermetic evaluator cannot
+/// interpret is refused with the script named.
+#[test]
+fn export_only_activation_scripts_are_admitted_and_others_are_refused() {
+    for conda in [false, true] {
+        let admitted = Fixture::new(
+            vec![
+                Member::directory("etc"),
+                Member::directory("etc/conda"),
+                Member::directory("etc/conda/activate.d"),
+                Member::file(
+                    "etc/conda/activate.d/a_activate.sh",
+                    b"export FIXTURE_HOME=\"$CONDA_PREFIX/share/fixture\"\n",
+                ),
+                Member::directory("etc/conda/deactivate.d"),
+                Member::file("etc/conda/deactivate.d/a_deactivate.sh", b"unset X\n"),
+            ],
+            conda,
+            false,
+        );
+        let record = &admitted.locked.packages[0];
+        admit_archive("fixture", record, &admitted.archives[&record.sha256]).unwrap();
+        admitted.validate().unwrap();
+        for (script, needle) in [
+            (&b"curl http://example.invalid\n"[..], "command `curl`"),
+            (&b"export X=$(id)\n"[..], "command substitution"),
+            (&b"export PATH=/x\n"[..], "manages itself"),
         ] {
-            let fixture = Fixture::new(vec![Member::directory(path)], conda, false);
-            let record = &fixture.locked.packages[0];
-            assert!(admit_archive("fixture", record, &fixture.archives[&record.sha256]).is_err());
+            let refused = Fixture::new(
+                vec![
+                    Member::directory("etc"),
+                    Member::directory("etc/conda"),
+                    Member::directory("etc/conda/activate.d"),
+                    Member::file("etc/conda/activate.d/bad.sh", script),
+                ],
+                conda,
+                false,
+            );
+            let record = &refused.locked.packages[0];
+            let error = admit_archive("fixture", record, &refused.archives[&record.sha256])
+                .err()
+                .expect("hostile activation script admitted")
+                .to_string();
+            assert!(
+                error.contains("bad.sh") && error.contains(needle),
+                "{error}"
+            );
         }
     }
 }
@@ -669,7 +710,7 @@ fn lifecycle_paths_cannot_hide_behind_directory_aliases() {
                     Member::link("etc", "share/etc"),
                     Member::file("share/etc/conda/activate.d/hook", b""),
                 ],
-                "etc/conda/activate.d",
+                "aliases are not admitted",
             ),
             (vec![Member::link("bin", "bin")], "cycles or exceeds"),
             (vec![Member::link("bin", "../outside")], "escapes"),
@@ -693,4 +734,65 @@ fn lifecycle_paths_cannot_hide_behind_directory_aliases() {
         let record = &fixture.locked.packages[0];
         admit_archive("fixture", record, &fixture.archives[&record.sha256]).unwrap();
     }
+}
+
+/// #406: a compiler's target sysroot is build payload, not host closure; its
+/// ELF files are not scanned, while the same file elsewhere is, and is named.
+#[test]
+fn target_sysroot_elf_files_stay_out_of_the_host_closure_scan() {
+    // Any dynamically linked system executable stands in for makedb.
+    let candidates = ["/bin/true", "/bin/sh", "/usr/bin/env", "/bin/ls"];
+    let mut checked = false;
+    for path in candidates {
+        let Ok(elf) = fs::read(path) else { continue };
+        let executable = |path| {
+            let mut member = Member::file(path, &elf);
+            member.mode = 0o755;
+            member
+        };
+        let host = Fixture::new(
+            vec![Member::directory("bin"), executable("bin/tool")],
+            true,
+            false,
+        );
+        let system = host.validate().unwrap().system;
+        if system.libraries.is_empty() {
+            continue;
+        }
+        for library in &system.libraries {
+            assert_eq!(system.required_by[library], "bin/tool");
+        }
+        let sysroot = Fixture::new(
+            vec![
+                Member::directory("t"),
+                Member::directory("t/sysroot"),
+                Member::directory("t/sysroot/usr"),
+                Member::directory("t/sysroot/usr/bin"),
+                executable("t/sysroot/usr/bin/makedb"),
+            ],
+            true,
+            false,
+        );
+        assert!(sysroot.validate().unwrap().system.is_empty());
+        checked = true;
+        break;
+    }
+    assert!(checked, "no dynamically linked system executable found");
+}
+
+/// #405: a refused transitive package names who pulled it in.
+#[test]
+fn refused_package_names_its_dependents() {
+    let fixture = Fixture::new(vec![Member::file("data", b"x")], true, false);
+    let mut dependent = fixture.locked.packages[0].clone();
+    dependent.name = "app".into();
+    dependent.depends = vec!["fixture >=1.0".into()];
+    let mut locked = fixture.locked.clone();
+    locked.packages.push(dependent);
+    let detail = with_dependents(&locked, &locked.packages[0], "unsupported".into());
+    assert_eq!(detail, "unsupported (required by app)");
+    assert_eq!(
+        with_dependents(&locked, &locked.packages[1], "unsupported".into()),
+        "unsupported"
+    );
 }

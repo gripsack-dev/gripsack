@@ -82,6 +82,16 @@ pub(crate) struct SystemRuntime {
     pub libraries: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub loaders: Vec<String>,
+    /// First prefix-relative file that needs each system library, so a
+    /// refusal can name its cause.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub required_by: BTreeMap<String, String>,
+}
+/// Compilers ship a target-side `sysroot/` tree (glibc headers, libraries and
+/// helper programs for the compilation target). Those files are build inputs,
+/// never executed on the host, so they stay outside the host closure scan.
+fn in_target_sysroot(relative: &str) -> bool {
+    relative.split('/').any(|part| part == "sysroot")
 }
 impl SystemRuntime {
     pub(crate) fn is_empty(&self) -> bool {
@@ -212,6 +222,32 @@ pub(super) fn admit_archive(
     Ok(archive)
 }
 
+/// Name the locked packages that pull `record` in, so a refused transitive
+/// dependency can be traced to the package the author actually asked for.
+fn with_dependents(
+    locked: &LockedCondaEnvironment,
+    record: &LockedCondaPackage,
+    detail: String,
+) -> String {
+    let dependents: Vec<_> = locked
+        .packages
+        .iter()
+        .filter(|other| {
+            other.name != record.name
+                && other
+                    .depends
+                    .iter()
+                    .any(|spec| spec.split_whitespace().next() == Some(record.name.as_str()))
+        })
+        .map(|other| other.name.as_str())
+        .collect();
+    if dependents.is_empty() {
+        detail
+    } else {
+        format!("{detail} (required by {})", dependents.join(", "))
+    }
+}
+
 pub(crate) struct AdmittedArchives {
     conda: BTreeMap<String, CondaArchive>,
     wheels: BTreeMap<String, gripsack_conda::wheels::WheelArchive>,
@@ -253,13 +289,15 @@ pub(super) fn admit_archives_bounded(
                 budget.entries.min(MAX_CLOSURE_ENTRIES),
             )
             .map_err(|error| archive_failure(output, record, error))?;
-            inventory::admit_scripts(record, &reader)
-                .map_err(|error| archive_failure(output, record, error))?;
+            inventory::admit_scripts(record, &reader).map_err(|error| {
+                archive_failure(output, record, with_dependents(locked, record, error))
+            })?;
             budget.charge(output, reader.expanded_bytes, reader.entries)?;
             readers.insert(record.sha256.clone(), reader);
         } else {
-            inventory::admit_scripts(record, &readers[&record.sha256])
-                .map_err(|error| archive_failure(output, record, error))?;
+            inventory::admit_scripts(record, &readers[&record.sha256]).map_err(|error| {
+                archive_failure(output, record, with_dependents(locked, record, error))
+            })?;
         }
     }
     let mut wheels = BTreeMap::new();
@@ -428,6 +466,7 @@ pub(super) fn validate_admitted_tree(
     let mut receipts = BTreeSet::new();
     let mut sonames_needed = BTreeSet::new();
     let mut loaders = BTreeSet::new();
+    let mut required_by = BTreeMap::new();
     let (mut staged_bytes, mut walked) = (0u64, 0usize);
     let entry_cap = expected.len() + directories.len() + expected_receipts.len();
     // Every directory is pinned before walking; leaf reads never follow a
@@ -543,7 +582,7 @@ pub(super) fn validate_admitted_tree(
             let elf = read == 4 && &head == b"\x7fELF";
             let macho =
                 read == 4 && locked.platform.starts_with("osx-") && signing::is_macho(&head);
-            if elf || macho {
+            if (elf || macho) && !in_target_sysroot(&relative) {
                 file.rewind()?;
                 let runtime = executable::classify(&mut file).map_err(|error| {
                     failure(output, format!("invalid executable {relative:?}: {error}"))
@@ -553,7 +592,11 @@ pub(super) fn validate_admitted_tree(
                     // Mach relative install names are resolved by native
                     // consumer admission, not misreported as ambient needs.
                     if elf || (path.is_absolute() && !path.starts_with(final_prefix)) {
-                        sonames_needed.insert(library.to_string_lossy().into_owned());
+                        let name = library.to_string_lossy().into_owned();
+                        required_by
+                            .entry(name.clone())
+                            .or_insert_with(|| relative.clone());
+                        sonames_needed.insert(name);
                     }
                 }
                 if let Some(executable::Interpreter::Loader(loader)) = runtime.interpreter {
@@ -584,6 +627,10 @@ pub(super) fn validate_admitted_tree(
             .filter(|name| !provided.contains(name.as_str()))
             .collect(),
         loaders: loaders.into_iter().collect(),
+        required_by: required_by
+            .into_iter()
+            .filter(|(name, _)| !provided.contains(name.as_str()))
+            .collect(),
     };
     Ok(ValidatedTree {
         tree: store::canonical_tree_hash(tree_root)?,

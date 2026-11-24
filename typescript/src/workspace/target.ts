@@ -87,7 +87,9 @@ export function checkPackageTarget(
   const supplied = provider.target;
   const requested = consumer.target;
   if (supplied.os !== requested.os || supplied.arch !== requested.arch ||
-    (supplied.abi ?? null) !== (requested.abi ?? null) ||
+    // An environment that omits the ABI is unspecified, not musl: it admits
+    // ABI-specific members. A consumer that names an ABI requires it exactly.
+    ((requested.abi ?? null) !== null && (supplied.abi ?? null) !== requested.abi) ||
     !floorAtMost(supplied.minimum_os, requested.minimum_os)) {
     throw new DiagnosticError({
       code: diagnosticCodes.unknownWorkspaceRef,
@@ -95,7 +97,7 @@ export function checkPackageTarget(
       message:
         `workspace: ${consumer.kind} '${consumer.name}' — target of '${provider.name}' (${JSON.stringify(supplied)}) ` +
         `cannot satisfy target of '${consumer.name}' (${JSON.stringify(requested)}): ` +
-        `OS/arch/ABI must match and provider minimum OS must not exceed the consumer`,
+        `OS/arch must match, a declared ABI must match and provider minimum OS must not exceed the consumer`,
       labels: [
         { span: consumer.span, note: `consumer '${consumer.name}' declared here` },
         { span: provider.span, note: `provider '${provider.name}' declared here` },
