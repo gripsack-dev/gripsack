@@ -767,3 +767,20 @@ fn target_sysroot_elf_files_stay_out_of_the_host_closure_scan() {
     assert!(!system.libraries.is_empty());
     assert_eq!(system.required_by["libc.so.6"], "bin/tool");
 }
+
+/// #405: a refused transitive package names who pulled it in.
+#[test]
+fn refused_package_names_its_dependents() {
+    let fixture = Fixture::new(vec![Member::file("data", b"x")], true, false);
+    let mut dependent = fixture.locked.packages[0].clone();
+    dependent.name = "app".into();
+    dependent.depends = vec!["fixture >=1.0".into()];
+    let mut locked = fixture.locked.clone();
+    locked.packages.push(dependent);
+    let detail = with_dependents(&locked, &locked.packages[0], "unsupported".into());
+    assert_eq!(detail, "unsupported (required by app)");
+    assert_eq!(
+        with_dependents(&locked, &locked.packages[1], "unsupported".into()),
+        "unsupported"
+    );
+}

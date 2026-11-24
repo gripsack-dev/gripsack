@@ -6,6 +6,30 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+### Added
+
+- Conda packages that ship `etc/conda/activate.d/*.sh` scripts (libxml2-16 via
+  clang/llvm and lxml, libglib via matplotlib) are admitted. The scripts are
+  never executed: a deterministic shell-subset interpreter evaluates their
+  exports from the verified installed prefix, ambient variables unset. The
+  variables apply in profile activation, `grip run`/tasks and command wrappers
+  (the declaring environment overrides them) and are named when the package is
+  built. Scripts outside the subset, `pre-link`/`post-link`/`pre-unlink`
+  scripts, and non-`.sh` activation files are still refused, naming the script
+  and the packages that require it.
+  [#405](https://github.com/gripsack-dev/gripsack/issues/405)
+- An environment whose target omits `abi` admits ABI-specific members such as an
+  `abi: "gnu"` package that needs `hostRuntime`; an environment that declares an
+  ABI still requires it exactly.
+  [#407](https://github.com/gripsack-dev/gripsack/issues/407)
+
+### Fixed
+
+- A conda `gcc`/`gxx` environment no longer fails with E128 on
+  `libselinux.so.1`: files under a `sysroot/` target tree are not scanned as host
+  executables, and a refused system library names the file that needs it.
+  [#406](https://github.com/gripsack-dev/gripsack/issues/406)
+
 ## [0.59.0] — Recovery checks and retained builds
 
 ### Fixed

@@ -222,6 +222,32 @@ pub(super) fn admit_archive(
     Ok(archive)
 }
 
+/// Name the locked packages that pull `record` in, so a refused transitive
+/// dependency can be traced to the package the author actually asked for.
+fn with_dependents(
+    locked: &LockedCondaEnvironment,
+    record: &LockedCondaPackage,
+    detail: String,
+) -> String {
+    let dependents: Vec<_> = locked
+        .packages
+        .iter()
+        .filter(|other| {
+            other.name != record.name
+                && other
+                    .depends
+                    .iter()
+                    .any(|spec| spec.split_whitespace().next() == Some(record.name.as_str()))
+        })
+        .map(|other| other.name.as_str())
+        .collect();
+    if dependents.is_empty() {
+        detail
+    } else {
+        format!("{detail} (required by {})", dependents.join(", "))
+    }
+}
+
 pub(crate) struct AdmittedArchives {
     conda: BTreeMap<String, CondaArchive>,
     wheels: BTreeMap<String, gripsack_conda::wheels::WheelArchive>,
@@ -263,13 +289,15 @@ pub(super) fn admit_archives_bounded(
                 budget.entries.min(MAX_CLOSURE_ENTRIES),
             )
             .map_err(|error| archive_failure(output, record, error))?;
-            inventory::admit_scripts(record, &reader)
-                .map_err(|error| archive_failure(output, record, error))?;
+            inventory::admit_scripts(record, &reader).map_err(|error| {
+                archive_failure(output, record, with_dependents(locked, record, error))
+            })?;
             budget.charge(output, reader.expanded_bytes, reader.entries)?;
             readers.insert(record.sha256.clone(), reader);
         } else {
-            inventory::admit_scripts(record, &readers[&record.sha256])
-                .map_err(|error| archive_failure(output, record, error))?;
+            inventory::admit_scripts(record, &readers[&record.sha256]).map_err(|error| {
+                archive_failure(output, record, with_dependents(locked, record, error))
+            })?;
         }
     }
     let mut wheels = BTreeMap::new();
