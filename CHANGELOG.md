@@ -6,6 +6,8 @@ User-visible changes per release. Design decisions live in the
 
 ## [Unreleased]
 
+## [0.59.0] — Dogfooding: no approval step, fast launchers, wider Conda
+
 ### Changed
 
 - Digest-bound source/policy approval is gone. Running grip on a repository on
@@ -17,6 +19,17 @@ User-visible changes per release. Design decisions live in the
   covers scripts and CI. A `--repo <git url>` is trusted on first use, once per
   origin URL; `grip trust list`/`remove <url>` manage those records.
   [#409](https://github.com/gripsack-dev/gripsack/issues/409)
+- Managed launchers no longer re-hash every package payload or stat-walk every
+  file on each exec; they admit only the invoked command against its sealed,
+  hash-addressed payload. About 190 ms → 55 ms per exec for a 30-package
+  environment. Tamper detection for the rest of a payload moved to
+  `grip store-verify`; a tampered invoked executable is still refused.
+  [#402](https://github.com/gripsack-dev/gripsack/issues/402)
+- `symlinkTo` over an `artifactFile`/`artifactTree` selector now links into the
+  realized package instead of publishing a copy, so `$ORIGIN` rpaths and
+  prefix-relative runtime directories keep working (conda `tmux`, `helix`).
+  The package stays retained by the generation; tracked copies still copy.
+  [#403](https://github.com/gripsack-dev/gripsack/issues/403)
 
 ### Added
 
@@ -41,11 +54,26 @@ User-visible changes per release. Design decisions live in the
   `libselinux.so.1`: files under a `sysroot/` target tree are not scanned as host
   executables, and a refused system library names the file that needs it.
   [#406](https://github.com/gripsack-dev/gripsack/issues/406)
-
-## [0.59.0] — Recovery checks and retained builds
-
-### Fixed
-
+- Published store directories are sealed read-only, so running a tool from the
+  store (Python writing `__pycache__`) can no longer corrupt an entry and fail
+  the next apply. `grip gc` and `store-verify` repair remove sealed trees.
+  [#404](https://github.com/gripsack-dev/gripsack/issues/404)
+- I/O failures name the path, the output and its declaration: a command path
+  missing from an artifact, a dangling symlink above a destination (now a
+  conflict) and raw filesystem errors. Diagnostics are logged with their code
+  and span, and `grip check --json` carries their labels.
+  [#401](https://github.com/gripsack-dev/gripsack/issues/401)
+- Diagnostics name the output they belong to, and spans point at the caller of
+  an authoring helper (`release("hunk", …)`) instead of inside the helper. A
+  conda closure refusal names the file that needs the missing library.
+  [#408](https://github.com/gripsack-dev/gripsack/issues/408)
+- The `api.github.com` fetch budget depends on authentication (anonymous: 1/min
+  with a burst of 5, matching GitHub's 60/h; authenticated: 30/min), every
+  response's `x-ratelimit-*` headers feed the persisted budget, `grip update`
+  skips settled tag-pinned releases, and release metadata is cached per run.
+  [#411](https://github.com/gripsack-dev/gripsack/issues/411)
+- `hostPath("~/…")` expands like file destinations instead of failing at apply.
+  [#410](https://github.com/gripsack-dev/gripsack/issues/410)
 - A publishing Conda or Pixi update no longer drops the reference that keeps
   a previously built output usable after `grip gc`. If a multi-output update
   fails, the old lock's retained archives remain available offline. A successful
