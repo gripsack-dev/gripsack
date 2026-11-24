@@ -377,7 +377,7 @@ def test_capture_policy_cannot_add_ambient_roots(sandbox):
 def test_ordinary_external_sdk_pin_still_wins_with_unrelated_exclusion(sandbox):
     repo, _ = pinned_value_repo(sandbox)
     exclude(repo, ".venv")
-    reviewed = checked(repo, "unused")
+    reviewed = checked(repo, "before")
     assert reviewed["policy"]["frontend"]["implementation"] == "pinned_frontend"
 
 
