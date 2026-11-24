@@ -740,32 +740,44 @@ fn lifecycle_paths_cannot_hide_behind_directory_aliases() {
 /// ELF files are not scanned, while the same file elsewhere is, and is named.
 #[test]
 fn target_sysroot_elf_files_stay_out_of_the_host_closure_scan() {
-    let elf = fs::read("/bin/true").unwrap();
-    let executable = |path| {
-        let mut member = Member::file(path, &elf);
-        member.mode = 0o755;
-        member
-    };
-    let sysroot = Fixture::new(
-        vec![
-            Member::directory("t"),
-            Member::directory("t/sysroot"),
-            Member::directory("t/sysroot/usr"),
-            Member::directory("t/sysroot/usr/bin"),
-            executable("t/sysroot/usr/bin/makedb"),
-        ],
-        true,
-        false,
-    );
-    assert!(sysroot.validate().unwrap().system.is_empty());
-    let host = Fixture::new(
-        vec![Member::directory("bin"), executable("bin/tool")],
-        true,
-        false,
-    );
-    let system = host.validate().unwrap().system;
-    assert!(!system.libraries.is_empty());
-    assert_eq!(system.required_by["libc.so.6"], "bin/tool");
+    // Any dynamically linked system executable stands in for makedb.
+    let candidates = ["/bin/true", "/bin/sh", "/usr/bin/env", "/bin/ls"];
+    let mut checked = false;
+    for path in candidates {
+        let Ok(elf) = fs::read(path) else { continue };
+        let executable = |path| {
+            let mut member = Member::file(path, &elf);
+            member.mode = 0o755;
+            member
+        };
+        let host = Fixture::new(
+            vec![Member::directory("bin"), executable("bin/tool")],
+            true,
+            false,
+        );
+        let system = host.validate().unwrap().system;
+        if system.libraries.is_empty() {
+            continue;
+        }
+        for library in &system.libraries {
+            assert_eq!(system.required_by[library], "bin/tool");
+        }
+        let sysroot = Fixture::new(
+            vec![
+                Member::directory("t"),
+                Member::directory("t/sysroot"),
+                Member::directory("t/sysroot/usr"),
+                Member::directory("t/sysroot/usr/bin"),
+                executable("t/sysroot/usr/bin/makedb"),
+            ],
+            true,
+            false,
+        );
+        assert!(sysroot.validate().unwrap().system.is_empty());
+        checked = true;
+        break;
+    }
+    assert!(checked, "no dynamically linked system executable found");
 }
 
 /// #405: a refused transitive package names who pulled it in.
