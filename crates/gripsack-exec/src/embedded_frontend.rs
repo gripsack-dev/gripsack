@@ -981,7 +981,7 @@ export function declarationSite(
   const first = outside[0];
   if (!first) return undefined;
   const site = first.named ? outside.find((frame) => frame.file !== first.file) ?? first : first;
-  return { file: site.file, line: site.line, col: site.col };
+  return { file: site.file, line: site.line, ...(site.col === undefined ? {} : { col: site.col }) };
 }
 
 /** Capture the declaration site of an SDK constructor call. */
