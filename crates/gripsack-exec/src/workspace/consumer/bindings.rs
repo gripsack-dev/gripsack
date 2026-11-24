@@ -155,9 +155,14 @@ pub(super) fn task_cwd(
             }
         }
         Some(WorkspacePath::Host { path }) => {
-            let path = PathBuf::from(path);
+            // `~/` expands exactly as destinations do, so authors can use
+            // the same spelling in both places.
+            let path = gripsack_host::store::expand_home(path);
             if !path.is_absolute() {
-                return Err(gate(span, "host working directory must be absolute"));
+                return Err(gate(
+                    span,
+                    "host working directory must be absolute or start with `~/` (is HOME set?)",
+                ));
             }
             path
         }
@@ -185,4 +190,57 @@ pub(super) fn task_cwd(
         ));
     }
     Ok(candidate)
+}
+
+#[cfg(test)]
+mod host_cwd_tests {
+    use super::*;
+    use crate::workspace::paths::SelectorBinding;
+
+    fn realization() -> Realization<'static> {
+        Realization {
+            packages: Default::default(),
+            inputs: Default::default(),
+            selector_binding: SelectorBinding::Concrete,
+        }
+    }
+
+    fn span() -> Span {
+        Span {
+            file: "gripsack.ts".into(),
+            line: 1,
+            col: None,
+        }
+    }
+
+    #[test]
+    fn a_host_working_directory_expands_home_like_a_destination() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join(".local/bin")).unwrap();
+        // `~/.` is HOME itself: the expansion must reach the real directory.
+        if let Some(real) = std::env::var_os("HOME").filter(|home| PathBuf::from(home).is_dir()) {
+            let tilde = WorkspacePath::Host { path: "~/.".into() };
+            let resolved =
+                task_cwd(Some(&tilde), None, &realization(), home.path(), &span()).unwrap();
+            assert_eq!(resolved, PathBuf::from(real).join("."));
+        }
+        let cwd = WorkspacePath::Host {
+            path: home
+                .path()
+                .join(".local/bin")
+                .to_string_lossy()
+                .into_owned(),
+        };
+        let checkout = home.path();
+        let resolved = task_cwd(Some(&cwd), None, &realization(), checkout, &span()).unwrap();
+        assert_eq!(resolved, home.path().join(".local/bin"));
+        // a relative host path is still refused, with a hint
+        let relative = WorkspacePath::Host {
+            path: "relative/dir".into(),
+        };
+        let error = task_cwd(Some(&relative), None, &realization(), checkout, &span())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("`~/`"), "{error}");
+    }
 }
