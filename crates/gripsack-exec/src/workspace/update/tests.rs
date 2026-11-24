@@ -381,3 +381,67 @@ fn scoped_update_migrates_large_legacy_rows_and_resumes_segment_compaction() {
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
     }
 }
+
+mod settled_release {
+    use super::super::*;
+    use gripsack_ir::{
+        FetchSpec, Span, workspace::WorkspaceFetch, workspace_model::lock::ResolvedPinFields,
+    };
+
+    fn provider(version: Option<&str>) -> AcquisitionSource {
+        AcquisitionSource::Fetch(WorkspaceFetch {
+            fetch: FetchSpec::GithubRelease {
+                repo: "o/r".into(),
+                asset: "a".into(),
+                version: version.map(str::to_owned),
+                sha256: None,
+                base_url: None,
+            },
+            span: Span {
+                file: "gripsack.ts".into(),
+                line: 1,
+                col: None,
+            },
+        })
+    }
+
+    fn resolution(provider: &AcquisitionSource) -> PlatformResolution {
+        PlatformResolution {
+            pins: vec![LockedPin {
+                output: "tool".into(),
+                source: provider.locked(),
+                resolved: ResolvedPinFields {
+                    url: Some("https://x/tool.tar.gz".into()),
+                    ..Default::default()
+                },
+                conda: None,
+            }],
+            transitive: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn only_tagged_unchanged_releases_skip_resolution() {
+        let tagged = provider(Some("v1"));
+        assert!(is_settled_release(
+            &tagged,
+            Some(&resolution(&tagged)),
+            "tool"
+        ));
+        // declaration changed since the lock
+        assert!(!is_settled_release(
+            &provider(Some("v2")),
+            Some(&resolution(&tagged)),
+            "tool"
+        ));
+        // no lock entry yet
+        assert!(!is_settled_release(&tagged, None, "tool"));
+        // `latest` is what update exists to bump
+        let latest = provider(None);
+        assert!(!is_settled_release(
+            &latest,
+            Some(&resolution(&latest)),
+            "tool"
+        ));
+    }
+}

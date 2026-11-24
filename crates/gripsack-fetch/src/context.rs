@@ -16,6 +16,9 @@ pub struct FetchContext {
     build_env: BuildProcessEnv,
     acquisitions: AcquisitionGate,
     provisioning: Option<std::sync::Arc<FetchContext>>,
+    /// `releases/...` documents already fetched by this context (per run).
+    pub(crate) release_cache:
+        parking_lot::Mutex<BTreeMap<String, std::sync::Arc<crate::resolve::Release>>>,
 }
 
 impl Default for FetchContext {
@@ -46,6 +49,7 @@ impl FetchContext {
             network,
             build_env,
             provisioning: None,
+            release_cache: Default::default(),
         }
     }
 

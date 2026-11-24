@@ -51,6 +51,16 @@ fn content_length(response: &ureq::Response) -> Option<u64> {
         .header("content-length")
         .and_then(|value| value.parse().ok())
 }
+/// Teach the throttle the server's remaining quota (every response,
+/// not only the 403 that already ran us out).
+fn observe_quota(response: &ureq::Response) {
+    crate::throttle::observe_response(
+        response.get_url(),
+        response.header("x-ratelimit-remaining"),
+        response.header("x-ratelimit-reset"),
+    );
+}
+
 fn delay_from_headers(response: &ureq::Response, primary: bool, limited: bool) -> ServerDelay {
     let now = SystemTime::now();
     let mut wait = None;
@@ -267,6 +277,7 @@ impl Client {
             tracing::info!(attempt = budget.attempts(), "HTTP policy attempt");
             let (failure_kind, effective, server_delay) = match request.call() {
                 Ok(response) => {
+                    observe_quota(&response);
                     let effective = safe_url(response.get_url());
                     let expected_remaining = content_length(&response);
                     let html = response.header("content-type").is_some_and(|value| {
@@ -329,6 +340,7 @@ impl Client {
                     }
                 }
                 Err(ureq::Error::Status(status, response)) => {
+                    observe_quota(&response);
                     let effective = safe_url(response.get_url());
                     let headers_at = Instant::now();
                     let expected_remaining = content_length(&response);

@@ -199,7 +199,7 @@ def test_literal_bash_task_and_postcondition_execute_with_pinned_interpreter(san
       printf '%s\\n' "\\${MESSAGE:-missing}" > result
     `.interpreter(interpreter)
       .env("MESSAGE", lit("two words; $(must-not-execute)"))
-      .cwd(hostPath(''' + json.dumps(str(directory)) + ''')).build();
+      .cwd(hostPath("~/working directory")).build();
     const verify = bash`
       [[ $(< "$RESULT") == 'two words; $(must-not-execute)' ]]
     `.interpreter(interpreter).env("RESULT", lit(''' + json.dumps(str(effect)) + ''')).build();
