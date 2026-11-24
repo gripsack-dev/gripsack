@@ -144,6 +144,20 @@ Deno.test("ABI mismatch and incompatible minimum OS reject with both declaration
   }
 });
 
+Deno.test("an ABI-agnostic environment admits abi-specific members; a declared ABI stays exact", () => {
+  const { source, packageValue } = built("nvim", { ...linux, abi: "gnu" });
+  const agnostic = environment("tools", { packages: ["nvim"], target: linux });
+  assert.equal(JSON.parse(emit([source, packageValue, agnostic])).workspace.outputs.length, 3);
+  const gnu = environment("tools", { packages: ["nvim"], target: { ...linux, abi: "gnu" } });
+  assert.equal(JSON.parse(emit([source, packageValue, gnu])).workspace.outputs.length, 3);
+  const musl = environment("tools", { packages: ["nvim"], target: { ...linux, abi: "musl" } });
+  thrownDiagnostic(() => emit([source, packageValue, musl]), "E126");
+  // The reverse stays strict: an agnostic provider cannot satisfy a declared ABI.
+  const plain = built("plain", linux);
+  const wantsGnu = environment("tools", { packages: ["plain"], target: { ...linux, abi: "gnu" } });
+  thrownDiagnostic(() => emit([plain.source, plain.packageValue, wantsGnu]), "E126");
+});
+
 function assertEmitsUnchanged(outputs: WorkspaceOutput[]): void {
   const value = workspace({ outputs });
   assert.deepEqual(JSON.parse(emitWorkspaceIr(value, facts)).workspace, value.ir);

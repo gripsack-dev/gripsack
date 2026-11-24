@@ -131,8 +131,11 @@ mod tests {
         consumer.minimum_os = None;
         assert!(!supports(&provider, &consumer));
         consumer = provider.clone();
+        // An ABI-agnostic consumer admits an ABI-specific provider (#407)...
         consumer.abi = None;
-        assert!(!supports(&provider, &consumer));
+        assert!(supports(&provider, &consumer));
+        // ...but an ABI-declaring consumer still refuses an agnostic provider.
+        assert!(!supports(&consumer, &provider));
         consumer.abi = Some(PlatformAbi::Musl);
         assert!(!supports(&provider, &consumer));
         consumer = provider.clone();

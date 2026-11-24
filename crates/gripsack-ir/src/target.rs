@@ -1,6 +1,8 @@
 //! Target compatibility for production workspace admission. Both recipe
 //! producers and environment/image package selections call this rule;
-//! a missing ABI is not a wildcard and no checking-host fact participates.
+//! a consumer that omits the ABI admits any provider ABI (unspecified, not a
+//! particular libc), while a consumer that names one requires an exact match;
+//! no checking-host fact participates.
 //! The IR's typed wire conversion remains a separate admission boundary.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,12 +49,15 @@ pub fn release_at_most(provider: OsRelease, consumer: OsRelease) -> bool {
         <= (consumer.major, consumer.minor, consumer.patch)
 }
 
-/// Same OS, architecture and exact declared ABI; a provider without
+/// Same OS and architecture, and the consumer's declared ABI exactly (a
+/// consumer that omits the ABI accepts any provider ABI; a provider that omits
+/// it satisfies only an ABI-agnostic consumer); a provider without
 /// a floor satisfies any consumer, while a consumer without a floor
 /// cannot accept a provider with one. No host fact or layout rule is
 /// inferred from these declarations.
 pub fn supports_target(provider: &TargetRequirement, consumer: &TargetRequirement) -> bool {
-    if provider.os != consumer.os || provider.arch != consumer.arch || provider.abi != consumer.abi
+    if provider.os != consumer.os || provider.arch != consumer.arch
+        || (consumer.abi.is_some() && provider.abi != consumer.abi)
     {
         return false;
     }
@@ -107,7 +112,7 @@ mod tests {
     }
 
     /// Every OS × architecture × ABI pair, with every floor shape: the same
-    /// platform and exact ABI (no ABI is not a wildcard), and a provider floor
+    /// platform and exact ABI (an ABI-agnostic consumer admits any ABI), and a provider floor
     /// no later than the consumer's; a consumer without a floor accepts only a
     /// provider without one.
     #[test]
@@ -144,7 +149,7 @@ mod tests {
                                     (Some(_), None) => false,
                                     (Some(p), Some(c)) => (p.major, p.minor) <= (c.major, c.minor),
                                 };
-                                let expected = po == co && pa == ca && pb == cb && floor;
+                                let expected = po == co && pa == ca && (cb.is_none() || pb == cb) && floor;
                                 assert_eq!(
                                     supports_target(&provider, &consumer),
                                     expected,
