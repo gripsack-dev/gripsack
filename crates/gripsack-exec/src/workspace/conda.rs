@@ -8,11 +8,13 @@
 //! the original archives before admission. Materialization only publishes
 //! native fixed-prefix packages; historical image receipts remain data-only.
 
+mod activation;
 mod archive;
 mod prefix;
 mod runtime;
 mod validate;
 
+pub(super) use activation::activation_environment;
 pub(super) use runtime::{admit_host_requirements, admit_native};
 pub(crate) use validate::{AdmissionBudget, AdmittedArchives, SystemRuntime};
 

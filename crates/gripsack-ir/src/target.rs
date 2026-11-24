@@ -56,7 +56,8 @@ pub fn release_at_most(provider: OsRelease, consumer: OsRelease) -> bool {
 /// cannot accept a provider with one. No host fact or layout rule is
 /// inferred from these declarations.
 pub fn supports_target(provider: &TargetRequirement, consumer: &TargetRequirement) -> bool {
-    if provider.os != consumer.os || provider.arch != consumer.arch
+    if provider.os != consumer.os
+        || provider.arch != consumer.arch
         || (consumer.abi.is_some() && provider.abi != consumer.abi)
     {
         return false;
@@ -149,7 +150,8 @@ mod tests {
                                     (Some(_), None) => false,
                                     (Some(p), Some(c)) => (p.major, p.minor) <= (c.major, c.minor),
                                 };
-                                let expected = po == co && pa == ca && (cb.is_none() || pb == cb) && floor;
+                                let expected =
+                                    po == co && pa == ca && (cb.is_none() || pb == cb) && floor;
                                 assert_eq!(
                                     supports_target(&provider, &consumer),
                                     expected,

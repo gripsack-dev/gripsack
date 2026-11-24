@@ -15,6 +15,8 @@
 //! prevent publication of the core library. Helper responses remain advisory:
 //! the core admits frozen records and verifies trees against pinned archives.
 
+/// Hermetic evaluation of conda activation scripts (#405).
+pub mod activation;
 pub mod channels;
 pub mod client;
 pub mod protocol;

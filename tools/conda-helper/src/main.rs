@@ -10,7 +10,7 @@
 //!   canonical upstream selection and MatchSpec semantics, without network.
 //! * `materialize` — frozen install from retained archives: rehashes every
 //!   archive, extracts via `rattler_package_streaming`, refuses packages with
-//!   pre/post-link or activate/deactivate scripts, links with Rattler's
+//!   pre/post-link scripts (activate/deactivate data is admitted by the core), links with Rattler's
 //!   `link_package` patched for the final prefix (copy mode, clobber = hard
 //!   error), installs admitted wheels with pinned offline uv, and writes
 //!   normalized conda-meta receipts. NO network access or Python execution.
@@ -560,8 +560,8 @@ fn rehash(path: &Path) -> HResult<String> {
     Ok(hex_lower(&hasher.finalize()))
 }
 
-/// Refuses packages whose archive contains pre/post-link scripts or
-/// activate/deactivate scripts. The error always names the exact package.
+/// Refuses packages whose archive contains pre/post-link scripts. Activation
+/// scripts are admitted by the core instead. The error names the exact package.
 fn refuse_package_scripts(package_dir: &Path, name: &str) -> HResult<()> {
     let mut suspects: Vec<PathBuf> = Vec::new();
     for script in [
@@ -580,21 +580,16 @@ fn refuse_package_scripts(package_dir: &Path, name: &str) -> HResult<()> {
     for script in ["pre-link.bat", "post-link.bat", "pre-unlink.bat"] {
         suspects.push(package_dir.join(format!("Scripts/.{name}-{script}")));
     }
-    for directory in [
-        "etc/conda/activate.d",
-        "etc/conda/deactivate.d",
-        "etc/activate.d",
-        "etc/deactivate.d",
-    ] {
-        suspects.push(package_dir.join(directory));
-    }
+    // etc/{conda/,}{activate,deactivate}.d are plain package data here: the
+    // core admits only export-only `*.sh` scripts from the original archives
+    // and evaluates them hermetically; nothing is ever executed (#405).
     for suspect in suspects {
         if suspect.symlink_metadata().is_ok() {
             let relative = suspect.strip_prefix(package_dir).unwrap_or(&suspect);
             return Err(fail(
                 "link_script",
                 format!(
-                    "package '{name}' ships link/activation script '{}'; refusing to materialize it",
+                    "package '{name}' ships link script '{}'; refusing to materialize it",
                     relative.display()
                 ),
             ));
