@@ -51,7 +51,11 @@ impl OutputOwners {
     /// the name, and spans shared by several outputs, are left as raised:
     /// guessing would misattribute.
     pub fn attribute(&self, diagnostic: &mut crate::Diagnostic) {
-        let Some(span) = diagnostic.labels.iter().find_map(|label| label.span.as_ref()) else {
+        let Some(span) = diagnostic
+            .labels
+            .iter()
+            .find_map(|label| label.span.as_ref())
+        else {
             return;
         };
         let mut owners = std::collections::BTreeSet::new();

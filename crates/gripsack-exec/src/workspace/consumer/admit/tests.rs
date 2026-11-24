@@ -534,7 +534,11 @@ fn missing_conda_library_names_the_file_which_needs_it() {
     std::fs::create_dir_all(prefix.path().join("lib/python3.12/site-packages/yaml")).unwrap();
     let file = "lib/python3.12/site-packages/yaml/_yaml.so";
     std::fs::write(prefix.path().join(file), dynamic_library("libyaml-0.so.2")).unwrap();
-    std::fs::write(prefix.path().join("lib/other.so"), dynamic_library("libunrelated.so.1")).unwrap();
+    std::fs::write(
+        prefix.path().join("lib/other.so"),
+        dynamic_library("libunrelated.so.1"),
+    )
+    .unwrap();
     let system = crate::workspace::conda::SystemRuntime {
         libraries: vec!["libyaml-0.so.2".into()],
         loaders: Vec::new(),

@@ -108,7 +108,10 @@ pub fn observe_readonly(dest: &Path) -> std::io::Result<Option<Observation>> {
 
 /// Keep the kind, name the path: a bare errno is useless in a diagnostic.
 fn with_path(error: std::io::Error, action: &str, path: &Path) -> std::io::Error {
-    std::io::Error::new(error.kind(), format!("{action} {}: {error}", path.display()))
+    std::io::Error::new(
+        error.kind(),
+        format!("{action} {}: {error}", path.display()),
+    )
 }
 
 /// Open a destination's parent as a capability, creating parents for

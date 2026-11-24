@@ -476,9 +476,9 @@ fn inspect_selected_commands(
             }
             Err(error) => return Err(command_io(declaration, Some(name), &joined, &error)),
         };
-        let relative = path
-            .strip_prefix(&canonical_payload)
-            .map_err(|_| command_failure(declaration, name, &selector, "escapes its admitted payload"))?;
+        let relative = path.strip_prefix(&canonical_payload).map_err(|_| {
+            command_failure(declaration, name, &selector, "escapes its admitted payload")
+        })?;
         let mut file = gripsack_host::fs::open_file_nofollow(&directory, relative)
             .map_err(|error| command_io(declaration, Some(name), &joined, &error))?;
         let metadata = file
@@ -486,7 +486,12 @@ fn inspect_selected_commands(
             .map_err(|error| command_io(declaration, Some(name), &joined, &error))?;
         use gripsack_host::fs::cap_std::fs::PermissionsExt;
         if metadata.permissions().mode() & 0o111 == 0 {
-            return Err(command_failure(declaration, name, &selector, "is not executable"));
+            return Err(command_failure(
+                declaration,
+                name,
+                &selector,
+                "is not executable",
+            ));
         }
         let mut digest = Sha256::new();
         let mut buffer = [0; 64 * 1024];
@@ -559,7 +564,12 @@ fn missing_command(
     let listing = if top.is_empty() {
         "empty".to_owned()
     } else {
-        top.join(", ") + &if more > 0 { format!(", … {more} more") } else { String::new() }
+        top.join(", ")
+            + &if more > 0 {
+                format!(", … {more} more")
+            } else {
+                String::new()
+            }
     };
     let dangling = payload
         .join(selector)
@@ -571,7 +581,11 @@ fn missing_command(
         selector,
         &format!(
             "{} in artifact (archive top level: {listing})",
-            if dangling { "is a dangling symlink, not found" } else { "not found" }
+            if dangling {
+                "is a dangling symlink, not found"
+            } else {
+                "not found"
+            }
         ),
     )
 }
@@ -583,7 +597,9 @@ fn command_io(
     path: &Path,
     error: &io::Error,
 ) -> ExecError {
-    let command = name.map(|name| format!(" command {name:?}")).unwrap_or_default();
+    let command = name
+        .map(|name| format!(" command {name:?}"))
+        .unwrap_or_default();
     command_diagnostic(
         declaration,
         format!(
