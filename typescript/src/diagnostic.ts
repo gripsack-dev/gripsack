@@ -120,15 +120,18 @@ function isPackageFrame(path: string, selfDir: string): boolean {
 
 function spanFromStack(stack: string | undefined, selfDir: string): Span | undefined {
   if (!stack) return undefined;
+  const outside: Span[] = [];
   for (const line of stack.split("\n").slice(1)) {
     const match = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
     if (!match || !match[1]) continue;
     const file = match[1].replace(/^file:\/\//, "");
-    if (!isPackageFrame(file, selfDir)) {
-      return { file, line: Number(match[2]), col: Number(match[3]) };
+    if (file.startsWith("/") && !isPackageFrame(file, selfDir)) {
+      outside.push({ file, line: Number(match[2]), col: Number(match[3]) });
     }
   }
-  return undefined;
+  // Same rule as callerSpan: past an authoring helper, to the user's call.
+  const first = outside[0];
+  return first && (outside.find((frame) => frame.file !== first.file) ?? first);
 }
 
 /** Wrap a plain authoring-guard Error as E130 with the user's

@@ -51,3 +51,48 @@ def test_dangling_parent_symlink_destination_is_a_named_conflict(sandbox):
     assert 'profile "dots"' in err, err
     assert "gripsack.ts:" in err, err
     assert "io:" not in err, err
+
+
+LIB = '''import {pkg, provider, tarball} from "@gripsack/core";
+export function release(name: string, url: string) {
+  return pkg(name, {producer: provider(tarball(url)),
+    commands: {[name]: name}, target: {os: "linux", arch: "x86_64"}, layout: {kind: "relocatable"}});
+}
+'''
+
+
+def helper_repo(sandbox, names, url):
+    repo = sandbox / "helpers"
+    repo.mkdir()
+    (repo / "lib.ts").write_text(LIB)
+    calls = "\n".join(f'  release("{n}", {json.dumps(url)}),' for n in names)
+    (repo / "gripsack.ts").write_text(
+        'import {defineWorkspace, workspace} from "@gripsack/core";\n'
+        'import {release} from "./lib.ts";\n'
+        f"export default defineWorkspace(() => workspace({{outputs:[\n{calls}\n]}}));\n"
+    )
+    return repo
+
+
+def test_helper_diagnostics_point_at_the_caller_and_name_the_output(sandbox):
+    archive = sandbox / "tool.tar.gz"
+    make_toolchain_tarball(archive, {"tool": b"#!/bin/sh\n"})
+    repo = helper_repo(sandbox, ["hunk", "delta"], archive.as_uri())
+    # Frozen acquisition without a lock: the failure is per output.
+    result = grip("build", "delta", cwd=repo)
+    assert result.returncode != 0
+    err = result.stderr
+    assert 'package "delta"' in err, err
+    assert "gripsack.ts:5:" in err, err  # the release("delta", ...) call
+    assert "lib.ts" not in err, err
+
+
+def test_duplicate_helper_outputs_label_each_call_site_in_json(sandbox):
+    repo = helper_repo(sandbox, ["hunk", "hunk"], "file:///nonexistent.tar.gz")
+    machine = grip("check", "--json", cwd=repo)
+    assert machine.returncode != 0
+    doc = json.loads(machine.stdout)
+    labels = [label for d in doc["diagnostics"] for label in d["labels"]]
+    assert labels, doc
+    spans = {(label["span"]["file"].rsplit("/", 1)[-1], label["span"]["line"]) for label in labels}
+    assert spans == {("gripsack.ts", 4), ("gripsack.ts", 5)}, spans

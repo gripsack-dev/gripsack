@@ -151,6 +151,7 @@ impl<'a> NativeContext<'a> {
                         receipt.platform_libraries,
                         &self.target,
                         span,
+                        Some(&package.producer.payload),
                     )?;
                 }
                 (CatalogPackageLayout::PrefixMaterialized, None) => {

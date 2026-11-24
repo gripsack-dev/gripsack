@@ -508,14 +508,14 @@ fn conda_platform_libraries_are_host_provided_by_default() {
         loaders: Vec::new(),
     };
     let policy = PlatformLibraries::HostProvided;
-    assert!(platform::admit(&system, policy, &gnu_host(), &span()).is_ok());
+    assert!(platform::admit(&system, policy, &gnu_host(), &span(), None).is_ok());
     assert_eq!(
         platform::host_provided(&system, policy).collect::<Vec<_>>(),
         ["libX11.so.6", "libGL.so.1"]
     );
     // strict: true restores the closed check.
     let closed = PlatformLibraries::Closed;
-    let refused = platform::admit(&system, closed, &gnu_host(), &span()).unwrap_err();
+    let refused = platform::admit(&system, closed, &gnu_host(), &span(), None).unwrap_err();
     assert!(refused.to_string().contains("strict"), "{refused}");
     assert_eq!(platform::host_provided(&system, closed).count(), 0);
     // Anything outside the explicit CDT list stays a closure requirement.
@@ -523,5 +523,31 @@ fn conda_platform_libraries_are_host_provided_by_default() {
         libraries: vec!["libstdc++.so.6".into()],
         loaders: Vec::new(),
     };
-    assert!(platform::admit(&ambient, policy, &gnu_host(), &span()).is_err());
+    assert!(platform::admit(&ambient, policy, &gnu_host(), &span(), None).is_err());
+}
+
+/// plan/0059 #408: a missing library names the file in the prefix that needs it.
+#[test]
+fn missing_conda_library_names_the_file_which_needs_it() {
+    use gripsack_ir::workspace_model::PlatformLibraries;
+    let prefix = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(prefix.path().join("lib/python3.12/site-packages/yaml")).unwrap();
+    let file = "lib/python3.12/site-packages/yaml/_yaml.so";
+    std::fs::write(prefix.path().join(file), dynamic_library("libyaml-0.so.2")).unwrap();
+    std::fs::write(prefix.path().join("lib/other.so"), dynamic_library("libunrelated.so.1")).unwrap();
+    let system = crate::workspace::conda::SystemRuntime {
+        libraries: vec!["libyaml-0.so.2".into()],
+        loaders: Vec::new(),
+    };
+    let refused = platform::admit(
+        &system,
+        PlatformLibraries::HostProvided,
+        &gnu_host(),
+        &span(),
+        Some(prefix.path()),
+    )
+    .unwrap_err();
+    let message = refused.to_string();
+    assert!(message.contains("libyaml-0.so.2"), "{message}");
+    assert!(message.contains(&format!("needed by {file}")), "{message}");
 }
