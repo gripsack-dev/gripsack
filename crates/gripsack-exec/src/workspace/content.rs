@@ -32,6 +32,8 @@ pub(super) struct Capture {
         gripsack_host::fs::Dir,
     )>,
     sources: BTreeMap<String, CapturedFile>,
+    /// Realized artifact files that owned symlinks point into (issue #403).
+    linked: std::collections::BTreeSet<PathBuf>,
     maximum_bytes: u64,
     maximum_tree_bytes: u64,
     maximum_entries: usize,
@@ -47,6 +49,7 @@ impl Capture {
             repository: gripsack_host::fs::open(repo)?,
             captured_sources: None,
             sources: BTreeMap::new(),
+            linked: std::collections::BTreeSet::new(),
             maximum_bytes: limits.download_bytes.get(),
             maximum_tree_bytes: limits.expanded_bytes.get(),
             maximum_entries: limits.archive_entries.get(),
@@ -69,6 +72,21 @@ impl Capture {
             capture.captured_sources = Some((sources.clone(), gripsack_host::fs::open(root)?));
         }
         Ok(capture)
+    }
+
+    /// Store objects that destinations of the profile prepared since the last
+    /// call link into. The generation must retain them like any build closure.
+    pub(super) fn take_linked_roots(&mut self, home: &Path) -> Vec<PathBuf> {
+        let store = home.join(store::STORE_DIR);
+        std::mem::take(&mut self.linked)
+            .into_iter()
+            .filter_map(|path| {
+                let name = path.strip_prefix(&store).ok()?.components().next()?;
+                Some(store.join(name))
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 
     fn file(&mut self, path: &str) -> Result<&CapturedFile, ExecError> {
@@ -214,6 +232,9 @@ struct ContentRecipe<'a> {
     source_hash: Option<&'a str>,
     content: Content<'a>,
     executable: bool,
+    /// The output is a symlink into the realized package, not a copy.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    linked: bool,
 }
 
 pub(super) fn prepare_into(
@@ -252,12 +273,25 @@ fn prepare_file(
         None => None,
     };
     let executable = source.is_some_and(|source| source.executable);
+    // An owned link to an artifact file keeps the file inside its realized
+    // package: prefix-relative runtime paths (`$ORIGIN/../lib`, a sibling
+    // runtime directory) only resolve there. Copies stay for tracked_copy,
+    // templates and managed blocks, which own bytes rather than a link.
+    let linked_target = match (&file.source, file.content, file.destination) {
+        (
+            Some(Source::ArtifactFile { path, .. }),
+            Content::Identity,
+            WorkspaceDestination::Symlink { .. },
+        ) => Some(path.clone()),
+        _ => None,
+    };
     let recipe = serde_json::to_vec(&ContentRecipe {
         format: "gripsack-file-content-v1",
         source: file.source.as_ref(),
         source_hash: source.map(|source| source.hash.as_str()),
         content: file.content,
         executable,
+        linked: linked_target.is_some(),
     })?;
     let identity = store::hash::hex_sha256(&recipe);
     let directory = root.join(&identity);
@@ -268,6 +302,10 @@ fn prepare_file(
         }
         let output = directory.join("output");
         match file.content {
+            Content::Identity if linked_target.is_some() => {
+                let target = linked_target.as_ref().expect("guarded link target");
+                std::os::unix::fs::symlink(target, &output)?;
+            }
             Content::Identity => {
                 let source = source.ok_or_else(|| {
                     io::Error::new(
@@ -314,6 +352,9 @@ fn prepare_file(
             }
         }
         write_private(&directory.join("recipe.json"), &recipe, false)?;
+    }
+    if let Some(target) = linked_target {
+        capture.linked.insert(target);
     }
     let (destination, mode, block_id) = match file.destination {
         WorkspaceDestination::Symlink { path } => (path, Ownership::Owned, None),
