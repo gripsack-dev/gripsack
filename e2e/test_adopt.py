@@ -385,7 +385,9 @@ def test_adopt_sanitizes_digit_leading_names(sandbox):
     assert out.returncode == 0, out.stderr
 
 
-def test_generated_adoption_requires_new_approval_before_resume(sandbox):
+def test_generated_adoption_is_shown_then_resume_applies_it(sandbox):
+    """No approval step (#409): adopt writes and shows the generated files
+    without touching the target, and `--resume` then applies exactly them."""
     target = sandbox / ".config/demo"
     target.mkdir(parents=True)
     (target / "config").write_text("original\n")
@@ -398,10 +400,6 @@ def test_generated_adoption_requires_new_approval_before_resume(sandbox):
     assert (target / "config").read_text() == "original\n"
     assert not (target / "config").is_symlink()
     state = sandbox / ".local/share/gripsack"
-    assert not (state / "generations").exists()
-    denied = grip("adopt", "~/.config/demo", "--host", "testhost",
-                  "--yes", "--resume", cwd=repo, approve=False)
-    assert denied.returncode == 1
     assert not (state / "generations").exists()
     approved = grip("adopt", "~/.config/demo", "--host", "testhost",
                     "--yes", "--resume", cwd=repo)

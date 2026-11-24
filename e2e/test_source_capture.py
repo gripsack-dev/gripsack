@@ -302,7 +302,8 @@ def test_source_mutation_after_capture_and_between_rounds_cannot_change_evaluati
     rerun = grip("check", "--host", "testhost", "--json", cwd=repo)
     assert rerun.returncode == 0, rerun.stdout + rerun.stderr
     names = [output["name"] for output in json.loads(rerun.stdout)["outputs"]]
-    assert names == (["baseline", expected_after] if rounds == 2 else [expected_after])
+    # outputs are reported sorted by name ("after-2" < "baseline")
+    assert names == sorted(["baseline", expected_after] if rounds == 2 else [expected_after])
     assert new_receipt(before_again)["source"] != receipt["source"]
 
 

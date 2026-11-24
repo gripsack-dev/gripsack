@@ -228,7 +228,7 @@ def test_glob_exclusions_still_refuse_required_roots_and_pins(sandbox):
     shutil.copytree(frontend.resolve(), editor)
     (repo / "node_modules/@gripsack").mkdir(parents=True)
     (repo / "node_modules/@gripsack/core").symlink_to(editor, target_is_directory=True)
-    reviewed = checked(repo, "before")
+    reviewed = checked(repo, "unused")
     assert reviewed["policy"]["frontend"]["implementation"] == "frontend"
 
 
@@ -377,7 +377,7 @@ def test_capture_policy_cannot_add_ambient_roots(sandbox):
 def test_ordinary_external_sdk_pin_still_wins_with_unrelated_exclusion(sandbox):
     repo, _ = pinned_value_repo(sandbox)
     exclude(repo, ".venv")
-    reviewed = checked(repo, "before")
+    reviewed = checked(repo, "unused")
     assert reviewed["policy"]["frontend"]["implementation"] == "pinned_frontend"
 
 

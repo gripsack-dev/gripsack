@@ -51,7 +51,12 @@ fn detect_libc() -> Option<String> {
 
 /// `ldd --version`'s first line carries the version.
 fn glibc_version() -> Option<String> {
-    let out = std::process::Command::new("ldd")
+    // Fixed system locations, never a PATH lookup: an operator-controlled
+    // `ldd` shadow must not run during every evaluation.
+    let ldd = ["/usr/bin/ldd", "/bin/ldd"]
+        .into_iter()
+        .find(|path| std::path::Path::new(path).is_file())?;
+    let out = std::process::Command::new(ldd)
         .arg("--version")
         .output()
         .ok()?;

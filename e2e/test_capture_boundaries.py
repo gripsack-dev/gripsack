@@ -276,6 +276,7 @@ def test_python_runtime_metadata_never_imports_repository_sysconfig(sandbox, mon
     if reject_after_discovery:
         forbidden = repo / "forbidden-cache"
         forbidden.mkdir()
+        Path(os.environ["GRIPSACK_HOME"]).mkdir(parents=True, exist_ok=True)
         (Path(os.environ["GRIPSACK_HOME"]) / "deno-cache").symlink_to(forbidden, target_is_directory=True)
     run = grip("check", "--host", "testhost", "--json", cwd=repo, approve=False)
     if reject_after_discovery:
