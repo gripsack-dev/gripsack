@@ -30,7 +30,7 @@ tar = "0.4"
 # Local services use Unix HTTP; artifact registries use the existing ring/rustls provider.
 reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "rustls-no-provider"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
-base64 = "0.22"
+base64 = "0.23"
 ed25519-dalek = { version = "2.2", features = ["zeroize"] }
 zeroize = "1"
 # Credential-free URI parsing for the trust audit and source-bundle file URLs
